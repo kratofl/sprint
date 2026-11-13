@@ -104,7 +104,7 @@ RunSetups runSetups = new(Path.Combine(runtime.DataRoot, "run-setups.json"), log
 // SessionPlannerService/AnalysisController own the write-side command surface (WEB_DESKTOP_CUTOVER
 // item 1/2); /api/state keeps reading the stores directly below so a write through the service is
 // visible on the next poll without the two paths needing to share one instance.
-SessionPlannerService plannerService = new(planStore, log);
+SessionPlannerService plannerService = new(planStore, log, warnOnRaceFormatMismatch: () => runtime.Settings.SessionPlanner.WarnOnRaceFormatMismatch);
 // The notes the driver leaves on laps in Analysis; they go with a lap when it is shared.
 LapNotes lapNotes = new(Path.Combine(runtime.DataRoot, "lap-notes.json"), log);
 AnalysisController analysisController = new(new LapCorpusBrowser(lapHistoryStore, lapTraceStore, lapNotes), runSetups, setupLibrary);
@@ -151,10 +151,14 @@ PitWallLayoutStore pitWallLayouts = new(runtime.DataRoot, log);
 LapTraceRetention lapTraceRetention = new(lapTraceStore, lapHistoryStore, log);
 coordinator = new RuntimeCoordinator(runtime, plannerService, analysisController, liveLog, dashPageCycle, peerLink, liveCompare, gameFolder, lapHistoryStore, pitWallLayouts, lapTraceRetention);
 
-// The New plan dialog's prefill and recorded game/car/track choices (GET /api/planner/context).
-// Only Prefill() and ContextOptions() are used: those rules live on the planner controller, so
-// the dialog cannot drift from the spellings the lap-history buckets are keyed on.
-SessionPlannerController planContext = new(plannerService, NoFuelHistorySource.Instance, LastSeenContext, lapHistoryStore);
+// A plan's race figures from the lap history (#50), narrowed by the driver's planner setting.
+LapHistoryFuelSource fuelHistory = new(lapHistoryStore, () => runtime.Settings.SessionPlanner.FuelHistorySource);
+
+// The plan dialogs' prefill, recorded game/car/track choices and Quick plan detection
+// (GET /api/planner/context). Only Prefill(), ContextOptions() and Detect() are used: those rules
+// live on the planner controller, so the dialogs cannot drift from the spellings the lap-history
+// buckets are keyed on, and the renderer never works out what was detected.
+SessionPlannerController planContext = new(plannerService, fuelHistory, LastSeenContext, lapHistoryStore);
 
 // The LMU results import (#185): the startup prompt and the manual "Import results" action both
 // go through these focused endpoints, never the polled state -- a scan can parse hundreds of files.
@@ -438,6 +442,9 @@ app.MapGet("/api/state", () =>
 {
     AnalysisState analysis = analysisController.State();
     LapTraceUsage traceUsage = lapTraceStore.Usage();
+    // From disk, not the planner's live objects: the telemetry loop mutates those under the
+    // planner's lock, and serializing them here would race it.
+    IReadOnlyList<SessionPlan> plans = planStore.LoadAll();
     return Results.Json(new
     {
         telemetry = state.Telemetry,
@@ -469,9 +476,10 @@ app.MapGet("/api/state", () =>
         engineerControls = runtime.EngineerControls,
         radioLog = runtime.RadioLog,
         engineerPushState = runtime.EngineerPushState,
-        // From disk, not the planner's live objects: the telemetry loop mutates those under the
-        // planner's lock, and serializing them here would race it.
-        plans = planStore.LoadAll(),
+        plans,
+        // Each plan's race fuel (RaceFuelEstimate), by plan id: small, and cheap over the cached
+        // corpus, so the Race card follows new laps and setting changes without its own fetch.
+        planFuel = PlanFuel(plans),
         // Never the corpus itself: it runs to megabytes and this is polled several times a second.
         // Views get what they show; pages that need laps fetch them on their own endpoints.
         sessionCount = lapHistoryStore.LoadAll().Count,
@@ -719,7 +727,9 @@ app.MapPost("/api/laps/import", async (HttpRequest request, CancellationToken ct
 
 app.MapGet("/api/planner/context", async (CancellationToken ct) =>
 {
-    PlanContextChoices choices = await Task.Run(() => PlanContextChoices.From(planContext.Prefill(), planContext.ContextOptions()), ct);
+    PlanContextChoices choices = await Task.Run(
+        () => PlanContextChoices.From(planContext.Prefill(), planContext.ContextOptions(), planContext.Detect(state.Telemetry.Frame.Session)),
+        ct);
     return Results.Json(choices, json);
 });
 
@@ -880,6 +890,19 @@ object CompareState()
         arranging = compare.Arranging,
         fullscreen = (compare.HudOpen || compare.Arranging) && HudInterop.IsExclusiveFullscreenActive(),
     };
+}
+
+// Every plan's race fuel over the one shared corpus, keyed by plan id. Indexed rather than
+// ToDictionary: a hand-copied plan file sharing an id must not fail every state poll.
+Dictionary<string, RaceFuelEstimate> PlanFuel(IReadOnlyList<SessionPlan> plans)
+{
+    Dictionary<string, RaceFuelEstimate> fuel = new(StringComparer.Ordinal);
+    foreach (SessionPlan plan in plans)
+    {
+        fuel[plan.Id] = RaceFuelEstimate.For(plan, fuelHistory.ForRace(new PlanContext(plan.Game, plan.Car, plan.Track)));
+    }
+
+    return fuel;
 }
 
 PlanContext LastSeenContext()

@@ -22,8 +22,16 @@ capture. Code: `app/Sprint.Desktop.Core/Features/SessionPlanning/` and `Features
 - `PlanMode { Planned, Quick }` is persisted, not derived: a quick plan's inputs carry lower confidence
   and that must stay visible after creation. `Planned` is the first member so plan files written before
   modes existed keep their meaning.
-- Name is optional; the derived name (`Track – Car`) is shown as the placeholder and is exactly what
-  the plan gets.
+- Two ways in, two header actions: **Quick plan** (the list's one primary) for the session about to be
+  driven, **New plan…** (neutral) for the full three-step sheet. No mode switch inside a dialog.
+- Quick plan shows what the host detected read-only and asks only for `PlanDetection.MissingFields`;
+  with context, a race length and fuel history all known it is a summary and Create. Detection
+  (`SessionPlannerController.Detect`) runs on the host and rides on `GET /api/planner/context`, taken
+  once when the dialog opens so a field never vanishes mid-edit. It never asks for a lap time or fuel
+  per lap: those are measured, so without history it says the estimate fills in from the first laps.
+  Practice programs are not offered as a quick plan's targets.
+- Name is optional; the derived name (`Track – Car`, `SessionPlannerService.DerivedName`) is shown as
+  the placeholder and is exactly what a plan created with a blank name gets.
 - Race length comes from the lap count, else a plausible total session time, else the user is asked.
   A garbage duration would quietly become a garbage fuel estimate.
 - Context fields offer what Sprint has recorded (`PlanContextOptions`) but stay free text. The corpus
@@ -44,7 +52,8 @@ Two writers (the live recorder, the results importer), one reader. One JSON file
 `lap-history/` in the desktop data folder, so a corrupt file costs one session.
 
 - **Context key is `game` + `trackCourse` + `carModel`.** Track length is stored beside it as a
-  cross-check; car class is metadata so a "same class" fallback stays possible. Both writers must map
+  cross-check; car class is metadata so a "same class" fallback stays possible, and so is the tank
+  (`fuelCapacityLiters`, recorder only — imports never know it). Both writers must map
   onto exactly these fields or one real context splits into two buckets that never join. A test runs a
   live frame through the LMU mapper and recorder, imports XML into the same store, and resolves
   statistics over both — keep it passing.
@@ -113,6 +122,25 @@ Two writers (the live recorder, the results importer), one reader. One JSON file
 - `Specific` opens a scrollable list of every lap, never a dropdown. There is no typed lap-time entry:
   a lap time is something a car did. Stored `Manual` targets still deserialise.
 
+## Race fuel
+
+`RaceFuelEstimate` (#50) is built on the host for every plan and sent as `state.planFuel` by plan id;
+the Race card only renders it. Small, and cheap over the cached corpus, so it follows new laps and
+setting changes on the next poll.
+
+- Lap time and fuel per lap are the **medians** of the context's valid laps (`FuelHistoryFigures`),
+  each with its sample size. `FuelHistorySource` chooses every valid lap or only race laps.
+- History wins per figure; the plan's typed values fill in only where history has none. Imports carry
+  times but never fuel, so one figure can come from each.
+- A timed race is its minutes over the lap time, the running lap driven out (ceiling). No lap time,
+  no lap count — never a guess.
+- Litres per stint need the tank, the largest the recorder saw on the car. Without one the card says
+  so rather than inventing a tank. The reserve rides in the last stint.
+- Not modelled yet: virtual energy (a hypercar stint is energy-limited too) and the server's fuel
+  multiplier — laps from a ×2 session count as they were driven.
+- The race segment always records the format the game reports (`DetectedRaceFormat`), shown on the
+  card; the mismatch warning on top of it honours `WarnOnRaceFormatMismatch`.
+
 ## Target delivery to the wheel
 
 `PlanTargetDelivery` splits by what each target physically needs:
@@ -179,15 +207,19 @@ Two writers (the live recorder, the results importer), one reader. One JSON file
 
 ## Settings
 
-`AppSettings.SessionPlanner` holds planner defaults, rendered behind the gear in the planner's own
-header — features own their defaults; the global Settings page holds app-level preferences only.
-Defaults seed new plans and never lock them. Enums persist by name (`JsonStringEnumConverter`) so
-reordering members cannot change stored meaning.
+`AppSettings.SessionPlanner` holds planner defaults: the reserve new plans start with, which laps the
+fuel estimate draws on, and the race-format warning. They sit behind the gear in the plan list's
+header, each change a validated `planner.settings` command — features own their defaults; the global
+Settings page holds app-level preferences only (trace expiry lives there, beside storage). Defaults
+seed new plans and never lock them: `plan.create` without a reserve takes the default. Enums persist
+by name (`JsonStringEnumConverter`) so reordering members cannot change stored meaning. Online
+detection (#102) has no setting until it is built; an older file's `autoDetect` key is kept as
+unknown data.
 
 ## Deliberately open
 
 - Practice programs (`PACE`, `QUALI`) — only the corpus tags are settled.
 - Setup variant lineage — parent links, diff presentation, naming.
-- Fuel calculator (#50), online detection (#102), stint-lap targets.
+- Online detection (#102), stint-lap targets, energy-limited stints.
 - Declarative dash condition rules (#159) and a `lap_summary` alert.
 - LMU weekly schedule feed — see [lmu-schedule-feed.md](lmu-schedule-feed.md).

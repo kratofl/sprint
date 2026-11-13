@@ -48,9 +48,26 @@ export type ResultsImportResult = { outcome: 'imported'; importedCount: number }
 /** The tracks and cars recorded for one game. */
 export type PlanGameChoices = { game: string; tracks: string[]; cars: string[] }
 
+/** Something Quick plan could not detect and has to ask for (host: `QuickPlanField`). */
+export type QuickPlanField = 'Context' | 'RaceLength' | 'Fuel'
+
 /**
- * The New plan dialog's starting point (host: `PlanContextChoices`, `GET /api/planner/context`):
- * the prefilled game/car/track, plus the recorded spellings, narrowed per game by the host.
+ * What Sprint already knows about the session about to be driven (host: `PlanDetection`, from
+ * `SessionPlannerController.Detect`): the game/car/track (live, else remembered), the race length
+ * when the game says it, whether the lap history covers the fuel, and what is still missing.
+ * Quick plan shows the known parts read-only and asks only for `missing`.
+ */
+export type PlanDetection = {
+  context: { game: string; car: string; track: string }
+  raceLength: { format: 'TimeBased' | 'LapBased'; value: number } | null
+  hasFuelHistory: boolean
+  missing: QuickPlanField[]
+}
+
+/**
+ * The plan dialogs' starting point (host: `PlanContextChoices`, `GET /api/planner/context`):
+ * the prefilled game/car/track, the recorded spellings narrowed per game by the host, and what
+ * Quick plan detected.
  */
 export type PlanContextChoices = {
   prefill: { game: string; car: string; track: string }
@@ -58,6 +75,25 @@ export type PlanContextChoices = {
   tracks: string[]
   cars: string[]
   byGame: PlanGameChoices[]
+  detection: PlanDetection
+}
+
+/** One figure of a race estimate (host: `EstimateFigure`): the median of the driver's laps here, or the plan's own value. */
+export type EstimateFigure = { source: 'History'; value: number; laps: number } | { source: 'Plan'; value: number }
+
+/**
+ * A plan's race fuel (host: `RaceFuelEstimate`, `state.planFuel` by plan id): laps, the figures it
+ * rests on, the litres with the reserve on top, and those litres per stint once the car's tank is
+ * known. Null where it cannot be worked out, never a guess.
+ */
+export type RaceFuelEstimate = {
+  laps: number | null
+  lapTime: EstimateFigure | null
+  fuelPerLap: EstimateFigure | null
+  reserveLaps: number
+  totalLiters: number | null
+  tankLiters: number | null
+  stints: { lapsPerStint: number; liters: number[] } | null
 }
 
 export type PlanTargetScope = 'CurrentQualifying' | 'Qualifying' | 'Practice' | 'PracticeProgram' | 'Manual'
@@ -238,6 +274,8 @@ export type SprintState = {
   dashLayouts: Array<Record<string, unknown>>; setupTemplates: Array<Record<string, unknown>>; setupPrograms: Array<Record<string, unknown>>
   engineerControls: Array<Record<string, unknown>>; radioLog: Array<Record<string, unknown>>; engineerPushState: Record<string, unknown>
   plans: Array<Record<string, unknown>>
+  /** Each plan's race fuel by plan id, worked out on the host over the lap history. */
+  planFuel: Record<string, RaceFuelEstimate>
   /** How many sessions the lap-history corpus holds. The corpus itself is never in the state. */
   sessionCount: number
   /** Home's recent sessions, built on the host (`RecentSessions`); HomeDomain narrows it. Null with no sessions. */
@@ -309,7 +347,7 @@ export type SprintBridge = {
   /** Opens a folder picker; null when the driver cancelled it (or there is no Electron). */
   pickFolder(title: string): Promise<string | null>
   diagnosticsLogs(minLevel: string, text: string): Promise<unknown>
-  /** Fetched when the New plan dialog opens: building it reads every lap-history file. */
+  /** Fetched when Quick plan or New plan… opens (with what Quick plan detected): building it reads every lap-history file. */
   planContext(): Promise<PlanContextChoices>
   /** The plan's target choices per scope; empty when nothing was driven or imported for its car and track. */
   planTargets(planId: string): Promise<PlanTargetScopeGroup[]>
@@ -393,7 +431,7 @@ type RawBridge = {
   pitWallTrace?(lap: string): Promise<unknown>
 }
 declare global { interface Window { sprint?: RawBridge } }
-const emptyState = (): SprintState => ({ telemetry: { frame: null, link: noLink(), hz: 0 }, targets: null, settings: {}, controls: {}, catalog: {}, devices: [], dashLayouts: [], setupTemplates: [], setupPrograms: [], engineerControls: [], radioLog: [], engineerPushState: {}, plans: [], sessionCount: 0, recentSessions: null, resultsImport: { available: false }, firstRun: { done: true, game: null }, account: { signedIn: false, serverUrl: '' }, cloud: emptyCloud(), link: { phase: 'Off' }, pitWallLayout: null, features: { sprintWeb: false }, foundDevices: [], multiDials: [], dashCategories: { builtIn: [], custom: [] }, dashRefitLosses: {}, screens: [] })
+const emptyState = (): SprintState => ({ telemetry: { frame: null, link: noLink(), hz: 0 }, targets: null, settings: {}, controls: {}, catalog: {}, devices: [], dashLayouts: [], setupTemplates: [], setupPrograms: [], engineerControls: [], radioLog: [], engineerPushState: {}, plans: [], planFuel: {}, sessionCount: 0, recentSessions: null, resultsImport: { available: false }, firstRun: { done: true, game: null }, account: { signedIn: false, serverUrl: '' }, cloud: emptyCloud(), link: { phase: 'Off' }, pitWallLayout: null, features: { sprintWeb: false }, foundDevices: [], multiDials: [], dashCategories: { builtIn: [], custom: [] }, dashRefitLosses: {}, screens: [] })
 const emptyCloud = (): CloudState => ({ setupDone: true, server: 'None', storage: 'Local', officialServerUrl: null, progress: null, lastSync: null, live: liveOff() })
 const liveOff = (): LiveUplink => ({ status: 'Off', detail: null })
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null
@@ -632,7 +670,64 @@ const parseDiscovered = (value: unknown): DiscoveredServer[] =>
       )
     : []
 
-const emptyPlanContext = (): PlanContextChoices => ({ prefill: { game: '', car: '', track: '' }, games: [], tracks: [], cars: [], byGame: [] })
+const QUICK_PLAN_FIELDS: readonly QuickPlanField[] = ['Context', 'RaceLength', 'Fuel']
+
+const emptyDetection = (): PlanDetection => ({ context: { game: '', car: '', track: '' }, raceLength: null, hasFuelHistory: false, missing: [...QUICK_PLAN_FIELDS] })
+
+const emptyPlanContext = (): PlanContextChoices => ({ prefill: { game: '', car: '', track: '' }, games: [], tracks: [], cars: [], byGame: [], detection: emptyDetection() })
+
+/** Narrows the host's `PlanDetection`. Anything unreadable counts as not detected, so Quick plan asks for it. */
+const parsePlanDetection = (value: unknown): PlanDetection => {
+  if (!isRecord(value)) return emptyDetection()
+  const context = isRecord(value.context) ? value.context : {}
+  const text = (field: unknown): string => (typeof field === 'string' ? field : '')
+  const format = value.raceLengthFormat === 'TimeBased' || value.raceLengthFormat === 'LapBased' ? value.raceLengthFormat : null
+  const length = finiteOrNull(value.raceLengthValue)
+  const listed: unknown[] = Array.isArray(value.missingFields) ? value.missingFields : [...QUICK_PLAN_FIELDS]
+  return {
+    context: { game: text(context.game), car: text(context.car), track: text(context.track) },
+    raceLength: format !== null && length !== null && length > 0 ? { format, value: length } : null,
+    hasFuelHistory: value.hasFuelHistory === true,
+    missing: QUICK_PLAN_FIELDS.filter((field) => listed.includes(field)),
+  }
+}
+
+const finiteOrNull = (value: unknown): number | null => (typeof value === 'number' && Number.isFinite(value) ? value : null)
+
+const parseEstimateFigure = (value: unknown): EstimateFigure | null => {
+  if (!isRecord(value)) return null
+  const figure = finiteOrNull(value.value)
+  if (figure === null) return null
+  if (value.source === 'History') return { source: 'History', value: figure, laps: finiteOrNull(value.laps) ?? 0 }
+  return value.source === 'Plan' ? { source: 'Plan', value: figure } : null
+}
+
+const parseRaceFuelEstimate = (value: unknown): RaceFuelEstimate | null => {
+  if (!isRecord(value)) return null
+  const stints = isRecord(value.stints) ? value.stints : null
+  const lapsPerStint = stints ? finiteOrNull(stints.lapsPerStint) : null
+  const liters = stints && Array.isArray(stints.liters) ? stints.liters.filter((item): item is number => typeof item === 'number' && Number.isFinite(item)) : []
+  return {
+    laps: finiteOrNull(value.laps),
+    lapTime: parseEstimateFigure(value.lapTime),
+    fuelPerLap: parseEstimateFigure(value.fuelPerLap),
+    reserveLaps: finiteOrNull(value.reserveLaps) ?? 0,
+    totalLiters: finiteOrNull(value.totalLiters),
+    tankLiters: finiteOrNull(value.tankLiters),
+    stints: lapsPerStint !== null && liters.length > 0 ? { lapsPerStint, liters } : null,
+  }
+}
+
+/** Narrows `state.planFuel`, dropping any entry it cannot read rather than inventing one. */
+const parsePlanFuel = (value: unknown): Record<string, RaceFuelEstimate> => {
+  if (!isRecord(value)) return {}
+  const fuel: Record<string, RaceFuelEstimate> = {}
+  for (const [planId, entry] of Object.entries(value)) {
+    const estimate = parseRaceFuelEstimate(entry)
+    if (estimate) fuel[planId] = estimate
+  }
+  return fuel
+}
 
 /** Narrows the host's `PlanContextChoices` once, here. */
 const parsePlanContext = (value: unknown): PlanContextChoices => {
@@ -649,6 +744,7 @@ const parsePlanContext = (value: unknown): PlanContextChoices => {
           isRecord(row) && typeof row.game === 'string' ? [{ game: row.game, tracks: stringList(row.tracks), cars: stringList(row.cars) }] : [],
         )
       : [],
+    detection: parsePlanDetection(value.detection),
   }
 }
 
@@ -742,6 +838,7 @@ const parseState = (value: unknown): SprintState => {
   parsed.dashCategories = { builtIn: stringList(categories.builtIn), custom: stringList(categories.custom) }
   parsed.dashRefitLosses = parseDashRefitLosses(value.dashRefitLosses)
   parsed.multiDials = parseMultiDials(value.multiDials)
+  parsed.planFuel = parsePlanFuel(value.planFuel)
   return parsed
 }
 /** Keeps only whole positive counts; anything else from the host is no loss to warn about. */

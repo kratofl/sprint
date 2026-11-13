@@ -367,6 +367,21 @@
   text-align: right;
 }
 
+/* A fact's second line: where an estimate's figure came from, the reserve inside the litres. */
+.planner-fact dd .planner-sub {
+  display: block;
+}
+
+/* Quick plan's summary of what was detected sits under whatever it asks for. */
+.planner-quick-summary {
+  margin: 4px 0 0;
+}
+
+/* The planner's settings (the header's gear): grouped-list rows, flush with the dialog's title. */
+.planner-settings .settings-list-row {
+  padding-inline: 0;
+}
+
 .planner-notes {
   display: flex;
   align-items: center;

@@ -314,7 +314,7 @@ public sealed class SessionPlannerPageTests
                 idFactory: () => "id-1");
             SessionPlannerController controller = new SessionPlannerController(
                 service,
-                new StubFuelHistory(hasHistory: true),
+                new StubFuelHistory(),
                 () => PlanContext.Empty);
 
             Assert.True(controller.HasFuelHistory(new PlanContext("lmu", "963", "spa")));
@@ -815,9 +815,9 @@ public sealed class SessionPlannerPageTests
         Assert.Equal("Spa", remembered.Track);
     }
 
-    private sealed class StubFuelHistory(bool hasHistory) : IFuelHistorySource
+    private sealed class StubFuelHistory : IFuelHistorySource
     {
-        public bool HasHistory(string game, string car, string track) => hasHistory;
+        public FuelHistoryFigures ForRace(PlanContext context) => new(125.0, 20, 3.4, 20, null);
     }
 
     private static CreatePlanRequest NewRequest(
@@ -873,7 +873,7 @@ public sealed class SessionPlannerPageTests
                 idFactory: () => $"id-{++counter}");
             SessionPlannerController controller = new SessionPlannerController(
                 service,
-                hasFuelHistory ? new StubFuelHistory(true) : NoFuelHistorySource.Instance,
+                hasFuelHistory ? new StubFuelHistory() : NoFuelHistorySource.Instance,
                 () => context);
             body(controller, service);
         }

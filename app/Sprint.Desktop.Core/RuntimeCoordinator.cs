@@ -150,6 +150,7 @@ public sealed class RuntimeCoordinator
             case "plan.releaseActive": return this.ReleaseActivePlan(out error);
             case "plan.setTarget": return this.SetPlanTarget(command, out error);
             case "plan.clearTarget": return this.ClearPlanTarget(command, out error);
+            case "planner.settings": return this.UpdatePlannerSettings(command, out error);
             case "analysis.refresh": this._analysis.Load(); return true;
             case "analysis.selectSession": return this.SelectAnalysisSession(command, out error);
             case "analysis.filter": return this.FilterAnalysis(command, out error);
@@ -1211,7 +1212,8 @@ public sealed class RuntimeCoordinator
             QualifyingIncluded = qualifyingIncluded,
             RaceLengthFormat = raceLengthFormat,
             RaceLengthValue = raceLengthValue ?? 0,
-            FuelReserveLaps = Math.Max(0, (int)(fuelReserveLaps ?? 1)),
+            // A plan that does not say takes the driver's default (#103): defaults seed, never lock.
+            FuelReserveLaps = Math.Max(0, (int)(fuelReserveLaps ?? this._runtime.Settings.SessionPlanner.FuelReserveLaps)),
             AvgLapTimeSeconds = avgLapTimeSeconds,
             FuelPerLapLiters = fuelPerLapLiters,
             Notes = notes,
@@ -1219,6 +1221,72 @@ public sealed class RuntimeCoordinator
         };
 
         this._planner.CreatePlan(request);
+        return true;
+    }
+
+    /// <summary>
+    /// The planner's own defaults, set behind the gear in its header (#103): the reserve new plans
+    /// start with, which laps a fuel estimate draws on, and whether a race-format mismatch warns.
+    /// Every field is optional and validated before anything is written.
+    /// </summary>
+    private bool UpdatePlannerSettings(JsonElement command, out string error)
+    {
+        error = "";
+        int? reserve = null;
+        if (command.TryGetProperty("fuelReserveLaps", out _))
+        {
+            if (!TryInt(command, "fuelReserveLaps", out int laps) || laps < 0 || laps > SessionPlannerSettings.MaxFuelReserveLaps)
+            {
+                error = $"fuelReserveLaps must be a whole number from 0 to {SessionPlannerSettings.MaxFuelReserveLaps}";
+                return false;
+            }
+
+            reserve = laps;
+        }
+
+        FuelHistorySource? source = null;
+        if (command.TryGetProperty("fuelHistorySource", out _))
+        {
+            // By name only: a number would parse as any ordinal, defined or not.
+            if (!TryStringField(command, "fuelHistorySource", out string sourceText)
+                || !Enum.TryParse(sourceText, ignoreCase: true, out FuelHistorySource parsed)
+                || !Enum.IsDefined(parsed)
+                || int.TryParse(sourceText, out _))
+            {
+                error = "fuelHistorySource must be AllValidLaps or MatchingSessionType";
+                return false;
+            }
+
+            source = parsed;
+        }
+
+        bool? warn = null;
+        if (command.TryGetProperty("warnOnRaceFormatMismatch", out _))
+        {
+            if (!TryBool(command, "warnOnRaceFormatMismatch", out bool parsedWarn))
+            {
+                error = "warnOnRaceFormatMismatch must be a boolean";
+                return false;
+            }
+
+            warn = parsedWarn;
+        }
+
+        if (reserve is null && source is null && warn is null)
+        {
+            error = "no recognized planner settings were provided";
+            return false;
+        }
+
+        lock (this._runtime.SettingsGate)
+        {
+            SessionPlannerSettings planner = this._runtime.Settings.SessionPlanner;
+            if (reserve is { } newReserve) planner.FuelReserveLaps = newReserve;
+            if (source is { } newSource) planner.FuelHistorySource = newSource;
+            if (warn is { } newWarn) planner.WarnOnRaceFormatMismatch = newWarn;
+            this._runtime.SaveSettings();
+        }
+
         return true;
     }
 

@@ -18,7 +18,8 @@ public sealed class PlanContextChoicesTests
             ("iRacing", "Road Atlanta", "Mazda MX-5"));
         PlanContext live = new("Le Mans Ultimate", "Porsche 963", "Spa-Francorchamps");
 
-        PlanContextChoices choices = PlanContextChoices.From(live, PlanContextOptions.From(store, live));
+        PlanDetection detection = new(live, RaceLengthFormat.LapBased, 31, HasFuelHistory: true);
+        PlanContextChoices choices = PlanContextChoices.From(live, PlanContextOptions.From(store, live), detection);
 
         Assert.Equal(live, choices.Prefill);
         Assert.Equal(["iRacing", "Le Mans Ultimate"], choices.Games);
@@ -26,6 +27,7 @@ public sealed class PlanContextChoicesTests
         PlanGameChoices lmu = Assert.Single(choices.ByGame, game => game.Game == "Le Mans Ultimate");
         Assert.Equal(["Monza", "Spa-Francorchamps"], lmu.Tracks);
         Assert.Equal(["Ferrari 499P", "Porsche 963"], lmu.Cars);
+        Assert.Same(detection, choices.Detection);
     }
 
     private sealed class ContextStore : ILapHistoryStore

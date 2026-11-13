@@ -40,6 +40,7 @@ public sealed class SessionPlannerService
     private readonly ILog _log;
     private readonly Func<DateTimeOffset> _clock;
     private readonly Func<string> _idFactory;
+    private readonly Func<bool> _warnOnRaceFormatMismatch;
     private readonly List<SessionPlan> _plans;
 
     // The host drives this service from two independent threads: the telemetry ingest loop
@@ -57,16 +58,22 @@ public sealed class SessionPlannerService
     private SessionType _autoStartCandidate = SessionType.Unknown;
     private DateTimeOffset? _autoStartSince;
 
+    /// <param name="warnOnRaceFormatMismatch">
+    /// Read on every race-format check, so turning the setting off stops new warnings at once
+    /// (<see cref="Runtime.SessionPlannerSettings.WarnOnRaceFormatMismatch"/>). Omitted means on.
+    /// </param>
     public SessionPlannerService(
         ISessionPlanStore store,
         ILog? log = null,
         Func<DateTimeOffset>? clock = null,
-        Func<string>? idFactory = null)
+        Func<string>? idFactory = null,
+        Func<bool>? warnOnRaceFormatMismatch = null)
     {
         this._store = store;
         this._log = log ?? NullLog.Instance;
         this._clock = clock ?? (() => DateTimeOffset.UtcNow);
         this._idFactory = idFactory ?? (() => Guid.NewGuid().ToString("N"));
+        this._warnOnRaceFormatMismatch = warnOnRaceFormatMismatch ?? (() => true);
 
         this._plans = this._store.LoadAll()
             .OrderByDescending(plan => plan.CreatedAt)
@@ -124,7 +131,7 @@ public sealed class SessionPlannerService
         SessionPlan plan = new SessionPlan
         {
             Id = this._idFactory(),
-            Name = string.IsNullOrWhiteSpace(request.Name) ? "New Session Plan" : request.Name.Trim(),
+            Name = string.IsNullOrWhiteSpace(request.Name) ? DerivedName(request.Track, request.Car) : request.Name.Trim(),
             Game = request.Game,
             Car = request.Car,
             Track = request.Track,
@@ -149,6 +156,19 @@ public sealed class SessionPlannerService
 
         this._log.Info($"Created session plan '{plan.Id}' ({plan.Game}/{plan.Track})");
         return plan;
+    }
+
+    /// <summary>
+    /// What an unnamed plan is called: where and what it is for (<c>Track – Car</c>), so the plan
+    /// list stays readable. The one rule: the creation sheet previews it as the name field's
+    /// placeholder (mirrored in <c>SessionPlannerDomain.ts</c>), and this is the name the plan gets.
+    /// </summary>
+    public static string DerivedName(string track, string car)
+    {
+        string[] parts = new[] { track.Trim(), car.Trim() }
+            .Where(part => part.Length > 0)
+            .ToArray();
+        return parts.Length == 0 ? "New Session Plan" : string.Join(" – ", parts);
     }
 
     /// <summary>Persists edits to an existing plan (metadata, notes, setup references, etc.).</summary>
@@ -487,9 +507,14 @@ public sealed class SessionPlannerService
         return true;
     }
 
+    /// <summary>
+    /// Records the race format the game reports on the race segment — the plan page shows it
+    /// whatever the plan says — and warns once when it disagrees with the plan, unless the driver
+    /// turned that warning off.
+    /// </summary>
     private bool DetectRaceFormatMismatch(SessionPlan plan, PlanSegment segment, TelemetryFrame frame)
     {
-        if (segment.Kind != SegmentKind.Race || plan.RaceLengthFormat == RaceLengthFormat.Unknown)
+        if (segment.Kind != SegmentKind.Race)
         {
             return false;
         }
@@ -498,7 +523,9 @@ public sealed class SessionPlannerService
         bool changed = segment.DetectedRaceFormat != detected;
         segment.DetectedRaceFormat = detected;
 
-        if (detected == plan.RaceLengthFormat)
+        if (plan.RaceLengthFormat == RaceLengthFormat.Unknown
+            || detected == plan.RaceLengthFormat
+            || !this._warnOnRaceFormatMismatch())
         {
             return changed;
         }

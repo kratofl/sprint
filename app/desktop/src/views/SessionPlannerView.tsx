@@ -1,13 +1,15 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
-import { Check, ChevronLeft, ChevronRight, CircleDot, CircleOff, Download, Flag, ListChecks, NotebookPen, Pencil, Play, Plus, Route, Square, Timer, Trash2 } from 'lucide-react'
+import { Check, ChevronLeft, ChevronRight, CircleDot, CircleOff, Download, Flag, ListChecks, NotebookPen, Pencil, Play, Plus, Route, Settings, Square, Timer, Trash2, Zap } from 'lucide-react'
 import { bridge } from '../bridge'
-import type { PlanContextChoices, PlanTargetOption, PlanTargetScopeGroup, SprintCommand } from '../bridge'
+import type { EstimateFigure, PlanContextChoices, PlanDetection, PlanTargetOption, PlanTargetScopeGroup, RaceFuelEstimate, SprintCommand } from '../bridge'
 import type { RuntimeState } from '../shell/runtime'
 import { ConfirmDialog, ContentDialog } from '../shell/ContentDialog'
 import { CommandDivider, PageHeader } from '../shell/PageHeader'
 import { usePageUp } from '../shell/pageUp'
 import { Status } from '../shell/Status'
 import { SuggestBox } from '../shell/SuggestBox'
+import { Switch } from '../shell/Switch'
+import { ListRow } from './SettingsLayout'
 import {
   PLAN_STATUS_TONE,
   activePlan,
@@ -21,7 +23,12 @@ import {
   buildPlanStart,
   buildPlanStop,
   buildPlanUpdate,
+  buildPlannerSettings,
   choicesForGame,
+  derivedPlanName,
+  detectedFormatLabel,
+  detectedRaceFormat,
+  figureSource,
   formatLapTime,
   groupPlans,
   headlineTarget,
@@ -32,20 +39,24 @@ import {
   parsePlans,
   planLapStats,
   practiceSummary,
-  raceFuelLiters,
-  raceLaps,
+  formatRaceLength,
+  quickPlanInput,
+  RESERVE_CHOICES,
   raceLengthShort,
   raceLengthUnit,
+  readPlannerSettings,
   recentLapTimes,
+  reserveLabel,
   sessionState,
   startingRaceSkipsQualifying,
+  stintsLabel,
   targetSummary,
   targetTierNote,
   targetsFor,
   upNextPlan,
   weekendTimeline,
 } from './SessionPlannerDomain'
-import type { CreatePlanInput, PlanMode, PlanSegment, PlanStatus, PlanTarget, PracticeSummary, RaceLengthFormat, SegmentKind, SessionPlan } from './SessionPlannerDomain'
+import type { CreatePlanInput, FuelHistoryChoice, PlanSegment, PlanStatus, PlanTarget, PlannerSettings, PracticeSummary, QuickPlanAnswers, RaceLengthFormat, SegmentKind, SessionPlan } from './SessionPlannerDomain'
 import './SessionPlannerView.css'
 
 /**
@@ -62,8 +73,11 @@ import './SessionPlannerView.css'
  * qualifying, taking over the active slot and deleting each go through a confirm.
  *
  * Targets are picked from laps that were driven (`GET /api/planner/targets`, `plan.setTarget`),
- * never typed. The list's CommandBar carries "Import results" when the game has a results archive;
- * the dialog itself is the shell's, because the startup prompt can appear on any page.
+ * never typed. The list's CommandBar leads with Quick plan (the one primary: a plan for the session
+ * about to be driven, from what the game and the lap history already say), then New plan… (the full
+ * sheet) and "Import results" when the game has a results archive; the import dialog itself is the
+ * shell's, because the startup prompt can appear on any page. The gear opens the planner's own
+ * defaults. The race fuel each plan shows is the host's (`state.planFuel`).
  */
 export function SessionPlannerView({
   runtime,
@@ -79,8 +93,11 @@ export function SessionPlannerView({
   onImportResults?: () => void
 }) {
   const plans = runtime.kind === 'ready' ? parsePlans(runtime.sprint.plans) : []
+  const planFuel = runtime.kind === 'ready' ? runtime.sprint.planFuel : {}
+  const settings = readPlannerSettings(runtime.kind === 'ready' ? runtime.sprint.settings : {})
   const [openId, setOpenId] = useState<string | null>(null)
   const [form, setForm] = useState<PlanForm | null>(null)
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const [confirm, setConfirm] = useState<PlannerConfirm | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
 
@@ -167,14 +184,21 @@ export function SessionPlannerView({
           />
         ) : (
           <>
-            <button type="button" className="button primary" onClick={() => setForm({ kind: 'create' })}>
-              <Plus /> New plan
+            <button type="button" className="button primary" onClick={() => setForm({ kind: 'quick' })}>
+              <Zap /> Quick plan
+            </button>
+            <button type="button" className="button" onClick={() => setForm({ kind: 'create' })}>
+              <Plus /> New plan…
             </button>
             {onImportResults && (
               <button type="button" className="button subtle" onClick={onImportResults}>
                 <Download /> Import results
               </button>
             )}
+            <span className="command-spacer" />
+            <button type="button" className="button subtle" onClick={() => setSettingsOpen(true)}>
+              <Settings /> Planner settings
+            </button>
           </>
         )}
       </PageHeader>
@@ -191,7 +215,13 @@ export function SessionPlannerView({
       )}
 
       {opened ? (
-        <PlanDetail plan={opened} blockedBy={blockedBy} onBack={() => setOpenId(null)} onCommand={(command) => void runAction(command)} />
+        <PlanDetail
+          plan={opened}
+          fuel={planFuel[opened.id] ?? null}
+          blockedBy={blockedBy}
+          onBack={() => setOpenId(null)}
+          onCommand={(command) => void runAction(command)}
+        />
       ) : plans.length === 0 ? (
         <div className="card">
           <div className="empty-state">
@@ -204,8 +234,10 @@ export function SessionPlannerView({
         <PlanLists plans={plans} onOpen={setOpenId} />
       )}
 
-      {form?.kind === 'create' && (
+      {(form?.kind === 'create' || form?.kind === 'quick') && (
         <NewPlanDialog
+          kind={form.kind}
+          reserve={settings.fuelReserveLaps}
           onClose={() => setForm(null)}
           onSubmit={(input) => {
             setForm(null)
@@ -238,11 +270,13 @@ export function SessionPlannerView({
       )}
 
       {confirm && <PlannerConfirmDialog confirm={confirm} onConfirm={confirmAction} onCancel={() => setConfirm(null)} />}
+
+      {settingsOpen && <PlannerSettingsDialog settings={settings} onChange={(patch) => void runAction(buildPlannerSettings(patch))} onClose={() => setSettingsOpen(false)} />}
     </div>
   )
 }
 
-type PlanForm = { kind: 'create' } | { kind: 'edit'; planId: string }
+type PlanForm = { kind: 'quick' } | { kind: 'create' } | { kind: 'edit'; planId: string }
 
 type PlannerConfirm =
   | { kind: 'delete'; plan: SessionPlan }
@@ -508,11 +542,13 @@ function usePlanTargets(plan: SessionPlan): PlanTargetScopeGroup[] | null {
 
 function PlanDetail({
   plan,
+  fuel,
   blockedBy,
   onBack,
   onCommand,
 }: {
   plan: SessionPlan
+  fuel: RaceFuelEstimate | null
   blockedBy: SessionPlan | null
   onBack: () => void
   onCommand: (command: SprintCommand) => void
@@ -578,9 +614,9 @@ function PlanDetail({
       <WeekendTimeline plan={plan} />
 
       <div className="planner-sessions">
-        <PracticeCard plan={plan} practice={groups === null ? undefined : practiceSummary(groups)} />
+        <PracticeCard fuel={fuel} practice={groups === null ? undefined : practiceSummary(groups)} />
         <SessionCard plan={plan} kind="Qualifying" canPick={canPick} onChange={() => setPicking('Qualifying')} />
-        <SessionCard plan={plan} kind="Race" canPick={canPick} onChange={() => setPicking('Race')} />
+        <SessionCard plan={plan} kind="Race" fuel={fuel} canPick={canPick} onChange={() => setPicking('Race')} />
       </div>
 
       {plan.notes && (
@@ -613,8 +649,11 @@ function PlanDetail({
   )
 }
 
-/** Practice is never started: every lap at this car and track is recorded, plan or no plan. */
-function PracticeCard({ plan, practice }: { plan: SessionPlan; practice: PracticeSummary | null | undefined }) {
+/**
+ * Practice is never started: every lap at this car and track is recorded, plan or no plan. Its
+ * facts are the figures the race fuel rests on: the lap history's medians, else the plan's values.
+ */
+function PracticeCard({ fuel, practice }: { fuel: RaceFuelEstimate | null; practice: PracticeSummary | null | undefined }) {
   return (
     <section className={practice ? 'card planner-session done' : 'card planner-session'} aria-label="Practice">
       <div className="planner-session-head">
@@ -639,8 +678,12 @@ function PracticeCard({ plan, practice }: { plan: SessionPlan; practice: Practic
         </>
       )}
       <dl className="planner-facts">
-        <Fact label="Fuel per lap">{plan.fuelPerLapLiters !== null ? `${plan.fuelPerLapLiters.toFixed(2)} L` : 'Not set'}</Fact>
-        <Fact label="Average lap">{plan.avgLapTimeSeconds !== null ? formatLapTime(plan.avgLapTimeSeconds) : 'Not set'}</Fact>
+        <Fact label="Fuel per lap">
+          <FigureValue figure={fuel?.fuelPerLap ?? null} format={(liters) => `${liters.toFixed(2)} L`} />
+        </Fact>
+        <Fact label="Lap time">
+          <FigureValue figure={fuel?.lapTime ?? null} format={formatLapTime} />
+        </Fact>
       </dl>
     </section>
   )
@@ -652,14 +695,27 @@ const SESSION_BADGE: Record<'live' | 'next' | 'done', { label: string; className
   done: { label: 'Done', className: 'chip chip-muted' },
 }
 
-/** Qualifying or the race: what it chases and where that comes from, then its facts. */
-function SessionCard({ plan, kind, canPick, onChange }: { plan: SessionPlan; kind: SegmentKind; canPick: boolean; onChange: () => void }) {
+/**
+ * Qualifying or the race: what it chases and where that comes from, then its facts. The race's
+ * are the host's fuel estimate (`fuel`) and the race format the game reported, once it has.
+ */
+function SessionCard({
+  plan,
+  kind,
+  fuel = null,
+  canPick,
+  onChange,
+}: {
+  plan: SessionPlan
+  kind: SegmentKind
+  fuel?: RaceFuelEstimate | null
+  canPick: boolean
+  onChange: () => void
+}) {
   const state = sessionState(plan, kind)
   const target = targetsFor(plan, kind)?.lapTime ?? null
   const segment = plan.segments.find((candidate) => candidate.kind === kind) ?? null
   const badge = state === 'live' || state === 'next' || state === 'done' ? SESSION_BADGE[state] : null
-  const laps = kind === 'Race' ? raceLaps(plan) : null
-  const fuel = kind === 'Race' ? raceFuelLiters(plan) : null
   const notInPlan = kind === 'Qualifying' && !plan.qualifyingIncluded
 
   return (
@@ -687,22 +743,57 @@ function SessionCard({ plan, kind, canPick, onChange }: { plan: SessionPlan; kin
       )}
       {!notInPlan && (
         <dl className="planner-facts">
-          {kind === 'Race' && (
-            <>
-              <Fact label="Length">{laps !== null && plan.raceLengthFormat === 'TimeBased' ? `${raceLengthShort(plan)} · ≈${laps} laps` : raceLengthShort(plan)}</Fact>
-              <Fact label="Fuel per lap">
-                {plan.fuelPerLapLiters !== null
-                  ? `${plan.fuelPerLapLiters.toFixed(2)} L + ${plan.fuelReserveLaps} ${plan.fuelReserveLaps === 1 ? 'lap' : 'laps'} reserve`
-                  : 'Not set'}
-              </Fact>
-              <Fact label="Fuel for the race">{fuel !== null ? `≈${Math.ceil(fuel)} L` : '—'}</Fact>
-            </>
-          )}
+          {kind === 'Race' && <RaceFacts plan={plan} fuel={fuel} />}
           {segment && <Fact label="Driven">{segmentSummary(segment)}</Fact>}
           {kind === 'Qualifying' && !segment && <Fact label="Starts">When the game is in qualifying</Fact>}
         </dl>
       )}
     </section>
+  )
+}
+
+/** The race's length, the format the game runs it in, its fuel and that fuel per stint. */
+function RaceFacts({ plan, fuel }: { plan: SessionPlan; fuel: RaceFuelEstimate | null }) {
+  const laps = fuel?.laps ?? null
+  const detected = detectedRaceFormat(plan)
+  const detectedLabel = detected !== null ? detectedFormatLabel(detected) : null
+  return (
+    <>
+      <Fact label="Length">{laps !== null && plan.raceLengthFormat === 'TimeBased' ? `${raceLengthShort(plan)} · ≈${laps} laps` : raceLengthShort(plan)}</Fact>
+      {detectedLabel && <Fact label="Game runs it">{detectedLabel}</Fact>}
+      <Fact label="Fuel for the race">
+        {fuel?.totalLiters != null ? (
+          <>
+            ≈{Math.ceil(fuel.totalLiters)} L<span className="planner-sub">{reserveLabel(fuel.reserveLaps).toLowerCase()} reserve</span>
+          </>
+        ) : (
+          '—'
+        )}
+      </Fact>
+      {fuel?.totalLiters != null && (
+        <Fact label="Per stint">
+          {fuel.stints ? (
+            <>
+              {stintsLabel(fuel.stints.liters)}
+              <span className="planner-sub">{fuel.stints.lapsPerStint} laps on a full tank</span>
+            </>
+          ) : (
+            <span className="muted">Needs the tank size, from a lap in this car</span>
+          )}
+        </Fact>
+      )}
+    </>
+  )
+}
+
+/** An estimate's figure and where it came from, or "Not set" when neither history nor the plan has it. */
+function FigureValue({ figure, format }: { figure: EstimateFigure | null; format: (value: number) => string }) {
+  if (figure === null) return <span className="muted">Not set</span>
+  return (
+    <>
+      {format(figure.value)}
+      <span className="planner-sub">{figureSource(figure)}</span>
+    </>
   )
 }
 
@@ -890,21 +981,35 @@ const RACE_LENGTH_FORMATS: readonly { value: RaceLengthFormat; label: string }[]
   { value: 'LapBased', label: 'Lap-based' },
 ]
 
-const PLAN_MODES: readonly PlanMode[] = ['Planned', 'Quick']
+/** Nothing detected: Quick plan asks for everything. */
+const NOTHING_DETECTED: PlanDetection = { context: { game: '', car: '', track: '' }, raceLength: null, hasFuelHistory: false, missing: ['Context', 'RaceLength', 'Fuel'] }
 
 /** Editing locks game/car/track, so it needs nothing recorded to pick from. */
-const NO_CHOICES: PlanContextChoices = { prefill: { game: '', car: '', track: '' }, games: [], tracks: [], cars: [], byGame: [] }
+const NO_CHOICES: PlanContextChoices = { prefill: { game: '', car: '', track: '' }, games: [], tracks: [], cars: [], byGame: [], detection: NOTHING_DETECTED }
 
 /** How long the context may take before the dialog says it is loading, so a fast read never flashes. */
 const CONTEXT_LOADING_DELAY_MS = 200
 
 /**
- * New plan: fetches the prefill and the recorded game/car/track choices first (a focused host
- * endpoint — they come from every lap-history file, too much for the polled state), then opens
- * the form on them, so its initial values (and its "unsaved changes" baseline) are the prefill.
- * Suggestions are a convenience: a failed read still opens the form, empty and fully typeable.
+ * Quick plan and New plan…: fetch the prefill, the recorded game/car/track choices and what the
+ * host detected first (a focused host endpoint — they come from every lap-history file, too much
+ * for the polled state), then open the dialog on them, so its initial values (and its "unsaved
+ * changes" baseline) are the prefill. Detection is taken once, here: a field never vanishes under
+ * the driver's cursor because the game reported something meanwhile. Suggestions are a
+ * convenience: a failed read still opens the dialog, asking for everything, fully typeable.
  */
-function NewPlanDialog({ onClose, onSubmit }: { onClose: () => void; onSubmit: (input: CreatePlanInput) => void }) {
+function NewPlanDialog({
+  kind,
+  reserve,
+  onClose,
+  onSubmit,
+}: {
+  kind: 'quick' | 'create'
+  /** The planner's default reserve, which a new plan starts with. */
+  reserve: number
+  onClose: () => void
+  onSubmit: (input: CreatePlanInput) => void
+}) {
   const [choices, setChoices] = useState<PlanContextChoices | null>(null)
   const [slow, setSlow] = useState(false)
 
@@ -926,11 +1031,17 @@ function NewPlanDialog({ onClose, onSubmit }: { onClose: () => void; onSubmit: (
     }
   }, [])
 
-  if (choices) return <PlanFormDialog choices={choices} onClose={onClose} onSubmit={onSubmit} />
+  if (choices) {
+    return kind === 'quick' ? (
+      <QuickPlanDialog choices={choices} reserve={reserve} onClose={onClose} onSubmit={onSubmit} />
+    ) : (
+      <PlanFormDialog choices={choices} reserve={reserve} onClose={onClose} onSubmit={onSubmit} />
+    )
+  }
   if (!slow) return null
   return (
     <ContentDialog
-      title="New plan"
+      title={kind === 'quick' ? 'Quick plan' : 'New plan'}
       onCancel={onClose}
       closeOnSmokeClick
       footer={
@@ -947,9 +1058,134 @@ function NewPlanDialog({ onClose, onSubmit }: { onClose: () => void; onSubmit: (
 }
 
 /**
- * Create or edit a plan in a ContentDialog that walks three short steps (docs/internals/session-planner.md): where and what, sessions and length, fuel. Nothing is validated
+ * Quick plan (#183): a plan for the session about to be driven. Only what Sprint could not detect
+ * is asked for; what it did detect shows read-only underneath — with the car known, a race length
+ * from the game and fuel history here, it is that summary and Create. Fuel and lap time are never
+ * typed: without laps here the plan says so, and its estimate fills in from the first laps driven.
+ * The plan is marked Quick, named after its track and car (the host's rule, previewed while they
+ * are typed) and starts with the planner's default reserve; practice programs are not offered as
+ * its targets (the host leaves them out).
+ */
+function QuickPlanDialog({
+  choices,
+  reserve,
+  onClose,
+  onSubmit,
+}: {
+  choices: PlanContextChoices
+  reserve: number
+  onClose: () => void
+  onSubmit: (input: CreatePlanInput) => void
+}) {
+  const { detection } = choices
+  const asks = (field: PlanDetection['missing'][number]) => detection.missing.includes(field)
+  const [answers, setAnswers] = useState<QuickPlanAnswers>({
+    ...detection.context,
+    raceLengthFormat: 'TimeBased',
+    raceLength: '',
+  })
+  const set = (patch: Partial<QuickPlanAnswers>) => setAnswers((current) => ({ ...current, ...patch }))
+  const plan = quickPlanInput(detection, answers, reserve)
+  const narrowed = choicesForGame(choices, answers.game)
+  const asking = asks('Context') || asks('RaceLength')
+
+  const submit = (event: FormEvent) => {
+    event.preventDefault()
+    onSubmit(plan)
+  }
+
+  return (
+    <ContentDialog
+      title="Quick plan"
+      onSubmit={submit}
+      onCancel={onClose}
+      closeOnSmokeClick
+      footer={
+        <>
+          <button type="submit" className="button primary" autoFocus={!asking}>
+            Create plan
+          </button>
+          <button type="button" className="button" onClick={onClose}>
+            Cancel
+          </button>
+        </>
+      }
+    >
+      {asks('Context') && <p className="content-dialog-text muted">The game has not said where you are driving yet.</p>}
+
+      {asks('Context') && (
+        <div className="planner-form-grid">
+          <label className="field">
+            <span>Game</span>
+            <SuggestBox value={answers.game} onChange={(game) => set({ game })} suggestions={choices.games} placeholder="e.g. Le Mans Ultimate" autoFocus />
+          </label>
+          <label className="field">
+            <span>Car</span>
+            <SuggestBox value={answers.car} onChange={(car) => set({ car })} suggestions={narrowed.cars} placeholder="e.g. Hypercar Porsche" />
+          </label>
+          <label className="field planner-form-wide">
+            <span>Track</span>
+            <SuggestBox value={answers.track} onChange={(track) => set({ track })} suggestions={narrowed.tracks} placeholder="e.g. Spa-Francorchamps" />
+          </label>
+        </div>
+      )}
+
+      {asks('RaceLength') && (
+        <div className="field">
+          <span id="planner-quick-length-label">Race length</span>
+          <div className="planner-race-length">
+            <div className="segmented" role="radiogroup" aria-labelledby="planner-quick-length-label">
+              {RACE_LENGTH_FORMATS.filter((option) => option.value !== 'Unknown').map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  role="radio"
+                  aria-checked={answers.raceLengthFormat === option.value}
+                  className="segmented-item"
+                  onClick={() => set({ raceLengthFormat: option.value === 'LapBased' ? 'LapBased' : 'TimeBased' })}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+            <span className="planner-unit-input">
+              <input
+                type="number"
+                min={0}
+                value={answers.raceLength}
+                onChange={(event) => set({ raceLength: event.target.value })}
+                aria-label={`Race length in ${raceLengthUnit(answers.raceLengthFormat)}`}
+                autoFocus={!asks('Context')}
+              />
+              <span className="muted">{raceLengthUnit(answers.raceLengthFormat)}</span>
+            </span>
+          </div>
+        </div>
+      )}
+
+      <dl className="planner-facts planner-quick-summary" aria-label="Plan">
+        {asks('Context') && <Fact label="Name">{derivedPlanName(plan.track, plan.car)}</Fact>}
+        {!asks('Context') && (
+          <Fact label="Car · Track">
+            {plan.car}
+            <span className="planner-sub">{plan.track}</span>
+          </Fact>
+        )}
+        {detection.raceLength && <Fact label="Race">{formatRaceLength(detection.raceLength.format, detection.raceLength.value)}</Fact>}
+        <Fact label="Fuel and lap time">
+          {detection.hasFuelHistory ? 'From your laps here' : <span className="muted">From your first laps here</span>}
+        </Fact>
+        <Fact label="Reserve">{reserveLabel(reserve)}</Fact>
+      </dl>
+    </ContentDialog>
+  )
+}
+
+/**
+ * New plan… or Edit plan: a ContentDialog that walks three short steps (docs/internals/session-planner.md): where and what, sessions and length, fuel. Nothing is validated
  * per step, so the step indicator also jumps directly. Closing with changes asks first.
- * Editing locks game/car/track and mode — `plan.update` does not accept them.
+ * Editing locks game/car/track and mode — `plan.update` does not accept them. The name is
+ * optional: its placeholder is the name the plan gets without one (`derivedPlanName`).
  *
  * Game, car and track are suggest boxes over what Sprint has recorded (the deleted Avalonia
  * `SuggestingField`): picking a recorded spelling keys the plan onto the lap-history bucket the
@@ -960,11 +1196,14 @@ function NewPlanDialog({ onClose, onSubmit }: { onClose: () => void; onSubmit: (
 function PlanFormDialog({
   initial,
   choices,
+  reserve = 1,
   onClose,
   onSubmit,
 }: {
   initial?: SessionPlan
   choices: PlanContextChoices
+  /** The reserve a new plan starts with (the planner's default); an edited plan keeps its own. */
+  reserve?: number
   onClose: () => void
   onSubmit: (input: CreatePlanInput) => void
 }) {
@@ -975,16 +1214,15 @@ function PlanFormDialog({
   const [game, setGame] = useState(initial?.game ?? choices.prefill.game)
   const [car, setCar] = useState(initial?.car ?? choices.prefill.car)
   const [track, setTrack] = useState(initial?.track ?? choices.prefill.track)
-  const [mode, setMode] = useState<PlanMode>(initial?.mode ?? 'Planned')
   const [qualifyingIncluded, setQualifyingIncluded] = useState(initial?.qualifyingIncluded ?? true)
   const [raceLengthFormat, setRaceLengthFormat] = useState<RaceLengthFormat>(initial?.raceLengthFormat ?? 'Unknown')
   const [raceLengthValue, setRaceLengthValue] = useState(String(initial?.raceLengthValue ?? ''))
-  const [fuelReserveLaps, setFuelReserveLaps] = useState(String(initial?.fuelReserveLaps ?? 1))
+  const [fuelReserveLaps, setFuelReserveLaps] = useState(String(initial?.fuelReserveLaps ?? reserve))
   const [avgLapTimeSeconds, setAvgLapTimeSeconds] = useState(initial?.avgLapTimeSeconds != null ? String(initial.avgLapTimeSeconds) : '')
   const [fuelPerLapLiters, setFuelPerLapLiters] = useState(initial?.fuelPerLapLiters != null ? String(initial.fuelPerLapLiters) : '')
   const [notes, setNotes] = useState(initial?.notes ?? '')
 
-  const snapshot = JSON.stringify([name, game, car, track, mode, qualifyingIncluded, raceLengthFormat, raceLengthValue, fuelReserveLaps, avgLapTimeSeconds, fuelPerLapLiters, notes])
+  const snapshot = JSON.stringify([name, game, car, track, qualifyingIncluded, raceLengthFormat, raceLengthValue, fuelReserveLaps, avgLapTimeSeconds, fuelPerLapLiters, notes])
   const [initialSnapshot] = useState(snapshot)
   const dirty = snapshot !== initialSnapshot
 
@@ -1005,11 +1243,11 @@ function PlanFormDialog({
       game: game.trim(),
       car: car.trim(),
       track: track.trim(),
-      mode,
+      mode: initial?.mode ?? 'Planned',
       qualifyingIncluded,
       raceLengthFormat,
       raceLengthValue: Number.isFinite(parsedRaceLengthValue) ? parsedRaceLengthValue : 0,
-      fuelReserveLaps: Number.isFinite(parsedFuelReserveLaps) ? Math.max(0, parsedFuelReserveLaps) : 1,
+      fuelReserveLaps: Number.isFinite(parsedFuelReserveLaps) ? Math.max(0, parsedFuelReserveLaps) : reserve,
       avgLapTimeSeconds: parsedAvgLapTime !== null && Number.isFinite(parsedAvgLapTime) ? parsedAvgLapTime : null,
       fuelPerLapLiters: parsedFuelPerLap !== null && Number.isFinite(parsedFuelPerLap) ? parsedFuelPerLap : null,
       notes,
@@ -1097,21 +1335,8 @@ function PlanFormDialog({
           </label>
           <label className="field">
             <span>Name (optional)</span>
-            <input value={name} onChange={(event) => setName(event.target.value)} placeholder="New Session Plan" autoFocus={isEdit} />
+            <input value={name} onChange={(event) => setName(event.target.value)} placeholder={derivedPlanName(track, car)} autoFocus={isEdit} />
           </label>
-          {!isEdit && (
-            <div className="field planner-form-wide">
-              <span id="planner-mode-label">Mode</span>
-              <div className="segmented" role="radiogroup" aria-labelledby="planner-mode-label">
-                {PLAN_MODES.map((option) => (
-                  <button key={option} type="button" role="radio" aria-checked={mode === option} className="segmented-item" onClick={() => setMode(option)}>
-                    {option}
-                  </button>
-                ))}
-              </div>
-              <span className="field-hint">Quick plans are for a session you are about to join; their estimates carry less confidence.</span>
-            </div>
-          )}
         </div>
       )}
 
@@ -1176,6 +1401,56 @@ function PlanFormDialog({
           </label>
         </div>
       )}
+    </ContentDialog>
+  )
+}
+
+/** Reads a `<select>`'s value back as a fuel history choice. */
+const fuelHistoryChoice = (value: string): FuelHistoryChoice => (value === 'MatchingSessionType' ? 'MatchingSessionType' : 'AllValidLaps')
+
+/**
+ * The planner's own defaults (#103), behind the gear in its header: a feature owns its defaults.
+ * Each change applies at once through `planner.settings`, so the dialog only closes. Defaults seed
+ * new plans; a plan's own reserve stays its own.
+ */
+function PlannerSettingsDialog({ settings, onChange, onClose }: { settings: PlannerSettings; onChange: (patch: Partial<PlannerSettings>) => void; onClose: () => void }) {
+  const reserves = RESERVE_CHOICES.includes(settings.fuelReserveLaps) ? RESERVE_CHOICES : [...RESERVE_CHOICES, settings.fuelReserveLaps]
+  return (
+    <ContentDialog
+      title="Planner settings"
+      className="planner-settings-dialog"
+      closeOnSmokeClick
+      onCancel={onClose}
+      footer={
+        <button type="button" className="button" onClick={onClose} autoFocus>
+          Close
+        </button>
+      }
+    >
+      <div className="planner-settings">
+        <ListRow id="planner-settings-reserve" label="Fuel reserve" detail="What a new plan carries on top of the race. Each plan can change its own.">
+          {(labels) => (
+            <select {...labels} value={settings.fuelReserveLaps} onChange={(event) => onChange({ fuelReserveLaps: Number(event.target.value) })}>
+              {reserves.map((laps) => (
+                <option key={laps} value={laps}>
+                  {reserveLabel(laps)}
+                </option>
+              ))}
+            </select>
+          )}
+        </ListRow>
+        <ListRow id="planner-settings-history" label="Fuel and lap time from" detail="Your laps with the plan’s car at its track.">
+          {(labels) => (
+            <select {...labels} value={settings.fuelHistorySource} onChange={(event) => onChange({ fuelHistorySource: fuelHistoryChoice(event.target.value) })}>
+              <option value="AllValidLaps">All valid laps</option>
+              <option value="MatchingSessionType">Race laps only</option>
+            </select>
+          )}
+        </ListRow>
+        <ListRow id="planner-settings-mismatch" label="Warn about the race format" detail="When the game runs the race by laps and the plan by time, or the other way round.">
+          {(labels) => <Switch {...labels} checked={settings.warnOnRaceFormatMismatch} onChange={(next) => onChange({ warnOnRaceFormatMismatch: next })} />}
+        </ListRow>
+      </div>
     </ContentDialog>
   )
 }

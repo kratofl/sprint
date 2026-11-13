@@ -215,6 +215,21 @@ public sealed class LapHistoryTests
     }
 
     [Fact]
+    public void ARecordedSessionKeepsTheCarsTankOnceTheCarReportsOne()
+    {
+        // The planner cuts a race into stints with it (RaceFuelEstimate). In the garage the car
+        // may report no tank yet; the first frame that does sets it.
+        CollectingLapHistoryStore store = new CollectingLapHistoryStore();
+        LapHistoryRecorder recorder = NewRecorder(store);
+
+        recorder.Ingest(RichFrame(lap: 1, fuel: 62.5f, virtualEnergy: 88f));
+        TelemetryFrame second = RichFrame(lap: 2, fuel: 59.0f, virtualEnergy: 84.5f, lastLapTime: 131.0);
+        recorder.Ingest(second with { Car = second.Car with { FuelCapacityLiters = 90f } });
+
+        Assert.Equal(90.0, Assert.Single(store.Sessions).Context.FuelCapacityLiters);
+    }
+
+    [Fact]
     public void ARecordedLapCarriesFuelVirtualEnergyAndPerCornerTyreState()
     {
         CollectingLapHistoryStore store = new CollectingLapHistoryStore();

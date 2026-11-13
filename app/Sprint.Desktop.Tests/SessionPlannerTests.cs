@@ -261,6 +261,65 @@ public sealed class SessionPlannerTests
     }
 
     [Fact]
+    public void TheMismatchWarningHonoursTheSettingButTheGamesFormatIsAlwaysRecorded()
+    {
+        string root = TestEnv.NewTempDataRoot();
+        try
+        {
+            bool warn = false;
+            SessionPlannerService service = new SessionPlannerService(
+                new LocalSessionPlanStore(root),
+                clock: () => Now,
+                warnOnRaceFormatMismatch: () => warn);
+            SessionPlan plan = service.CreatePlan(new CreatePlanRequest { Name = "Race", RaceLengthFormat = RaceLengthFormat.TimeBased });
+            PlanSegment segment = service.StartTracking(plan.Id, SegmentKind.Race);
+
+            service.Ingest(Frame(lap: 1, lastLapTime: 0, maxLaps: 20));
+
+            // Off: no warning, but the race card still shows what the game runs.
+            Assert.Empty(plan.Warnings);
+            Assert.Equal(RaceLengthFormat.LapBased, segment.DetectedRaceFormat);
+
+            warn = true;
+            service.Ingest(Frame(lap: 1, lastLapTime: 0, maxLaps: 20));
+            Assert.Single(plan.Warnings);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void ARaceWithoutAPlannedFormatStillRecordsTheGamesFormat()
+    {
+        Run((service, _) =>
+        {
+            SessionPlan plan = service.CreatePlan(new CreatePlanRequest { Name = "Race" });
+            PlanSegment segment = service.StartTracking(plan.Id, SegmentKind.Race);
+
+            service.Ingest(Frame(lap: 1, lastLapTime: 0, maxLaps: 0));
+
+            Assert.Equal(RaceLengthFormat.TimeBased, segment.DetectedRaceFormat);
+            Assert.Empty(plan.Warnings);
+        });
+    }
+
+    [Theory]
+    [InlineData("", "Spa-Francorchamps", "Porsche 963", "Spa-Francorchamps – Porsche 963")]
+    [InlineData("  ", "", "", "New Session Plan")]
+    [InlineData(" Sunday race ", "Spa-Francorchamps", "Porsche 963", "Sunday race")]
+    public void AnUnnamedPlanGetsTheDerivedName(string name, string track, string car, string expected)
+    {
+        Run((service, _) =>
+        {
+            SessionPlan plan = service.CreatePlan(new CreatePlanRequest { Name = name, Track = track, Car = car });
+
+            Assert.Equal(expected, plan.Name);
+        });
+    }
+
+    [Fact]
     public void IngestIsANoOpWhenNoPlanIsTracking()
     {
         Run((service, _) =>

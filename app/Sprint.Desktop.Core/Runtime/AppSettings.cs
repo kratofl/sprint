@@ -198,23 +198,13 @@ public enum FuelHistorySource
     MatchingSessionType,
 }
 
-/// <summary>What Sprint does when it detects a session the driver has no plan for. Stored by name.</summary>
-[JsonConverter(typeof(JsonStringEnumConverter<AutoDetectMode>))]
-public enum AutoDetectMode
-{
-    /// <summary>
-    /// Offer a draft the driver confirms. The default, because a detected plan that armed
-    /// itself would start tracking against numbers nobody agreed to.
-    /// </summary>
-    DraftSuggestion,
-
-    /// <summary>Create the plan and arm it without asking, for drivers who want that.</summary>
-    CreateAndArm,
-}
-
 /// <summary>
 /// Global Session Planner settings (#103). These are defaults for new plans — anything a
 /// plan stores itself can still be overridden per plan.
+/// <para>
+/// An older file's <c>autoDetect</c> key (online detection, #102, never built) lands in
+/// <see cref="ExtensionData"/> and is written back untouched.
+/// </para>
 /// </summary>
 public sealed class SessionPlannerSettings
 {
@@ -222,11 +212,11 @@ public sealed class SessionPlannerSettings
     [JsonPropertyName("fuelReserveLaps")]
     public int FuelReserveLaps { get; set; } = 1;
 
+    /// <summary>The largest reserve the planner's settings accept.</summary>
+    public const int MaxFuelReserveLaps = 10;
+
     [JsonPropertyName("fuelHistorySource")]
     public FuelHistorySource FuelHistorySource { get; set; } = FuelHistorySource.AllValidLaps;
-
-    [JsonPropertyName("autoDetect")]
-    public AutoDetectMode AutoDetect { get; set; } = AutoDetectMode.DraftSuggestion;
 
     /// <summary>
     /// After how many days a lap's trace is deleted, or 0 to keep every trace (the default: the

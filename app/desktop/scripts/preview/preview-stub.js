@@ -42,6 +42,9 @@
 //   focus=<css selector>  after the clicks, focus the first match and point at it: what only focus or
 //                         hover shows (the hidden screenshot window never has focus, so it does both);
 //                         `selector@0.46` points that far across it, e.g. a place along the lap charts
+//   detect=partial|none   Quick plan: the game names the car and track but not the race length and
+//                         there are no laps here (partial), or nothing is detected (none); default:
+//                         everything, so Quick plan is a summary and Create
 //   training=on|arrange|none  On track: training (on), the HUD up to arrange (arrange), or no lap has
 //                         ever been recorded (none); default: laps listed, Ada's shared lap picked, HUD
 //                         off. chase=none picks no lap. fullscreen=1 adds the warning
@@ -701,7 +704,20 @@
       const distinct = (values) => [...new Set(values.filter((value) => typeof value === 'string' && value.length > 0))].sort((a, b) => a.localeCompare(b))
       const games = distinct(contexts.map((context) => context.game))
       const seen = state.settings?.lastSeenContext ?? {}
+      // What the host's SessionPlannerController.Detect would say about the payload's live session.
+      const session = state.telemetry?.frame?.session ?? {}
+      const detect = params.get('detect')
+      const context = detect === 'none' ? { game: '', car: '', track: '' } : { game: session.game ?? '', car: session.car ?? '', track: session.track ?? '' }
+      const timed = session.maxLaps > 0 ? ['LapBased', session.maxLaps] : session.totalSessionTime > 0 ? ['TimeBased', session.totalSessionTime / 60] : ['Unknown', 0]
+      const [raceLengthFormat, raceLengthValue] = detect ? ['Unknown', 0] : timed
+      const hasFuelHistory = !detect
+      const missingFields = [
+        ...(context.game && context.car && context.track ? [] : ['Context']),
+        ...(raceLengthFormat === 'Unknown' ? ['RaceLength'] : []),
+        ...(hasFuelHistory ? [] : ['Fuel']),
+      ]
       return {
+        detection: { context, raceLengthFormat, raceLengthValue, hasFuelHistory, missingFields },
         prefill: { game: seen.game ?? '', car: seen.car ?? '', track: seen.track ?? '' },
         games,
         tracks: distinct(contexts.map((context) => context.trackCourse)),

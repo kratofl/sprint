@@ -6,7 +6,7 @@ namespace Sprint.Desktop.Host;
 public sealed record PlanGameChoices(string Game, IReadOnlyList<string> Tracks, IReadOnlyList<string> Cars);
 
 /// <summary>
-/// What the New plan dialog starts from and offers (<c>GET /api/planner/context</c>): the
+/// What the plan dialogs start from and offers (<c>GET /api/planner/context</c>): the
 /// prefilled game/car/track and the recorded spellings to pick from, so a plan keys onto the
 /// lap-history bucket the corpus already holds (see <see cref="PlanContextOptions"/>).
 /// <para>
@@ -14,18 +14,24 @@ public sealed record PlanGameChoices(string Game, IReadOnlyList<string> Tracks, 
 /// re-implemented in the renderer, which then only has to pick the entry for the typed game and
 /// fall back to the unnarrowed lists when there is none — the same fallback <c>For</c> applies.
 /// </para>
+/// <para>
+/// <see cref="Detection"/> is what Quick plan shows read-only and what it still has to ask for
+/// (<see cref="SessionPlannerController.Detect"/>), taken when the dialog opens.
+/// </para>
 /// </summary>
 public sealed record PlanContextChoices(
     PlanContext Prefill,
     IReadOnlyList<string> Games,
     IReadOnlyList<string> Tracks,
     IReadOnlyList<string> Cars,
-    IReadOnlyList<PlanGameChoices> ByGame)
+    IReadOnlyList<PlanGameChoices> ByGame,
+    PlanDetection Detection)
 {
-    public static PlanContextChoices From(PlanContext prefill, PlanContextOptions options)
+    public static PlanContextChoices From(PlanContext prefill, PlanContextOptions options, PlanDetection detection)
     {
         ArgumentNullException.ThrowIfNull(prefill);
         ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(detection);
 
         return new PlanContextChoices(
             prefill,
@@ -36,6 +42,7 @@ public sealed record PlanContextChoices(
             {
                 PlanContextOptions narrowed = options.For(game);
                 return new PlanGameChoices(game, narrowed.Tracks, narrowed.Cars);
-            })]);
+            })],
+            detection);
     }
 }

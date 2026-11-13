@@ -974,6 +974,75 @@ public sealed class RuntimeCoordinatorTests
     }
 
     [Fact]
+    public void PlanCreate_WithoutAReserve_TakesThePlannersDefault()
+    {
+        RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
+        try
+        {
+            Assert.True(coordinator.Execute(Command("""{"type":"planner.settings","fuelReserveLaps":3}"""), out string settingsError), settingsError);
+            Assert.True(coordinator.Execute(Command("""{"type":"plan.create","track":"Spa"}"""), out string error), error);
+            Assert.True(coordinator.Execute(Command("""{"type":"plan.create","track":"Monza","fuelReserveLaps":0}"""), out error), error);
+
+            List<SessionPlan> plans = [.. SessionPlanningProbe.For(runtime.DataRoot).Store.LoadAll()];
+            Assert.Equal(3, Assert.Single(plans, plan => plan.Track == "Spa").FuelReserveLaps);
+            // Defaults seed, never lock: a plan that says 0 keeps 0.
+            Assert.Equal(0, Assert.Single(plans, plan => plan.Track == "Monza").FuelReserveLaps);
+        }
+        finally
+        {
+            Cleanup(dataRoot);
+        }
+    }
+
+    [Fact]
+    public void PlannerSettings_ApplyAndPersistEveryField()
+    {
+        RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
+        try
+        {
+            bool ok = coordinator.Execute(
+                Command("""{"type":"planner.settings","fuelReserveLaps":2,"fuelHistorySource":"MatchingSessionType","warnOnRaceFormatMismatch":false}"""),
+                out string error);
+
+            Assert.True(ok, error);
+            SessionPlannerSettings reloaded = new DesktopRuntime(dataRoot, PresetRoot).Settings.SessionPlanner;
+            Assert.Equal(2, reloaded.FuelReserveLaps);
+            Assert.Equal(FuelHistorySource.MatchingSessionType, reloaded.FuelHistorySource);
+            Assert.False(reloaded.WarnOnRaceFormatMismatch);
+        }
+        finally
+        {
+            Cleanup(dataRoot);
+        }
+    }
+
+    [Theory]
+    [InlineData("""{"type":"planner.settings"}""", "no recognized planner settings")]
+    [InlineData("""{"type":"planner.settings","fuelReserveLaps":-1}""", "fuelReserveLaps")]
+    [InlineData("""{"type":"planner.settings","fuelReserveLaps":11}""", "fuelReserveLaps")]
+    [InlineData("""{"type":"planner.settings","fuelReserveLaps":1.5}""", "fuelReserveLaps")]
+    [InlineData("""{"type":"planner.settings","fuelHistorySource":"1"}""", "fuelHistorySource")]
+    [InlineData("""{"type":"planner.settings","fuelReserveLaps":2,"fuelHistorySource":"Sometimes"}""", "fuelHistorySource")]
+    [InlineData("""{"type":"planner.settings","warnOnRaceFormatMismatch":"yes"}""", "warnOnRaceFormatMismatch")]
+    public void PlannerSettings_RejectBadValuesAndWriteNothing(string json, string expected)
+    {
+        RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
+        try
+        {
+            // A valid field beside a bad one is not applied either.
+            Assert.False(coordinator.Execute(Command(json), out string error));
+            Assert.Contains(expected, error, StringComparison.Ordinal);
+            Assert.Equal(1, runtime.Settings.SessionPlanner.FuelReserveLaps);
+            Assert.Equal(FuelHistorySource.AllValidLaps, runtime.Settings.SessionPlanner.FuelHistorySource);
+            Assert.True(runtime.Settings.SessionPlanner.WarnOnRaceFormatMismatch);
+        }
+        finally
+        {
+            Cleanup(dataRoot);
+        }
+    }
+
+    [Fact]
     public void PlanCreateThenUpdate_PatchesNameAndPersistsAcrossReload()
     {
         RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
@@ -985,7 +1054,8 @@ public sealed class RuntimeCoordinatorTests
 
             SessionPlanningProbe probe = SessionPlanningProbe.For(runtime.DataRoot);
             SessionPlan created = Assert.Single(probe.Store.LoadAll());
-            Assert.Equal("New Session Plan", created.Name);
+            // A blank name is the derived one (Track – Car), exactly what the dialog previewed.
+            Assert.Equal("Spa – 963", created.Name);
 
             bool ok = coordinator.Execute(
                 Command($$"""{"type":"plan.update","planId":"{{created.Id}}","name":"Race day"}"""),

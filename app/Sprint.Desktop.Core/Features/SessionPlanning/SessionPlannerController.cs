@@ -30,7 +30,10 @@ public enum QuickPlanField
     /// <summary>The sim has not said how long the race is.</summary>
     RaceLength,
 
-    /// <summary>No lap history for this context, so average lap time and fuel per lap are needed.</summary>
+    /// <summary>
+    /// No lap history with both a lap time and fuel for this context. Quick plan says so rather
+    /// than asking: those are measured values, never typed, so its estimate waits for laps.
+    /// </summary>
     Fuel,
 }
 
@@ -319,9 +322,10 @@ public sealed class SessionPlannerController
         ArgumentNullException.ThrowIfNull(session);
 
         PlanContext remembered = this._lastSeenContext();
+        // The car's name, not the game's entry name (CarNames): a plan is matched to history by it.
         PlanContext context = new PlanContext(
             Coalesce(session.Game, remembered.Game),
-            Coalesce(session.Car, remembered.Car),
+            Coalesce(CarNames.Of(session), remembered.Car),
             Coalesce(session.Track, remembered.Track));
 
         (RaceLengthFormat format, double value) = session switch
@@ -346,9 +350,9 @@ public sealed class SessionPlannerController
         PlanContextOptions.From(this._lapHistory, this._lastSeenContext());
 
     /// <summary>Whether the creation flow can skip asking for manual average lap time and
-    /// fuel per lap. False until #50 supplies a real history source.</summary>
+    /// fuel per lap: the lap history has both for this context's race (#50).</summary>
     public bool HasFuelHistory(PlanContext context) =>
-        this._fuelHistory.HasHistory(context.Game, context.Car, context.Track);
+        this._fuelHistory.ForRace(context).IsComplete;
 
     /// <summary>
     /// Whether <paramref name="planId"/> may claim the active slot. The UI disables the

@@ -110,6 +110,14 @@ public sealed class LapHistoryContext
     /// </summary>
     [JsonPropertyName("carClass")]
     public string? CarClass { get; set; }
+
+    /// <summary>
+    /// The car's fuel tank in litres, as the game reported it while the session was recorded.
+    /// Metadata like <see cref="CarClass"/>, not part of the key; imports never know it, and older
+    /// recordings do not have it. The planner cuts a race into stints with it.
+    /// </summary>
+    [JsonPropertyName("fuelCapacityLiters")]
+    public double? FuelCapacityLiters { get; set; }
 }
 
 /// <summary>

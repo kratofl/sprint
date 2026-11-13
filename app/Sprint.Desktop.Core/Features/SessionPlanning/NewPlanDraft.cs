@@ -177,20 +177,10 @@ public sealed class NewPlanDraft
     }
 
     /// <summary>
-    /// What an unnamed plan will be called: where and what it is for, so history stays
-    /// readable. Public because a form can show it as the name field's placeholder — the
-    /// preview has to be the string the plan really gets, not a lookalike built in the view.
+    /// What an unnamed plan will be called — <see cref="SessionPlannerService.DerivedName"/>, the
+    /// one rule, so the preview is the string the plan really gets.
     /// </summary>
-    public string DerivedName
-    {
-        get
-        {
-            string[] parts = new[] { this.Track.Trim(), this.Car.Trim() }
-                .Where(part => part.Length > 0)
-                .ToArray();
-            return parts.Length == 0 ? "New Session Plan" : string.Join(" – ", parts);
-        }
-    }
+    public string DerivedName => SessionPlannerService.DerivedName(this.Track, this.Car);
 
     private string ResolveName() =>
         string.IsNullOrWhiteSpace(this.Name) ? this.DerivedName : this.Name.Trim();

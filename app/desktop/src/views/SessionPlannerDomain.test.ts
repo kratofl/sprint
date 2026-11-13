@@ -3,19 +3,25 @@ import { test } from 'node:test'
 import {
   buildPlanSetTarget,
   choicesForGame,
+  derivedPlanName,
+  detectedRaceFormat,
+  figureSource,
   groupPlans,
   nextSegment,
   parsePlan,
   planLapStats,
   practiceSummary,
-  raceFuelLiters,
+  quickPlanInput,
   raceLaps,
+  readPlannerSettings,
   recentLapTimes,
   sessionState,
   startingRaceSkipsQualifying,
+  stintsLabel,
   weekendTimeline,
 } from './SessionPlannerDomain'
-import type { PlanTargetOption } from '../bridge'
+import type { QuickPlanAnswers } from './SessionPlannerDomain'
+import type { PlanDetection, PlanTargetOption } from '../bridge'
 import type { SessionPlan } from './SessionPlannerDomain'
 
 function plan(overrides: Record<string, unknown> = {}): SessionPlan {
@@ -96,10 +102,9 @@ test('the timeline sits on the next session, on the live one while tracking, and
   assert.equal(sessionState(plan({ qualifyingIncluded: true }), 'Race'), 'later')
 })
 
-test('race laps come from minutes over the average lap, and fuel adds the reserve', () => {
+test('race laps come from minutes over the average lap', () => {
   const sixHours = plan({ raceLengthFormat: 'TimeBased', raceLengthValue: 360, avgLapTimeSeconds: 125.6, fuelPerLapLiters: 3.5, fuelReserveLaps: 1 })
   assert.equal(raceLaps(sixHours), 172)
-  assert.equal(raceFuelLiters(sixHours), 173 * 3.5)
   assert.equal(raceLaps(plan({ raceLengthFormat: 'TimeBased', raceLengthValue: 360 })), null)
   assert.equal(raceLaps(plan({ raceLengthFormat: 'LapBased', raceLengthValue: 30 })), 30)
 })
@@ -136,4 +141,63 @@ test('a specific-lap target names its lap; a statistic does not', () => {
     lapSessionId: 's-x',
     lapNumber: 2,
   })
+})
+
+test('an unnamed plan is called after its track and car, as the host names it', () => {
+  assert.equal(derivedPlanName('Spa-Francorchamps', 'Porsche 963'), 'Spa-Francorchamps – Porsche 963')
+  assert.equal(derivedPlanName(' Spa ', ''), 'Spa')
+  assert.equal(derivedPlanName('', 'Porsche 963'), 'Porsche 963')
+  assert.equal(derivedPlanName('  ', ''), 'New Session Plan')
+})
+
+const detection = (overrides: Partial<PlanDetection> = {}): PlanDetection => ({
+  context: { game: 'Le Mans Ultimate', car: 'Hypercar Porsche', track: 'Spa' },
+  raceLength: { format: 'TimeBased', value: 60 },
+  hasFuelHistory: true,
+  missing: [],
+  ...overrides,
+})
+
+const answers: QuickPlanAnswers = { game: 'Typed game', car: 'Typed car', track: 'Typed track', raceLengthFormat: 'LapBased', raceLength: '24' }
+
+test('a quick plan takes what was detected and only the answers it asked for', () => {
+  const everything = quickPlanInput(detection(), answers, 2)
+  assert.deepEqual(
+    [everything.name, everything.mode, everything.game, everything.car, everything.track, everything.raceLengthFormat, everything.raceLengthValue, everything.fuelReserveLaps, everything.avgLapTimeSeconds, everything.fuelPerLapLiters],
+    ['', 'Quick', 'Le Mans Ultimate', 'Hypercar Porsche', 'Spa', 'TimeBased', 60, 2, null, null],
+  )
+
+  const gaps = quickPlanInput(detection({ raceLength: null, hasFuelHistory: false, missing: ['Context', 'RaceLength', 'Fuel'] }), answers, 1)
+  // No laps here: still no typed fuel figures; the estimate fills in from the first laps driven.
+  assert.deepEqual(
+    [gaps.game, gaps.car, gaps.track, gaps.raceLengthFormat, gaps.raceLengthValue, gaps.avgLapTimeSeconds, gaps.fuelPerLapLiters],
+    ['Typed game', 'Typed car', 'Typed track', 'LapBased', 24, null, null],
+  )
+
+  // A length left blank stays unset rather than becoming a zero-lap race.
+  const blank = quickPlanInput(detection({ raceLength: null, missing: ['RaceLength'] }), { ...answers, raceLength: '' }, 1)
+  assert.equal(blank.raceLengthFormat, 'Unknown')
+})
+
+test('planner settings fall back to the host defaults', () => {
+  assert.deepEqual(readPlannerSettings({}), { fuelReserveLaps: 1, fuelHistorySource: 'AllValidLaps', warnOnRaceFormatMismatch: true })
+  assert.deepEqual(
+    readPlannerSettings({ sessionPlanner: { fuelReserveLaps: 3, fuelHistorySource: 'MatchingSessionType', warnOnRaceFormatMismatch: false } }),
+    { fuelReserveLaps: 3, fuelHistorySource: 'MatchingSessionType', warnOnRaceFormatMismatch: false },
+  )
+  assert.equal(readPlannerSettings({ sessionPlanner: { fuelReserveLaps: -2 } }).fuelReserveLaps, 1)
+})
+
+test('stints read as runs of whole litres', () => {
+  assert.equal(stintsLabel([88, 88, 88, 80.2]), '3 × 88 L, then 81 L')
+  assert.equal(stintsLabel([48, 48]), '2 × 48 L')
+  assert.equal(stintsLabel([72.5]), '73 L')
+  assert.equal(figureSource({ source: 'History', value: 3.4, laps: 1 }), 'median of 1 lap')
+  assert.equal(figureSource({ source: 'Plan', value: 3.4 }), 'from the plan')
+})
+
+test('the race format the game reported comes from the race segment', () => {
+  assert.equal(detectedRaceFormat(plan()), null)
+  assert.equal(detectedRaceFormat(plan({ segments: [{ ...segment('Race'), detectedRaceFormat: 'LapBased' }] })), 'LapBased')
+  assert.equal(detectedRaceFormat(plan({ segments: [{ ...segment('Race'), detectedRaceFormat: 'Unknown' }] })), null)
 })

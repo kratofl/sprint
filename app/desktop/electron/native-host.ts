@@ -77,7 +77,7 @@ export class NativeHost {
     return this.json(`/api/diagnostics/logs${suffix}`)
   }
 
-  /** The New plan dialog's prefill and recorded game/car/track choices; reads every lap-history file's context. */
+  /** The plan dialogs' prefill, recorded game/car/track choices and Quick plan's detection; reads every lap-history file's context. */
   async planContext(): Promise<unknown> {
     return this.json('/api/planner/context', undefined, 30_000)
   }

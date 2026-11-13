@@ -124,6 +124,11 @@ public sealed class LapHistoryRecorder
         // Conditions can change while a session runs (a track dries, grip builds), and the
         // reading that matters is the one in force as laps are being filed.
         session.Conditions = MapConditions(frame.Conditions);
+        // The tank comes from the car, not the session, so it is taken once the car reports one.
+        if (frame.Car.FuelCapacityLiters is float tank && tank > 0)
+        {
+            session.Context.FuelCapacityLiters = tank;
+        }
 
         if (this.CompletedLap(frame) is { } completed)
         {

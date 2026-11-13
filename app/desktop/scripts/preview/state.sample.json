@@ -187,7 +187,6 @@
     "sessionPlanner": {
       "fuelReserveLaps": 1,
       "fuelHistorySource": "AllValidLaps",
-      "autoDetect": "DraftSuggestion",
       "traceExpiryDays": 0,
       "traceProtectedLapsPerContext": 5,
       "warnOnRaceFormatMismatch": true,
@@ -2645,11 +2644,84 @@
       "createdAt": "2026-09-20T15:00:00+00:00",
       "startedAt": "2026-09-20T16:00:00+00:00",
       "endedAt": "2026-09-20T18:00:00+00:00",
-      "segments": [],
+      "segments": [
+        { "id": "seg-lemans-race", "kind": "Race", "source": "Detected", "sourceConfidence": "High", "actualStart": "2026-09-20T16:00:00+00:00", "actualEnd": "2026-09-20T18:00:00+00:00", "liveSessionType": "Race", "detectedRaceFormat": "LapBased", "laps": [] }
+      ],
       "targets": [],
       "warnings": []
     }
   ],
+  "planFuel": {
+    "plan-spa-6h": {
+      "laps": 173,
+      "lapTime": {
+        "value": 125,
+        "source": "History",
+        "laps": 12
+      },
+      "fuelPerLap": {
+        "value": 3.4,
+        "source": "History",
+        "laps": 11
+      },
+      "reserveLaps": 1,
+      "totalLiters": 591.6,
+      "tankLiters": 90,
+      "stints": {
+        "lapsPerStint": 26,
+        "liters": [
+          88.4,
+          88.4,
+          88.4,
+          88.4,
+          88.4,
+          88.4,
+          61.2
+        ]
+      }
+    },
+    "plan-monza-sprint": {
+      "laps": 24,
+      "lapTime": {
+        "value": 98.2,
+        "source": "History",
+        "laps": 11
+      },
+      "fuelPerLap": {
+        "value": 2.95,
+        "source": "History",
+        "laps": 11
+      },
+      "reserveLaps": 1,
+      "totalLiters": 73.75,
+      "tankLiters": null,
+      "stints": null
+    },
+    "plan-lemans-test": {
+      "laps": 34,
+      "lapTime": {
+        "value": 215.2,
+        "source": "Plan",
+        "laps": 0
+      },
+      "fuelPerLap": {
+        "value": 4.8,
+        "source": "Plan",
+        "laps": 0
+      },
+      "reserveLaps": 1,
+      "totalLiters": 168,
+      "tankLiters": 75,
+      "stints": {
+        "lapsPerStint": 15,
+        "liters": [
+          72,
+          72,
+          24
+        ]
+      }
+    }
+  },
   "sessionCount": 4,
   "recentSessions": {
     "last": {

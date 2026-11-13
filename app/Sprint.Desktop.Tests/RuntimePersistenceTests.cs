@@ -1116,7 +1116,6 @@ public sealed class RuntimePersistenceTests
             // #103: every default is stated in the issue, so they are asserted as literals.
             Assert.Equal(1, planner.FuelReserveLaps);
             Assert.Equal(FuelHistorySource.AllValidLaps, planner.FuelHistorySource);
-            Assert.Equal(AutoDetectMode.DraftSuggestion, planner.AutoDetect);
             Assert.True(planner.WarnOnRaceFormatMismatch);
             Assert.True(planner.WarnOnDetectedSegmentChange);
             // Lap telemetry is kept for good unless the driver opts into an age limit, and even
@@ -1139,7 +1138,6 @@ public sealed class RuntimePersistenceTests
             DesktopRuntime runtime = new DesktopRuntime(root, TestEnv.PresetRoot);
             runtime.Settings.SessionPlanner.FuelReserveLaps = 2;
             runtime.Settings.SessionPlanner.FuelHistorySource = FuelHistorySource.MatchingSessionType;
-            runtime.Settings.SessionPlanner.AutoDetect = AutoDetectMode.CreateAndArm;
             runtime.Settings.SessionPlanner.TraceExpiryDays = 90;
             runtime.Settings.SessionPlanner.WarnOnRaceFormatMismatch = false;
             runtime.SaveSettings();
@@ -1148,7 +1146,6 @@ public sealed class RuntimePersistenceTests
 
             Assert.Equal(2, reloaded.FuelReserveLaps);
             Assert.Equal(FuelHistorySource.MatchingSessionType, reloaded.FuelHistorySource);
-            Assert.Equal(AutoDetectMode.CreateAndArm, reloaded.AutoDetect);
             Assert.Equal(90, reloaded.TraceExpiryDays);
             Assert.False(reloaded.WarnOnRaceFormatMismatch);
 
@@ -1158,14 +1155,15 @@ public sealed class RuntimePersistenceTests
             {
                 // The 90 days an older Sprint wrote were its default, never a choice: they must
                 // not read as the driver having asked for old laps to be deleted.
+                // The never-built online detection's "autoDetect" key still loads, and is kept.
                 File.WriteAllText(
                     Path.Combine(older, "settings.json"),
-                    """{"driverName":"Ada","sessionPlanner":{"traceRetentionDays":90,"traceMaxTotalMegabytes":4096}}""");
+                    """{"driverName":"Ada","sessionPlanner":{"traceRetentionDays":90,"traceMaxTotalMegabytes":4096,"autoDetect":"CreateAndArm"}}""");
                 SessionPlannerSettings upgraded = new DesktopRuntime(older, TestEnv.PresetRoot).Settings.SessionPlanner;
 
                 Assert.Equal(1, upgraded.FuelReserveLaps);
-                Assert.Equal(AutoDetectMode.DraftSuggestion, upgraded.AutoDetect);
                 Assert.Null(upgraded.TraceBudget().MaxAgeDays);
+                Assert.True(upgraded.ExtensionData?.ContainsKey("autoDetect"));
             }
             finally
             {
