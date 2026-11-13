@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
 import { Check, ChevronDown, Plus, SlidersHorizontal, X } from 'lucide-react'
+import { Popover } from '../shell/Menu'
 import type { CorpusRun, RunSetup } from './AnalysisDomain'
 import { carAtTrack, searchSetups, shortDate } from './SetupsDomain'
 import type { SetupItem } from './SetupsDomain'
@@ -98,54 +99,46 @@ function RunSetupMenu({
   const showBefore = before !== null && query.trim() === ''
 
   return (
-    <div className="dashes-menu-layer" onPointerDown={onClose}>
-      <div
-        className="menu-flyout setups-picker-menu"
-        role="dialog"
-        aria-label="Setup for this run"
-        style={{ left: Math.max(8, Math.min(anchor.right - 360, window.innerWidth - 368)), ...anchor.vertical }}
-        onPointerDown={(event) => event.stopPropagation()}
-        onKeyDown={(event) => {
-          if (event.key === 'Escape') {
-            event.preventDefault()
-            onClose()
-          } else if (moveInSearchList(event.currentTarget, event.key)) {
-            event.preventDefault()
-          }
-        }}
-      >
-        <input type="search" placeholder="Search setup, car or track" aria-label="Search setups" value={query} autoFocus onChange={(event) => setQuery(event.target.value)} />
-        <div className="setups-picker-list" role="listbox" aria-label="Setups">
-          {library.kind === 'loading' && <p className="setups-none">Reading the game’s setups…</p>}
-          {(library.kind === 'unavailable' || library.kind === 'failed') && <p className="setups-none">The game’s setups could not be read.</p>}
-          {showBefore && (
-            <>
-              <span className="analysis-run-menu-section">Same as before</span>
-              <SetupOption name={before.name} detail="The run before" picked={false} onPick={() => onPick(before.setupId)} />
-              <span className="analysis-run-menu-section">All setups</span>
-            </>
-          )}
-          {library.kind === 'ready' && setups.length === 0 && <p className="setups-none">No setups match.</p>}
-          {setups.map((setup) => (
-            <SetupOption
-              key={setup.id}
-              name={setup.name}
-              detail={setupDetail(setup)}
-              picked={setup.id === current?.setupId}
-              onPick={() => (setup.id === current?.setupId ? onClose() : onPick(setup.id))}
-            />
-          ))}
-        </div>
-        {current && (
-          <button type="button" className="menu-item analysis-run-menu-clear" onClick={() => onPick(null)}>
-            <span className="setups-menu-check">
-              <X />
-            </span>
-            Take the setup off
-          </button>
+    <Popover
+      label="Setup for this run"
+      className="setups-picker-menu"
+      style={{ left: Math.max(8, Math.min(anchor.right - 360, window.innerWidth - 368)), ...anchor.vertical }}
+      onClose={onClose}
+      onKeyDown={(event) => {
+        if (moveInSearchList(event.currentTarget, event.key)) event.preventDefault()
+      }}
+    >
+      <input type="search" placeholder="Search setup, car or track" aria-label="Search setups" value={query} autoFocus onChange={(event) => setQuery(event.target.value)} />
+      <div className="setups-picker-list" role="listbox" aria-label="Setups">
+        {library.kind === 'loading' && <p className="setups-none">Reading the game’s setups…</p>}
+        {(library.kind === 'unavailable' || library.kind === 'failed') && <p className="setups-none">The game’s setups could not be read.</p>}
+        {showBefore && (
+          <>
+            <span className="analysis-run-menu-section">Same as before</span>
+            <SetupOption name={before.name} detail="The run before" picked={false} onPick={() => onPick(before.setupId)} />
+            <span className="analysis-run-menu-section">All setups</span>
+          </>
         )}
+        {library.kind === 'ready' && setups.length === 0 && <p className="setups-none">No setups match.</p>}
+        {setups.map((setup) => (
+          <SetupOption
+            key={setup.id}
+            name={setup.name}
+            detail={setupDetail(setup)}
+            picked={setup.id === current?.setupId}
+            onPick={() => (setup.id === current?.setupId ? onClose() : onPick(setup.id))}
+          />
+        ))}
       </div>
-    </div>
+      {current && (
+        <button type="button" className="menu-item analysis-run-menu-clear" onClick={() => onPick(null)}>
+          <span className="setups-menu-check">
+            <X />
+          </span>
+          Take the setup off
+        </button>
+      )}
+    </Popover>
   )
 }
 

@@ -668,20 +668,6 @@ button.controls-swatch {
   align-self: flex-start;
 }
 
-.devices-link {
-  padding: 0;
-  border: 0;
-  background: none;
-  color: var(--link);
-  font: inherit;
-  cursor: pointer;
-}
-
-.devices-link:hover {
-  color: var(--link-hover);
-  text-decoration: underline;
-}
-
 .devices-field-pair {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

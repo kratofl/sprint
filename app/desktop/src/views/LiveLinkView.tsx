@@ -8,7 +8,7 @@ import { Status } from '../shell/Status'
 import { commandErrorMessage } from './DevicesDomain'
 import { formatGap, formatLapSeconds } from './AnalysisDomain'
 import { formatGear, healthParts, linkStatus, reachabilityWarning, versionNotice } from './LiveLinkDomain'
-import { Switch } from './SettingsLayout'
+import { Switch } from '../shell/Switch'
 import './LiveLinkView.css'
 
 /**

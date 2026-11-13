@@ -162,7 +162,7 @@ function NoPlanCard({ draft, onOpenDraft }: { draft: SessionPlan | null; onOpenD
       {draft && (
         <span className="overview-secondary overview-draft">
           {draft.name} is a draft ·{' '}
-          <button type="button" className="overview-link" onClick={() => onOpenDraft(draft.id)}>
+          <button type="button" className="text-button" onClick={() => onOpenDraft(draft.id)}>
             Continue it
           </button>
         </span>
@@ -287,7 +287,7 @@ function SessionsCard({
         <h2 id="overview-sessions-title" className="card-title">
           Recent sessions
         </h2>
-        <button type="button" className="overview-link" onClick={onOpenAll}>
+        <button type="button" className="text-button" onClick={onOpenAll}>
           All in Analysis
         </button>
       </div>

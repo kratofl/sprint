@@ -218,25 +218,6 @@
   font-size: 12px;
 }
 
-.hud-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 28px;
-  padding: 0 12px;
-  border: 0;
-  border-radius: var(--radius-pill);
-  background: var(--control-fill);
-  color: var(--label);
-  font: inherit;
-  font-size: 12px;
-  cursor: pointer;
-}
-
-.hud-chip:hover {
-  background: var(--subtle-hover);
-}
-
 .hud-palette-divider {
   width: 1px;
   height: 20px;

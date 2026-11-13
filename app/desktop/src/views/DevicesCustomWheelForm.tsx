@@ -127,7 +127,7 @@ export function DevicesCustomWheelForm({ onAdd }: { onAdd: (command: SprintComma
             ) : (
               <span className="muted">
                 Read from the screen when it connects.{' '}
-                <button type="button" className="devices-link" onClick={() => setSetSize(true)}>
+                <button type="button" className="text-button" onClick={() => setSetSize(true)}>
                   Set it yourself
                 </button>
               </span>

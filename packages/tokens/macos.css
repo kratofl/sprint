@@ -85,6 +85,7 @@
   --radius-control: 8px;        /* 28px controls: buttons, inputs, sidebar and list rows, inline alerts */
   --radius-control-small: 6px;  /* 22–24px controls: small buttons, menu items, segments */
   --radius-card: 14px;
+  --radius-dialog: 16px;        /* dialogs: a glass alert */
   --radius-pill: 999px;
   --space-xs: 6px; --space-sm: 8px; --space-md: 10px; --space-lg: 12px; --space-xl: 14px;
   --space-2xl: 16px; --space-3xl: 20px; --space-4xl: 24px; --space-5xl: 32px;

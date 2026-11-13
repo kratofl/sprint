@@ -144,9 +144,9 @@ function StackControls({ stack }: { stack: StackHead }) {
 /** A tile with nothing to show yet: what is missing, and when it comes. */
 export function TileEmpty({ title, text }: { title: string; text: string }) {
   return (
-    <div className="pw-empty">
-      <b>{title}</b>
-      <span>{text}</span>
+    <div className="empty-state compact">
+      <h2>{title}</h2>
+      <p>{text}</p>
     </div>
   )
 }

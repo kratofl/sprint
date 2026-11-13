@@ -493,9 +493,8 @@
   border-radius: var(--radius-pill);
 }
 
-/* Dialog: a glass alert. */
+/* Dialog: a glass alert (its 16px corner is macos.css's --radius-dialog). */
 :where([data-platform="mac"]) .content-dialog {
-  border-radius: 16px;
   box-shadow: var(--shadow-dialog);
 }
 

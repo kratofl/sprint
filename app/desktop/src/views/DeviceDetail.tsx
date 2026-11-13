@@ -4,7 +4,8 @@ import type { MultiDial, SprintCommand } from '../bridge'
 import { ConfirmDialog } from '../shell/ContentDialog'
 import { PageHeader } from '../shell/PageHeader'
 import { InlineName } from '../shell/InlineName'
-import { SettingRow, SettingsGroup, Switch, blurOnEnter } from './SettingsLayout'
+import { Switch } from '../shell/Switch'
+import { SettingRow, SettingsGroup, blurOnEnter } from './SettingsLayout'
 import {
   BROWSER_DISPLAY_MAX_HEIGHT,
   BROWSER_DISPLAY_MAX_WIDTH,

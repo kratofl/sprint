@@ -127,32 +127,6 @@
   height: 36px;
 }
 
-/* ── Menus ────────────────────────────────────────────────────────────────── */
-
-/* A transparent layer catches the outside click; the flyouts sit at the pointer. */
-.dashes-menu-layer {
-  position: fixed;
-  inset: 0;
-  z-index: 150;
-}
-
-.dashes-menu {
-  position: fixed;
-}
-
-.dashes-menu .menu-item > svg:last-child:not(:first-child) {
-  color: var(--label-secondary);
-}
-
-.dashes-menu .menu-item.selected > svg:last-child:not(:first-child),
-.dashes-menu .menu-item:hover > svg:last-child:not(:first-child) {
-  color: inherit;
-}
-
-.dashes-menu .menu-item:not(:hover) > .dashes-menu-check {
-  color: var(--brand-500);
-}
-
 /* ── New dash, Duplicate and category dialogs ────────────────────────────────────────── */
 
 .dashes-new-dialog {

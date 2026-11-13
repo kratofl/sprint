@@ -30,8 +30,8 @@ export function TyreChip({ compound }: { compound: string | null }) {
 }
 
 function PitCell({ entry }: { entry: FieldEntry }) {
-  if (entry.inPit) return <span className="pw-pitchip">PIT</span>
-  if (entry.pitState === 'Exiting') return <span className="pw-pitchip">OUT</span>
+  if (entry.inPit) return <span className="chip chip-warning">PIT</span>
+  if (entry.pitState === 'Exiting') return <span className="chip chip-warning">OUT</span>
   return <span className="muted tabular">{entry.pitStops > 0 ? entry.pitStops : ''}</span>
 }
 
@@ -107,7 +107,7 @@ export function TimingTile({ data, frame }: { data: TileData; frame: FrameProps 
               <span className="pw-driver">
                 <span className="pw-ellipsis">{entry.driver}</span>
                 {entry.blueFlag && !out && <Flag size={11} className="pw-blue" aria-label="Blue flag" />}
-                {entry.penalties > 0 && !out && <span className="pw-pen">{entry.penalties} pen</span>}
+                {entry.penalties > 0 && !out && <span className="chip chip-danger">{entry.penalties} pen</span>}
               </span>
               <span className="c">
                 <TyreChip compound={entry.compound} />

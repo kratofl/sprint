@@ -1,7 +1,8 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react'
-import { Check, ExternalLink, LayoutDashboard, MoreHorizontal, Plus, X } from 'lucide-react'
+import { Check, Copy, ExternalLink, LayoutDashboard, MoreHorizontal, Pencil, Plus, Trash2, X } from 'lucide-react'
 import type { LiveLink } from '../bridge'
 import { ContentDialog } from '../shell/ContentDialog'
+import { MenuLayer } from '../shell/Menu'
 import { Status, type StatusTone } from '../shell/Status'
 import { MAX_PAGE_NAME, MAX_PAGES } from './layoutOps'
 import type { PitWallLayout } from './pitWallData'
@@ -204,50 +205,26 @@ function PageMenu({
   onAction: (action: PageAction) => void
   onClose: () => void
 }) {
-  const ref = useRef<HTMLDivElement>(null)
-  // The newest onClose, so the listener below is added once: state polls re-render the bar with a new one.
-  const close = useRef(onClose)
-  close.current = onClose
-  useEffect(() => {
-    ref.current?.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus()
-    const onPointer = (event: PointerEvent) => {
-      if (event.target instanceof Node && ref.current?.contains(event.target)) return
-      close.current()
-    }
-    window.addEventListener('pointerdown', onPointer, true)
-    return () => window.removeEventListener('pointerdown', onPointer, true)
-  }, [])
-
-  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (event.key === 'Escape' || event.key === 'Tab') {
-      event.preventDefault()
-      onClose()
-      return
-    }
-    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return
-    event.preventDefault()
-    const items = [...(ref.current?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)') ?? [])]
-    const at = items.findIndex((item) => item === document.activeElement)
-    items[(at + (event.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length]?.focus()
-  }
-
   return (
-    <div ref={ref} className="menu-flyout pw-menu" role="menu" style={{ left: x, top: y }} onKeyDown={onKeyDown}>
+    <MenuLayer anchor={{ x, y }} label="Page" width={240} onClose={onClose}>
       <button type="button" role="menuitem" className="menu-item" disabled={!canDetach} onClick={() => onAction('detach')}>
         <ExternalLink />
         <span className="menu-item-label">Open in its own window</span>
       </button>
       <button type="button" role="menuitem" className="menu-item" onClick={() => onAction('rename')}>
+        <Pencil />
         <span className="menu-item-label">Rename</span>
       </button>
       <button type="button" role="menuitem" className="menu-item" disabled={!canDuplicate} onClick={() => onAction('duplicate')}>
+        <Copy />
         <span className="menu-item-label">Duplicate</span>
       </button>
       <div className="menu-separator" role="separator" />
       <button type="button" role="menuitem" className="menu-item destructive" disabled={!canDelete} onClick={() => onAction('delete')}>
+        <Trash2 />
         <span className="menu-item-label">Delete page</span>
       </button>
-    </div>
+    </MenuLayer>
   )
 }
 

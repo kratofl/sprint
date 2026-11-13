@@ -5,8 +5,7 @@ import type { CorpusLap, CorpusRun, CorpusSession } from './AnalysisDomain'
 import { lapTimesPlot, tickLabel } from './AnalysisPlot'
 import type { PlotDot } from './AnalysisPlot'
 import { RunSetupButton } from './AnalysisRunSetup'
-import { MenuLayer } from './DashesMenus'
-import type { MenuAnchor } from './DashesMenus'
+import { MenuLayer, type MenuAnchor } from '../shell/Menu'
 
 /**
  * Analysis's second page: one session. Its head, every lap time on a chart with the runs side by

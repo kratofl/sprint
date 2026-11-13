@@ -36,25 +36,6 @@
   color: var(--label-tertiary);
 }
 
-/* Card-header text link, as a button. */
-.overview-link {
-  height: 24px;
-  padding: 0 4px;
-  margin-right: -4px;
-  border: 0;
-  border-radius: var(--radius-control);
-  background: transparent;
-  color: var(--link);
-  font: inherit;
-  font-size: 12px;
-  line-height: 16px;
-}
-
-.overview-link:hover {
-  color: var(--link-hover);
-  background: var(--subtle-hover);
-}
-
 /* Cards that are one big button (plan, rig): the Devices tile's hover. */
 .overview button.card {
   width: 100%;

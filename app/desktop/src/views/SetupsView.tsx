@@ -2,8 +2,7 @@ import { useRef, useState } from 'react'
 import { ArrowUpDown, Check, ChevronDown, ChevronRight, GitCompareArrows, ListFilter } from 'lucide-react'
 import { PageHeader } from '../shell/PageHeader'
 import { usePageUp } from '../shell/pageUp'
-import { MenuLayer } from './DashesMenus'
-import type { MenuAnchor } from './DashesMenus'
+import { MenuLayer, type MenuAnchor } from '../shell/Menu'
 import {
   FILTERS,
   LIST_PAGE,
@@ -253,7 +252,7 @@ function SetupList({ setups, onOpen }: { setups: SetupItem[]; onOpen: (id: strin
                   <div className="list-rows">
                     {group.setups.map((setup) => (
                       <button key={setup.id} type="button" className="list-row setups-row" onClick={() => onOpen(setup.id)}>
-                        <span className="setups-row-session">{setup.session && <span className="setups-tag">{setup.session}</span>}</span>
+                        <span className="setups-row-session">{setup.session && <span className="chip">{setup.session}</span>}</span>
                         <span className="setups-row-name">
                           <strong>{setup.name}</strong>
                           <span className="setups-dim">{savedLine(setup)}</span>

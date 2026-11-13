@@ -191,18 +191,6 @@
   color: var(--label-tertiary);
 }
 
-/* "Chasing" beside the lap the HUD chases. */
-.ontrack-tag {
-  flex: none;
-  padding: 0 6px;
-  border-radius: var(--radius-control-small);
-  background: var(--subtle-selected);
-  color: var(--brand-500);
-  font-size: 11px;
-  font-weight: 600;
-  line-height: 18px;
-}
-
 /* A lap with only a time has no line to open. */
 .list-row.ontrack-lap:disabled {
   color: var(--label-disabled);

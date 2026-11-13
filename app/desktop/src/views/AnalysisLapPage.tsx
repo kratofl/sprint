@@ -16,8 +16,7 @@ import type { LapChartId, LapLayout } from './AnalysisLapLayout'
 import { lapMeters, lapPins, placeLabel, settingChanges } from './AnalysisLapMarks'
 import { CarSettingsLanes, NoteBubble, NoteEditor, PinRows, pinLines, pinRowsHeight, popoverLeft } from './AnalysisLapPins'
 import type { PinRow } from './AnalysisLapPins'
-import { MenuLayer } from './DashesMenus'
-import type { MenuAnchor } from './DashesMenus'
+import { MenuLayer, type MenuAnchor } from '../shell/Menu'
 import { FriendBadge, shortDay } from './OnTrackPages'
 import { sameLap } from './OnTrackLaps'
 import { useLapTrace } from './useLapTrace'
@@ -84,7 +83,7 @@ export function LapPage({
         <div className="card skeleton analysis-card-skeleton" />
       ) : lapTrace.kind === 'unavailable' ? (
         <div className="card">
-          <p className="muted analysis-chart-empty">This lap’s line could not be read.</p>
+          <p className="list-card-empty">This lap’s line could not be read.</p>
         </div>
       ) : (
         <LapBody
@@ -504,7 +503,7 @@ function CarCard({ car, position, place, layout, onLayout }: { car: TraceGrid | 
         </div>
       </div>
       {reading === null ? (
-        <p className="muted analysis-chart-empty">Not recorded for this lap. Laps driven from now on keep what the car reports.</p>
+        <p className="list-card-empty">Not recorded for this lap. Laps driven from now on keep what the car reports.</p>
       ) : (
         <>
           <div className="analysis-car">
@@ -703,7 +702,7 @@ function TelemetryCard({
           }
         />
       ) : (
-        <p className="muted analysis-chart-empty">No charts shown. Add one below.</p>
+        <p className="list-card-empty">No charts shown. Add one below.</p>
       )}
       <AddChartButton trace={trace} hasMap={hasMap} layout={layout} onLayout={onLayout} />
     </section>

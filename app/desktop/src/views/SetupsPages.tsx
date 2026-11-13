@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
 import { ArrowLeftRight, Check, ChevronDown, ChevronLeft, GitCompareArrows, History } from 'lucide-react'
+import { Popover } from '../shell/Menu'
 import { PageHeader } from '../shell/PageHeader'
 import { formatLapSeconds, fuelText } from './AnalysisDomain'
 import { TABS, carAtTrack, compareBlocks, dateTime, differenceCounts, drivenRows, lapsLine, searchSetups, sheetBlocks, shortDate, tyresLine } from './SetupsDomain'
@@ -21,9 +22,9 @@ function BackToSetups({ onBack }: { onBack: () => void }) {
 export function SetupTags({ setup, session = true }: { setup: SetupItem; session?: boolean }) {
   return (
     <span className="setups-tags">
-      {session && setup.session && <span className="setups-tag">{setup.session}</span>}
-      {setup.style && <span className={`setups-tag${setup.style === 'Wet' ? ' wet' : ''}`}>{setup.style}</span>}
-      {setup.version && <span className="setups-tag version">v{setup.version}</span>}
+      {session && setup.session && <span className="chip">{setup.session}</span>}
+      {setup.style && <span className={setup.style === 'Wet' ? 'chip chip-info' : 'chip'}>{setup.style}</span>}
+      {setup.version && <span className="chip chip-muted">v{setup.version}</span>}
     </span>
   )
 }
@@ -493,58 +494,50 @@ function SetupPicker({
         <ChevronDown />
       </button>
       {open && (
-        <div className="dashes-menu-layer" onPointerDown={close}>
-          <div
-            className="menu-flyout setups-picker-menu"
-            role="dialog"
-            aria-label={label}
-            style={{ left: Math.max(8, Math.min(anchor.x, window.innerWidth - 368)), top: anchor.y }}
-            onPointerDown={(event) => event.stopPropagation()}
-            onKeyDown={(event) => {
-              if (event.key === 'Escape') {
-                event.preventDefault()
-                close()
-              } else if (moveInSearchList(event.currentTarget, event.key)) {
-                event.preventDefault()
-              }
-            }}
-          >
-            <input
-              type="search"
-              placeholder="Search setup, car or track"
-              aria-label="Search setups"
-              value={query}
-              autoFocus
-              onChange={(event) => setQuery(event.target.value)}
-            />
-            <div className="setups-picker-list" role="listbox" aria-label={label}>
-              {options.length === 0 && <p className="setups-none">No setups match.</p>}
-              {options.map((setup) => {
-                const picked = setup.id === current.id && current.version === null
-                return (
-                  <button
-                    key={setup.id}
-                    type="button"
-                    role="option"
-                    aria-selected={picked}
-                    disabled={setup.id === other.id && other.version === null}
-                    className="menu-item setups-picker-item"
-                    onClick={() => {
-                      close()
-                      if (!picked) onPick({ id: setup.id, version: null })
-                    }}
-                  >
-                    <span className="setups-menu-check">{picked && <Check />}</span>
-                    <span className="setups-picker-text">
-                      <span>{setup.name}</span>
-                      <span className="setups-dim">{carAtTrack(setup)}</span>
-                    </span>
-                  </button>
-                )
-              })}
-            </div>
+        <Popover
+          label={label}
+          className="setups-picker-menu"
+          style={{ left: Math.max(8, Math.min(anchor.x, window.innerWidth - 368)), top: anchor.y }}
+          onClose={close}
+          onKeyDown={(event) => {
+            if (moveInSearchList(event.currentTarget, event.key)) event.preventDefault()
+          }}
+        >
+          <input
+            type="search"
+            placeholder="Search setup, car or track"
+            aria-label="Search setups"
+            value={query}
+            autoFocus
+            onChange={(event) => setQuery(event.target.value)}
+          />
+          <div className="setups-picker-list" role="listbox" aria-label={label}>
+            {options.length === 0 && <p className="setups-none">No setups match.</p>}
+            {options.map((setup) => {
+              const picked = setup.id === current.id && current.version === null
+              return (
+                <button
+                  key={setup.id}
+                  type="button"
+                  role="option"
+                  aria-selected={picked}
+                  disabled={setup.id === other.id && other.version === null}
+                  className="menu-item setups-picker-item"
+                  onClick={() => {
+                    close()
+                    if (!picked) onPick({ id: setup.id, version: null })
+                  }}
+                >
+                  <span className="setups-menu-check">{picked && <Check />}</span>
+                  <span className="setups-picker-text">
+                    <span>{setup.name}</span>
+                    <span className="setups-dim">{carAtTrack(setup)}</span>
+                  </span>
+                </button>
+              )
+            })}
           </div>
-        </div>
+        </Popover>
       )}
     </>
   )

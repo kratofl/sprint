@@ -3,8 +3,7 @@ import { ArrowLeftRight, Check, ChevronDown, ChevronLeft } from 'lucide-react'
 import { LapTraceChartStack } from './AnalysisChart'
 import { formatGap, formatLapSeconds } from './AnalysisDomain'
 import type { CorpusLap } from './AnalysisDomain'
-import { MenuLayer } from './DashesMenus'
-import type { MenuAnchor } from './DashesMenus'
+import { MenuLayer, type MenuAnchor } from '../shell/Menu'
 import type { CompareState } from './OnTrackDomain'
 import {
   biggestGains,
@@ -67,7 +66,7 @@ export function LapPage({ compare, lap, onBack }: { compare: CompareState; lap: 
           <span className="ontrack-fact-sub">
             {lap.sharedFrom && <FriendBadge name={lap.sharedFrom} />}
             {lapWhen(lap)}
-            {standing.isTarget && <span className="ontrack-tag">Chasing</span>}
+            {standing.isTarget && <span className="chip chip-default">Chasing</span>}
           </span>
         </div>
         <div className="ontrack-fact">

@@ -105,7 +105,7 @@ export function ThemeSection({ layout, apply, frame, page, idle }: { layout: Das
         </div>
         <div className="theme-chips" role="radiogroup" aria-label="Look at it as">
           {dashPreviewStates.map((option) => (
-            <button key={option.state} type="button" role="radio" aria-checked={option.state === previewState} className="theme-chip" onClick={() => setPreviewState(option.state)}>
+            <button key={option.state} type="button" role="radio" aria-checked={option.state === previewState} className="filter-chip" onClick={() => setPreviewState(option.state)}>
               {option.state === 'live' ? 'Live' : option.label}
             </button>
           ))}

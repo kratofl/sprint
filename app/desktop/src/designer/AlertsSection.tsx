@@ -28,7 +28,7 @@ import { DurationBox } from './controls'
 import { relativePointerPos, type PointerPos } from './DesignerCanvas'
 import { BEZEL, useStageCanvas } from './useStageCanvas'
 import type { Mutate } from './useDesignerDoc'
-import '../views/SettingsView.css'
+import { Switch } from '../shell/Switch'
 import './AlertsSection.css'
 
 type Apply = (mutate: Mutate, group?: string) => boolean
@@ -101,19 +101,15 @@ export function AlertsSection({ layout, apply, frame, page, idle }: { layout: Da
                     <span className="designer-row-label">{label}</span>
                     {ownLook && <span className="alerts-row-note">own look</span>}
                   </button>
-                  <button
-                    type="button"
-                    role="switch"
-                    aria-checked={on}
+                  <Switch
+                    checked={on}
+                    stateText={false}
                     aria-label={`Show ${label}`}
-                    className="settings-switch"
-                    onClick={() => {
-                      apply((current) => setAlertEnabled(current, candidate, !on))
+                    onChange={(next) => {
+                      apply((current) => setAlertEnabled(current, candidate, next))
                       setRow({ kind: 'alert', type: candidate })
                     }}
-                  >
-                    <span className="settings-switch-knob" />
-                  </button>
+                  />
                 </li>
               )
             })}
@@ -254,9 +250,7 @@ function LookFields({ look, palette, onChange }: { look: AlertLook; palette: Das
       </div>
       <div className="alerts-field-row">
         <span>Invert colours</span>
-        <button type="button" role="switch" aria-checked={look.invertColors} aria-label="Invert colours" className="settings-switch" onClick={() => onChange({ invertColors: !look.invertColors })}>
-          <span className="settings-switch-knob" />
-        </button>
+        <Switch checked={look.invertColors} stateText={false} aria-label="Invert colours" onChange={(next) => onChange({ invertColors: next })} />
       </div>
     </>
   )

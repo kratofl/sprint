@@ -1,13 +1,12 @@
 import { useRef, useState } from 'react'
 import { Check, Plus, X } from 'lucide-react'
-import { MenuLayer } from './DashesMenus'
-import type { MenuAnchor } from './DashesMenus'
+import { MenuLayer, type MenuAnchor } from '../shell/Menu'
 import './SetupsView.css'
 
 /**
  * One filter of a list (Setups, Analysis): "+ Class" while any is fine, "Class: Hypercar" once
- * narrowed; a menu of the choices with how many items each has. Styles live with Setups, its
- * first user.
+ * narrowed; a menu of the choices with how many items each has. The menu's rows are styled with
+ * Setups, its first user.
  */
 export function FilterChip({
   label,
@@ -35,7 +34,7 @@ export function FilterChip({
       <button
         ref={button}
         type="button"
-        className={`setups-chip${chosen.length > 0 ? ' active' : ''}`}
+        className={`filter-chip${chosen.length > 0 ? ' active' : ''}`}
         aria-haspopup="menu"
         aria-expanded={menuAt !== null}
         disabled={choices.length === 0}

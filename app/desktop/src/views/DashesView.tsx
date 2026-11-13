@@ -33,7 +33,7 @@ import {
 import type { DashGroup, DashesFilter, DashesViewMode } from './DashesDomain'
 import { deviceScreenSizes } from './DevicesDomain'
 import { CategoryMenu, DashMenu } from './DashesMenus'
-import type { MenuAnchor } from './DashesMenus'
+import type { MenuAnchor } from '../shell/Menu'
 import { CategoryNameDialog, DuplicateDashDialog, NewDashDialog } from './DashesDialogs'
 import type { NewDash } from './DashesDialogs'
 import { DashStill } from './DashStill'

@@ -107,7 +107,7 @@ Where the mockups are silent, the macOS look follows Apple's Human Interface Gui
 ### Shape and spacing
 
 - Desktop on Windows and Linux: 28px controls with 6px corners (4px segments and small items),
-  10px cards and menus, 14px dialogs; the 2px focus ring sits 2px off the control.
+  10px cards and menus, 14px dialogs (`--radius-dialog`); the 2px focus ring sits 2px off the control.
 - macOS: buttons 28px with 8px corners on a borderless grey fill (small buttons 22px, 6px corners);
   toolbar items, the search field, chips and tabs are capsules; 14px cards (`--radius-card`) with a
   hairline edge, 16px dialogs; focus is a 3px half-opacity brand halo hugging the control.

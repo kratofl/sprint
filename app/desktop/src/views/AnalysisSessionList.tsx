@@ -144,14 +144,14 @@ function Group({ group, open, onToggle, onOpen }: { group: SessionGroup; open: b
             return (
               <button key={session.id} type="button" className="list-row analysis-session-row" onClick={() => onOpen(session.id)}>
                 <span className="setups-row-session">
-                  <span className="setups-tag">{kindLabel(session)}</span>
+                  <span className="chip">{kindLabel(session)}</span>
                 </span>
                 <span className="setups-row-name">
                   <strong>{sessionTitle(session)}</strong>
                   <span className="setups-dim">{sessionLine(session)}</span>
                 </span>
                 <span className="analysis-session-tag">
-                  {session.origin === 'Imported' && <span className="setups-tag">{session.tracedLapCount === 0 ? 'Imported · times only' : 'Imported'}</span>}
+                  {session.origin === 'Imported' && <span className="chip chip-muted">{session.tracedLapCount === 0 ? 'Imported · times only' : 'Imported'}</span>}
                 </span>
                 <span className={`analysis-session-gap tabular${gap === 0 ? ' best' : ''}`}>{gap === null ? '' : gap === 0 ? 'Your best' : formatGap(gap)}</span>
                 <span className="analysis-session-best tabular">{formatLapSeconds(session.bestLapSeconds)}</span>

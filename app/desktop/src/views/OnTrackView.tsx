@@ -7,8 +7,7 @@ import { usePageUp } from '../shell/pageUp'
 import type { RuntimeState } from '../shell/runtime'
 import { formatGap, formatLapSeconds, importNotice } from './AnalysisDomain'
 import type { CorpusLap, LapFileNotice } from './AnalysisDomain'
-import { MenuLayer } from './DashesMenus'
-import type { MenuAnchor } from './DashesMenus'
+import { MenuLayer, type MenuAnchor } from '../shell/Menu'
 import {
   buildHudArrange,
   buildHudToggle,
@@ -323,7 +322,7 @@ function LapsCard({ compare, onOpen, onImport }: { compare: CompareState; onOpen
                     ) : (
                       'You'
                     )}
-                    {chased && <span className="ontrack-tag">Chasing</span>}
+                    {chased && <span className="chip chip-default">Chasing</span>}
                   </span>
                   <span className="ontrack-dim">{lap.sharedFrom ? sharedWhen(lap) : lapWhen(lap)}</span>
                   <span className="ontrack-dim">{lap.hasChannels ? 'Recorded' : 'Time only'}</span>

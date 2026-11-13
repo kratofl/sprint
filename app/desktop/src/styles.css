@@ -897,6 +897,28 @@ a:hover {
   color: var(--label-disabled);
 }
 
+/* A text button: an action that reads as a link ("All in Analysis", "set the size"), in the
+   `link` colour at the size of the text around it; the hover fill keeps a hit area round it. */
+.text-button {
+  margin: 0 -4px;
+  padding: 0 4px;
+  border: 0;
+  border-radius: var(--radius-control-small);
+  background: transparent;
+  color: var(--link);
+  font: inherit;
+  cursor: pointer;
+}
+.text-button:hover {
+  background: var(--subtle-hover);
+  color: var(--link-hover);
+}
+.text-button:disabled {
+  background: transparent;
+  color: var(--label-disabled);
+  cursor: default;
+}
+
 /* ── Text helpers ─────────────────────────────────────────────────────────── */
 
 .muted {
@@ -1162,45 +1184,97 @@ a:hover {
 }
 
 /* ── Chips (tags and status labels) ───────────────────────────────────────── */
+/* DESIGN.md's tag: caption type on a 4px corner. Neutral by default; a tone is the -100 tint with
+   its -700 text (the InfoBar tints), `chip-default` the brand's, `chip-muted` only an outline. */
 
 .chip {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  height: 20px;
-  padding: 0 8px;
-  border: 1px solid var(--control-stroke);
-  border-radius: var(--radius-control);
+  gap: 4px;
+  height: 18px;
+  flex: none;
+  padding: 0 6px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-control-small);
   background: var(--subtle-selected);
-  color: var(--label);
-  font-size: 12px;
+  color: var(--label-secondary);
+  font-size: 11px;
+  font-weight: 600;
   line-height: 16px;
   white-space: nowrap;
 }
-
+.chip > svg {
+  width: 12px;
+  height: 12px;
+}
 .chip-muted {
+  border-color: var(--control-stroke);
   background: transparent;
-  color: var(--label-secondary);
+  font-weight: 400;
 }
-
-/* Build tags in the sidebar: a development build, a pre-release. */
-.chip-warning {
-  border-color: transparent;
-  background: var(--infobar-warning);
-  color: var(--infobar-warning-text);
+.chip-default {
+  background: color-mix(in srgb, var(--brand-500) 16%, transparent);
+  color: var(--link);
 }
-
 .chip-info {
-  border-color: transparent;
   background: var(--infobar-info);
   color: var(--infobar-info-text);
 }
+.chip-success {
+  background: var(--infobar-success);
+  color: var(--infobar-success-text);
+}
+.chip-warning {
+  background: var(--infobar-warning);
+  color: var(--infobar-warning-text);
+}
+.chip-danger {
+  background: var(--infobar-error);
+  color: var(--infobar-error-text);
+}
 
-/* The default/active item among several (e.g. the default dash). */
-.chip-default {
+/* A filter chip (views/FilterChip.tsx): "+ Class" dashed while the list is unfiltered, solid once
+   it narrows it; also any small pill that adds or picks one of several (aria-pressed/checked). */
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  padding: 0 10px;
+  border: 1px dashed var(--slot-stroke);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--label-secondary);
+  font: inherit;
+  font-size: 12px;
+  line-height: 16px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.filter-chip svg {
+  width: 12px;
+  height: 12px;
+}
+
+.filter-chip:hover {
+  background: var(--subtle-hover);
+  color: var(--label);
+}
+
+.filter-chip.active,
+.filter-chip[aria-pressed='true'],
+.filter-chip[aria-checked='true'] {
+  border-style: solid;
   border-color: transparent;
-  background: color-mix(in srgb, var(--brand-500) 16%, transparent);
-  color: var(--link);
+  background: var(--subtle-selected);
+  color: var(--label);
+  font-weight: 600;
+}
+
+.filter-chip:disabled {
+  color: var(--label-disabled);
+  cursor: default;
 }
 
 /* ── Segmented control and tabs ───────────────────────────────────────────
@@ -1281,6 +1355,87 @@ a:hover {
   margin-left: -8px;
   border-radius: 2px;
   background: var(--brand-500);
+}
+
+/* ── Switch (shell/Switch.tsx): an instant on/off, "On"/"Off" beside it ────── */
+
+/* ── ToggleSwitch (Fluent: 40×20 track, 12px knob, 14px on hover) ─────────── */
+
+.switch-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.switch-state {
+  min-width: 22px;
+  text-align: right;
+}
+
+.switch {
+  position: relative;
+  width: 40px;
+  height: 20px;
+  flex: none;
+  padding: 0;
+  border: 1px solid var(--label-secondary);
+  border-radius: var(--radius-pill);
+  background: var(--control-fill);
+}
+
+.switch:hover {
+  background: var(--control-fill-hover);
+}
+
+.switch-knob {
+  position: absolute;
+  top: 50%;
+  left: 3px;
+  width: 12px;
+  height: 12px;
+  margin-top: -6px;
+  border-radius: var(--radius-pill);
+  background: var(--label-secondary);
+  transition:
+    left var(--motion-fast) var(--ease-out),
+    width var(--motion-fast) var(--ease-out),
+    height var(--motion-fast) var(--ease-out),
+    margin var(--motion-fast) var(--ease-out);
+}
+
+.switch:hover .switch-knob {
+  width: 14px;
+  height: 14px;
+  margin-top: -7px;
+}
+
+.switch[aria-checked='true'] {
+  border-color: var(--brand-500);
+  background: var(--brand-500);
+}
+
+.switch[aria-checked='true']:hover {
+  background: color-mix(in srgb, var(--brand-500) 90%, var(--window));
+}
+
+.switch[aria-checked='true'] .switch-knob {
+  left: 23px;
+  background: var(--on-brand);
+}
+
+.switch[aria-checked='true']:hover .switch-knob {
+  left: 21px;
+}
+
+/* Disabled, like a disabled primary button: the fill goes quiet, the knob greys out. */
+.switch:disabled,
+.switch:disabled:hover {
+  border-color: var(--subtle-selected);
+  background: var(--subtle-selected);
+}
+
+.switch:disabled .switch-knob {
+  background: var(--label-disabled);
 }
 
 /* ── InfoBar: an inline alert in its status tint ─────────────────────────────
@@ -1456,6 +1611,27 @@ a:hover {
   background: var(--acrylic-stroke);
 }
 
+/* Menus and popovers float on a full-window layer that catches the outside click (shell/Menu.tsx). */
+.menu-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 150;
+}
+.menu-layer > .menu-flyout {
+  position: fixed;
+}
+/* A trailing icon (a submenu's chevron) is quieter than the label; the checked item's tick is brand. */
+.menu-item > svg:last-child:not(:first-child) {
+  color: var(--label-secondary);
+}
+.menu-item.selected > svg:last-child:not(:first-child),
+.menu-item:hover > svg:last-child:not(:first-child) {
+  color: inherit;
+}
+.menu-item:not(:hover) > .menu-item-check {
+  color: var(--brand-500);
+}
+
 /* ── Lists ────────────────────────────────────────────────────────────────
    .list-header: 28px caption column heads over a rule. .list-row: 32px row
    inset 6px, selected = a rounded fill. Views set the columns
@@ -1611,6 +1787,19 @@ a:hover {
   color: var(--label-secondary);
   font-size: 13px;
 }
+/* Inside a card or a tile: no page-sized height, the title at body size. */
+.empty-state.compact {
+  min-height: 0;
+  padding: 12px 16px;
+  gap: 4px;
+}
+.empty-state.compact h2 {
+  font-size: 13px;
+}
+.empty-state.compact p {
+  font-size: 12px;
+  line-height: 16px;
+}
 
 /* Loading: stable placeholder geometry, no shimmer/pulse animation. */
 .skeleton {
@@ -1645,7 +1834,7 @@ a:hover {
   max-height: calc(100vh - 48px);
   overflow: hidden;
   border: 1px solid var(--acrylic-stroke);
-  border-radius: 14px;
+  border-radius: var(--radius-dialog);
   background: var(--surface);
   box-shadow: var(--shadow-dialog);
 }

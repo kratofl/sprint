@@ -1,86 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
-import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from 'react'
+import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { Check, ChevronRight, Copy, Folder, Pencil, Plus, Trash2 } from 'lucide-react'
 import type { DashCategoryLists } from '../bridge'
-
-/** Where a menu opens: at the pointer, or under the control that raised it. */
-export type MenuAnchor = { x: number; y: number }
+import { MenuLayer, enabledItems, moveFocus, type MenuAnchor } from '../shell/Menu'
 
 const MENU_WIDTH = 228
 const SUBMENU_WIDTH = 200
-
-const enabledItems = (root: HTMLElement | null): HTMLButtonElement[] => [...(root?.querySelectorAll<HTMLButtonElement>(':scope > .menu-item:not(:disabled)') ?? [])]
-
-/** Up/Down move between a flyout's items, wrapping; true when the key was one of them. */
-function moveFocus(root: HTMLElement | null, key: string): boolean {
-  if (key !== 'ArrowDown' && key !== 'ArrowUp') return false
-  const items = enabledItems(root)
-  const index = items.findIndex((item) => item === document.activeElement)
-  const next = key === 'ArrowDown' ? (index + 1) % items.length : (index - 1 + items.length) % items.length
-  items[next]?.focus()
-  return true
-}
-
-/**
- * A MenuFlyout on a transparent layer that catches the outside click. It takes focus on its first
- * item; Escape and Tab close it (`onClose` returns focus to whatever raised it). The dash designer
- * builds its menus on it too.
- */
-export function MenuLayer({
-  anchor,
-  label,
-  width,
-  onClose,
-  children,
-  beside,
-}: {
-  anchor: MenuAnchor
-  label: string
-  width: number
-  onClose: () => void
-  children: ReactNode
-  /** A submenu, drawn on the same layer (not inside the flyout, whose blur would pin it there). */
-  beside?: ReactNode
-}) {
-  const menuRef = useRef<HTMLDivElement | null>(null)
-
-  useEffect(() => {
-    enabledItems(menuRef.current)[0]?.focus()
-  }, [])
-
-  const onKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>): void => {
-    if (event.key === 'Escape' || event.key === 'Tab') {
-      event.preventDefault()
-      onClose()
-    } else if (moveFocus(menuRef.current, event.key)) {
-      event.preventDefault()
-    }
-  }
-
-  return (
-    <div
-      className="dashes-menu-layer"
-      onPointerDown={onClose}
-      onContextMenu={(event) => {
-        event.preventDefault()
-        onClose()
-      }}
-    >
-      <div
-        ref={menuRef}
-        className="menu-flyout dashes-menu"
-        role="menu"
-        aria-label={label}
-        style={{ left: Math.max(8, Math.min(anchor.x, window.innerWidth - width - 8)), top: Math.max(8, Math.min(anchor.y, window.innerHeight - 200)), width }}
-        onPointerDown={(event) => event.stopPropagation()}
-        onKeyDown={onKeyDown}
-      >
-        {children}
-      </div>
-      {beside}
-    </div>
-  )
-}
 
 /**
  * One dash's menu (its ⋯, a right-click, Shift+F10): Edit, Duplicate, the Category submenu, and
@@ -161,14 +86,14 @@ export function DashMenu({
       onClick={run(() => onSetCategory(category === name ? null : name))}
     >
       <span className="menu-item-label">{name}</span>
-      {category === name && <Check className="dashes-menu-check" />}
+      {category === name && <Check className="menu-item-check" />}
     </button>
   )
 
   const submenu = submenuAt && (
     <div
       ref={submenuRef}
-      className="menu-flyout dashes-menu"
+      className="menu-flyout"
       role="menu"
       aria-label="Category"
       style={{ left: submenuAt.x, top: Math.max(8, Math.min(submenuAt.y, window.innerHeight - 280)), width: SUBMENU_WIDTH }}

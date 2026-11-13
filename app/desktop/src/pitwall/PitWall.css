@@ -37,13 +37,13 @@
 }
 
 .pw-bar button,
-.pw-bar .pw-menu {
+.pw-bar .menu-layer {
   -webkit-app-region: no-drag;
 }
 
 .pw-bar-title {
   flex: none;
-  font: 600 15px/22px var(--font-display);
+  font: 600 17px/22px var(--font-display);
   white-space: nowrap;
 }
 
@@ -129,11 +129,6 @@
   padding: 0 10px;
   border-radius: var(--radius-pill);
   background: var(--control-fill);
-}
-
-.pw-menu {
-  position: fixed;
-  z-index: 20;
 }
 
 .pw-notice {
@@ -306,21 +301,6 @@
   font-size: 12px;
 }
 
-.pw-empty {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 6px;
-  max-width: 380px;
-  height: 100%;
-  padding: 0 12px;
-}
-
-.pw-empty span {
-  color: var(--label-secondary);
-  font-size: 12px;
-}
-
 .pw-ellipsis {
   min-width: 0;
   overflow: hidden;
@@ -464,56 +444,9 @@
   font-size: 12px;
 }
 
-.pw-flag {
-  padding: 0 10px;
-  border-radius: 999px;
-  background: var(--control-fill);
-  color: var(--label-secondary);
-  font-size: 12px;
-  font-weight: 600;
-  line-height: 22px;
-  white-space: nowrap;
-}
-
-.pw-flag.green {
-  background: var(--infobar-success);
-  color: var(--infobar-success-text);
-}
-
-.pw-flag.yellow,
-.pw-flag.fcy {
-  background: var(--infobar-warning);
-  color: var(--infobar-warning-text);
-}
-
-.pw-flag.red {
-  background: var(--infobar-error);
-  color: var(--infobar-error-text);
-}
-
-.pw-flag.over {
-  background: var(--label);
-  color: var(--surface);
-}
-
 .pw-flag-sectors {
   display: flex;
   gap: 4px;
-}
-
-.pw-flag-sector {
-  padding: 0 6px;
-  border-radius: 4px;
-  background: var(--control-fill);
-  color: var(--label-tertiary);
-  font-size: 11px;
-  font-weight: 700;
-  line-height: 20px;
-}
-
-.pw-flag-sector.yellow {
-  background: var(--yellow-500);
-  color: var(--yellow-900);
 }
 
 .pw-session-fact {
@@ -618,17 +551,6 @@
   color: var(--blue-500);
 }
 
-.pw-pen {
-  flex: none;
-  padding: 0 5px;
-  border-radius: 4px;
-  background: var(--infobar-error);
-  color: var(--infobar-error-text);
-  font-size: 10px;
-  font-weight: 700;
-  line-height: 16px;
-}
-
 /* An out car's "DNF · lap 22" takes the gap and interval columns. */
 .pw-outcell {
   grid-column: span 2;
@@ -714,16 +636,6 @@
 .pw-sec.green {
   color: var(--success-text);
   font-weight: 600;
-}
-
-.pw-pitchip {
-  padding: 0 5px;
-  border-radius: 4px;
-  background: var(--infobar-warning);
-  color: var(--infobar-warning-text);
-  font-size: 10px;
-  font-weight: 700;
-  line-height: 16px;
 }
 
 /* ── Track ───────────────────────────────────────────────────────────────── */

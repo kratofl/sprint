@@ -2,7 +2,8 @@ import { useEffect, useState, type KeyboardEvent } from 'react'
 import { ChevronLeft } from 'lucide-react'
 import { DashCanvas, multiDialInk, multiDialSwatches, type DashLayout } from '@sprint/dashboard'
 import type { MultiDial, MultiDialLabel, SprintCommand } from '../bridge'
-import { blurOnEnter, Switch } from './SettingsLayout'
+import { Switch } from '../shell/Switch'
+import { blurOnEnter } from './SettingsLayout'
 import {
   CONTROL_ZOOM,
   RING_EXTENT,

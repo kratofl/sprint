@@ -120,7 +120,7 @@ function ArrangePalette({ readings }: { readings: HudReadingSet }) {
       <div className="hud-palette">
         {off.length > 0 ? <span className="hud-palette-label">Add</span> : <span className="hud-palette-label">Every reading is on</span>}
         {off.map((id) => (
-          <button key={id} type="button" className="hud-chip" onClick={() => void send(buildToggleReading(readings, id))}>
+          <button key={id} type="button" className="filter-chip" onClick={() => void send(buildToggleReading(readings, id))}>
             <Plus size={12} /> {HUD_READING_LABELS[id]}
           </button>
         ))}

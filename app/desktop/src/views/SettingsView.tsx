@@ -15,7 +15,8 @@ import { TRACE_EXPIRY_DAYS, lapsText, parseStorageInfo, sizeText } from './Setti
 import type { StorageInfo } from './SettingsStorage'
 import { parseUpdatesInfo } from './SettingsUpdates'
 import type { UpdatesInfo } from './SettingsUpdates'
-import { ListRow, SettingsList, Switch } from './SettingsLayout'
+import { Switch } from '../shell/Switch'
+import { ListRow, SettingsList } from './SettingsLayout'
 
 type Send = (command: SprintCommand) => Promise<void>
 

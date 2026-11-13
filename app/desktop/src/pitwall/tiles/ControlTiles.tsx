@@ -5,9 +5,19 @@ import { feedLines, flagState, stoppedCars, stoppedSummary, type FlagState } fro
 import { carNumber, classesOf, lapsLeft, playerOf, signed } from '../timing'
 import { TileEmpty, TileFrame, type FrameProps, type TileData } from '../tileFrame'
 
-/** The session's flag as a pill: "Green", "Yellow · S2", "Full course yellow", "Red flag". */
+/** Each flag's tag tone: the flag's own colour where the status tints have it. */
+const FLAG_CHIP: Record<FlagState['tone'], string> = {
+  green: 'chip chip-success',
+  yellow: 'chip chip-warning',
+  fcy: 'chip chip-warning',
+  red: 'chip chip-danger',
+  over: 'chip',
+  none: 'chip chip-muted',
+}
+
+/** The session's flag as a tag: "Green", "Yellow · S2", "Full course yellow", "Red flag". */
 export function FlagPill({ state }: { state: FlagState }) {
-  return <span className={`pw-flag ${state.tone}`}>{state.label}</span>
+  return <span className={FLAG_CHIP[state.tone]}>{state.label}</span>
 }
 
 /** The header's race control strip: the flag, the three sectors (yellow where one is out) and a stopped car. */
@@ -19,7 +29,7 @@ export function FlagStrip({ wall }: { wall: PitWall }) {
       <FlagPill state={state} />
       <span className="pw-flag-sectors">
         {state.sectors.map((yellow, index) => (
-          <span key={index} className={yellow ? 'pw-flag-sector yellow' : 'pw-flag-sector'} aria-label={`Sector ${index + 1}${yellow ? ': yellow' : ''}`}>
+          <span key={index} className={yellow ? 'chip chip-warning' : 'chip chip-muted'} aria-label={`Sector ${index + 1}${yellow ? ': yellow' : ''}`}>
             S{index + 1}
           </span>
         ))}

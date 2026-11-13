@@ -647,9 +647,9 @@ function PracticeCard({ plan, practice }: { plan: SessionPlan; practice: Practic
 }
 
 const SESSION_BADGE: Record<'live' | 'next' | 'done', { label: string; className: string }> = {
-  live: { label: 'Live', className: 'planner-badge live' },
-  next: { label: 'Next', className: 'planner-badge' },
-  done: { label: 'Done', className: 'planner-badge quiet' },
+  live: { label: 'Live', className: 'chip chip-success' },
+  next: { label: 'Next', className: 'chip' },
+  done: { label: 'Done', className: 'chip chip-muted' },
 }
 
 /** Qualifying or the race: what it chases and where that comes from, then its facts. */
