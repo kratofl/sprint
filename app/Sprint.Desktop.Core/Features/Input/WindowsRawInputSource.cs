@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using Microsoft.Win32.SafeHandles;
 using Sprint.Desktop.Features.Diagnostics;
 
 namespace Sprint.Desktop.Features.Input;
@@ -23,7 +24,20 @@ internal sealed class WindowsRawInputSource : IHardwareInputSource
     private const uint WmInputDeviceChange = 0x00fe;
     private const uint WmInput = 0x00ff;
     private const uint WmQuit = 0x0012;
+    private const nuint GidcArrival = 1;
     private const nuint GidcRemoval = 2;
+    private const uint RidiDeviceName = 0x20000007;
+    private const ushort UsageJoystick = 0x04;
+    private const ushort UsageGamepad = 0x05;
+    private const ushort UsageMultiAxisController = 0x08;
+    private const uint GenericRead = 0x80000000;
+    private const uint FileShareReadWrite = 0x00000003;
+    private const uint OpenExisting = 3;
+    private const uint FileFlagOverlapped = 0x40000000;
+    private const int ErrorIoPending = 997;
+    private static readonly int OverlappedEventOffset = (2 * IntPtr.Size) + 8;
+    private static readonly int OverlappedSize = OverlappedEventOffset + IntPtr.Size;
+    private static readonly TimeSpan HeldButtonsReadTimeout = TimeSpan.FromMilliseconds(250);
     private const int HidpInput = 0;
     private const int HidpStatusSuccess = 0x00110000;
     private const int HidpCapsSize = 64;
@@ -34,6 +48,7 @@ internal sealed class WindowsRawInputSource : IHardwareInputSource
     private readonly Thread _thread;
     private readonly ManualResetEventSlim _ready = new();
     private readonly Dictionary<nint, DeviceState> _devices = [];
+    private readonly HashSet<nint> _heldButtonsRead = [];
     private nint _window;
     private uint _threadId;
     private int _running;
@@ -128,13 +143,21 @@ internal sealed class WindowsRawInputSource : IHardwareInputSource
             Volatile.Write(ref this._running, 1);
             this._log.Info("Steering-wheel Raw Input listener started.");
             this._ready.Set();
+            this.ReadHeldButtonsOfAllControllers();
 
             while (Native.GetMessage(out NativeMessage message, nint.Zero, 0, 0) > 0)
             {
-                if (message.Message == WmInputDeviceChange
-                    && unchecked((nuint)message.WParam) == GidcRemoval)
+                if (message.Message == WmInputDeviceChange)
                 {
-                    this.RemoveDevice(message.LParam);
+                    nuint change = unchecked((nuint)message.WParam);
+                    if (change == GidcRemoval)
+                    {
+                        this.RemoveDevice(message.LParam);
+                    }
+                    else if (change == GidcArrival)
+                    {
+                        this.ReadHeldButtons(message.LParam);
+                    }
                 }
                 else if (message.Message == WmInput)
                 {
@@ -171,6 +194,7 @@ internal sealed class WindowsRawInputSource : IHardwareInputSource
 
     private void RemoveDevice(nint handle)
     {
+        this._heldButtonsRead.Remove(handle);
         if (!this._devices.Remove(handle, out DeviceState? device))
         {
             return;
@@ -178,6 +202,144 @@ internal sealed class WindowsRawInputSource : IHardwareInputSource
 
         device.Dispose();
         this._log.Debug($"Raw Input HID removed: vid={device.Vid:x4} pid={device.Pid:x4}.");
+    }
+
+    /// <summary>
+    /// Raw Input only reports a controller when something on it changes, so a button that is
+    /// already held when Sprint starts -- a multi-position switch reports its position that way --
+    /// stays invisible until the driver touches the wheel. Reading one report straight from each
+    /// game controller fills that gap: its held buttons go through the same edge tracker as any
+    /// other report, so they are emitted once, as presses, and never again while they stay held.
+    /// </summary>
+    private void ReadHeldButtonsOfAllControllers()
+    {
+        uint count = 0;
+        uint entrySize = (uint)Marshal.SizeOf<RawInputDeviceListEntry>();
+        if (Native.GetRawInputDeviceList(null, ref count, entrySize) == uint.MaxValue || count == 0)
+        {
+            return;
+        }
+
+        RawInputDeviceListEntry[] entries = new RawInputDeviceListEntry[count];
+        uint listed = Native.GetRawInputDeviceList(entries, ref count, entrySize);
+        if (listed == uint.MaxValue)
+        {
+            return;
+        }
+
+        foreach (RawInputDeviceListEntry entry in entries.Take(checked((int)listed)))
+        {
+            if (entry.Type == RimTypeHid)
+            {
+                this.ReadHeldButtons(entry.Device);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Reads one input report from a game controller and feeds it to the edge tracker. Gives up
+    /// after a short timeout: a controller that only reports on change says nothing, and its
+    /// held buttons then stay unknown until the first change -- the honest fallback.
+    /// </summary>
+    private void ReadHeldButtons(nint handle)
+    {
+        if (!this._heldButtonsRead.Add(handle))
+        {
+            return;
+        }
+
+        RawInputDeviceInfo info = ReadDeviceInfo(handle);
+        if (info.Type != RimTypeHid
+            || info.UsagePage != GenericDesktopUsagePage
+            || info.Usage is not (UsageJoystick or UsageGamepad or UsageMultiAxisController))
+        {
+            return;
+        }
+
+        DeviceState? device = this.GetOrCreateDevice(handle);
+        string? path = ReadDevicePath(handle);
+        if (device is null || path is null || device.InputReportLength == 0)
+        {
+            return;
+        }
+
+        using SafeFileHandle file = Native.CreateFile(path, GenericRead, FileShareReadWrite, nint.Zero, OpenExisting, FileFlagOverlapped, nint.Zero);
+        if (file.IsInvalid)
+        {
+            this._log.Debug($"Held buttons not read: vid={device.Vid:x4} pid={device.Pid:x4} could not be opened (Win32 {Marshal.GetLastWin32Error()}).");
+            return;
+        }
+
+        nint report = Marshal.AllocHGlobal(device.InputReportLength);
+        nint overlapped = Marshal.AllocHGlobal(OverlappedSize);
+        using ManualResetEvent completed = new(false);
+        try
+        {
+            // OVERLAPPED: Internal, InternalHigh, Offset, OffsetHigh (all zero), then hEvent.
+            for (int offset = 0; offset < OverlappedSize; offset++)
+            {
+                Marshal.WriteByte(overlapped, offset, 0);
+            }
+
+            Marshal.WriteIntPtr(overlapped, OverlappedEventOffset, completed.SafeWaitHandle.DangerousGetHandle());
+            if (!Native.ReadFile(file, report, (uint)device.InputReportLength, nint.Zero, overlapped)
+                && Marshal.GetLastWin32Error() != ErrorIoPending)
+            {
+                return;
+            }
+
+            if (!completed.WaitOne(HeldButtonsReadTimeout))
+            {
+                // The buffers stay allocated until the cancelled read has really finished.
+                Native.CancelIoEx(file, overlapped);
+                Native.GetOverlappedResult(file, overlapped, out uint _, true);
+                this._log.Debug($"Held buttons not read: vid={device.Vid:x4} pid={device.Pid:x4} sent no report.");
+                return;
+            }
+
+            if (Native.GetOverlappedResult(file, overlapped, out uint read, false) && read > 0)
+            {
+                this.ReadButtonPresses(device, report, read);
+            }
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(overlapped);
+            Marshal.FreeHGlobal(report);
+        }
+    }
+
+    private static RawInputDeviceInfo ReadDeviceInfo(nint handle)
+    {
+        RawInputDeviceInfo info = new()
+        {
+            Size = (uint)Marshal.SizeOf<RawInputDeviceInfo>(),
+        };
+        uint infoSize = info.Size;
+        return Native.GetRawInputDeviceInfo(handle, RidiDeviceInfo, ref info, ref infoSize) == uint.MaxValue
+            ? default
+            : info;
+    }
+
+    private static string? ReadDevicePath(nint handle)
+    {
+        uint length = 0;
+        if (Native.GetRawInputDeviceInfo(handle, RidiDeviceName, nint.Zero, ref length) == uint.MaxValue || length == 0)
+        {
+            return null;
+        }
+
+        nint buffer = Marshal.AllocHGlobal(checked((int)length * sizeof(char)));
+        try
+        {
+            return Native.GetRawInputDeviceInfo(handle, RidiDeviceName, buffer, ref length) == uint.MaxValue
+                ? null
+                : Marshal.PtrToStringUni(buffer);
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(buffer);
+        }
     }
 
     private void HandleRawInput(nint rawInputHandle)
@@ -261,13 +423,29 @@ internal sealed class WindowsRawInputSource : IHardwareInputSource
         }
 
         (ushort Vid, ushort Pid) identity = ReadIdentity(handle);
-        DeviceState device = new DeviceState(identity.Vid, identity.Pid, preparsed);
+        DeviceState device = new(identity.Vid, identity.Pid, preparsed, ReadInputReportLength(preparsed));
         device.RelativeAxes.AddRange(ReadRelativeAxes(preparsed));
         this._devices[handle] = device;
         this._log.Debug(
             $"Raw Input HID ready: vid={device.Vid:x4} pid={device.Pid:x4} " +
             $"relativeAxes={device.RelativeAxes.Count}.");
         return device;
+    }
+
+    /// <summary>The size of one input report, report id included (HIDP_CAPS.InputReportByteLength); 0 when unknown.</summary>
+    private static int ReadInputReportLength(nint preparsedData)
+    {
+        nint caps = Marshal.AllocHGlobal(HidpCapsSize);
+        try
+        {
+            return Native.HidPGetCaps(preparsedData, caps) == HidpStatusSuccess
+                ? unchecked((ushort)Marshal.ReadInt16(caps, 4))
+                : 0;
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(caps);
+        }
     }
 
     private static (ushort Vid, ushort Pid) ReadIdentity(nint handle)
@@ -445,11 +623,12 @@ internal sealed class WindowsRawInputSource : IHardwareInputSource
         }
     }
 
-    private sealed class DeviceState(ushort vid, ushort pid, nint preparsedData) : IDisposable
+    private sealed class DeviceState(ushort vid, ushort pid, nint preparsedData, int inputReportLength) : IDisposable
     {
         public ushort Vid { get; } = vid;
         public ushort Pid { get; } = pid;
         public nint PreparsedData { get; } = preparsedData;
+        public int InputReportLength { get; } = inputReportLength;
         public ButtonEdgeTracker Buttons { get; } = new();
         public List<RelativeAxis> RelativeAxes { get; } = [];
 
@@ -508,6 +687,19 @@ internal sealed class WindowsRawInputSource : IHardwareInputSource
 
         [FieldOffset(12)]
         public uint ProductId;
+
+        [FieldOffset(20)]
+        public ushort UsagePage;
+
+        [FieldOffset(22)]
+        public ushort Usage;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct RawInputDeviceListEntry
+    {
+        public nint Device;
+        public uint Type;
     }
 
     private static class Native
@@ -572,6 +764,34 @@ internal sealed class WindowsRawInputSource : IHardwareInputSource
 
         [DllImport("kernel32.dll")]
         public static extern uint GetCurrentThreadId();
+
+        [DllImport("user32.dll", SetLastError = true)]
+        public static extern uint GetRawInputDeviceList(
+            [Out] RawInputDeviceListEntry[]? devices,
+            ref uint count,
+            uint size);
+
+        [DllImport("kernel32.dll", EntryPoint = "CreateFileW", CharSet = CharSet.Unicode, SetLastError = true)]
+        public static extern SafeFileHandle CreateFile(
+            string path,
+            uint access,
+            uint share,
+            nint security,
+            uint creation,
+            uint flags,
+            nint template);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool ReadFile(SafeFileHandle file, nint buffer, uint length, nint read, nint overlapped);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool GetOverlappedResult(SafeFileHandle file, nint overlapped, out uint transferred, [MarshalAs(UnmanagedType.Bool)] bool wait);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool CancelIoEx(SafeFileHandle file, nint overlapped);
 
         [DllImport("hid.dll", EntryPoint = "HidP_MaxUsageListLength")]
         public static extern uint HidPMaxUsageListLength(int reportType, uint usagePage, nint preparsedData);

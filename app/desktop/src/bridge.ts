@@ -195,6 +195,27 @@ export type CloudState = {
   live: LiveUplink
 }
 
+/** A dial position's name and colour, as the dash popup shows it. Colours never reach the wheel. */
+export type MultiDialLabel = { label: string; color: string }
+
+/**
+ * One saved wheel's multi-position dial (`MultiDialState` on the host): where it sits on the
+ * device picture (`x`/`y` as fractions of its width/height, `radius` of its width), the names
+ * in force, and where it stands. `position` is null until the wheel has reported it; `changes`
+ * counts real turns only.
+ */
+export type MultiDial = {
+  deviceId: string
+  label: string
+  x: number
+  y: number
+  radius: number
+  positions: MultiDialLabel[]
+  invertPopup: boolean
+  position: number | null
+  changes: number
+}
+
 /** A Sprint server that answered on the local network. */
 export type DiscoveredServer = { url: string; version: string }
 
@@ -231,6 +252,8 @@ export type SprintState = {
   dashCategories: DashCategoryLists
   /** Dash id → screen profile id → how many widgets a change to that size would leave out (`DashRefitLosses` on the host); sizes that lose none are absent. */
   dashRefitLosses: DashRefitLosses
+  /** Every saved wheel whose preset has a multi-position dial. */
+  multiDials: MultiDial[]
   screens: Array<{ deviceId: string; width: number; height: number; refreshHz: number; layout: unknown; pageId?: string; idle?: boolean; status: string; performance?: { sequence: number; bytes: number } }>
 }
 export type SprintCommand = { type: string; [key: string]: unknown }
@@ -354,7 +377,7 @@ type RawBridge = {
   pitWallTrace?(lap: string): Promise<unknown>
 }
 declare global { interface Window { sprint?: RawBridge } }
-const emptyState = (): SprintState => ({ telemetry: { frame: null, link: noLink(), hz: 0 }, targets: null, settings: {}, controls: {}, catalog: {}, devices: [], dashLayouts: [], setupTemplates: [], setupPrograms: [], engineerControls: [], radioLog: [], engineerPushState: {}, plans: [], lapHistory: [], resultsImport: { available: false }, firstRun: { done: true, game: null }, account: { signedIn: false, serverUrl: '' }, cloud: emptyCloud(), link: { phase: 'Off' }, pitWallLayout: null, features: { sprintWeb: false }, foundDevices: [], dashCategories: { builtIn: [], custom: [] }, dashRefitLosses: {}, screens: [] })
+const emptyState = (): SprintState => ({ telemetry: { frame: null, link: noLink(), hz: 0 }, targets: null, settings: {}, controls: {}, catalog: {}, devices: [], dashLayouts: [], setupTemplates: [], setupPrograms: [], engineerControls: [], radioLog: [], engineerPushState: {}, plans: [], lapHistory: [], resultsImport: { available: false }, firstRun: { done: true, game: null }, account: { signedIn: false, serverUrl: '' }, cloud: emptyCloud(), link: { phase: 'Off' }, pitWallLayout: null, features: { sprintWeb: false }, foundDevices: [], multiDials: [], dashCategories: { builtIn: [], custom: [] }, dashRefitLosses: {}, screens: [] })
 const emptyCloud = (): CloudState => ({ setupDone: true, server: 'None', storage: 'Local', officialServerUrl: null, progress: null, lastSync: null, live: liveOff() })
 const liveOff = (): LiveUplink => ({ status: 'Off', detail: null })
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null
@@ -658,6 +681,29 @@ const parsePlanTargets = (value: unknown): PlanTargetScopeGroup[] =>
       })
     : []
 
+const parseMultiDialLabel = (value: unknown): MultiDialLabel[] =>
+  isRecord(value) && typeof value.label === 'string' && typeof value.color === 'string' ? [{ label: value.label, color: value.color }] : []
+
+const parseMultiDials = (value: unknown): MultiDial[] =>
+  Array.isArray(value)
+    ? value.flatMap((dial): MultiDial[] => {
+        if (!isRecord(dial) || typeof dial.deviceId !== 'string' || !Array.isArray(dial.positions)) return []
+        const positions = dial.positions.flatMap(parseMultiDialLabel)
+        const position = typeof dial.position === 'number' && dial.position >= 0 && dial.position < positions.length ? dial.position : null
+        return [{
+          deviceId: dial.deviceId,
+          label: typeof dial.label === 'string' ? dial.label : '',
+          x: finite(dial.x),
+          y: finite(dial.y),
+          radius: finite(dial.radius),
+          positions,
+          invertPopup: dial.invertPopup === true,
+          position,
+          changes: finite(dial.changes),
+        }]
+      })
+    : []
+
 const parseState = (value: unknown): SprintState => {
   if (!isRecord(value)) return emptyState()
   const telemetry = isRecord(value.telemetry) ? value.telemetry : {}
@@ -678,6 +724,7 @@ const parseState = (value: unknown): SprintState => {
   const categories = isRecord(value.dashCategories) ? value.dashCategories : {}
   parsed.dashCategories = { builtIn: stringList(categories.builtIn), custom: stringList(categories.custom) }
   parsed.dashRefitLosses = parseDashRefitLosses(value.dashRefitLosses)
+  parsed.multiDials = parseMultiDials(value.multiDials)
   return parsed
 }
 /** Keeps only whole positive counts; anything else from the host is no loss to warn about. */

@@ -226,6 +226,250 @@
   max-width: 860px;
 }
 
+/* The Controls tab draws the wheel's picture, so it takes the full width. */
+.device-tab.wide {
+  max-width: none;
+}
+
+/* ── Controls tab (DeviceControls.tsx) ──────────────────────────────────────
+   The wheel's picture beside a 360px panel. Clicking a control zooms the
+   picture onto it once (a finite transition; reduced motion makes it instant)
+   and lays the dial's coloured label boxes over the printed ones. */
+
+.controls-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  padding: 0;
+  overflow: hidden;
+}
+
+.controls-stage {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-height: 100%;
+  overflow: hidden;
+  border-right: 1px solid var(--divider);
+}
+
+.controls-frame {
+  position: relative;
+  width: 100%;
+}
+
+.controls-zoom {
+  position: relative;
+  transform-origin: 0 0;
+  transition: transform var(--motion-slow) var(--ease-out);
+}
+
+.controls-zoom img {
+  display: block;
+  width: 100%;
+  height: auto;
+  user-select: none;
+}
+
+/* A control Sprint can set up: a round outline over it on the picture. */
+.controls-hotspot {
+  position: absolute;
+  aspect-ratio: 1;
+  padding: 0;
+  border: 2px solid color-mix(in srgb, var(--brand-500) 55%, transparent);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  transform: translate(-50%, -50%);
+  cursor: pointer;
+}
+
+.controls-hotspot:hover {
+  border-color: var(--brand-500);
+  background: color-mix(in srgb, var(--brand-500) 14%, transparent);
+}
+
+/* Zoomed, the picture steps back so the label boxes over it read first. */
+.controls-stage.zoomed .controls-zoom img {
+  filter: brightness(0.5);
+}
+
+.controls-ring {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  height: auto;
+  overflow: visible;
+  transform: translate(-50%, -50%);
+}
+
+.controls-ring-box {
+  cursor: pointer;
+  outline: none;
+}
+
+.controls-ring-box path {
+  fill: none;
+  stroke-linecap: round;
+}
+
+.controls-ring-edge {
+  stroke: var(--control-stroke);
+}
+
+.controls-ring-selected {
+  stroke: var(--brand-500);
+}
+
+.controls-ring-gap {
+  stroke: var(--surface);
+}
+
+.controls-ring-focus,
+.controls-ring-focus-gap {
+  stroke: transparent;
+}
+
+.controls-ring-box:focus-visible .controls-ring-focus {
+  stroke: var(--focus-ring);
+}
+
+.controls-ring-box:focus-visible .controls-ring-focus-gap {
+  stroke: var(--surface);
+}
+
+.controls-ring-name {
+  font: 700 14px var(--font-text);
+  letter-spacing: 0.02em;
+  text-anchor: middle;
+  dominant-baseline: central;
+  pointer-events: none;
+}
+
+.controls-ring-arrow {
+  fill: var(--brand-500);
+}
+
+.controls-back {
+  position: absolute;
+  z-index: 1;
+  top: 12px;
+  left: 12px;
+}
+
+.controls-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+  padding: 16px 20px 20px;
+}
+
+.controls-panel-head {
+  display: flex;
+  flex-direction: column;
+}
+
+.controls-panel-head h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 20px;
+}
+
+.controls-group {
+  display: flex;
+  flex-direction: column;
+  margin: 0 -8px;
+}
+
+.controls-group-title {
+  padding: 4px 8px;
+  color: var(--label-secondary);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.controls-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--label);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.controls-item:hover {
+  background: var(--subtle-selected);
+}
+
+.controls-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.controls-field > span:first-child {
+  color: var(--label-secondary);
+  font-size: 12px;
+}
+
+.controls-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.controls-swatch {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-pill);
+  box-shadow: inset 0 0 0 1px var(--control-stroke);
+}
+
+button.controls-swatch {
+  cursor: pointer;
+}
+
+.controls-swatch[aria-checked='true'] {
+  outline: 2px solid var(--brand-500);
+  outline-offset: 2px;
+}
+
+.controls-hex {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.controls-hex input {
+  width: 110px;
+}
+
+.controls-preview {
+  overflow: hidden;
+  border-radius: var(--radius-control);
+  box-shadow: 0 0 0 1px var(--card-stroke);
+}
+
+.controls-invert {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.controls-invert-text {
+  display: flex;
+  flex-direction: column;
+}
+
 /* A pixel field: label, number, unit, drawn as one text box. */
 .device-pair {
   display: flex;

@@ -70,6 +70,10 @@ public sealed class CatalogDevice
 
     [JsonPropertyName("bindings")]
     public List<DeviceBinding> Bindings { get; set; } = [];
+
+    /// <summary>The wheel's multi-position switch, when it has one (see <see cref="MultiDials"/>).</summary>
+    [JsonPropertyName("multiDial")]
+    public MultiDialLayout? MultiDial { get; set; }
 }
 
 public sealed class SavedDevice
@@ -127,6 +131,9 @@ public sealed class SavedDevice
 
     public List<DeviceBinding> Bindings { get; set; } = [];
     public bool Disabled { get; set; }
+
+    /// <summary>The driver's names and colours for the preset's dial positions; null keeps the preset's defaults.</summary>
+    public MultiDialSettings? MultiDial { get; set; }
 }
 
 public sealed record ScreenCaptureRegion(int X, int Y, int Width, int Height)

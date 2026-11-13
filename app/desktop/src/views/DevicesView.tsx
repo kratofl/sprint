@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { ChevronRight, Cpu, LayoutGrid, List, Plus } from 'lucide-react'
-import type { SprintCommand, SprintState } from '../bridge'
+import type { MultiDial, SprintCommand, SprintState } from '../bridge'
 import type { RuntimeState } from '../shell/runtime'
 import { CommandDivider, PageHeader } from '../shell/PageHeader'
 import { usePageUp } from '../shell/pageUp'
@@ -36,6 +36,7 @@ type LoadedState = {
   dashOptions: DashOption[]
   screens: ScreenOutput[]
   viewMode: DevicesViewMode
+  dials: MultiDial[]
 }
 
 const toLoadedState = (sprint: SprintState): LoadedState => {
@@ -47,6 +48,7 @@ const toLoadedState = (sprint: SprintState): LoadedState => {
     dashOptions: parseDashOptions(sprint.dashLayouts),
     screens: parseScreens(sprint.screens),
     viewMode: parseDevicesViewMode(sprint.settings),
+    dials: sprint.multiDials,
   }
 }
 
@@ -122,6 +124,7 @@ export function DevicesView({
         image={deviceImageKey(selected, state.catalog)}
         dashOptions={state.dashOptions}
         screen={findScreen(state.screens, selected.id)}
+        dial={state.dials.find((dial) => dial.deviceId === selected.id) ?? null}
         send={send}
         onBack={() => setSelectedId(null)}
       />

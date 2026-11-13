@@ -18,6 +18,7 @@ import {
 import { bareContent, CHROME_CELL_PX, GridOuterFrame, WidgetFrame, type ChromeContext } from './chrome'
 import { effectiveColorSystem, resolveDashPalette, resolveStyleColor, withAlpha, type DashPaletteColors } from './palette'
 import type { DashAlertBanner, DashLapSummaryPopup, DashSettingPopup } from './alerts'
+import { MultiDialPopup } from './multiDial'
 import { narrowDashTargets, type DashTargets } from './bindings'
 import { formatDelta, formatLap, formatSignedLiters } from './format'
 import { Dot, TextLine, ValueWithUnit } from './primitives'
@@ -186,6 +187,10 @@ function FlagOverlay({ frame, palette, canvasWidth, canvasHeight }: { frame: Tel
 function AlertBanner({ banner, frame, palette, chrome, canvasWidth, canvasHeight }: { banner: DashAlertBanner; frame: TelemetryFrame; palette: DashPaletteColors; chrome: ChromeContext; canvasWidth: number; canvasHeight: number }): React.ReactElement | null {
   if (banner.kind === 'lapSummary') {
     return <LapSummaryScreen summary={banner} frame={frame} palette={palette} chrome={chrome} width={canvasWidth} height={canvasHeight} />
+  }
+
+  if (banner.kind === 'multiDial') {
+    return <MultiDialPopup popup={banner} width={canvasWidth} height={canvasHeight} background={palette.background} />
   }
 
   if (banner.fullScreen) {
