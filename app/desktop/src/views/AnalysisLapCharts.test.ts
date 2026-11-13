@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import type { LapChannelTrace } from './AnalysisDomain'
-import { buildLapCharts, lapCorners, verdict } from './AnalysisLapCharts'
+import { buildLapCharts, chartRecorded, lapCorners, verdict } from './AnalysisLapCharts'
 import { DEFAULT_LAP_LAYOUT } from './AnalysisLapLayout'
+import type { LapLayout } from './AnalysisLapLayout'
 
 /** A 1 km lap with two corners (speed dips at 30 % and 70 %), a neutral blip in its gear, and optionally what the car got. */
 function trace(applied: boolean): LapChannelTrace {
@@ -22,7 +23,7 @@ function trace(applied: boolean): LapChannelTrace {
     channels.throttleApplied = channels.throttle.map((v) => v * 0.8)
     channels.brakeApplied = channels.brake.map((v) => v * 0.7)
   }
-  return { version: 1, positionStep: 1 / (count - 1), trackLengthMeters: 1000, channels }
+  return { version: 1, positionStep: 1 / (count - 1), trackLengthMeters: 1000, channels, car: null }
 }
 
 test('a lap alone: its channels in their own colours, what the car got dotted beside the pedals', () => {
@@ -90,4 +91,59 @@ test('the Car settings chart: a panel of lanes, the unchanged settings in its he
   assert.ok(compared.heights[compared.owners.indexOf('settings')] > alone.heights[index])
 
   assert.equal(buildLapCharts(DEFAULT_LAP_LAYOUT, { trace: trace(false), label: 'Lap 5' }, null).owners.includes('settings'), false)
+})
+
+/** The lap with what the car reported: brakes per wheel (the fronts hotter), fuel, and no wheel loads. */
+function withCar(lap: LapChannelTrace): LapChannelTrace {
+  const flat = (value: number) => Array.from({ length: 51 }, () => value)
+  return { ...lap, car: { positionStep: 1 / 50, channels: { fuel: flat(40), brakeTempFL: flat(500), brakeTempFR: flat(510), brakeTempRL: flat(400), brakeTempRR: flat(410), rideHeightFL: flat(0.05) } } }
+}
+
+test('a chart of the four wheels: one line per corner in its colour, in the unit of the chart', () => {
+  const layout: LapLayout = { ...DEFAULT_LAP_LAYOUT, charts: ['brakeTemp', 'rideHeight', 'fuel'] }
+  const charts = buildLapCharts(layout, { trace: withCar(trace(false)), label: 'Lap 5' }, null)
+  assert.deepEqual(charts.panels.map((panel) => [panel.title, panel.unit]), [
+    ['Brake temperature', '°C'],
+    ['Ride height', 'mm'],
+    ['Fuel', 'L'],
+  ])
+  assert.deepEqual(charts.panels[0].series.map((line) => [line.name, line.tone, line.samples[0].y]), [
+    ['FL', 'fl', 500],
+    ['FR', 'fr', 510],
+    ['RL', 'rl', 400],
+    ['RR', 'rr', 410],
+  ])
+  // Metres on the wire, millimetres on the chart; a wheel the lap has no reading for draws no line.
+  assert.deepEqual(charts.panels[1].series.map((line) => [line.name, line.samples[0].y]), [['FL', 50]])
+})
+
+test('compared, a chart of the four wheels is a chart per wheel: this lap in the colour of its corner, the other grey and dashed', () => {
+  const layout: LapLayout = { ...DEFAULT_LAP_LAYOUT, charts: ['brakeTemp'] }
+  const charts = buildLapCharts(layout, { trace: withCar(trace(false)), label: 'Lap 5' }, { trace: withCar(trace(false)), label: 'Ada' })
+  assert.deepEqual(charts.panels.map((panel) => panel.title), [
+    'Time gained on Ada',
+    'Brake temperature · front left',
+    'Brake temperature · front right',
+    'Brake temperature · rear left',
+    'Brake temperature · rear right',
+  ])
+  assert.deepEqual(charts.owners.slice(1), ['brakeTemp', 'brakeTemp', 'brakeTemp', 'brakeTemp'])
+  assert.deepEqual(charts.panels[2].series.map((line) => [line.name, line.tone, line.stroke]), [
+    ['Lap 5', 'fr', 'solid'],
+    ['Ada', 'other', 'dashed'],
+  ])
+})
+
+test('what a lap did not record: its chart stays, empty, and Add chart can tell', () => {
+  const layout: LapLayout = { ...DEFAULT_LAP_LAYOUT, charts: ['wheelLoad', 'tyreTemp', 'energy'] }
+  const older = buildLapCharts(layout, { trace: trace(false), label: 'Lap 5' }, null)
+  assert.deepEqual(older.panels.map((panel) => [panel.title, panel.series.length]), [
+    ['Wheel load', 0],
+    ['Tyre temperature · middle', 0],
+    ['Battery & energy', 0],
+  ])
+  assert.equal(chartRecorded('brakeTemp', trace(false)), false)
+  assert.equal(chartRecorded('speed', trace(false)), true)
+  assert.equal(chartRecorded('brakeTemp', withCar(trace(false))), true)
+  assert.equal(chartRecorded('wheelLoad', withCar(trace(false))), false)
 })

@@ -550,12 +550,21 @@ app.MapPost("/api/commands", async (HttpRequest request) =>
 });
 
 // Focused endpoint (WEB_DESKTOP_CUTOVER item 2): a lap's channel trace can be a few hundred KB,
-// so it stays out of the frequently-polled /api/state and is fetched on demand instead. Without
-// the car's readings, which no page draws yet and which would be megabytes as JSON.
+// so it stays out of the frequently-polled /api/state and is fetched on demand instead. The
+// driving at the lap's own resolution; the car's readings beside it as `car`, thinned, because
+// whole they would be megabytes as JSON.
 app.MapGet("/api/analysis/trace/{sessionId}/{lapNumber:int}", (string sessionId, int lapNumber) =>
 {
     LapChannelTrace? trace = lapTraceStore.Load(LapTraceId.For(sessionId, lapNumber));
-    return trace is null ? Results.NotFound() : Results.Json(LapTraceCar.Without(trace), json);
+    if (trace is null)
+    {
+        return Results.NotFound();
+    }
+
+    LapChannelTrace driving = LapTraceCar.Without(trace);
+    return Results.Json(
+        new { driving.Version, driving.PositionStep, driving.TrackLengthMeters, driving.Channels, Car = LapTraceCar.Only(trace) },
+        json);
 });
 
 // Focused endpoints for the Setups pages: the game's setup folder is read on request (only the

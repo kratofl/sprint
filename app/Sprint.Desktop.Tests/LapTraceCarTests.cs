@@ -73,6 +73,27 @@ public sealed class LapTraceCarTests
         Assert.DoesNotContain(plain.Channels.Keys, LapTraceCar.Has);
     }
 
+    [Fact]
+    public void APageGetsTheCarsReadingsThinnedAcrossTheWholeLap()
+    {
+        LapChannelTrace? trace = LapChannelTrace.FromSamples(
+            Lap(position => new DamageState { Dents = position < 0.6 ? [0, 0, 0, 0, 0, 0, 0, 0] : [2, 0, 0, 0, 0, 0, 0, 0] }),
+            90.0,
+            5000.0);
+
+        Assert.NotNull(trace);
+        LapChannelTrace car = LapTraceCar.Only(trace, 500);
+
+        Assert.Contains("rpm", car.Channels.Keys);
+        Assert.All(car.Channels.Keys, name => Assert.True(LapTraceCar.Has(name)));
+        Assert.InRange(car.SampleCount, 251, 500);
+        // The coarser grid reads as the lap's own does, to its end.
+        Assert.Equal(trace.ValueAt("rpm", 0.5) ?? double.NaN, car.ValueAt("rpm", 0.5) ?? double.NaN, 5.0);
+        Assert.Equal(trace.ValueAt("fuel", 1.0) ?? double.NaN, car.ValueAt("fuel", 1.0) ?? double.NaN, 0.1);
+        // A state stays a recorded value.
+        Assert.Equal([0f, 2f], car.Channels["dent0"].Distinct());
+    }
+
     /// <summary>
     /// One synthetic lap sampled every 0.1 % of the track, the car's readings read off a frame as
     /// the recorder does: rpm 4000 -> 10000, fuel 50 -> 30 l, tyres 80 -> 90 °C, brakes 400 -> 450 °C.

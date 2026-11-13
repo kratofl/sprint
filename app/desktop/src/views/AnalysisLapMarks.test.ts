@@ -10,7 +10,7 @@ function trace(settings: Record<string, [number, number][]>): LapChannelTrace {
   for (const [channel, steps] of Object.entries(settings)) {
     channels[channel] = Array.from({ length: count }, (_, index) => steps.filter(([, from]) => from <= index).at(-1)?.[0] ?? steps[0][0])
   }
-  return { version: 1, positionStep: 1 / (count - 1), trackLengthMeters: 1000, channels }
+  return { version: 1, positionStep: 1 / (count - 1), trackLengthMeters: 1000, channels, car: null }
 }
 
 const note = (id: string, distanceMeters: number, mine = true): LapNote => ({ id, distanceMeters, text: 'Brake later', author: 'Ada', createdAt: '', mine })

@@ -34,9 +34,10 @@ against a real server.
 - A trace is written for every valid lap that passes the curve's completeness guards. Skipping is
   unrecoverable; writing is cheap.
 - A trace also carries the car's own readings (`LapTraceCar`: engine, fuel and energy, each wheel
-  corner, damage), about a hundred channels, which makes a lap megabytes instead of ~300 KB. Nothing
-  draws them yet, so every reader of the stored trace gets it through `LapTraceCar.Without`; a page
-  that wants them asks for the ones it draws, never for the whole trace as JSON.
+  corner, damage), about a hundred channels, which makes a lap megabytes instead of ~300 KB. What
+  compares or trains against a lap reads it through `LapTraceCar.Without`. Only the lap page draws
+  the car, and it is sent a thinned copy (`LapTraceCar.Only`, about a thousand samples a channel on
+  a coarser grid of its own) beside the driving: the whole trace as JSON would be megabytes a lap.
 - Traces are kept for good and nothing caps their size: Settings shows the total. Deleting by age is
   the driver's choice (`traceExpiryDays`, 0 by default). `LapTraceRetention` then protects the best N
   per (game, track, car), so a reference lap is never what gets deleted. Pruning clears the
@@ -115,6 +116,12 @@ from `worldX/Z` when the trace has it, and the driver arranges its charts; the a
 per-viewer preference in the renderer's local storage, not host state. Traces carry no corner names,
 so corners are found where smoothed speed dips by 25 km/h and are numbered from the start line
 (`AnalysisLapCharts.ts`).
+
+The car's readings are off the page until asked for: a card shows the whole car at the charts'
+cursor, and a chart of one joins the others from "Add chart" or by a click on its value on the car.
+A chart of the four wheels gives each corner one colour in every such chart (`--channel-fl` …);
+compared, it becomes a chart per wheel, because eight lines in one plot cannot be told apart. A
+chart a lap did not record stays on the page, empty: the arrangement is the same for every lap.
 
 Pins over the lap's charts mark where a car setting changed and where a note was left. The settings
 (TC, ABS, brake bias, motor map, migration, anti-roll bars) are step channels in the trace, written

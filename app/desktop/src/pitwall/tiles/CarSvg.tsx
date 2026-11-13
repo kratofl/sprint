@@ -1,4 +1,5 @@
 import { useId, type ReactNode } from 'react'
+import './CarSvg.css'
 
 // A top-down LMH prototype built from parts, nose up, 200 × 424. Each right-hand part is the
 // left one mirrored. Geometry ported from the mockup (`PARTS`, `car_svg` in

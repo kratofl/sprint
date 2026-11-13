@@ -38,7 +38,8 @@
 //                         clicks that far across the element instead of at its left edge (a place
 //                         along a chart)
 //   focus=<css selector>  after the clicks, focus the first match and point at it: what only focus or
-//                         hover shows (the hidden screenshot window never has focus, so it does both)
+//                         hover shows (the hidden screenshot window never has focus, so it does both);
+//                         `selector@0.46` points that far across it, e.g. a place along the lap charts
 //   training=on|arrange|none  On track: training (on), the HUD up to arrange (arrange), or no lap has
 //                         ever been recorded (none); default: laps listed, Ada's shared lap picked, HUD
 //                         off. chase=none picks no lap. fullscreen=1 adds the warning
@@ -369,8 +370,49 @@
           arbFront: steps([[3, 0]]),
           arbRear: steps([[2, 0]]),
         }
+    // What the car itself reported (LapTraceCar), on its own coarser grid, in the host's units:
+    // tyres warm under load and brakes under braking, the fronts more; the left front runs over
+    // a kerb at C3 and the car takes a light hit there. The Quali laps carry none (older).
+    const carCount = 500
+    const carAt = (values, index) => values[Math.round((index / (carCount - 1)) * (count - 1))]
+    const along = (read) => Array.from({ length: carCount }, (_, index) => read(index / (carCount - 1), index))
+    const heat = (start, gain, decay, rest, drive) => {
+      let current = start
+      return along((_, index) => (current += gain * drive(index) - decay * (current - rest)))
+    }
+    const car = {}
+    if (sessionId !== 'sample-spa-quali' && params.get('car') !== 'none') {
+      const braking = (index) => carAt(brake, index)
+      const cornering = (index) => Math.min(1, Math.abs(300 - carAt(speedKph, index)) / 150)
+      car.rpm = along((_, index) => 5200 + ((carAt(speedKph, index) % 44) / 44) * 3400)
+      car.fuel = along((x) => 62 - 3.1 * x)
+      car.virtualEnergy = along((x) => 0.74 - 0.031 * x)
+      for (const [corner, front, left] of [['FL', true, true], ['FR', true, false], ['RL', false, true], ['RR', false, false]]) {
+        const side = left ? 1.12 : 0.94
+        const middle = heat(front ? 88 : 84, 0.9 * side, 0.012, front ? 86 : 83, cornering)
+        car[`tyreTempMiddle${corner}`] = middle
+        car[`tyreTempInner${corner}`] = middle.map((value) => value + (front ? 7 : 4))
+        car[`tyreTempOuter${corner}`] = middle.map((value) => value - (left ? 3 : 8))
+        car[`tyreTempCore${corner}`] = along((x) => (front ? 96 : 92) + 2 * x)
+        car[`tyrePressure${corner}`] = middle.map((value) => (front ? 168 : 165) + (value - 86) * 0.22)
+        car[`tyreWear${corner}`] = along((x) => (front ? 96.4 : 97.8) - (front ? 0.5 : 0.3) * x)
+        car[`brakeTemp${corner}`] = heat(front ? 340 : 310, (front ? 34 : 20) * (left ? 1.08 : 1), 0.022, 280, braking)
+        car[`rideHeight${corner}`] = along((_, index) => (front ? 0.052 : 0.066) - 0.016 * (carAt(speedKph, index) / 300) ** 2)
+        car[`suspension${corner}`] = along((_, index) => 0.024 + 0.012 * (carAt(speedKph, index) / 300) ** 2 + (front ? 0.006 : -0.004) * braking(index))
+        car[`wheelLoad${corner}`] = along((_, index) => 2600 + 3400 * (carAt(speedKph, index) / 300) ** 2 + (front ? 1500 : -900) * braking(index))
+        car[`slipLong${corner}`] = along((_, index) => (front ? -1.6 : -0.4) * braking(index))
+        car[`slipLat${corner}`] = along((_, index) => (left ? 1.4 : 0.9) * cornering(index))
+        car[`surface${corner}`] = along((x) => (corner === 'FL' && x > 0.46 && x < 0.475 ? 6 : 1))
+        car[`flat${corner}`] = along(() => 0)
+        car[`detached${corner}`] = along(() => 0)
+      }
+      for (let place = 0; place < 8; place++) car[`dent${place}`] = along((x) => (place === 1 && x > 0.47 ? 1 : 0))
+      car.detachedParts = along(() => 0)
+      car.overheating = along(() => 0)
+    }
     return {
       version: 2, positionStep: step, trackLengthMeters: 6981.6,
+      car: { positionStep: 1 / (carCount - 1), channels: car },
       channels: {
         ...settings,
         speedKph,
@@ -763,8 +805,10 @@
 
   // Focuses the `focus=` selector once the clicks are done and it exists, for what only focus or
   // hover shows: a chart's tooltip, a row's ⋯ button.
-  const focusLater = (selector) => {
-    if (!selector) return
+  const focusLater = (step) => {
+    if (!step) return
+    const at = /^(.*)@(\d*\.?\d+)$/.exec(step)
+    const selector = at ? at[1] : step
     const started = Date.now()
     const timer = setInterval(() => {
       const element = document.querySelector(selector)
@@ -772,7 +816,10 @@
       clearInterval(timer)
       if (element instanceof HTMLElement) {
         element.focus()
-        element.dispatchEvent(new PointerEvent('pointerover', { bubbles: true }))
+        const box = element.getBoundingClientRect()
+        const where = { bubbles: true, clientX: box.left + box.width * (at ? Number(at[2]) : 0.5), clientY: box.top + box.height / 2 }
+        element.dispatchEvent(new PointerEvent('pointerover', where))
+        if (at) element.dispatchEvent(new PointerEvent('pointermove', where))
       } else console.warn(`[preview] nothing matches focus selector "${selector}"`)
     }, 20)
   }

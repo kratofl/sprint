@@ -52,6 +52,7 @@ const trace = (speed: number[], seconds: number[] | null): LapChannelTrace => ({
   positionStep: 0.1,
   trackLengthMeters: 7000,
   channels: seconds ? { speedKph: speed, elapsedSeconds: seconds } : { speedKph: speed },
+  car: null,
 })
 const SPEED = [250, 250, 200, 100, 200, 250, 250, 150, 250, 250, 250]
 

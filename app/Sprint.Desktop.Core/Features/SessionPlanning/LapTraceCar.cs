@@ -5,7 +5,8 @@ namespace Sprint.Desktop.Features.SessionPlanning;
 /// <summary>
 /// What the car itself reported through a lap, beside the driver's inputs: engine, fuel and
 /// energy, each wheel corner, and damage. Recorded for every lap because a lap that was not
-/// recorded cannot be recorded later; no page draws these yet.
+/// recorded cannot be recorded later. Analysis draws them on the lap page, from a thinned copy
+/// (<see cref="Only"/>).
 /// <para>
 /// Values keep the units of <see cref="TelemetryFrame"/>. A wheel channel is its name with the
 /// corner behind it: <c>tyreTempInnerFL</c>, <c>brakeTempRR</c>.
@@ -121,8 +122,50 @@ public static class LapTraceCar
     }
 
     /// <summary>
-    /// The trace without the car's readings: what the pages draw today. A whole lap of them is
-    /// several megabytes as JSON, so they stay on disk until a page asks for them.
+    /// The most samples of each of the car's readings a page is sent: about what a chart draws
+    /// across a lap.
+    /// </summary>
+    public const int PageSamples = 1024;
+
+    /// <summary>
+    /// The car's readings alone, thinned to at most <paramref name="maxSamples"/> a channel on a
+    /// coarser grid: every n-th point as it was recorded, so a state is never a blend. What a
+    /// page draws the car from; all of them at the lap's own resolution would be megabytes as JSON.
+    /// </summary>
+    public static LapChannelTrace Only(LapChannelTrace trace, int maxSamples = PageSamples)
+    {
+        ArgumentNullException.ThrowIfNull(trace);
+
+        int stride = Math.Max(1, (int)Math.Ceiling((trace.SampleCount - 1) / (double)(Math.Max(2, maxSamples) - 1)));
+        Dictionary<string, float[]> channels = new(StringComparer.Ordinal);
+        foreach ((string name, float[] values) in trace.Channels)
+        {
+            if (!Names.Contains(name))
+            {
+                continue;
+            }
+
+            float[] thinned = new float[((values.Length - 1) / stride) + 1];
+            for (int i = 0; i < thinned.Length; i++)
+            {
+                thinned[i] = values[i * stride];
+            }
+
+            channels[name] = thinned;
+        }
+
+        return new LapChannelTrace
+        {
+            Version = trace.Version,
+            PositionStep = trace.PositionStep * stride,
+            TrackLengthMeters = trace.TrackLengthMeters,
+            Channels = channels,
+        };
+    }
+
+    /// <summary>
+    /// The trace without the car's readings: the driving, at the lap's own resolution. What
+    /// compares, trains and draws a lap's line reads.
     /// </summary>
     public static LapChannelTrace Without(LapChannelTrace trace)
     {

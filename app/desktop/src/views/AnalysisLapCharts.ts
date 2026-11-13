@@ -1,6 +1,9 @@
+import { CORNERS, CORNER_NAMES, CORNER_TONES, WHEEL_SLIP, percentScale, withWheelSlip } from './AnalysisCar'
+import type { Corner } from './AnalysisCar'
 import { LAP_SAMPLE_COUNT, channelTone, traceValueAt } from './AnalysisDomain'
-import type { ChartInterpolation, ChartPanel, ChartSample, ChartSeries, LapChannelTrace, SeriesStroke } from './AnalysisDomain'
+import type { ChartInterpolation, ChartPanel, ChartSample, ChartSeries, LapChannelTrace, SeriesStroke, SeriesTone, TraceGrid } from './AnalysisDomain'
 import type { ChartMark } from './AnalysisChart'
+import { LAP_CHART_TITLES } from './AnalysisLapLayout'
 import type { LapChartId, LapLayout } from './AnalysisLapLayout'
 import { carSettingsChart } from './AnalysisLapMarks'
 import type { CarSettingsChart } from './AnalysisLapMarks'
@@ -13,6 +16,10 @@ import { timeGained } from './OnTrackLaps'
  * grey and dashed, the time gained leads, and throttle and brake always split so no chart carries
  * four lines. The Car settings chart is not lines but lanes of steps (`AnalysisLapMarks.ts`); its
  * panel carries no series, and the page draws it from `settings`.
+ * <p>
+ * What the car itself reported (`AnalysisCar.ts`) is one line, or one per wheel in that corner's
+ * colour; compared, a chart of the four wheels is a chart per wheel for the same reason the
+ * pedals split.
  */
 
 /** A panel of the lap page and the chart it belongs to (`delta`, the time gained, is not the driver's to remove). */
@@ -33,7 +40,8 @@ export type ComparedLap = { trace: LapChannelTrace; label: string }
 export const THROTTLE_APPLIED = 'throttleApplied'
 export const BRAKE_APPLIED = 'brakeApplied'
 
-const HEIGHT: Record<Exclude<LapPanelOf, 'settings'>, number> = { delta: 96, speed: 128, pedals: 112, steering: 96, gear: 88 }
+/** `car` is a single reading of the car, `wheels` the four wheels in one chart, `wheel` one of them when comparing. */
+const HEIGHT = { delta: 96, speed: 128, pedals: 112, steering: 96, gear: 88, car: 96, wheels: 120, wheel: 88 }
 const SPLIT_HEIGHT = 88
 
 /** A Car settings lane: its name over one bar, or over two (yours, then the other lap's) when compared. */
@@ -50,8 +58,9 @@ export const hasAppliedPedals = (trace: LapChannelTrace): boolean => THROTTLE_AP
  * A channel sampled along the lap. Gear holds its last gear through the neutral blip of every
  * shift: the raw channel drops to 0 between gears, which no driver would read as a gear.
  */
-function sampled(trace: LapChannelTrace, channel: string, scale: number): ChartSample[] {
+function sampled(trace: TraceGrid, channel: string, scale: Line['scale']): ChartSample[] {
   if (!(channel in trace.channels)) return []
+  const factor = scale === 'percent' ? percentScale(trace.channels[channel]) : scale
   const step = 1 / (LAP_SAMPLE_COUNT - 1)
   const samples: ChartSample[] = []
   let lastGear: number | null = null
@@ -66,21 +75,23 @@ function sampled(trace: LapChannelTrace, channel: string, scale: number): ChartS
       continue
     }
     const raw = traceValueAt(trace, channel, x)
-    if (raw !== null) samples.push({ x, y: raw * scale })
+    if (raw !== null) samples.push({ x, y: raw * factor })
   }
   return samples
 }
 
-type Line = { channel: string; scale: number; name: string; stroke: SeriesStroke; fill?: boolean; interpolation?: ChartInterpolation }
+/** A line to draw: `scale` turns the channel into the chart's unit, `percent` whichever way the car reports a share. */
+type Line = { channel: string; scale: number | 'percent'; name: string; stroke: SeriesStroke; fill?: boolean; interpolation?: ChartInterpolation; tone?: SeriesTone }
 
-function series(trace: LapChannelTrace, line: Line, other: boolean): ChartSeries {
+/** A line off a grid; no samples when the lap has no such grid (the car's, on an older lap) or channel. */
+function series(trace: TraceGrid | null, line: Line, other: boolean): ChartSeries {
   return {
     name: line.name,
-    samples: sampled(trace, line.channel, line.scale),
+    samples: trace ? sampled(trace, line.channel, line.scale) : [],
     interpolation: line.interpolation ?? 'Linear',
     role: other ? 'Comparison' : 'Current',
     fillArea: line.fill === true,
-    tone: other ? 'other' : channelTone(line.channel),
+    tone: other ? 'other' : (line.tone ?? channelTone(line.channel)),
     stroke: line.stroke,
   }
 }
@@ -92,6 +103,50 @@ const THROTTLE_GOT: Line = { channel: THROTTLE_APPLIED, scale: 100, name: 'Throt
 const BRAKE_GOT: Line = { channel: BRAKE_APPLIED, scale: 100, name: 'Brake the car got', stroke: 'dotted' }
 const STEERING: Line = { channel: 'steering', scale: 100, name: 'Steering', stroke: 'solid' }
 const GEAR: Line = { channel: 'gear', scale: 1, name: 'Gear', stroke: 'solid', interpolation: 'Stepped' }
+
+const RPM: Line = { channel: 'rpm', scale: 1, name: 'RPM', stroke: 'solid' }
+const FUEL: Line = { channel: 'fuel', scale: 1, name: 'Fuel', stroke: 'solid' }
+const VIRTUAL_ENERGY: Line = { channel: 'virtualEnergy', scale: 'percent', name: 'Virtual energy', stroke: 'solid' }
+const BATTERY: Line = { channel: 'battery', scale: 'percent', name: 'Battery', stroke: 'solid' }
+
+type WheelChartId = Exclude<LapChartId, 'speed' | 'pedals' | 'steering' | 'gear' | 'settings' | 'rpm' | 'fuel' | 'energy'>
+
+/** A chart of the four wheels: the channel each corner's name goes behind, and what turns it into the unit. */
+const WHEEL_CHARTS: Record<WheelChartId, { channel: string; unit: string; scale: number }> = {
+  // Which temperature is the layout's choice (`tyreBand`): the channel named here is completed from it.
+  tyreTemp: { channel: 'tyreTemp', unit: '°C', scale: 1 },
+  tyrePressure: { channel: 'tyrePressure', unit: 'kPa', scale: 1 },
+  // The game reports wear as the tread that is left.
+  tyreWear: { channel: 'tyreWear', unit: '% tread', scale: 1 },
+  brakeTemp: { channel: 'brakeTemp', unit: '°C', scale: 1 },
+  rideHeight: { channel: 'rideHeight', unit: 'mm', scale: 1000 },
+  suspension: { channel: 'suspension', unit: 'mm', scale: 1000 },
+  wheelLoad: { channel: 'wheelLoad', unit: 'kN', scale: 0.001 },
+  wheelSlip: { channel: WHEEL_SLIP, unit: 'm/s', scale: 1 },
+}
+
+// One channel that is there whenever the lap recorded what the chart draws.
+const CAR_CHART_CHANNELS: Partial<Record<LapChartId, readonly string[]>> = {
+  rpm: ['rpm'],
+  fuel: ['fuel'],
+  energy: ['virtualEnergy', 'battery'],
+  tyreTemp: ['tyreTempMiddleFL'],
+  tyrePressure: ['tyrePressureFL'],
+  tyreWear: ['tyreWearFL'],
+  brakeTemp: ['brakeTempFL'],
+  rideHeight: ['rideHeightFL'],
+  suspension: ['suspensionFL'],
+  wheelLoad: ['wheelLoadFL'],
+  wheelSlip: ['slipLongFL'],
+}
+
+/** Whether the lap recorded what a chart draws: an older lap, or another game, lacks some of the car's readings. */
+export function chartRecorded(id: LapChartId, trace: LapChannelTrace): boolean {
+  const channels = CAR_CHART_CHANNELS[id]
+  if (!channels) return true
+  const car = trace.car
+  return car !== null && channels.some((channel) => channel in car.channels)
+}
 
 const NOT_RECORDED = 'ABS & TC not recorded for this lap'
 
@@ -107,11 +162,13 @@ export function buildLapCharts(layout: LapLayout, lap: ComparedLap, compared: Co
   const mine = (line: Line): Line => (compared ? { ...line, name: lap.label } : line)
   const theirs = (line: Line): Line => ({ ...line, name: compared?.label ?? line.name, stroke: 'dashed', fill: false })
   // A channel a lap never recorded (what the car got, on an older lap) draws no line.
-  const lines = (lineSpecs: readonly Line[], otherLine: Line | null): ChartSeries[] =>
-    [
-      ...lineSpecs.map((line) => series(lap.trace, mine(line), false)),
-      ...(compared && otherLine ? [series(compared.trace, theirs(otherLine), true)] : []),
-    ].filter((line) => line.samples.length > 0)
+  const drawn =
+    (from: TraceGrid | null, otherFrom: TraceGrid | null) =>
+    (lineSpecs: readonly Line[], otherLine: Line | null): ChartSeries[] =>
+      [...lineSpecs.map((line) => series(from, mine(line), false)), ...(compared && otherLine ? [series(otherFrom, theirs(otherLine), true)] : [])].filter((line) => line.samples.length > 0)
+  const lines = drawn(lap.trace, compared?.trace ?? null)
+  const carOf = (trace: LapChannelTrace | undefined): TraceGrid | null => (trace?.car ? withWheelSlip(trace.car) : null)
+  const carLines = drawn(carOf(lap.trace), carOf(compared?.trace))
 
   if (compared) {
     const gained = timeGained(lap.trace, compared.trace)
@@ -161,6 +218,32 @@ export function buildLapCharts(layout: LapLayout, lap: ComparedLap, compared: Co
           push('pedals', { title: 'Throttle & brake', unit: '%', series: lines(pedalLines, null) }, HEIGHT.pedals, appliedNote)
         }
         break
+      case 'rpm':
+        push('rpm', { title: 'RPM', unit: null, series: carLines([RPM], RPM) }, HEIGHT.car)
+        break
+      case 'fuel':
+        push('fuel', { title: 'Fuel', unit: 'L', series: carLines([FUEL], FUEL) }, HEIGHT.car)
+        break
+      case 'energy': {
+        // Two shares of different things: a chart each, for whichever the car has.
+        const shares = [VIRTUAL_ENERGY, BATTERY].map((line) => ({ title: line.name, series: carLines([line], line) })).filter((share) => share.series.length > 0)
+        if (shares.length === 0) push('energy', { title: LAP_CHART_TITLES.energy, unit: '%', series: [] }, HEIGHT.car)
+        for (const share of shares) push('energy', { title: share.title, unit: '%', series: share.series }, HEIGHT.car)
+        break
+      }
+      default: {
+        const spec = WHEEL_CHARTS[chart]
+        const channel = chart === 'tyreTemp' ? spec.channel + layout.tyreBand : spec.channel
+        const title = chart === 'tyreTemp' ? `${LAP_CHART_TITLES.tyreTemp} · ${layout.tyreBand.toLowerCase()}` : LAP_CHART_TITLES[chart]
+        const wheel = (corner: Corner): Line => ({ channel: channel + corner, scale: spec.scale, name: corner, stroke: 'solid', tone: CORNER_TONES[corner] })
+        if (compared) {
+          for (const corner of CORNERS) {
+            push(chart, { title: `${title} · ${CORNER_NAMES[corner].toLowerCase()}`, unit: spec.unit, series: carLines([wheel(corner)], wheel(corner)) }, HEIGHT.wheel)
+          }
+        } else {
+          push(chart, { title, unit: spec.unit, series: carLines(CORNERS.map(wheel), null) }, HEIGHT.wheels)
+        }
+      }
     }
   }
 

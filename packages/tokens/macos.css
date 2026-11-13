@@ -76,6 +76,8 @@
   /* Telemetry channels: the same steps as desktop.css (shared scales) */
   --channel-speed: var(--blue-500); --channel-throttle: var(--green-500); --channel-brake: var(--red-700);
   --channel-steering: var(--yellow-700); --channel-gear: var(--label-secondary); --channel-other: var(--label-tertiary);
+  /* A wheel's line in a chart of the four: one colour per corner of the car. */
+  --channel-fl: var(--blue-500); --channel-fr: var(--yellow-700); --channel-rl: var(--purple-700); --channel-rr: var(--green-500);
   --focus-ring: rgba(255, 106, 0, 0.5);  /* brand-500 at 50% */
   color-scheme: light;
 
@@ -152,6 +154,7 @@
   --avatar-text: #d9d3ff;
   --channel-speed: var(--blue-500); --channel-throttle: var(--green-300); --channel-brake: var(--red-500);
   --channel-steering: var(--yellow-500); --channel-gear: var(--label-secondary); --channel-other: var(--label-tertiary);
+  --channel-fl: var(--blue-500); --channel-fr: var(--yellow-300); --channel-rl: var(--purple-300); --channel-rr: var(--green-500);
   --focus-ring: rgba(255, 106, 0, 0.6);
   color-scheme: dark;
 }
@@ -178,6 +181,7 @@
     --avatar-bg: #3a3366; --avatar-text: #d9d3ff; --focus-ring: rgba(255, 106, 0, 0.6);
     --channel-speed: var(--blue-500); --channel-throttle: var(--green-300); --channel-brake: var(--red-500);
     --channel-steering: var(--yellow-500); --channel-gear: var(--label-secondary); --channel-other: var(--label-tertiary);
+    --channel-fl: var(--blue-500); --channel-fr: var(--yellow-300); --channel-rl: var(--purple-300); --channel-rr: var(--green-500);
     color-scheme: dark;
   }
 }

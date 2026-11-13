@@ -1,13 +1,17 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Check, ChevronDown, ChevronLeft, Crosshair, GitCompareArrows, MoreHorizontal, Plus, X } from 'lucide-react'
 import type { SprintCommand } from '../bridge'
+import { tyreHeat } from '../pitwall/carDomain'
+import { CarSvg } from '../pitwall/tiles/CarSvg'
+import { CORNER_NAMES, carHere } from './AnalysisCar'
+import type { CornerHere } from './AnalysisCar'
 import { buildAddLapNote, buildDeleteLapNote, buildUpdateLapNote, carLine, formatGap, formatLapSeconds, fuelText, tyreText } from './AnalysisDomain'
-import type { CorpusLap, CorpusRun, CorpusSession, LapChannelTrace, LapNote } from './AnalysisDomain'
+import type { CorpusLap, CorpusRun, CorpusSession, LapChannelTrace, LapNote, TraceGrid } from './AnalysisDomain'
 import { LapTraceChartStack, LineKey } from './AnalysisChart'
 import type { ChartMark } from './AnalysisChart'
-import { buildLapCharts, lapCorners, verdict } from './AnalysisLapCharts'
+import { buildLapCharts, chartRecorded, lapCorners, verdict } from './AnalysisLapCharts'
 import type { LapPanelOf } from './AnalysisLapCharts'
-import { LAP_CHART_TITLES, addChart, hiddenCharts, moveChart, removeChart, storedLapLayout } from './AnalysisLapLayout'
+import { LAP_CHART_GROUPS, LAP_CHART_TITLES, TYRE_BANDS, moveChart, removeChart, storedLapLayout, toggleChart } from './AnalysisLapLayout'
 import type { LapChartId, LapLayout } from './AnalysisLapLayout'
 import { lapMeters, lapPins, placeLabel, settingChanges } from './AnalysisLapMarks'
 import { CarSettingsLanes, NoteBubble, NoteEditor, PinRows, pinLines, pinRowsHeight, popoverLeft } from './AnalysisLapPins'
@@ -19,8 +23,9 @@ import { sameLap } from './OnTrackLaps'
 import { useLapTrace } from './useLapTrace'
 
 /**
- * Analysis's third page: one lap, on its own. Where it went on the track (the map) beside its
- * channels, each chart arranged by the driver (its ⋯ menu, "Add chart"). Comparing is a choice:
+ * Analysis's third page: one lap, on its own. Where it went on the track (the map) and the car
+ * at the charts' cursor (tyres, brakes, fuel, damage) beside its channels, each chart arranged by
+ * the driver (its ⋯ menu, "Add chart", a click on one of the car's values). Comparing is a choice:
  * "Compare with…" picks another lap with this car on this track — yours first, then shared ones —
  * and it joins every chart grey and dashed until "Stop comparing". Pins over the charts mark where
  * a car setting changed or a note was left (both laps' when comparing); a click on the charts
@@ -279,7 +284,7 @@ function ComparePicker({
   )
 }
 
-/** The map beside the charts, or the charts alone when the map is off (or the lap has no positions). */
+/** The map and the car beside the charts, or the charts alone when both are off. */
 function LapBody({
   lap,
   onNote,
@@ -305,12 +310,20 @@ function LapBody({
   cursor: number | null
   onCursor: (position: number | null) => void
 }) {
+  // The car card keeps showing the last place the cursor was once the pointer leaves the charts.
+  const [here, setHere] = useState(0)
   const marks = lapCorners(trace)
   const hasMap = 'worldX' in trace.channels && 'worldZ' in trace.channels
   const showMap = layout.map && hasMap
+  const carAt = cursor ?? here
   return (
-    <div className={showMap ? 'analysis-lap-body with-map' : 'analysis-lap-body'}>
-      {showMap && <TrackMapCard trace={trace} marks={marks} cursor={cursor} onRemove={() => onLayout({ ...layout, map: false })} />}
+    <div className={showMap || layout.car ? 'analysis-lap-body with-side' : 'analysis-lap-body'}>
+      {(showMap || layout.car) && (
+        <div className="analysis-lap-side">
+          {showMap && <TrackMapCard trace={trace} marks={marks} cursor={cursor} onRemove={() => onLayout({ ...layout, map: false })} />}
+          {layout.car && <CarCard car={trace.car} position={carAt} place={placeLabel(carAt, lapMeters(trace, lap), marks)} layout={layout} onLayout={onLayout} />}
+        </div>
+      )}
       <TelemetryCard
         lap={lap}
         onNote={onNote}
@@ -322,8 +335,11 @@ function LapBody({
         marks={marks}
         layout={layout}
         onLayout={onLayout}
-        canAddMap={!layout.map && hasMap}
-        onCursor={onCursor}
+        hasMap={hasMap}
+        onCursor={(position) => {
+          onCursor(position)
+          if (position !== null) setHere(position)
+        }}
       />
     </div>
   )
@@ -414,6 +430,133 @@ function TrackMapCard({ trace, marks, cursor, onRemove }: { trace: LapChannelTra
   )
 }
 
+// The car drawing's own units (`CarSvg`, 200 wide): each tyre drawn large beside its corner.
+const TYRE = { width: 68, height: 96, band: 20, gap: 2, left: -62, right: 194, front: 44, rear: 288 }
+
+/** A tyre across its tread in the pit wall's heat colours, the inner side facing the car; under it, what stands out about the wheel. */
+function TyreBands({ corner }: { corner: CornerHere }) {
+  const left = corner.corner.endsWith('L')
+  const x = left ? TYRE.left : TYRE.right
+  const y = corner.corner.startsWith('F') ? TYRE.front : TYRE.rear
+  const across = left ? [corner.outer, corner.middle, corner.inner] : [corner.inner, corner.middle, corner.outer]
+  return (
+    <g>
+      <rect x={x} y={y - 2} width={TYRE.width} height={TYRE.height + 4} rx={9} className="analysis-car-tyre" />
+      {across.map((celsius, index) => (
+        <rect
+          key={index}
+          x={x + TYRE.gap + index * (TYRE.band + TYRE.gap)}
+          y={y}
+          width={TYRE.band}
+          height={TYRE.height}
+          rx={index === 1 ? 0 : 7}
+          className={celsius === null ? 'analysis-heat none' : `analysis-heat ${tyreHeat(celsius)}`}
+        />
+      ))}
+      {corner.state && (
+        <text x={x + TYRE.width / 2} y={y + TYRE.height + 26} textAnchor="middle" className="analysis-car-state">
+          {corner.state}
+        </text>
+      )}
+    </g>
+  )
+}
+
+const HEAT_KEYS = [
+  ['cold', 'Cold'],
+  ['ok', 'In window'],
+  ['warm', 'Warm'],
+  ['hot', 'Hot'],
+] as const
+
+const whole = (value: number | null): string => (value === null ? '—' : String(Math.round(value)))
+
+/**
+ * The whole car at one place on the lap: each tyre across its tread, its pressure, brake and
+ * tread, then the engine, the fuel, the ride height and the damage. It follows the charts' cursor.
+ * A click on a value puts its chart on the page, a second one takes it off again.
+ */
+function CarCard({ car, position, place, layout, onLayout }: { car: TraceGrid | null; position: number; place: string; layout: LapLayout; onLayout: (layout: LapLayout) => void }) {
+  const value = (chart: LapChartId, text: string, label: string) => {
+    const on = layout.charts.includes(chart)
+    return (
+      <button
+        type="button"
+        className="analysis-car-value tabular"
+        aria-pressed={on}
+        aria-label={label}
+        title={on ? `Remove the ${LAP_CHART_TITLES[chart]} chart` : `Show ${LAP_CHART_TITLES[chart]} as a chart`}
+        onClick={() => onLayout(toggleChart(layout, chart))}
+      >
+        {text}
+      </button>
+    )
+  }
+  const reading = car ? carHere(car, position) : null
+
+  return (
+    <section className="card analysis-car-card" aria-label="The car here">
+      <div className="card-header">
+        <h2 className="card-title">The car here</h2>
+        <div className="analysis-car-head">
+          {reading && <span className="analysis-secondary tabular">{place}</span>}
+          <WidgetMenu label="The car" removeLabel="Remove car" onRemove={() => onLayout({ ...layout, car: false })} />
+        </div>
+      </div>
+      {reading === null ? (
+        <p className="muted analysis-chart-empty">Not recorded for this lap. Laps driven from now on keep what the car reports.</p>
+      ) : (
+        <>
+          <div className="analysis-car">
+            {reading.corners.map((corner) => {
+              const name = CORNER_NAMES[corner.corner]
+              const left = corner.corner.endsWith('L')
+              const across = left ? [corner.outer, corner.middle, corner.inner] : [corner.inner, corner.middle, corner.outer]
+              return (
+                <div key={corner.corner} className={`analysis-car-corner ${corner.corner.toLowerCase()}`}>
+                  <span className="analysis-car-name">{name}</span>
+                  {value(
+                    'tyreTemp',
+                    `${across.map(whole).join(' ')}°`,
+                    `${name} tyre across the tread, ${left ? 'outside to inside' : 'inside to outside'}: ${across.map(whole).join(', ')} degrees`,
+                  )}
+                  {value('tyrePressure', `${whole(corner.pressureKPa)} kPa`, `${name} tyre pressure: ${whole(corner.pressureKPa)} kilopascal`)}
+                  {value('brakeTemp', `${whole(corner.brakeCelsius)}° brake`, `${name} brake: ${whole(corner.brakeCelsius)} degrees`)}
+                  {value('tyreWear', `${whole(corner.treadPercent)}% tread`, `${name} tyre: ${whole(corner.treadPercent)} per cent tread left`)}
+                </div>
+              )
+            })}
+            <div className="analysis-car-drawing">
+              <CarSvg
+                label="The car from above, nose up"
+                wheelClass={{ fl: 'analysis-car-wheel', fr: 'analysis-car-wheel', rl: 'analysis-car-wheel', rr: 'analysis-car-wheel' }}
+                extra={reading.corners.map((corner) => (
+                  <TyreBands key={corner.corner} corner={corner} />
+                ))}
+              />
+            </div>
+          </div>
+          <div className="analysis-car-keys">
+            {HEAT_KEYS.map(([heat, name]) => (
+              <span key={heat} className="analysis-chart-legend-item">
+                <span className={`analysis-heat-key analysis-heat ${heat}`} aria-hidden="true" /> {name}
+              </span>
+            ))}
+          </div>
+          <div className="analysis-car-facts">
+            {reading.facts.map((fact) => (
+              <div key={fact.label} className="analysis-car-fact">
+                <span className="analysis-car-name">{fact.label}</span>
+                {fact.chart ? value(fact.chart, fact.text, `${fact.label}: ${fact.text}`) : <span className="analysis-car-still tabular">{fact.text}</span>}
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </section>
+  )
+}
+
 /** An open layer over the charts: a note being written, one being read, or one being rewritten. */
 type NoteLayer =
   | { kind: 'new'; position: number }
@@ -421,7 +564,7 @@ type NoteLayer =
   | { kind: 'edit'; note: LapNote; lap: CorpusLap; position: number }
 
 /**
- * The charts, each with its ⋯ menu, and "Add chart" for what was removed. Over them, a row of pins
+ * The charts, each with its ⋯ menu, and "Add chart" for every other one. Over them, a row of pins
  * per lap; a click on the charts (or Enter at the keyboard cursor) writes a note there.
  */
 function TelemetryCard({
@@ -435,7 +578,7 @@ function TelemetryCard({
   marks,
   layout,
   onLayout,
-  canAddMap,
+  hasMap,
   onCursor,
 }: {
   lap: CorpusLap
@@ -448,13 +591,18 @@ function TelemetryCard({
   marks: readonly ChartMark[]
   layout: LapLayout
   onLayout: (layout: LapLayout) => void
-  canAddMap: boolean
+  hasMap: boolean
   onCursor: (position: number | null) => void
 }) {
   const [layer, setLayer] = useState<NoteLayer | null>(null)
   const compared = compareWith && otherTrace && otherLabel ? { lap: compareWith, trace: otherTrace, label: otherLabel } : null
-  const charts = buildLapCharts(layout, { trace, label: lapLabel }, compared ? { trace: compared.trace, label: compared.label } : null)
-  const hidden = hiddenCharts(layout)
+  const comparedTrace = compared?.trace ?? null
+  const comparedLabel = compared?.label ?? null
+  // The page draws again whenever the cursor moves; the charts change only with what they draw.
+  const charts = useMemo(
+    () => buildLapCharts(layout, { trace, label: lapLabel }, comparedTrace && comparedLabel !== null ? { trace: comparedTrace, label: comparedLabel } : null),
+    [layout, trace, lapLabel, comparedTrace, comparedLabel],
+  )
   const meters = lapMeters(trace, lap)
   const placeOf = (position: number) => placeLabel(position, meters, marks)
 
@@ -557,7 +705,7 @@ function TelemetryCard({
       ) : (
         <p className="muted analysis-chart-empty">No charts shown. Add one below.</p>
       )}
-      {(hidden.length > 0 || canAddMap) && <AddChartButton hidden={hidden} canAddMap={canAddMap} layout={layout} onLayout={onLayout} />}
+      <AddChartButton trace={trace} hasMap={hasMap} layout={layout} onLayout={onLayout} />
     </section>
   )
 }
@@ -576,7 +724,7 @@ function useMenu(width: number) {
   return { menuAt, button, close, open }
 }
 
-/** A chart's ⋯: together or separate and what the car got (the pedals), move, remove. */
+/** A chart's ⋯: together or separate and what the car got (the pedals), which temperature (the tyres), move, remove. */
 function ChartMenu({ id, layout, onLayout, comparing }: { id: LapChartId; layout: LapLayout; onLayout: (layout: LapLayout) => void; comparing: boolean }) {
   const menu = useMenu(MENU_WIDTH)
   const index = layout.charts.indexOf(id)
@@ -614,7 +762,19 @@ function ChartMenu({ id, layout, onLayout, comparing }: { id: LapChartId; layout
               </button>
             </>
           )}
-          <button type="button" role="menuitem" className={id === 'pedals' ? 'menu-item analysis-menu-split' : 'menu-item'} disabled={index <= 0} onClick={() => act(moveChart(layout, id, -1))}>
+          {id === 'tyreTemp' &&
+            TYRE_BANDS.map((band) => (
+              <button key={band} type="button" role="menuitemradio" aria-checked={layout.tyreBand === band} className="menu-item" onClick={() => act({ ...layout, tyreBand: band })}>
+                {check(layout.tyreBand === band)} {band === 'Core' ? 'Core' : `${band} of the tread`}
+              </button>
+            ))}
+          <button
+            type="button"
+            role="menuitem"
+            className={id === 'pedals' || id === 'tyreTemp' ? 'menu-item analysis-menu-split' : 'menu-item'}
+            disabled={index <= 0}
+            onClick={() => act(moveChart(layout, id, -1))}
+          >
             {check(false)} Move up
           </button>
           <button type="button" role="menuitem" className="menu-item" disabled={index < 0 || index >= layout.charts.length - 1} onClick={() => act(moveChart(layout, id, 1))}>
@@ -629,7 +789,7 @@ function ChartMenu({ id, layout, onLayout, comparing }: { id: LapChartId; layout
   )
 }
 
-/** The map's ⋯: only removing it (it always sits beside the charts). */
+/** The ⋯ of a card beside the charts (the map, the car): only removing it. */
 function WidgetMenu({ label, removeLabel, onRemove }: { label: string; removeLabel: string; onRemove: () => void }) {
   const menu = useMenu(MENU_WIDTH)
   return (
@@ -664,18 +824,37 @@ function WidgetMenu({ label, removeLabel, onRemove }: { label: string; removeLab
   )
 }
 
-/** "Add chart": the removed charts, and the map when it was removed. */
-function AddChartButton({ hidden, canAddMap, layout, onLayout }: { hidden: readonly LapChartId[]; canAddMap: boolean; layout: LapLayout; onLayout: (layout: LapLayout) => void }) {
+const ADD_MENU = { width: 720, height: 236 }
+// The menu's four columns, by group of `LAP_CHART_GROUPS`: Driving · Engine & fuel, Brakes · Tyres, Beside the charts · Chassis, Grip.
+const ADD_COLUMNS: Record<string, number> = { Driving: 1, 'Engine & fuel': 2, Brakes: 2, Tyres: 3, Chassis: 4, Grip: 4 }
+
+/**
+ * "Add chart": every chart by part of the car, each with a tick while it is on the page (a tick
+ * adds it under the others, a second one takes it off), and the two cards beside the charts. A
+ * chart this lap did not record cannot be added from it. The menu stays open, to tick several.
+ */
+function AddChartButton({ trace, hasMap, layout, onLayout }: { trace: LapChannelTrace; hasMap: boolean; layout: LapLayout; onLayout: (layout: LapLayout) => void }) {
   const [menuAt, setMenuAt] = useState<MenuAnchor | null>(null)
   const button = useRef<HTMLButtonElement | null>(null)
   const close = () => {
     setMenuAt(null)
     button.current?.focus()
   }
-  const act = (next: LapLayout) => {
-    close()
-    onLayout(next)
-  }
+  const check = (on: boolean) => <Check size={14} className={on ? undefined : 'analysis-menu-check-off'} />
+  const item = (key: string, name: string, on: boolean, available: boolean, why: string, toggle: () => void) => (
+    <button key={key} type="button" role="menuitemcheckbox" aria-checked={on} className="menu-item" disabled={!on && !available} title={!on && !available ? why : undefined} onClick={toggle}>
+      {check(on)} {name}
+    </button>
+  )
+  // A group starts its column, or follows another group in it under a rule.
+  const head = (title: string, starts: boolean) => (
+    <div key={title} className={starts ? 'analysis-pick-head analysis-add-head starts' : 'analysis-pick-head analysis-add-head'}>
+      {title}
+    </div>
+  )
+  // In the order of the columns: the menu flows down one and on to the next, and so do the arrow keys.
+  const groups = [...LAP_CHART_GROUPS].sort((a, b) => (ADD_COLUMNS[a.title] ?? 1) - (ADD_COLUMNS[b.title] ?? 1))
+  const startsColumn = (title: string) => groups.find((group) => ADD_COLUMNS[group.title] === ADD_COLUMNS[title])?.title === title
 
   return (
     <div className="analysis-add-chart">
@@ -687,23 +866,28 @@ function AddChartButton({ hidden, canAddMap, layout, onLayout }: { hidden: reado
         aria-expanded={menuAt !== null}
         onClick={(event) => {
           const box = event.currentTarget.getBoundingClientRect()
-          setMenuAt({ x: box.left, y: box.bottom + 4 })
+          // Under the button, or over it when the page ends right below.
+          setMenuAt({ x: box.left, y: window.innerHeight - box.bottom < ADD_MENU.height + 12 ? Math.max(8, box.top - ADD_MENU.height - 4) : box.bottom + 4 })
         }}
       >
         <Plus /> Add chart
       </button>
       {menuAt && (
-        <MenuLayer anchor={menuAt} label="Add chart" width={MENU_WIDTH} onClose={close}>
-          {hidden.map((id) => (
-            <button key={id} type="button" role="menuitem" className="menu-item" onClick={() => act(addChart(layout, id))}>
-              {LAP_CHART_TITLES[id]}
-            </button>
-          ))}
-          {canAddMap && (
-            <button type="button" role="menuitem" className="menu-item" onClick={() => act({ ...layout, map: true })}>
-              Track map
-            </button>
-          )}
+        <MenuLayer anchor={menuAt} label="Add chart" width={ADD_MENU.width} onClose={close}>
+          {groups.flatMap((group) => [
+            head(group.title, startsColumn(group.title)),
+            ...group.charts.map((chart) =>
+              item(chart.id, chart.name, layout.charts.includes(chart.id), chartRecorded(chart.id, trace), 'Not recorded for this lap', () => onLayout(toggleChart(layout, chart.id))),
+            ),
+            // The two cards beside the charts close the Tyres column.
+            ...(group.title === 'Tyres'
+              ? [
+                  head('Beside the charts', false),
+                  item('map', 'Track map', layout.map && hasMap, hasMap, 'This lap has no positions to draw', () => onLayout({ ...layout, map: !layout.map })),
+                  item('car', 'The car', layout.car, true, '', () => onLayout({ ...layout, car: !layout.car })),
+                ]
+              : []),
+          ])}
         </MenuLayer>
       )}
     </div>

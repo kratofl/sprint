@@ -491,7 +491,7 @@
   font: 600 20px/26px var(--font-display);
 }
 
-/* The map beside the charts; the charts alone take the full width. */
+/* The map and the car beside the charts; the charts alone take the full width. */
 .analysis-lap-body {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -499,17 +499,32 @@
   align-items: start;
 }
 
-.analysis-lap-body.with-map {
-  grid-template-columns: minmax(280px, 380px) minmax(0, 1fr);
+.analysis-lap-body.with-side {
+  grid-template-columns: minmax(340px, 380px) minmax(0, 1fr);
+}
+
+/* Stays in view while the charts scroll: both follow the charts' cursor. */
+.analysis-lap-side {
+  position: sticky;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
 }
 
 @media (max-width: 900px) {
-  .analysis-lap-body.with-map {
+  .analysis-lap-body.with-side {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .analysis-lap-side {
+    position: static;
   }
 }
 
 .analysis-map-card,
+.analysis-car-card,
 .analysis-telemetry-card {
   display: flex;
   flex-direction: column;
@@ -517,15 +532,176 @@
   min-width: 0;
 }
 
-.analysis-map-card {
-  position: sticky;
-  top: 0;
-}
-
 .analysis-map-svg {
   display: block;
   width: 100%;
   max-height: 460px;
+}
+
+/* With the car under it the map gives way, so both fit a window's height. */
+.analysis-lap-side:has(.analysis-car-card) .analysis-map-svg {
+  max-height: 260px;
+}
+
+/* The car at the cursor: a column of readings either side of the drawing, fronts on top. */
+.analysis-car-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.analysis-car {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  gap: 14px 8px;
+  align-items: start;
+}
+
+/* The tyres are drawn outside the car's own box, so the drawing keeps their width free either side. */
+.analysis-car-drawing {
+  grid-area: 1 / 2 / 3 / 3;
+  align-self: center;
+  width: 92px;
+  margin: 0 30px;
+}
+
+.analysis-car-drawing .pw-carsvg {
+  overflow: visible;
+}
+
+.analysis-car-wheel {
+  display: none;
+}
+
+.analysis-car-tyre {
+  fill: var(--surface);
+  stroke: var(--label-tertiary);
+  stroke-width: 2;
+}
+
+.analysis-car-state {
+  fill: var(--label-secondary);
+  font-size: 24px;
+  font-weight: 600;
+}
+
+.analysis-heat.cold {
+  fill: var(--blue-500);
+  background: var(--blue-500);
+}
+
+.analysis-heat.ok {
+  fill: var(--green-500);
+  background: var(--green-500);
+}
+
+.analysis-heat.warm {
+  fill: var(--yellow-500);
+  background: var(--yellow-500);
+}
+
+.analysis-heat.hot {
+  fill: var(--red-500);
+  background: var(--red-500);
+}
+
+.analysis-heat.none {
+  fill: var(--control-fill);
+}
+
+.analysis-heat-key {
+  width: 10px;
+  height: 10px;
+  flex: none;
+  border-radius: 2px;
+}
+
+.analysis-car-corner {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  min-width: 0;
+}
+
+.analysis-car-corner.fl {
+  grid-area: 1 / 1;
+}
+
+.analysis-car-corner.fr {
+  grid-area: 1 / 3;
+  align-items: flex-start;
+}
+
+.analysis-car-corner.rl {
+  grid-area: 2 / 1;
+}
+
+.analysis-car-corner.rr {
+  grid-area: 2 / 3;
+  align-items: flex-start;
+}
+
+.analysis-car-name {
+  padding: 0 4px;
+  color: var(--label-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 16px;
+}
+
+/* A reading that becomes a chart on a click; pressed while its chart is on the page. */
+.analysis-car-value,
+.analysis-car-still {
+  padding: 1px 4px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--label);
+  font-size: 12px;
+  line-height: 16px;
+  white-space: nowrap;
+}
+
+.analysis-car-value:hover {
+  background: var(--subtle-hover);
+}
+
+.analysis-car-value[aria-pressed='true'] {
+  background: var(--control-fill);
+  font-weight: 600;
+}
+
+.analysis-car-keys {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px 14px;
+}
+
+.analysis-car-facts {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px 4px;
+  padding-top: 10px;
+  border-top: 1px solid var(--divider);
+}
+
+.analysis-car-fact {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  white-space: nowrap;
+}
+
+.analysis-car-fact .analysis-car-value,
+.analysis-car-fact .analysis-car-still {
+  font-size: 13px;
+  font-weight: 600;
 }
 
 .analysis-map-line {
@@ -582,6 +758,31 @@
 
 .analysis-add-chart {
   display: flex;
+}
+
+/* "Add chart": the charts by part of the car, flowing down four columns. */
+.dashes-menu:has(> .analysis-add-head) {
+  display: block;
+  columns: 4;
+  column-gap: 8px;
+}
+
+.dashes-menu:has(> .analysis-add-head) > .menu-item {
+  margin-bottom: 2px;
+  break-inside: avoid;
+}
+
+/* A group under another in its column, below a rule; `starts` opens the next column. */
+.analysis-add-head {
+  margin-top: 4px;
+  border-top: 1px solid var(--divider);
+  break-after: avoid;
+}
+
+.analysis-add-head.starts {
+  margin-top: 0;
+  border-top: 0;
+  break-before: column;
 }
 
 /* Compare with…: who the lap is, its session, its gap to this lap, its time. */

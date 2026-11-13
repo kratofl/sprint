@@ -320,10 +320,17 @@ export function formatGap(seconds: number): string {
 
 // ── Lap channel trace (Features/SessionPlanning/LapChannelTrace.cs) ────────
 
-export type LapChannelTrace = { version: number; positionStep: number; trackLengthMeters: number | null; channels: Record<string, number[]> }
+/** Channels on one position grid: index `i` is `i * positionStep` of the lap. */
+export type TraceGrid = { positionStep: number; channels: Record<string, number[]> }
 
-/** `/api/analysis/trace/:sessionId/:lapNumber` returns `unknown` on purpose; narrowed once, here. */
-export function parseLapChannelTrace(value: unknown): LapChannelTrace | null {
+/**
+ * A lap's driving, and beside it what the car itself reported (`LapTraceCar.cs`: engine, fuel,
+ * each wheel corner, damage) on a coarser grid of its own. `car` is null for a lap recorded
+ * before the car's readings were kept.
+ */
+export type LapChannelTrace = TraceGrid & { version: number; trackLengthMeters: number | null; car: TraceGrid | null }
+
+function parseTraceGrid(value: unknown): TraceGrid | null {
   if (!isRecord(value) || typeof value.positionStep !== 'number' || !isRecord(value.channels)) return null
 
   const channels: Record<string, number[]> = {}
@@ -333,11 +340,20 @@ export function parseLapChannelTrace(value: unknown): LapChannelTrace | null {
     }
   }
 
+  return { positionStep: value.positionStep, channels }
+}
+
+/** `/api/analysis/trace/:sessionId/:lapNumber` returns `unknown` on purpose; narrowed once, here. */
+export function parseLapChannelTrace(value: unknown): LapChannelTrace | null {
+  const grid = parseTraceGrid(value)
+  if (grid === null || !isRecord(value)) return null
+
+  const car = parseTraceGrid(value.car)
   return {
+    ...grid,
     version: typeof value.version === 'number' ? value.version : 1,
-    positionStep: value.positionStep,
     trackLengthMeters: numberOrNull(value.trackLengthMeters),
-    channels,
+    car: car !== null && car.positionStep > 0 && Object.keys(car.channels).length > 0 ? car : null,
   }
 }
 
@@ -350,7 +366,7 @@ function traceSampleCount(trace: LapChannelTrace): number {
 export const isTraceUsable = (trace: LapChannelTrace): boolean => trace.positionStep > 0 && Object.keys(trace.channels).length > 0 && traceSampleCount(trace) > 1
 
 /** Mirrors `LapChannelTrace.ValueAt`: linear interpolation between grid points, null when the channel is absent. */
-export function traceValueAt(trace: LapChannelTrace, channelId: string, position: number): number | null {
+export function traceValueAt(trace: TraceGrid, channelId: string, position: number): number | null {
   const values = trace.channels[channelId]
   if (!values || values.length === 0 || !(trace.positionStep > 0)) return null
 
@@ -371,7 +387,10 @@ export type ChartInterpolation = 'Linear' | 'Stepped'
  * Which colour a line wears: each telemetry channel keeps its own everywhere (`--channel-*`),
  * `other` is the second lap of a comparison, `neutral` a line that is no channel (time gained).
  */
-export type SeriesTone = 'speed' | 'throttle' | 'brake' | 'steering' | 'gear' | 'other' | 'neutral'
+export type SeriesTone = 'speed' | 'throttle' | 'brake' | 'steering' | 'gear' | 'other' | 'neutral' | WheelTone
+
+/** A wheel's line: each corner of the car keeps one colour in every chart of the four (`--channel-fl` …). */
+export type WheelTone = 'fl' | 'fr' | 'rl' | 'rr'
 /** Solid for a lap's own line, dashed for the lap it is compared with, dotted for what the car got after ABS/TC. */
 export type SeriesStroke = 'solid' | 'dashed' | 'dotted'
 
