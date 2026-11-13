@@ -1,5 +1,5 @@
 import type { DashCategoryLists, DashRefitLosses, SprintCommand } from '../bridge'
-import { LAP_SUMMARY_SECONDS, dashboardWidgetTypes, groupParents, isDashStyle, isDashWidgetGroup, isDashWidgetType, mayOverlap, stackLayers, styleColorTokens, dashAlertTypes, type DashAlertType } from '@sprint/dashboard'
+import { LAP_SUMMARY_SECONDS, MIN_ALERT_SECONDS, maxAlertSeconds, dashboardWidgetTypes, groupParents, isDashStyle, isDashWidgetGroup, isDashWidgetType, mayOverlap, stackLayers, styleColorTokens, dashAlertTypes, type DashAlertType } from '@sprint/dashboard'
 import type { DashAlert, DashColorSystem, DashLayout, DashStyle, DashPage, DashTheme, DashWidget, DashWidgetStyle, DashWidgetType } from '@sprint/dashboard'
 import type { TelemetryFrame } from '@sprint/types'
 
@@ -667,7 +667,7 @@ export function setAlertOverride(layout: DashLayout, type: AlertTypeId, patch: A
   if (!alert) return null
   if (patch.displayMode !== undefined) alert.displayMode = patch.displayMode
   if (patch.colorToken !== undefined) alert.colorToken = patch.colorToken
-  if (patch.durationSeconds !== undefined) alert.durationSeconds = Math.min(5, Math.max(0.5, Math.round(patch.durationSeconds * 10) / 10))
+  if (patch.durationSeconds !== undefined) alert.durationSeconds = Math.min(maxAlertSeconds(type), Math.max(MIN_ALERT_SECONDS, Math.round(patch.durationSeconds * 10) / 10))
   if (patch.invertColors !== undefined) alert.invertColors = patch.invertColors
   return next
 }

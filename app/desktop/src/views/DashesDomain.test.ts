@@ -27,6 +27,7 @@ import {
   resolveDashesFilter,
   screenChoices,
   setAlertEnabled,
+  setAlertOverride,
   setAlertUseGlobal,
   setDashStyle,
   setGlobalAlertConfig,
@@ -363,6 +364,17 @@ test('the lap summary fills the screen and keeps its own longer duration', () =>
   const look = alertLook(setGlobalAlertConfig(layout(pageWithWidgets()), { displayMode: 'center', durationSeconds: 2 }), 'lap_summary')
   assert.equal(look.displayMode, 'full')
   assert.equal(look.durationSeconds, 5)
+})
+
+test('the lap summary may stay up for 15 s; a setting popup keeps to 0.5-5 s', () => {
+  const on = setAlertEnabled(setAlertEnabled(layout(pageWithWidgets()), 'lap_summary', true), 'tc_change', true)
+  const durationOf = (type: 'lap_summary' | 'tc_change', seconds: number) => {
+    const next = setAlertOverride(on, type, { durationSeconds: seconds })
+    assert.ok(next)
+    return alertLook(next, type).durationSeconds
+  }
+  assert.deepEqual([durationOf('lap_summary', 12), durationOf('lap_summary', 40), durationOf('lap_summary', 0.1)], [12, 15, 0.5])
+  assert.deepEqual([durationOf('tc_change', 12), durationOf('tc_change', 0.1)], [5, 0.5])
 })
 
 test('All alerts plays the first setting alert that is on, in the defaults', () => {

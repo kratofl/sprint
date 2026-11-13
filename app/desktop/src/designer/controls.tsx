@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { Minus, Plus } from 'lucide-react'
+import { MAX_ALERT_SECONDS, MIN_ALERT_SECONDS } from '@sprint/dashboard'
 import type { GridRect } from '../views/DashesDomain'
 
 /** Small form controls the designer's panels share. */
@@ -63,17 +64,22 @@ function GeometryStepper({ label, value, min = 0, offset = 0, onChange }: { labe
   )
 }
 
-/** Alert durations are 0.5-5.0s in 0.1s steps (`setAlertOverride`'s clamp/round). Steps in tenths so +/- never drifts on floating-point seconds. */
-export function DurationBox({ seconds, onChange }: { seconds: number; onChange: (seconds: number) => void }) {
+/**
+ * An alert's duration, 0.5 s up to `max` (5 s, or 15 s for the lap summary: `maxAlertSeconds`) in
+ * `step` seconds (`setAlertOverride`'s clamp/round). Steps in tenths so +/- never drifts on
+ * floating-point seconds.
+ */
+export function DurationBox({ seconds, max = MAX_ALERT_SECONDS, step = 0.1, onChange }: { seconds: number; max?: number; step?: number; onChange: (seconds: number) => void }) {
   const tenths = Math.round(seconds * 10)
+  const [minTenths, maxTenths, stepTenths] = [Math.round(MIN_ALERT_SECONDS * 10), Math.round(max * 10), Math.round(step * 10)]
   return (
     <NumberBox
       label="Duration"
       display={`${(tenths / 10).toFixed(1)} s`}
-      canDecrease={tenths > 5}
-      canIncrease={tenths < 50}
-      onDecrease={() => onChange(Math.max(5, tenths - 1) / 10)}
-      onIncrease={() => onChange(Math.min(50, tenths + 1) / 10)}
+      canDecrease={tenths > minTenths}
+      canIncrease={tenths < maxTenths}
+      onDecrease={() => onChange(Math.max(minTenths, tenths - stepTenths) / 10)}
+      onIncrease={() => onChange(Math.min(maxTenths, tenths + stepTenths) / 10)}
     />
   )
 }

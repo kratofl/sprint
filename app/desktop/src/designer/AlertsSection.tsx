@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from 'react'
 import { Play, SlidersHorizontal } from 'lucide-react'
-import { DashCanvas, alertColorSwatch, dashSettingColors, gridRect, previewAlertBanner, resolveDashPalette, resolvePreviewFrame } from '@sprint/dashboard'
+import { DashCanvas, alertColorSwatch, dashSettingColors, gridRect, maxAlertSeconds, previewAlertBanner, resolveDashPalette, resolvePreviewFrame } from '@sprint/dashboard'
 import type { DashLayout, DashPage, DashPaletteColors } from '@sprint/dashboard'
 import type { TelemetryFrame } from '@sprint/types'
 import {
@@ -41,7 +41,7 @@ const ALERT_DESCRIPTIONS: Record<AlertTypeId, string> = {
   abs_change: 'When ABS changes while driving',
   bias_change: 'When brake bias changes while driving',
   enginemap_change: 'When the engine map changes while driving',
-  lap_summary: 'After each timed lap: the lap time against your best, the fuel against the plan',
+  lap_summary: 'After each timed lap: the lap and your position, the lap time against the plan and your best, the fuel against the plan',
 }
 
 /**
@@ -193,7 +193,12 @@ function AlertCard({ type, enabled, look, palette, apply }: { type: AlertTypeId;
         <p className="field-hint">Fills the screen in the dash's own colours; the gear stays in sight.</p>
         <div className="alerts-field-row">
           <span>Duration</span>
-          <DurationBox seconds={look.durationSeconds} onChange={(durationSeconds) => override({ durationSeconds }, `alert:${type}:duration`)} />
+          <DurationBox
+            seconds={look.durationSeconds}
+            max={maxAlertSeconds(type)}
+            step={0.5}
+            onChange={(durationSeconds) => override({ durationSeconds }, `alert:${type}:duration`)}
+          />
         </div>
       </>
     )

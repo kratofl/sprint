@@ -83,8 +83,15 @@ pub fn parse_banner(json: &[u8]) -> Result<DashAlertBanner, String> {
 }
 
 /// How long the lap summary stays up unless its alert sets its own duration: longer than a
-/// setting popup, there are two numbers to read.
+/// setting popup, there is a whole lap to read.
 pub const LAP_SUMMARY_SECONDS: f64 = 5.0;
+
+/// The longest a lap summary may stay up. Every other alert keeps to `MAX_ALERT_SECONDS`.
+pub const LAP_SUMMARY_MAX_SECONDS: f64 = 15.0;
+
+/// The shortest and longest a setting popup stays up.
+const MIN_ALERT_SECONDS: f64 = 0.5;
+const MAX_ALERT_SECONDS: f64 = 5.0;
 
 #[derive(Clone, Debug, PartialEq)]
 struct ResolvedAlertConfig {
@@ -335,8 +342,17 @@ fn detect_candidate(
     Some(setting_popup(alert, setting, SettingChange { value, previous, max: (max > 0.0).then_some(max) }, config, layout, palette))
 }
 
-const SAMPLE_LAP: LapSummary =
-    LapSummary { lap: 12.0, lap_time: 124.912, valid: true, lap_delta: Some(-0.214), fuel_used: Some(2.41), fuel_delta: Some(-0.09) };
+const SAMPLE_LAP: LapSummary = LapSummary {
+    lap: 12.0,
+    total_laps: Some(24.0),
+    position: Some(4.0),
+    lap_time: 124.912,
+    valid: true,
+    lap_delta: Some(-0.214),
+    target_delta: Some(-0.088),
+    fuel_used: Some(2.41),
+    fuel_delta: Some(-0.09),
+};
 
 /// The popup `alert` would show, with made-up values, for the designer to play on the dash so its
 /// look can be set without turning a knob in the car. Built exactly as a real change builds it,
@@ -380,7 +396,8 @@ impl DashAlertTracker {
     }
 
     /// Feeds a frame in and returns the popup to draw this tick, or `None` when none is active.
-    /// `targets` is the driver's plan; its fuel target is what the lap summary compares against.
+    /// `targets` is the driver's plan in force; the lap summary scores each lap against the
+    /// targets it was driven with.
     pub fn evaluate(
         &mut self,
         layout: &DashLayout,
@@ -391,11 +408,12 @@ impl DashAlertTracker {
         let config = read_alert_config(layout.alert_config.as_ref());
 
         // Watched even while the summary is off, so turning it on mid-session has a lap to compare.
-        let summary = self.laps.observe(frame, self.now, targets.and_then(|t| t.fuel_per_lap_liters));
+        let summary = self.laps.observe(frame, self.now, targets);
         let summary_alert = layout.alerts.iter().map(AlertSpec::of).find(|alert| alert.enabled && alert.alert_type == "lap_summary");
         if let (Some(summary), Some(summary_alert)) = (summary, summary_alert) {
             self.active = Some(DashAlertBanner::LapSummary(summary));
-            self.expires_at = self.now + clamp(summary_alert.duration_seconds.unwrap_or(LAP_SUMMARY_SECONDS), 0.5, LAP_SUMMARY_SECONDS) * 1000.0;
+            let duration = clamp(summary_alert.duration_seconds.unwrap_or(LAP_SUMMARY_SECONDS), MIN_ALERT_SECONDS, LAP_SUMMARY_MAX_SECONDS);
+            self.expires_at = self.now + duration * 1000.0;
         }
 
         // A setting turned on the same frame still wins: it is the driver's own input.
@@ -409,7 +427,7 @@ impl DashAlertTracker {
                 if let Some(candidate) = detect_candidate(&alert, &readings, &prev, &config, layout, palette) {
                     self.active = Some(DashAlertBanner::Setting(candidate));
                     let configured = if config.duration_seconds <= 0.0 { self.fallback_duration_seconds } else { config.duration_seconds };
-                    let duration = clamp(alert.duration_seconds.unwrap_or(configured), 0.5, 5.0);
+                    let duration = clamp(alert.duration_seconds.unwrap_or(configured), MIN_ALERT_SECONDS, MAX_ALERT_SECONDS);
                     self.expires_at = self.now + duration * 1000.0;
                 }
             }
@@ -711,6 +729,24 @@ mod tests {
     }
 
     #[test]
+    fn a_lap_summary_may_stay_up_for_up_to_fifteen_seconds() {
+        for (duration, expires) in [(json!(12), 12_100.0), (json!(40), 15_100.0), (json!(0.1), 600.0)] {
+            let l = layout(
+                json!([{ "id": "sum", "type": "lap_summary", "enabled": true, "durationSeconds": duration, "col": 0, "row": 0, "colSpan": 1, "rowSpan": 1 }]),
+                None,
+            );
+            let mut tracker = DashAlertTracker::default();
+            tracker.evaluate(&l, &at(4.0, 0.0, 60.0, |_| {}), &P, None);
+            tracker.advance_to(100.0);
+            assert!(tracker.evaluate(&l, &at(5.0, 209.0, 56.0, |_| {}), &P, None).is_some());
+            tracker.advance_to(expires - 1.0);
+            assert!(tracker.current().is_some(), "{duration} s is still up at {} ms", expires - 1.0);
+            tracker.advance_to(expires);
+            assert_eq!(tracker.current(), None, "{duration} s is gone at {expires} ms");
+        }
+    }
+
+    #[test]
     fn a_setting_change_on_the_lap_summary_frame_wins_and_restarts_the_clock() {
         let l = layout(
             json!([{ "id": "sum", "type": "lap_summary", "enabled": true, "col": 0, "row": 0, "colSpan": 1, "rowSpan": 1 }, alert(json!({ "durationSeconds": 1 }))]),
@@ -733,11 +769,19 @@ mod tests {
         let no_max = br##"{"kind":"setting","title":"BIAS","value":"56.5","previous":"56.0","max":null,"color":"#F5F5F7","fullScreen":true,"col":6,"row":3,"colSpan":8,"rowSpan":6,"gridCols":20,"gridRows":12,"invertColors":true}"##;
         assert_eq!(setting(Some(&parse_banner(no_max).expect("bias"))).max, None);
 
-        let lap = br#"{"kind":"lapSummary","lap":12,"lapTime":124.912,"lapDelta":null,"valid":false,"fuelUsed":2.9,"fuelDelta":null}"#;
-        assert_eq!(
-            parse_banner(lap),
-            Ok(DashAlertBanner::LapSummary(LapSummary { lap: 12.0, lap_time: 124.912, valid: false, lap_delta: None, fuel_used: Some(2.9), fuel_delta: None }))
-        );
+        let lap = br#"{"kind":"lapSummary","lap":12,"totalLaps":null,"position":4,"lapTime":124.912,"lapDelta":null,"targetDelta":0.4,"valid":false,"fuelUsed":2.9,"fuelDelta":null}"#;
+        let summary = LapSummary {
+            lap: 12.0,
+            total_laps: None,
+            position: Some(4.0),
+            lap_time: 124.912,
+            valid: false,
+            lap_delta: None,
+            target_delta: Some(0.4),
+            fuel_used: Some(2.9),
+            fuel_delta: None,
+        };
+        assert_eq!(parse_banner(lap), Ok(DashAlertBanner::LapSummary(summary)));
 
         let dial = br##"{"kind":"multiDial","caption":"MULTI","label":"TC2","color":"#E0A30C","inverted":false}"##;
         assert_eq!(

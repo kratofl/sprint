@@ -156,9 +156,10 @@ are not.
 
 `cargo run --release --example render -- --dash <layout.json> <out.png>` in the crate draws one page
 of a layout at 800x480 against a fixed mid-race frame (`--page`, `--style panels|grid|bars` and
-`--size` override). Render the presets in `app/Sprint.Desktop.Host/presets/dash/` at the panel size
-and look at the PNG: layout, alignment, clip direction, weights and color, not the telemetry values.
-There is no reference image set in the repo.
+`--size` override; `--banner <banner.json>` draws an alert popup over it). Render the presets in
+`app/Sprint.Desktop.Host/presets/dash/` at the panel size and look at the PNG: layout, alignment,
+clip direction, weights and color, not the telemetry values. There is no reference image set in the
+repo.
 
 ## Contrast
 

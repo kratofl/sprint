@@ -240,10 +240,27 @@ struct SummaryBlock {
     fill: Option<Rgba>,
 }
 
-fn lap_block(summary: &LapSummary, palette: &DashPaletteColors) -> SummaryBlock {
+/// The lap time against the plan's target the lap was driven with. Meeting it is OnTarget green;
+/// missing it stays neutral, because a slower lap is never a warning just for being slower.
+fn target_block(summary: &LapSummary, palette: &DashPaletteColors) -> SummaryBlock {
+    let Some(delta) = summary.target_delta else {
+        return SummaryBlock { title: "TARGET Δ", value: "--".to_owned(), unit: "", note: "NO TARGET SET".to_owned(), fill: None };
+    };
+    let on_target = summary.valid && delta <= 0.0;
+    let note = if !summary.valid {
+        "INVALID"
+    } else if on_target {
+        "ON TARGET"
+    } else {
+        "VS TARGET"
+    };
+    SummaryBlock { title: "TARGET Δ", value: format_delta(delta), unit: "", note: note.to_owned(), fill: on_target.then_some(palette.good_on_target) }
+}
+
+fn best_block(summary: &LapSummary, palette: &DashPaletteColors) -> SummaryBlock {
     let Some(delta) = summary.lap_delta else {
         let note = if summary.valid { "NO BEST YET" } else { "INVALID" };
-        return SummaryBlock { title: "LAP Δ", value: "--".to_owned(), unit: "", note: note.to_owned(), fill: None };
+        return SummaryBlock { title: "BEST Δ", value: "--".to_owned(), unit: "", note: note.to_owned(), fill: None };
     };
     let best = summary.valid && delta < 0.0;
     let note = if !summary.valid {
@@ -253,7 +270,7 @@ fn lap_block(summary: &LapSummary, palette: &DashPaletteColors) -> SummaryBlock 
     } else {
         "VS BEST"
     };
-    SummaryBlock { title: "LAP Δ", value: format_delta(delta), unit: "", note: note.to_owned(), fill: best.then_some(palette.timing_personal_best) }
+    SummaryBlock { title: "BEST Δ", value: format_delta(delta), unit: "", note: note.to_owned(), fill: best.then_some(palette.timing_personal_best) }
 }
 
 fn fuel_block(summary: &LapSummary, palette: &DashPaletteColors) -> SummaryBlock {
@@ -283,10 +300,12 @@ static SUMMARY_GEAR: LazyLock<DashWidget> = LazyLock::new(|| DashWidget {
     ..DashWidget::default()
 });
 
-/// The lap summary, shown for a few seconds after each lap: the lap time, its delta to the best
-/// before it, and the fuel the lap used against the plan's target. The gear stays in its own
-/// column on the right, because the driver is still at speed. The two numbers wear the layout's
-/// dash style, so the summary looks like the rest of the dash.
+/// The lap summary, shown for a few seconds after each lap: the lap (of the session's total when
+/// it has one) and the position over the lap time, then the lap time against the plan's target
+/// and the best before it, and the fuel the lap used against the plan's target. Every delta is
+/// actual minus target, so negative is better throughout. The gear stays in its own column on
+/// the right, because the driver is still at speed. The three numbers wear the layout's dash
+/// style, so the summary looks like the rest of the dash.
 fn lap_summary_screen(
     b: &mut Builder,
     summary: &LapSummary,
@@ -302,19 +321,35 @@ fn lap_summary_screen(
     let head_height = height * 0.2;
     let pad = 12.0 * chrome.scale;
 
+    let lap = match summary.total_laps {
+        Some(total) => format!("LAP {} OF {}", js_number_string(summary.lap), js_number_string(total)),
+        None => format!("LAP {}", js_number_string(summary.lap)),
+    };
+    let position = summary.position.map_or_else(|| "P--".to_owned(), |position| format!("P{}", js_number_string(position)));
+
     b.rect(PixelRect::new(0.0, 0.0, width, height), Radii::ZERO, palette.background);
+    let lap_line = TextLine {
+        text: &lap,
+        left: pad,
+        top: head_height * 0.3,
+        size: 18.0 * chrome.scale,
+        color: palette.secondary,
+        align: TextAlign::Start,
+        max_width: Some(main_width * 0.35),
+        weight: TextWeight::LabelBold,
+        sizing: TextSizing::Fit,
+    };
+    text_line(b, lap_line);
     text_line(
         b,
         TextLine {
-            text: &format!("LAP {}", js_number_string(summary.lap)),
-            left: pad,
-            top: head_height / 2.0,
-            size: 18.0 * chrome.scale,
-            color: palette.secondary,
-            align: TextAlign::Start,
-            max_width: Some(main_width * 0.35),
-            weight: TextWeight::LabelBold,
-            sizing: TextSizing::Fit,
+            text: &position,
+            top: head_height * 0.68,
+            size: head_height * 0.4,
+            color: palette.foreground,
+            weight: TextWeight::Value,
+            sizing: TextSizing::Stable,
+            ..lap_line
         },
     );
     text_line(
@@ -332,7 +367,7 @@ fn lap_summary_screen(
         },
     );
 
-    let blocks = [lap_block(summary, palette), fuel_block(summary, palette)];
+    let blocks = [target_block(summary, palette), best_block(summary, palette), fuel_block(summary, palette)];
     let block_width = main_width / blocks.len() as f64;
     for (i, block) in blocks.iter().enumerate() {
         let frame_props = WidgetFrame {
@@ -637,27 +672,42 @@ mod tests {
         assert!(label.scale_x < 1.0 && (label.width(&Fonts::new()) - 800.0 * 0.92).abs() < 1e-6);
     }
 
+    /// A lap 12 summary in 2:04.912, with the given deltas.
     fn lap(lap_delta: Option<f64>, valid: bool, fuel_used: Option<f64>, fuel_delta: Option<f64>) -> serde_json::Value {
         json!({ "kind": "lapSummary", "lap": 12, "lapTime": 124.912, "valid": valid, "lapDelta": lap_delta, "fuelUsed": fuel_used, "fuelDelta": fuel_delta })
     }
 
-    #[test]
-    fn the_lap_summary_covers_the_dash_with_the_lap_two_framed_numbers_and_the_gear() {
-        let ops = banner_ops(lap(Some(-0.214), true, Some(2.41), Some(-0.09)), "panels");
-        assert_eq!(ops[1], DrawOp::Rect { rect: PixelRect::new(0.0, 0.0, 800.0, 480.0), radii: Radii::ZERO, color: P.background });
-        assert_eq!(run(&ops, "LAP 12").color, P.secondary);
-        assert_eq!(run(&ops, "2:04.912").color, P.foreground);
-        // A new best and fuel on target both fill their frames, so their values are ink.
-        let fills: Vec<Rgba> = ops
-            .iter()
+    /// `summary` with its fields replaced by `fields`.
+    fn with(mut summary: serde_json::Value, fields: serde_json::Value) -> serde_json::Value {
+        for (key, value) in fields.as_object().cloned().unwrap_or_default() {
+            summary[key] = value;
+        }
+        summary
+    }
+
+    fn rounded_fills(ops: &[DrawOp]) -> Vec<Rgba> {
+        ops.iter()
             .filter_map(|op| match op {
                 DrawOp::Rect { color, radii, .. } if !radii.is_zero() => Some(*color),
                 _ => None,
             })
-            .collect();
-        assert_eq!(fills, [P.timing_personal_best, P.good_on_target]);
-        assert_eq!((run(&ops, "-0.214").color, run(&ops, "-0.09").color), (P.background, P.background));
-        run(&ops, "NEW BEST");
+            .collect()
+    }
+
+    #[test]
+    fn the_lap_summary_covers_the_dash_with_the_lap_its_position_three_framed_numbers_and_the_gear() {
+        let full = with(lap(Some(-0.214), true, Some(2.41), Some(-0.09)), json!({ "totalLaps": 24, "position": 4, "targetDelta": -0.088 }));
+        let ops = banner_ops(full, "panels");
+        assert_eq!(ops[1], DrawOp::Rect { rect: PixelRect::new(0.0, 0.0, 800.0, 480.0), radii: Radii::ZERO, color: P.background });
+        assert_eq!(run(&ops, "LAP 12 OF 24").color, P.secondary);
+        assert_eq!((run(&ops, "P4").color, run(&ops, "P4").weight), (P.foreground, TextWeight::Value));
+        assert_eq!(run(&ops, "2:04.912").color, P.foreground);
+        // On target, a new best and fuel on target all fill their frames, so their values are ink.
+        assert_eq!(rounded_fills(&ops), [P.good_on_target, P.timing_personal_best, P.good_on_target]);
+        assert_eq!((run(&ops, "-0.088").color, run(&ops, "-0.214").color, run(&ops, "-0.09").color), (P.background, P.background, P.background));
+        for text in ["TARGET Δ", "ON TARGET", "BEST Δ", "NEW BEST", "FUEL Δ"] {
+            run(&ops, text);
+        }
         assert_eq!(run(&ops, "L").weight, TextWeight::ValueRegular);
         // The gear column: a 2px rule at 648, and the gear laid out from x = 650.
         assert!(ops.contains(&DrawOp::Rect { rect: PixelRect::new(648.0, 0.0, 2.0, 480.0), radii: Radii::ZERO, color: P.border }));
@@ -666,12 +716,31 @@ mod tests {
     }
 
     #[test]
+    fn a_session_without_a_lap_limit_shows_the_lap_alone_and_an_unreported_position_as_dashes() {
+        let ops = banner_ops(lap(None, true, None, None), "panels");
+        run(&ops, "LAP 12");
+        run(&ops, "P--");
+        assert!(runs(&ops).iter().all(|r| !r.text.contains("OF")), "never \"of 0\"");
+    }
+
+    #[test]
+    fn a_lap_slower_than_its_target_stays_neutral_and_an_invalid_one_is_never_on_target() {
+        let slow = banner_ops(with(lap(Some(0.531), true, None, None), json!({ "targetDelta": 0.4 })), "panels");
+        assert_eq!(run(&slow, "+0.400").color, P.foreground);
+        run(&slow, "VS TARGET");
+        assert!(rounded_fills(&slow).is_empty(), "slower is never a warning: {:?}", rounded_fills(&slow));
+        let cut = banner_ops(with(lap(Some(0.531), false, None, None), json!({ "targetDelta": -1.2 })), "panels");
+        assert_eq!(run(&cut, "-1.200").color, P.foreground);
+        assert_eq!(runs(&cut).iter().filter(|r| r.text == "INVALID").count(), 2, "under both lap deltas");
+    }
+
+    #[test]
     fn the_lap_summary_says_what_it_could_not_compare() {
         let ops = banner_ops(lap(None, false, None, None), "grid");
-        for text in ["LAP Δ", "INVALID", "FUEL USED", "NOT MEASURED"] {
+        for text in ["TARGET Δ", "NO TARGET SET", "BEST Δ", "INVALID", "FUEL USED", "NOT MEASURED"] {
             run(&ops, text);
         }
-        assert_eq!(runs(&ops).iter().filter(|r| r.text == "--").count(), 2);
+        assert_eq!(runs(&ops).iter().filter(|r| r.text == "--").count(), 3, "no target, no best and no fuel claim a delta");
         let ops = banner_ops(lap(None, true, Some(2.9), Some(0.3)), "bars");
         for text in ["NO BEST YET", "FUEL Δ", "+0.30", "SAVE 0.30 L"] {
             run(&ops, text);

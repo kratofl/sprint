@@ -42,15 +42,24 @@ export interface DashSettingPopup {
   invertColors: boolean
 }
 
-/** The full-screen summary of a finished lap. Each delta is null when there is nothing to compare against. */
+/**
+ * The full-screen summary of a finished lap. Each delta is actual minus target (negative is
+ * better) and null when there is nothing to compare against.
+ */
 export interface DashLapSummaryPopup {
   kind: 'lapSummary'
   lap: number
+  /** The session's lap limit, for "LAP 12 OF 24"; null when the session has none. */
+  totalLaps: number | null
+  /** The race position as the lap finished; null when the game reports none. */
+  position: number | null
   lapTime: number
   /** False when the game flagged the lap invalid; it never counts as a best. */
   valid: boolean
   /** Lap time minus the best valid lap before it. Negative is a new best. */
   lapDelta: number | null
+  /** Lap time minus the plan's lap-time target the lap was driven with. Negative is faster. */
+  targetDelta: number | null
   /** Liters the lap used, or null when the lap's start was not seen or the car was refueled. */
   fuelUsed: number | null
   /** Fuel used minus the plan's per-lap target. Positive means over target. */
@@ -60,8 +69,20 @@ export interface DashLapSummaryPopup {
 /** What the renderer draws over the dash: the JSON `render_still` takes as its banner, the multi-dial popup included. */
 export type DashAlertBanner = DashSettingPopup | DashLapSummaryPopup | DashMultiDialPopup
 
-/** How long the lap summary stays up unless its alert sets its own duration: longer than a setting popup, there are two numbers to read. */
+/** How long the lap summary stays up unless its alert sets its own duration: longer than a setting popup, there is a whole lap to read. */
 export const LAP_SUMMARY_SECONDS = 5
+
+/** The longest the lap summary may stay up; every other alert keeps to `MAX_ALERT_SECONDS`. */
+export const LAP_SUMMARY_MAX_SECONDS = 15
+
+/** The shortest any alert stays up, and the longest a setting popup does. */
+export const MIN_ALERT_SECONDS = 0.5
+export const MAX_ALERT_SECONDS = 5
+
+/** The longest an alert of `type` may stay up (the renderer clamps to the same). */
+export function maxAlertSeconds(type: string): number {
+  return type === 'lap_summary' ? LAP_SUMMARY_MAX_SECONDS : MAX_ALERT_SECONDS
+}
 
 interface ResolvedAlertConfig {
   fullScreen: boolean
@@ -148,7 +169,18 @@ const SAMPLE_CHANGES: Record<SettingAlertType, SettingChange> = {
   enginemap_change: { value: '3', previous: '2', max: 9 },
 }
 
-const SAMPLE_LAP: DashLapSummaryPopup = { kind: 'lapSummary', lap: 12, lapTime: 124.912, valid: true, lapDelta: -0.214, fuelUsed: 2.41, fuelDelta: -0.09 }
+const SAMPLE_LAP: DashLapSummaryPopup = {
+  kind: 'lapSummary',
+  lap: 12,
+  totalLaps: 24,
+  position: 4,
+  lapTime: 124.912,
+  valid: true,
+  lapDelta: -0.214,
+  targetDelta: -0.088,
+  fuelUsed: 2.41,
+  fuelDelta: -0.09,
+}
 
 /**
  * The popup `alert` would show, with made-up values, for the designer to play on the dash so its

@@ -1,6 +1,6 @@
 // Renders dashes and parity cases with the Rust renderer, to check a rendering change by eye.
 //
-//   cargo run --release --example render -- --dash <layout.json> <out.png> [--page <id>] [--style panels|grid|bars] [--size 800x480]
+//   cargo run --release --example render -- --dash <layout.json> <out.png> [--page <id>] [--style panels|grid|bars] [--size 800x480] [--banner <banner.json>]
 //   cargo run --release --example render -- <case.json> <out.png>
 //   cargo run --release --example render -- --all <cases-dir> <out-dir> [name-filter]
 //   cargo run --release --example render -- --bench <case.json> [iterations]
@@ -8,7 +8,8 @@
 //
 // --dash draws one page of a dash layout (a preset such as app/Sprint.Desktop.Host/presets/dash/
 // default.json) against the fixed race frame below; --style overrides the layout's own style, so
-// one layout can be checked in every style.
+// one layout can be checked in every style; --banner draws an alert banner over it (the JSON
+// `render_still` takes, e.g. `{ "kind": "lapSummary", ... }`), so a popup can be checked too.
 //
 // A case is `{ name, width, height, layout, pageId?, idle?, settings?, targets?, frame, banner?,
 // nowMs }`: its scene fields go to `set_scene` as they are (the scene parser ignores the rest),
@@ -103,11 +104,12 @@ fn sample_frame() -> Value {
     })
 }
 
-/// `--dash`: one page of a layout file against the sample frame, with fixed lap and fuel targets.
+/// `--dash`: one page of a layout file against the sample frame, with fixed lap and fuel targets,
+/// and optionally a banner over it.
 fn render_dash(layout_path: &Path, out: &Path, options: &[&str]) -> Result<(), String> {
     let text = fs::read(layout_path).map_err(|e| format!("{}: {e}", layout_path.display()))?;
     let mut layout: Value = serde_json::from_slice(&text).map_err(|e| format!("{}: {e}", layout_path.display()))?;
-    let (mut page_id, mut width, mut height) = (None, 800.0, 480.0);
+    let (mut page_id, mut width, mut height, mut banner) = (None, 800.0, 480.0, None);
     for pair in options.chunks(2) {
         match pair {
             ["--page", id] => page_id = Some(*id),
@@ -118,12 +120,13 @@ fn render_dash(layout_path: &Path, out: &Path, options: &[&str]) -> Result<(), S
                 let parsed = size.split_once('x').and_then(|(w, h)| Some((w.parse().ok()?, h.parse().ok()?)));
                 (width, height) = parsed.ok_or_else(|| format!("not a size: {size} (expected e.g. 800x480)"))?;
             }
+            ["--banner", path] => banner = Some(fs::read(path).map_err(|e| format!("{path}: {e}"))?),
             _ => return Err(format!("unknown option: {}", pair.join(" "))),
         }
     }
     let scene =
         json!({ "layout": layout, "width": width, "height": height, "pageId": page_id, "targets": { "lapTimeSeconds": 209, "fuelPerLapLiters": 4.42 } });
-    let case = Case { scene: scene.to_string().into_bytes(), frame: sample_frame().to_string().into_bytes(), banner: None, now_ms: 0.0 };
+    let case = Case { scene: scene.to_string().into_bytes(), frame: sample_frame().to_string().into_bytes(), banner, now_ms: 0.0 };
     let mut renderer = Renderer::new();
     render(&mut renderer, &case)?;
     write_png(&renderer, out)
@@ -204,7 +207,8 @@ fn main() {
         ["--bench", case] => bench(Path::new(case), 3000),
         ["--bench", case, n] => n.parse().map_err(|_| format!("not a count: {n}")).and_then(|n| bench(Path::new(case), n)),
         [case, out] if !case.starts_with("--") => render_one(Path::new(case), Path::new(out)),
-        _ => Err("usage: render --dash <layout.json> <out.png> [--page <id>] [--style panels|grid|bars] [--size WxH] | <case.json> <out.png> \
+        _ => Err("usage: render --dash <layout.json> <out.png> [--page <id>] [--style panels|grid|bars] [--size WxH] [--banner <banner.json>] \
+                  | <case.json> <out.png> \
                   | --all <cases-dir> <out-dir> [filter] | --bench <case.json> [iterations] | --ops <case.json>"
             .to_owned()),
     };

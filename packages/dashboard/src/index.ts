@@ -43,7 +43,7 @@ export {
   resolveDashPalette, styleColorTokens, resolveStyleColor, dashThemePresets, dashSettingColors,
   matchLayoutThemeName, type DashPaletteColors, type DashThemePreset,
 } from './palette'
-export { dashAlertTypes, previewAlertBanner, alertColorSwatch, LAP_SUMMARY_SECONDS, type DashAlertBanner, type DashAlertType, type DashSettingPopup, type DashLapSummaryPopup } from './alerts'
+export { dashAlertTypes, previewAlertBanner, alertColorSwatch, maxAlertSeconds, LAP_SUMMARY_SECONDS, MIN_ALERT_SECONDS, MAX_ALERT_SECONDS, type DashAlertBanner, type DashAlertType, type DashSettingPopup, type DashLapSummaryPopup } from './alerts'
 export { multiDialInk, multiDialSwatches, MULTI_DIAL_POPUP_SECONDS, type DashMultiDialPopup } from './multiDial'
 // The editor's direct-manipulation overlay (drag/resize handles) positions itself with the same
 // grid math the renderer places widgets with, so it never drifts a pixel from what is drawn.
