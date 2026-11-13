@@ -53,8 +53,13 @@ public sealed record PlanFuelEstimateRequest(
             return false;
         }
 
-        PlanContext context = new PlanContext(this.Game?.Trim() ?? "", this.Car?.Trim() ?? "", this.Track?.Trim() ?? "");
-        inputs = new PlanFuelInputs(context, raceLengthFormat, raceLengthValue, (int)reserve, this.AvgLapTimeSeconds, this.FuelPerLapLiters);
+        inputs = new PlanFuelInputs(this.ToContext(), raceLengthFormat, raceLengthValue, (int)reserve, this.AvgLapTimeSeconds, this.FuelPerLapLiters);
         return true;
     }
+
+    /// <summary>
+    /// The car and track asked about, whatever the figures: the lap history depends on nothing else,
+    /// so a refused request still answers it and the dialogs keep pre-filling from the right laps.
+    /// </summary>
+    public PlanContext ToContext() => new(this.Game?.Trim() ?? "", this.Car?.Trim() ?? "", this.Track?.Trim() ?? "");
 }

@@ -35,7 +35,10 @@ namespace Sprint.Desktop.Features.SessionPlanning;
 /// <param name="history">The corpus the chosen lap's curve is read back from.</param>
 /// <param name="fuelHistory">
 /// Where a plan that leaves its fuel per lap to the driver's laps gets the figure from; without
-/// it such a plan has no fuel target.
+/// it such a plan has no fuel target. Read through <see cref="IFuelHistorySource.Cached"/> only,
+/// which the state poll keeps warm by asking for every plan's race fuel. A cold cache at the line
+/// (the host just started, or a car or track no poll has asked about yet) means no fuel target yet: it fills in at the
+/// next line after a poll has worked the figure out, as does a median a new lap moved.
 /// </param>
 public sealed class PlanTargetDelivery(Func<SessionPlan?> activePlan, ILapHistoryStore history, IFuelHistorySource? fuelHistory = null)
 {
@@ -129,11 +132,12 @@ public sealed class PlanTargetDelivery(Func<SessionPlan?> activePlan, ILapHistor
         this.Reference = this.ReferenceFor(target);
     }
 
-    // A typed figure wins; a plan that left it to the driver's laps gets the same median the
-    // planner's Race card shows (RaceFuelEstimate's rule).
+    // A typed figure wins (RaceFuelEstimate.TypedValue: a legacy 0 is none); a plan that left it to
+    // the driver's laps gets the median the planner's Race card shows. Only the cached figure: this
+    // runs on the telemetry loop, which must never read the corpus or wait on the store's lock.
     private double? FuelPerLapFor(SessionPlan plan) =>
-        plan.FuelPerLapLiters
-        ?? this._fuelHistory.ForRace(new PlanContext(plan.Game, plan.Car, plan.Track)).FuelPerLapLiters;
+        RaceFuelEstimate.TypedValue(plan.FuelPerLapLiters)
+        ?? this._fuelHistory.Cached(new PlanContext(plan.Game, plan.Car, plan.Track))?.FuelPerLapLiters;
 
     // The tier is read off the lap in the corpus, never off the flag stored on the target: the
     // target records what was true when it was chosen, and the lap is what is actually there

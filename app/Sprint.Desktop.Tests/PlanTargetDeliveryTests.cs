@@ -1,6 +1,7 @@
 using Sprint.Desktop.Api.Telemetry;
 using Sprint.Desktop.Features.Live;
 using Sprint.Desktop.Features.SessionPlanning;
+using Sprint.Desktop.Runtime;
 using Xunit;
 
 namespace Sprint.Desktop.Tests;
@@ -189,9 +190,74 @@ public sealed class PlanTargetDeliveryTests
         Assert.Equal(3.4, delivery.Targets.FuelPerLapLiters);
     }
 
+    [Fact]
+    public void A_legacy_zero_fuel_per_lap_is_not_typed_and_the_laps_figure_stands_in()
+    {
+        // Plans stored before the planner refused 0 kept it for "not typed"; the Race card shows the
+        // laps' median for them, so the wheel must aim at that too rather than at 0 L.
+        PlanTargetDelivery delivery = new PlanTargetDelivery(
+            () => PlanWith(null, fuelPerLapLiters: 0),
+            Corpus(),
+            new FixedFuelHistory(new FuelHistoryFigures(null, 0, 3.6, 9, null)));
+
+        delivery.Observe(RaceFrame(lap: 1));
+
+        Assert.Equal(3.6, delivery.Targets.FuelPerLapLiters);
+    }
+
+    [Fact]
+    public void The_laps_fuel_target_comes_from_what_the_state_poll_worked_out_never_from_the_corpus()
+    {
+        CountingStore corpus = new(
+        [
+            new LapHistorySession
+            {
+                Id = "hs-race",
+                Kind = HistorySessionKind.Race,
+                Context = new LapHistoryContext { Game = Game, TrackCourse = Track, CarModel = Car },
+                Laps = [new LapHistoryRecord { LapNumber = 2, IsValid = true, LapTimeSeconds = 120, FuelUsedLiters = 3.5 }],
+            },
+        ]);
+        LapHistoryFuelSource fuel = new(corpus, () => FuelHistorySource.AllValidLaps);
+        PlanTargetDelivery delivery = new PlanTargetDelivery(() => PlanWith(null), Corpus(), fuel);
+
+        // Out of the car the latch applies on every frame, and it still never reads the corpus:
+        // nothing has worked the figure out yet, so there is no fuel target rather than a stall.
+        delivery.Observe(RaceFrame(lap: 1, inCar: false));
+        delivery.Observe(RaceFrame(lap: 1));
+        Assert.Equal(0, corpus.Reads);
+        Assert.Null(delivery.Targets.FuelPerLapLiters);
+
+        // The state poll asks for the plan's race fuel; the next line picks the figure up.
+        fuel.ForRace(new PlanContext(Game, Car, Track));
+        Assert.Equal(1, corpus.Reads);
+        delivery.Observe(RaceFrame(lap: 2));
+
+        Assert.Equal(3.5, delivery.Targets.FuelPerLapLiters);
+        Assert.Equal(1, corpus.Reads);
+    }
+
     private sealed class FixedFuelHistory(FuelHistoryFigures figures) : IFuelHistorySource
     {
         public FuelHistoryFigures ForRace(PlanContext context) => figures;
+
+        public FuelHistoryFigures? Cached(PlanContext context) => figures;
+    }
+
+    /// <summary>A corpus that counts its full reads: the loading path the telemetry loop must never take.</summary>
+    private sealed class CountingStore(IReadOnlyList<LapHistorySession> sessions) : ILapHistoryStore
+    {
+        public int Reads { get; private set; }
+
+        public IReadOnlyList<LapHistorySession> LoadAll()
+        {
+            this.Reads++;
+            return sessions;
+        }
+
+        public void Save(LapHistorySession session) => throw new NotSupportedException();
+
+        public void Delete(string sessionId) => throw new NotSupportedException();
     }
 
     // ---- fixtures ----

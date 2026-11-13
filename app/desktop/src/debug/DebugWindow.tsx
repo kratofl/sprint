@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { bridge } from '../bridge'
 import { Status } from '../shell/Status'
 import { Switch } from '../shell/Switch'
-import { debugView } from './debugModel'
+import { debugView, parseDebugMessage } from './debugModel'
 import type { DebugCornerView, DebugRow, DebugScreenView, DebugSection, DebugUnavailable, DebugView } from './debugModel'
 import './DebugWindow.css'
 
@@ -17,7 +17,11 @@ export default function DebugWindow() {
 
   useEffect(() => {
     document.title = 'Sprint debug'
-    return bridge.subscribeDebug((message) => {
+    // The bridge hands this dev-only feed over raw; it is narrowed here, once, so its model never
+    // ships in a packaged build's bundle.
+    return bridge.subscribeDebug((raw) => {
+      const message = parseDebugMessage(raw)
+      if (!message) return
       setView(debugView(message))
       setOnTop(message.onTop)
     })

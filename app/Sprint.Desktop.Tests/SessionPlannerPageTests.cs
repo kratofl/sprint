@@ -857,6 +857,8 @@ public sealed class SessionPlannerPageTests
     private sealed class StubFuelHistory : IFuelHistorySource
     {
         public FuelHistoryFigures ForRace(PlanContext context) => new(125.0, 20, 3.4, 20, null);
+
+        public FuelHistoryFigures? Cached(PlanContext context) => this.ForRace(context);
     }
 
     private static CreatePlanRequest NewRequest(

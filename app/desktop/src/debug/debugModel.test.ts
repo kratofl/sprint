@@ -8,7 +8,7 @@ const snapshot = (patch: { hud?: Record<string, unknown>; screens?: unknown[]; s
   session: { track: 'Spa', lap: 12, maxLaps: 0, timeRemainingSeconds: null, delta: -0.25, targetLapTime: 128.4, ...patch.session },
   car: { speedKph: 251.4, gear: 6, rpm: 7800, maxRpm: 8500, throttle: 1, throttleApplied: 0.82, brake: 0, electronics: { tc: 3, tcMax: 11, absMax: 0 }, corners: [{ position: 'FrontLeft', tempInner: 85 }] },
   screens: patch.screens ?? [],
-  sprint: { hud: patch.hud ?? {}, link: { phase: 'Off' }, recorder: null, timings: { stateBuildMs: 3.2 } },
+  sprint: { hud: patch.hud ?? {}, link: { phase: 'Off' }, recorder: null, timings: { stateAssembledMs: 3.2 } },
 })
 
 test('a debug message is narrowed once; anything missing reads as unknown, never as 0', () => {

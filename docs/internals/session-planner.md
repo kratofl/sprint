@@ -141,6 +141,9 @@ setting changes on the next poll.
   say "From your N laps" under the field, and never overwrite what the driver typed
   (`FigureField`). A field left at its pre-fill is saved as null (`savedFigure`), not as the number it
   showed, so the plan keeps following new laps; only a typed value is stored and pins the figure.
+  Emptied or 0 is no typed value: the field is back on the laps (their median and note), so a form
+  never looks empty while the plan uses the median. The history follows the dialog's car and track:
+  the calculator answers it even when it refuses a figure, and a failed answer drops another car's.
 - Quick plan's calculator is `POST /api/planner/fuel-estimate` (`RaceFuelEstimate.ForInputs`), asked
   as its inputs change; the renderer never works a figure out. It sends what the plan would save, so
   it shows what the Race card will. Inputs are held to `PlanLimits` and a refused one answers with the
@@ -171,6 +174,10 @@ setting changes on the next poll.
   would measure a lap against something it was never driven with. It fires on every boundary so a
   tracker that dropped state recovers one lap later. The UI says "Applies from the next lap".
 - Scalar-only targets never fake a delta: a curve-less lap leaves the tracker on its own session best.
+- A plan that leaves its fuel per lap to the laps gets the median the state poll last worked out
+  (`IFuelHistorySource.Cached`). The latch runs on the telemetry loop, which must never read the
+  corpus or wait on its store's lock, so a figure no poll has worked out yet is no target until the
+  line after one has.
 - **Absent is not zero.** Unset `DashTargets` members resolve to absent and widgets show no-data.
   `fuel_target` binds to the planned value, not actual consumption — a target that follows the burn
   can never be missed.

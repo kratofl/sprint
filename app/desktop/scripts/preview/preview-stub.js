@@ -42,6 +42,8 @@
 //   focus=<css selector>  after the clicks, focus the first match and point at it: what only focus or
 //                         hover shows (the hidden screenshot window never has focus, so it does both);
 //                         `selector@0.46` points that far across it, e.g. a place along the lap charts
+//   clear=<css selector>  after the clicks, empty that text box as the driver deleting what it holds;
+//                         blur=1 then leaves it, as tabbing away does
 //   key=<key>             after the focus, press that key on the focused element (KeyboardEvent.key,
 //                         URL-encoded: %2B for +); repeat it to press several, e.g. zooming the lap charts
 //   lapFile=duplicate|damaged  the lap file a friend sent, opened from Import…: already in your laps
@@ -749,9 +751,6 @@
     // history, the way the host's RaceFuelEstimate.ForInputs works it out: medians of the valid laps,
     // a typed figure over the history's, the race cut into tanks. `detect=partial` has no laps here.
     planFuelEstimate: async (request) => {
-      if (request.avgLapTimeSeconds !== null && (request.avgLapTimeSeconds < 10 || request.avgLapTimeSeconds > 1800)) {
-        return { outcome: 'Invalid', error: 'avgLapTimeSeconds must be from 10 to 1800 seconds' }
-      }
       const median = (values) => {
         const sorted = [...values].sort((a, b) => a - b)
         const middle = Math.floor(sorted.length / 2)
@@ -765,6 +764,10 @@
       const used = laps.map((lap) => lap.fuelUsedLiters).filter((liters) => typeof liters === 'number' && liters > 0)
       const tanks = sessions.map((session) => session.context?.fuelCapacityLiters).filter((liters) => typeof liters === 'number' && liters > 0)
       const history = { lapTimeSeconds: median(times), lapTimeLaps: times.length, fuelPerLapLiters: median(used), fuelLaps: used.length, tankLiters: tanks.length > 0 ? Math.max(...tanks) : null }
+      // A refused figure still answers the history, as the host does: it depends only on the car and track.
+      if (request.avgLapTimeSeconds !== null && (request.avgLapTimeSeconds < 10 || request.avgLapTimeSeconds > 1800)) {
+        return { outcome: 'Invalid', error: 'avgLapTimeSeconds must be from 10 to 1800 seconds', history }
+      }
       const figure = (typed, value, count) => (typed > 0 ? { value: typed, source: 'Plan', laps: 0 } : value !== null ? { value, source: 'History', laps: count } : null)
       const lapTime = figure(request.avgLapTimeSeconds, history.lapTimeSeconds, history.lapTimeLaps)
       const fuelPerLap = figure(request.fuelPerLapLiters, history.fuelPerLapLiters, history.fuelLaps)
@@ -899,7 +902,7 @@
           hud: { open: false, arranging: false, exclusiveFullscreen: params.get('fullscreen') === '1' },
           link: { phase: 'Connected', role: 'Driver', path: 'LocalNetwork', roundTripMs: 4, sampleRate: 20, lossPercent: 0, peerApp: '0.4.2', peerMatch: 'Same', detail: null },
           recorder: { sessionId: 'sample-race', kind: 'Race', track: 'Circuit de Spa-Francorchamps', car: 'Porsche 963', startedAt: '2026-11-13T19:30:00+00:00', laps: 11, lastLapFuelLiters: 3.24 },
-          timings: { stateBuildMs: 3.4, publishTickMs: 0.21 },
+          timings: { stateAssembledMs: 3.4, publishTickMs: 0.21 },
         },
       },
     }
@@ -992,6 +995,27 @@
     }, 20)
   }
 
+  // Empties the `clear=` text box once the clicks are done, through React's own input path (the value
+  // setter React tracks, then `input`), as the driver deleting what it holds. `leave` then dispatches
+  // `focusout` as tabbing away would: the hidden window never moves focus by itself.
+  const clearLater = (selector, leave) => {
+    if (!selector) return
+    const started = Date.now()
+    const timer = setInterval(() => {
+      const element = document.querySelector(selector)
+      if (!(element instanceof HTMLInputElement) && Date.now() - started < 2500) return
+      clearInterval(timer)
+      if (!(element instanceof HTMLInputElement)) {
+        console.warn(`[preview] nothing matches clear selector "${selector}"`)
+        return
+      }
+      element.focus()
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(element, '')
+      element.dispatchEvent(new Event('input', { bubbles: true }))
+      if (leave) setTimeout(() => element.dispatchEvent(new FocusEvent('focusout', { bubbles: true })), 50)
+    }, 20)
+  }
+
   // Presses each `key=` on whatever has focus once the focus step ran, through the app's own
   // keyboard handling (React listens at the root, so a bubbling keydown reaches it).
   const pressKeys = (keys) => {
@@ -1011,6 +1035,7 @@
     }
     clickInOrder(params.getAll('click'))
     const focusAt = 50 * (params.getAll('click').length + 1)
+    setTimeout(() => clearLater(params.get('clear'), params.get('blur') === '1'), focusAt)
     setTimeout(() => focusLater(params.get('focus')), focusAt)
     // The focus step waits up to 2.5s for its element; keys go after it has had time to land.
     if (params.getAll('key').length > 0) setTimeout(() => pressKeys(params.getAll('key')), focusAt + 1500)

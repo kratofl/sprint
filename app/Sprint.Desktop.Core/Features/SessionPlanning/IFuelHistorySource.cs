@@ -9,8 +9,18 @@ namespace Sprint.Desktop.Features.SessionPlanning;
 /// </summary>
 public interface IFuelHistorySource
 {
-    /// <summary>The race figures for <paramref name="context"/>; <see cref="FuelHistoryFigures.None"/> without history.</summary>
+    /// <summary>
+    /// The race figures for <paramref name="context"/>; <see cref="FuelHistoryFigures.None"/> without
+    /// history. May read the whole corpus and wait on the store, so never from the telemetry loop.
+    /// </summary>
     FuelHistoryFigures ForRace(PlanContext context);
+
+    /// <summary>
+    /// What the last <see cref="ForRace"/> for <paramref name="context"/> worked out, or null when
+    /// none has yet. Never reads the corpus or waits on the store: this is the telemetry loop's read.
+    /// The figures may be one corpus write behind until the next <see cref="ForRace"/>.
+    /// </summary>
+    FuelHistoryFigures? Cached(PlanContext context);
 }
 
 /// <summary>No history for any context, so every estimate rests on the plan's own values.</summary>
@@ -19,6 +29,8 @@ public sealed class NoFuelHistorySource : IFuelHistorySource
     public static NoFuelHistorySource Instance { get; } = new();
 
     public FuelHistoryFigures ForRace(PlanContext context) => FuelHistoryFigures.None;
+
+    public FuelHistoryFigures? Cached(PlanContext context) => FuelHistoryFigures.None;
 }
 
 /// <summary>
@@ -34,14 +46,23 @@ public sealed class NoFuelHistorySource : IFuelHistorySource
 /// Safe from any thread: the cache is only touched under its lock, and the figures are worked out
 /// outside it from the one list they are filed against.
 /// </para>
+/// <para>
+/// A write does not drop what was worked out before it: <see cref="Cached"/> keeps answering
+/// those figures, without reading, until the next <see cref="ForRace"/> for the context replaces
+/// them. The state poll asks that for every plan, so the active plan's figures stay warm.
+/// </para>
 /// </summary>
 public sealed class LapHistoryFuelSource : IFuelHistorySource
 {
     private readonly ILapHistoryStore _store;
     private readonly Func<FuelHistorySource> _setting;
     private readonly Lock _gate = new();
-    private readonly Dictionary<(PlanContext Context, HistorySessionKind? OnlyKind), FuelHistoryFigures> _figures = [];
+
+    // The figures last worked out per context and narrowing, with the corpus generation they came
+    // from: a repeat ask is answered only from the current one, Cached from any.
+    private readonly Dictionary<(PlanContext Context, HistorySessionKind? OnlyKind), (FuelHistoryFigures Figures, int Generation)> _figures = [];
     private IReadOnlyList<LapHistorySession>? _corpus;
+    private int _generation;
 
     public LapHistoryFuelSource(ILapHistoryStore store, Func<FuelHistorySource> setting)
     {
@@ -52,34 +73,48 @@ public sealed class LapHistoryFuelSource : IFuelHistorySource
     public FuelHistoryFigures ForRace(PlanContext context)
     {
         ArgumentNullException.ThrowIfNull(context);
-        HistorySessionKind? onlyKind = this._setting() == FuelHistorySource.MatchingSessionType
-            ? HistorySessionKind.Race
-            : null;
+        (PlanContext Context, HistorySessionKind? OnlyKind) key = this.KeyFor(context);
         IReadOnlyList<LapHistorySession> corpus = this._store.LoadAll();
-        (PlanContext, HistorySessionKind?) key = (context, onlyKind);
+        int generation;
         lock (this._gate)
         {
             if (!ReferenceEquals(corpus, this._corpus))
             {
                 this._corpus = corpus;
-                this._figures.Clear();
+                this._generation++;
             }
-            else if (this._figures.TryGetValue(key, out FuelHistoryFigures? cached))
+            else if (this._figures.TryGetValue(key, out (FuelHistoryFigures Figures, int Generation) filed) && filed.Generation == this._generation)
             {
-                return cached;
+                return filed.Figures;
             }
+
+            generation = this._generation;
         }
 
-        FuelHistoryFigures figures = FuelHistoryFigures.From(corpus, context, onlyKind);
+        FuelHistoryFigures figures = FuelHistoryFigures.From(corpus, context, key.OnlyKind);
         lock (this._gate)
         {
             // Filed only against the list they came from: a write meanwhile has moved the cache on.
-            if (ReferenceEquals(corpus, this._corpus))
+            if (generation == this._generation)
             {
-                this._figures[key] = figures;
+                this._figures[key] = (figures, generation);
             }
         }
 
         return figures;
     }
+
+    public FuelHistoryFigures? Cached(PlanContext context)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        (PlanContext Context, HistorySessionKind? OnlyKind) key = this.KeyFor(context);
+        lock (this._gate)
+        {
+            return this._figures.TryGetValue(key, out (FuelHistoryFigures Figures, int Generation) filed) ? filed.Figures : null;
+        }
+    }
+
+    // The setting is read on each ask, so a change applies at once.
+    private (PlanContext Context, HistorySessionKind? OnlyKind) KeyFor(PlanContext context) =>
+        (context, this._setting() == FuelHistorySource.MatchingSessionType ? HistorySessionKind.Race : null);
 }

@@ -35,9 +35,9 @@ public sealed class DebugSnapshotTests
 
         DebugSnapshot snapshot = DebugSnapshot.Build(new DesktopTelemetryState(frame, status, 50), Now, [], _ => null, Sprint());
 
-        Assert.Equal(40, snapshot.Telemetry.FrameAgeMs!.Value, precision: 6);
+        Assert.Equal(40, Assert.NotNull(snapshot.Telemetry.FrameAgeMs), precision: 6);
         Assert.Equal(180, snapshot.Car.SpeedKph, precision: 3);
-        Assert.Equal(0.8, snapshot.Car.ThrottleApplied!.Value, precision: 6);
+        Assert.Equal(0.8, Assert.NotNull(snapshot.Car.ThrottleApplied), precision: 6);
         Assert.Null(snapshot.Car.BrakeApplied);
         Assert.Equal(90, snapshot.Car.FuelCapacityLiters);
         // Front left first, whatever order the game listed the corners in.
@@ -76,8 +76,8 @@ public sealed class DebugSnapshotTests
         DebugScreen live = screens[0];
         Assert.Equal(ScreenConnectionState.Connected, live.State);
         Assert.Equal(29.7, live.Fps);
-        Assert.Equal(3, live.RenderMs!.Value, precision: 6);
-        Assert.Equal(9, live.UsbMs!.Value, precision: 6);
+        Assert.Equal(3, Assert.NotNull(live.RenderMs), precision: 6);
+        Assert.Equal(9, Assert.NotNull(live.UsbMs), precision: 6);
         Assert.Equal(10, live.FramesUnchanged);
         // 602 drawn, 590 sent, 10 unchanged: 2 failed on the way to the panel.
         Assert.Equal(2, live.FramesFailed);
@@ -93,7 +93,9 @@ public sealed class DebugSnapshotTests
         SessionPlan draft = new() { Id = "draft", Status = PlanStatus.Draft };
         SessionPlan armed = new() { Id = "armed", Name = "Spa 6h", Status = PlanStatus.Armed, FuelPerLapLiters = 3.1 };
 
-        Assert.Equal("armed", DebugPlan.Active([draft, armed])!.Id);
+        DebugPlan? active = DebugPlan.Active([draft, armed]);
+        Assert.NotNull(active);
+        Assert.Equal("armed", active.Id);
         Assert.Null(DebugPlan.Active([draft]));
 
         LapHistorySession session = new()
@@ -102,7 +104,8 @@ public sealed class DebugSnapshotTests
             Kind = HistorySessionKind.Practice,
             Laps = [new LapHistoryRecord { FuelUsedLiters = null }, new LapHistoryRecord { FuelUsedLiters = 3.4 }],
         };
-        DebugRecorder recorder = DebugRecorder.From(session)!;
+        DebugRecorder? recorder = DebugRecorder.From(session);
+        Assert.NotNull(recorder);
         Assert.Equal(2, recorder.Laps);
         Assert.Equal(3.4, recorder.LastLapFuelLiters);
         Assert.Null(DebugRecorder.From(null));

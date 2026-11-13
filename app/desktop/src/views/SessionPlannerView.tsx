@@ -29,6 +29,7 @@ import {
   detectedFormatLabel,
   EMPTY_FIGURE,
   figureNote,
+  figurePlaceholder,
   figureText,
   figureValue,
   fuelGap,
@@ -37,7 +38,9 @@ import {
   prefillFigures,
   savedFigure,
   sameContext,
+  settledFigure,
   storedFigure,
+  typedFigure,
   detectedRaceFormat,
   figureSource,
   formatLapTime,
@@ -70,7 +73,7 @@ import {
   upNextPlan,
   weekendTimeline,
 } from './SessionPlannerDomain'
-import type { CreatePlanInput, FigureField, FuelHistoryChoice, PlanFigures, PlanSegment, PlanStatus, PlanTarget, PlannerSettings, PracticeSummary, QuickPlanAnswers, RaceLengthFormat, SegmentKind, SessionPlan } from './SessionPlannerDomain'
+import type { CreatePlanInput, FigureField, FuelHistoryChoice, PlanContextNames, PlanFigures, PlanSegment, PlanStatus, PlanTarget, PlannerSettings, PracticeSummary, QuickPlanAnswers, RaceLengthFormat, SegmentKind, SessionPlan } from './SessionPlannerDomain'
 import { presetChoices } from './choices'
 import { commandErrorMessage } from './DevicesDomain'
 import './SessionPlannerView.css'
@@ -1103,6 +1106,7 @@ function QuickPlanDialog({
     raceLength: '',
     lapTime: EMPTY_FIGURE,
     fuelPerLap: EMPTY_FIGURE,
+    historyFor: null,
     fuelReserveLaps: reserve,
   })
   const set = (patch: Partial<QuickPlanAnswers>) => setAnswers((current) => ({ ...current, ...patch }))
@@ -1261,7 +1265,8 @@ function QuickPlanFuel({ plan, preview }: { plan: CreatePlanInput; preview: Plan
 
 /**
  * A plan dialog's lap time or fuel per lap: what the driver's laps filled in, named under it ("From
- * your 11 laps", the lap time also read as m:ss.d), until the driver types — then it is theirs.
+ * your 11 laps", the lap time also read as m:ss.d), until the driver types — then it is theirs. Emptied
+ * (or 0) it falls back to the laps: the note says so at once, and the value shows again on leaving it.
  */
 function FigureInput({
   label,
@@ -1285,8 +1290,12 @@ function FigureInput({
         max={kind === 'lapTime' ? PLAN_LIMITS.maxLapTimeSeconds : PLAN_LIMITS.maxFuelPerLapLiters}
         step="any"
         value={figureText(field)}
-        onChange={(event) => onChange({ source: 'typed', text: event.target.value })}
-        placeholder="Optional"
+        onChange={(event) => onChange(typedFigure(field, event.target.value))}
+        onBlur={() => {
+          const settled = settledFigure(field)
+          if (settled !== field) onChange(settled)
+        }}
+        placeholder={figurePlaceholder(field)}
       />
       {hint && <span className="field-hint tabular">{hint}</span>}
     </label>
@@ -1328,17 +1337,18 @@ function usePlanFuel(request: PlanFuelRequest): PlanFuelAnswer | null {
 /**
  * Fills a dialog's lap time and fuel per lap from the driver's laps whenever an answer arrives for
  * the car and track the dialog names now (`prefillFigures`): never over a typed value, and never
- * from an answer about a car or track the driver has since changed.
+ * from an answer about a car or track the driver has since changed. A refused answer still carries
+ * the history; one that failed drops laps of a car or track the dialog no longer names.
  */
 function usePrefillFigures<T extends PlanFigures>(
   fuel: PlanFuelAnswer | null,
-  context: { game: string; car: string; track: string },
+  context: PlanContextNames,
   update: (apply: (current: T) => T) => void,
 ) {
   useEffect(() => {
-    if (fuel?.preview.outcome !== 'ready' || !sameContext(fuel.request, context)) return
-    const { history } = fuel.preview
-    update((current) => prefillFigures(current, history))
+    if (!fuel || !sameContext(fuel.request, context)) return
+    const history = fuel.preview.outcome === 'failed' ? null : fuel.preview.history
+    update((current) => prefillFigures(current, context, history))
     // Only a new answer fills; the context is read as it stands when that answer arrives.
   }, [fuel])
 }
@@ -1392,13 +1402,14 @@ function PlanFormDialog({
   const [figures, setFigures] = useState<PlanFigures>({
     lapTime: storedFigure(initial?.avgLapTimeSeconds ?? null),
     fuelPerLap: storedFigure(initial?.fuelPerLapLiters ?? null),
+    historyFor: null,
   })
   const [notes, setNotes] = useState(initial?.notes ?? '')
   const context = { game: game.trim(), car: car.trim(), track: track.trim() }
   usePrefillFigures(usePlanFuel(historyRequest(context)), context, setFigures)
 
   // What the driver's laps filled in is not a change of theirs: only typed figures count.
-  const typed = (field: FigureField) => (field.source === 'typed' ? field.text : '')
+  const typed = (field: FigureField) => field.typed ?? ''
   const snapshot = JSON.stringify([name, game, car, track, qualifyingIncluded, raceLengthFormat, raceLengthValue, fuelReserveLaps, typed(figures.lapTime), typed(figures.fuelPerLap), notes])
   const [initialSnapshot] = useState(snapshot)
   const dirty = snapshot !== initialSnapshot

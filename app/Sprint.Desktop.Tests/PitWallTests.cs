@@ -743,5 +743,7 @@ public sealed class PitWallTests
             this.AskedFor = context;
             return this.Figures;
         }
+
+        public FuelHistoryFigures? Cached(PlanContext context) => this.Figures;
     }
 }

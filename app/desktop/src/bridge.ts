@@ -1,8 +1,6 @@
 import type { TelemetryFrame } from '@sprint/types'
 import { parseHostFrame } from '@sprint/dashboard'
 import { parseHudMessage } from './hud/hudModel'
-import { parseDebugMessage } from './debug/debugModel'
-import type { DebugMessage } from './debug/debugModel'
 import type { HudMessage } from './hud/hudModel'
 import { parseUpdateStatus } from './shell/updates'
 import { parseSetupDriven, parseSetupLibrary, parseSetupSheet } from './views/SetupsDomain'
@@ -125,11 +123,12 @@ export type PlanFuelRequest = {
 
 /**
  * The calculator's answer (`POST /api/planner/fuel-estimate`): the history for the car and track and
- * the race worked out from the inputs, the host's reason it refused them, or no answer at all.
+ * the race worked out from the inputs, the host's reason it refused them (with the history still: it
+ * depends only on the car and track), or no answer at all.
  */
 export type PlanFuelPreview =
   | { outcome: 'ready'; history: FuelHistory; estimate: RaceFuelEstimate }
-  | { outcome: 'invalid'; error: string }
+  | { outcome: 'invalid'; error: string; history: FuelHistory }
   | { outcome: 'failed' }
 
 export type PlanTargetScope = 'CurrentQualifying' | 'Qualifying' | 'Practice' | 'PracticeProgram' | 'Manual'
@@ -449,8 +448,11 @@ export type SprintBridge = {
   pitWallTrace(lap: TraceLap): Promise<PitWallTrace>
   /** Dev runs only: opens the debug window, or brings it forward (electron/debugWindow.ts). */
   openDebugWindow(): Promise<void>
-  /** The debug window's feed, a message per state poll, narrowed here. */
-  subscribeDebug(listener: (message: DebugMessage) => void): () => void
+  /**
+   * The debug window's feed, a message per state poll, raw: the dev-only window narrows it at its own
+   * edge (`parseDebugMessage`), so its model stays out of every bundle but a dev run's.
+   */
+  subscribeDebug(listener: (message: unknown) => void): () => void
   /** The debug window's Keep on top switch. */
   setDebugOnTop(onTop: boolean): void
 }
@@ -498,7 +500,10 @@ type RawBridge = {
   /** Both absent in an older preview stub. */
   openPitWall?(target?: { kind: 'page' | 'tile'; id: string }): Promise<unknown>
   pitWallTrace?(lap: string): Promise<unknown>
-  /** All three absent in the preview harness's stub before the debug window, and in a packaged build's main process. */
+  /**
+   * The preload always exposes all three; a packaged build's main process handles none of them, so they
+   * are only called from dev-only code. Absent in the preview harness's stub before the debug window.
+   */
   openDebugWindow?(): Promise<unknown>
   subscribeDebug?(listener: (message: unknown) => void): () => void
   setDebugOnTop?(onTop: boolean): void
@@ -780,24 +785,26 @@ const parsePlanFuel = (value: unknown): Record<string, RaceFuelEstimate> => {
 
 const countOrZero = (value: unknown): number => (typeof value === 'number' && Number.isInteger(value) && value > 0 ? value : 0)
 
+/** The host's `FuelHistoryFigures`; null when there is no such object to read. */
+const parseFuelHistory = (value: unknown): FuelHistory | null =>
+  isRecord(value)
+    ? {
+        lapTimeSeconds: finiteOrNull(value.lapTimeSeconds),
+        lapTimeLaps: countOrZero(value.lapTimeLaps),
+        fuelPerLapLiters: finiteOrNull(value.fuelPerLapLiters),
+        fuelLaps: countOrZero(value.fuelLaps),
+        tankLiters: finiteOrNull(value.tankLiters),
+      }
+    : null
+
 /** Narrows the calculator's answer; an answer it cannot read is no answer rather than a made-up one. */
 const parsePlanFuelPreview = (value: unknown): PlanFuelPreview => {
   if (!isRecord(value)) return { outcome: 'failed' }
-  if (value.outcome === 'Invalid' && typeof value.error === 'string') return { outcome: 'invalid', error: value.error }
-  const estimate = value.outcome === 'Ready' && isRecord(value.history) ? parseRaceFuelEstimate(value.estimate) : null
-  if (!estimate || !isRecord(value.history)) return { outcome: 'failed' }
-  const history = value.history
-  return {
-    outcome: 'ready',
-    history: {
-      lapTimeSeconds: finiteOrNull(history.lapTimeSeconds),
-      lapTimeLaps: countOrZero(history.lapTimeLaps),
-      fuelPerLapLiters: finiteOrNull(history.fuelPerLapLiters),
-      fuelLaps: countOrZero(history.fuelLaps),
-      tankLiters: finiteOrNull(history.tankLiters),
-    },
-    estimate,
-  }
+  const history = parseFuelHistory(value.history)
+  if (!history) return { outcome: 'failed' }
+  if (value.outcome === 'Invalid' && typeof value.error === 'string') return { outcome: 'invalid', error: value.error, history }
+  const estimate = value.outcome === 'Ready' ? parseRaceFuelEstimate(value.estimate) : null
+  return estimate ? { outcome: 'ready', history, estimate } : { outcome: 'failed' }
 }
 
 /** Narrows the host's `PlanContextChoices` once, here. */
@@ -1027,13 +1034,7 @@ export const bridge: SprintBridge = raw
       openPitWall: async (target) => { await raw.openPitWall?.(target) },
       pitWallTrace: async (lap) => (raw.pitWallTrace ? parsePitWallTrace(await raw.pitWallTrace(lap).catch(() => null)) : EMPTY_TRACE),
       openDebugWindow: async () => { await raw.openDebugWindow?.() },
-      subscribeDebug: (listener) =>
-        raw.subscribeDebug
-          ? raw.subscribeDebug((message) => {
-              const parsed = parseDebugMessage(message)
-              if (parsed) listener(parsed)
-            })
-          : () => undefined,
+      subscribeDebug: (listener) => (raw.subscribeDebug ? raw.subscribeDebug(listener) : () => undefined),
       setDebugOnTop: (onTop) => raw.setDebugOnTop?.(onTop),
     }
   : {

@@ -18,8 +18,12 @@ import {
   figureText,
   figureValue,
   savedFigure,
+  settledFigure,
   prefillFigure,
+  prefillFigures,
+  figurePlaceholder,
   storedFigure,
+  typedFigure,
   readPlannerSettings,
   recentLapTimes,
   reserveNote,
@@ -28,7 +32,7 @@ import {
   stintsLabel,
   weekendTimeline,
 } from './SessionPlannerDomain'
-import type { FigureField, QuickPlanAnswers } from './SessionPlannerDomain'
+import type { PlanFigures, QuickPlanAnswers } from './SessionPlannerDomain'
 import type { PlanDetection, PlanTargetOption } from '../bridge'
 import type { SessionPlan } from './SessionPlannerDomain'
 
@@ -173,8 +177,9 @@ const answers: QuickPlanAnswers = {
   track: 'Typed track',
   raceLengthFormat: 'LapBased',
   raceLength: '24',
-  lapTime: { source: 'history', value: 125.4, laps: 11 },
-  fuelPerLap: { source: 'typed', text: '3.2' },
+  lapTime: { typed: null, history: { kind: 'median', value: 125.4, laps: 11 } },
+  fuelPerLap: { typed: '3.2', history: { kind: 'unknown' } },
+  historyFor: null,
   fuelReserveLaps: 2,
 }
 
@@ -187,7 +192,7 @@ test('a quick plan takes what was detected, the answers it asked for and the fig
   )
 
   // Nothing detected and nothing typed: the typed context, the typed length, no figures.
-  const gaps = quickPlanInput(detection({ raceLength: null, hasFuelHistory: false, missing: ['Context', 'RaceLength', 'Fuel'] }), { ...answers, lapTime: EMPTY_FIGURE, fuelPerLap: { source: 'typed', text: '' } })
+  const gaps = quickPlanInput(detection({ raceLength: null, hasFuelHistory: false, missing: ['Context', 'RaceLength', 'Fuel'] }), { ...answers, lapTime: EMPTY_FIGURE, fuelPerLap: { typed: '', history: { kind: 'unknown' } } })
   assert.deepEqual(
     [gaps.game, gaps.car, gaps.track, gaps.raceLengthFormat, gaps.raceLengthValue, gaps.avgLapTimeSeconds, gaps.fuelPerLapLiters],
     ['Typed game', 'Typed car', 'Typed track', 'LapBased', 24, null, null],
@@ -201,28 +206,93 @@ test('a quick plan takes what was detected, the answers it asked for and the fig
 test('laps fill a figure until the driver types into it', () => {
   // Rounded to what the field shows, and named under it.
   const filled = prefillFigure(EMPTY_FIGURE, 125.43219, 11, 3)
-  assert.deepEqual(filled, { source: 'history', value: 125.432, laps: 11 })
+  assert.deepEqual(filled, { typed: null, history: { kind: 'median', value: 125.432, laps: 11 } })
   assert.equal(figureText(filled), '125.432')
   assert.equal(figureValue(filled), 125.432)
   // Shown, but not the driver's: it saves as null.
   assert.equal(savedFigure(filled), null)
   assert.equal(figureNote(filled), 'From your 11 laps')
-  // The same answer again changes nothing; another car's laps replace it, a car without laps empties it.
+  // The same answer again changes nothing; another car's laps replace it.
   assert.equal(prefillFigure(filled, 125.43219, 11, 3), filled)
-  assert.deepEqual(prefillFigure(filled, 98.2, 4, 3), { source: 'history', value: 98.2, laps: 4 })
-  assert.equal(prefillFigure(filled, null, 0, 3), EMPTY_FIGURE)
+  assert.deepEqual(prefillFigure(filled, 98.2, 4, 3).history, { kind: 'median', value: 98.2, laps: 4 })
+  // A car without laps empties it and says nothing will stand in, rather than looking like a value.
+  const none = prefillFigure(filled, null, 0, 3)
+  assert.equal(figureText(none), '')
+  assert.equal(figureValue(none), null)
+  assert.equal(figureNote(none), 'None from your laps')
+  assert.equal(figurePlaceholder(none), 'Not used')
+  // Before any answer it is just empty: no claim either way.
+  assert.equal(figureNote(EMPTY_FIGURE), null)
 
-  // What the driver typed is never overwritten, not even an emptied field, and carries no note.
-  const typed: FigureField = { source: 'typed', text: '' }
-  assert.equal(prefillFigure(typed, 125.4, 11, 3), typed)
+  // What the driver typed is theirs: never overwritten by the laps, and it carries no note.
+  const typed = typedFigure(filled, '124.9')
+  assert.equal(prefillFigure(typed, 98.2, 4, 3).typed, '124.9')
+  assert.equal(savedFigure(typed), 124.9)
+  assert.equal(figureValue(typed), 124.9)
   assert.equal(figureNote(typed), null)
-  assert.equal(figureValue(typed), null)
-  assert.equal(savedFigure(typed), null)
-  assert.equal(savedFigure({ source: 'typed', text: '125.4' }), 125.4)
-  assert.deepEqual(storedFigure(3.1), { source: 'typed', text: '3.1' })
+  assert.equal(settledFigure(typed), typed)
+  // A stored plan's figure is the driver's; a plan without one, or a legacy 0, follows its laps.
+  assert.deepEqual(storedFigure(3.1), { typed: '3.1', history: { kind: 'unknown' } })
   assert.equal(storedFigure(null), EMPTY_FIGURE)
+  assert.equal(storedFigure(0), EMPTY_FIGURE)
 })
 
+test('clearing a figure returns it to the laps', () => {
+  const filled = prefillFigure(EMPTY_FIGURE, 125.4, 11, 3)
+  for (const text of ['', '0']) {
+    // While the driver is still in it: their text stays, but it saves nothing and says what stands in.
+    const cleared = typedFigure(typedFigure(filled, '124.9'), text)
+    assert.equal(figureText(cleared), text)
+    assert.equal(figurePlaceholder(cleared), '125.4')
+    assert.equal(savedFigure(cleared), null)
+    assert.equal(figureValue(cleared), 125.4)
+    assert.equal(figureNote(cleared), 'From your 11 laps')
+    // Leaving it shows the laps' value again, and the next car's laps fill it as if never typed.
+    const settled = settledFigure(cleared)
+    assert.equal(settled.typed, null)
+    assert.equal(figureText(settled), '125.4')
+    assert.equal(figureText(prefillFigure(settled, 98.2, 4, 3)), '98.2')
+  }
+
+  // Without laps, a cleared field is honestly empty: nothing will be used.
+  const bare = settledFigure(typedFigure(prefillFigure(EMPTY_FIGURE, null, 0, 3), ''))
+  assert.equal(figureText(bare), '')
+  assert.equal(figurePlaceholder(bare), 'Not used')
+  assert.equal(figurePlaceholder(EMPTY_FIGURE), 'Optional')
+  assert.equal(figureNote(bare), 'None from your laps')
+})
+
+test('the figures follow the dialog\'s car and track, even when the calculator refuses or fails', () => {
+  const porsche = { game: 'Le Mans Ultimate', car: 'Hypercar Porsche', track: 'Spa' }
+  const ferrari = { ...porsche, car: 'Hypercar Ferrari' }
+  const history = (lapTimeSeconds: number | null, fuelPerLapLiters: number | null) => ({
+    lapTimeSeconds,
+    lapTimeLaps: lapTimeSeconds === null ? 0 : 11,
+    fuelPerLapLiters,
+    fuelLaps: fuelPerLapLiters === null ? 0 : 9,
+    tankLiters: null,
+  })
+  const start: PlanFigures = { lapTime: EMPTY_FIGURE, fuelPerLap: typedFigure(EMPTY_FIGURE, '3.2'), historyFor: null }
+
+  const filled = prefillFigures(start, porsche, history(125.4, 3.45))
+  assert.equal(figureText(filled.lapTime), '125.4')
+  assert.deepEqual(filled.historyFor, porsche)
+  // The same answer again is the same object; a failed one for the same car keeps its laps.
+  assert.equal(prefillFigures(filled, porsche, history(125.4, 3.45)), filled)
+  assert.equal(prefillFigures(filled, porsche, null), filled)
+
+  // A new car whose answer failed: the old car's median goes, rather than standing as this car's.
+  const failed = prefillFigures(filled, ferrari, null)
+  assert.equal(figureText(failed.lapTime), '')
+  assert.equal(figureNote(failed.lapTime), null)
+  assert.equal(failed.historyFor, null)
+  // A refused answer still carries the new car's history, which replaces the old.
+  const refused = prefillFigures(filled, ferrari, history(null, null))
+  assert.equal(figureNote(refused.lapTime), 'None from your laps')
+  assert.deepEqual(refused.historyFor, ferrari)
+  // What the driver typed survives every one of them.
+  for (const figures of [filled, failed, refused]) assert.equal(savedFigure(figures.fuelPerLap), 3.2)
+})
 test('planner settings fall back to the host defaults', () => {
   assert.deepEqual(readPlannerSettings({}), { fuelReserveLaps: 1, fuelHistorySource: 'AllValidLaps', warnOnRaceFormatMismatch: true })
   assert.deepEqual(

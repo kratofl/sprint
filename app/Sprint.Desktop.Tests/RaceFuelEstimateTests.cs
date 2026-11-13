@@ -66,13 +66,19 @@ public sealed class RaceFuelEstimateTests
         Assert.Same(first, source.ForRace(Spa));
         Assert.Equal(1, inner.FullReads);
 
-        // The recorder's write drops the corpus: the next ask reads it again and counts the new lap.
+        // The recorder's write drops the corpus. The telemetry loop's read keeps the last figures
+        // without reading; the next ask reads it again and counts the new lap.
         store.Save(Session(HistorySessionKind.Race, tank: 90, Lap(127, fuel: 3.4)));
+        Assert.Same(first, source.Cached(Spa));
+        Assert.Equal(1, inner.FullReads);
         FuelHistoryFigures afterLap = source.ForRace(Spa);
 
         Assert.Equal(2, afterLap.FuelLaps);
         Assert.Equal(2, inner.FullReads);
         Assert.Same(afterLap, source.ForRace(Spa));
+        Assert.Same(afterLap, source.Cached(Spa));
+        // A context nothing has asked about has no figures yet, rather than a read.
+        Assert.Null(source.Cached(Spa with { Car = "Ferrari 499P" }));
     }
 
     [Fact]

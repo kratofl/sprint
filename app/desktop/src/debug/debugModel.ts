@@ -130,7 +130,7 @@ export type DebugSnapshot = {
       detail: string | null
     }
     recorder: { sessionId: string; kind: string; track: string; car: string; startedAt: string | null; laps: number | null; lastLapFuelLiters: number | null } | null
-    timings: { stateBuildMs: number | null; publishTickMs: number | null }
+    timings: { stateAssembledMs: number | null; publishTickMs: number | null }
   }
 }
 
@@ -303,7 +303,7 @@ export function parseDebugSnapshot(value: unknown): DebugSnapshot | null {
             lastLapFuelLiters: num(recorder.lastLapFuelLiters),
           }
         : null,
-      timings: { stateBuildMs: num(timings.stateBuildMs), publishTickMs: num(timings.publishTickMs) },
+      timings: { stateAssembledMs: num(timings.stateAssembledMs), publishTickMs: num(timings.publishTickMs) },
     },
   }
 }
@@ -534,7 +534,7 @@ export function debugView(message: DebugMessage): DebugView | DebugUnavailable {
       },
       {
         label: 'Host timing',
-        value: `state ${fixed(timings.stateBuildMs, 1, ' ms')} · tick ${fixed(timings.publishTickMs, 2, ' ms')} · poll ${fixed(message.statePollMs, 0, ' ms')}`,
+        value: `state assembled ${fixed(timings.stateAssembledMs, 1, ' ms')} · tick ${fixed(timings.publishTickMs, 2, ' ms')} · poll ${fixed(message.statePollMs, 0, ' ms')}`,
       },
     ],
   }

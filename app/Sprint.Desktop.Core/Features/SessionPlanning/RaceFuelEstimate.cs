@@ -234,8 +234,15 @@ public sealed record RaceFuelEstimate(
     private static EstimateFigure? FromHistory(double? value, int laps) =>
         value is { } median ? new EstimateFigure(median, EstimateSource.History, laps) : null;
 
+    /// <summary>
+    /// The figure the driver typed, or null when there is none to win over the history: nothing
+    /// typed, or 0 and below, which plans stored before <see cref="PlanLimits"/> kept for "not typed".
+    /// The one rule for every consumer of a plan's lap time and fuel per lap, the wheel's targets included.
+    /// </summary>
+    public static double? TypedValue(double? value) => value is { } typed && typed > 0 ? typed : null;
+
     private static EstimateFigure? Typed(double? value) =>
-        value is { } typed && typed > 0 ? new EstimateFigure(typed, EstimateSource.Plan, 0) : null;
+        TypedValue(value) is { } typed ? new EstimateFigure(typed, EstimateSource.Plan, 0) : null;
 
     /// <summary>Null past <see cref="MaxStints"/>: a list that long only describes figures that are wrong.</summary>
     private static RaceStints? CutIntoStints(int fuelLaps, double perLap, double tank)

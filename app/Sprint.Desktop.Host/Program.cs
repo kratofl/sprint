@@ -282,7 +282,8 @@ _ = Task.Run(() =>
     }
 });
 
-// How long the state request and the telemetry tick take, for the dev debug window (/api/debug).
+// How long the state takes to assemble (before serialisation) and the telemetry tick to run, for
+// the dev debug window (/api/debug).
 DebugTimings debugTimings = new();
 
 CancellationTokenSource telemetryPublishCts = new();
@@ -570,7 +571,7 @@ app.MapGet("/api/state", () =>
         },
         screens = ScreenOutputs.Describe(runtime.Devices, runtime.DashLayouts, state.Telemetry.Status.IsLive, screenOutputs.HardwareFor, dashPageCycle)
     }, json);
-    debugTimings.StateBuilt(Stopwatch.GetElapsedTime(started));
+    debugTimings.StateAssembled(Stopwatch.GetElapsedTime(started));
     return result;
 });
 
@@ -799,12 +800,15 @@ app.MapGet("/api/planner/context", async (CancellationToken ct) =>
 
 // The plan dialogs' fuel calculator, asked as their fields change: the lap history for a car and
 // track (the dialogs pre-fill from it) and the race worked out from what is typed. Refused inputs
-// answer 200 with the reason, like plan.create's, so the dialog can say it beside its fields.
+// answer 200 with the reason, like plan.create's, so the dialog can say it beside its fields, and
+// still with the history: it depends only on the car and track, and a dialog whose answer lacked it
+// would keep showing another car's laps.
 app.MapPost("/api/planner/fuel-estimate", async (PlanFuelEstimateRequest body, CancellationToken ct) =>
 {
     if (!body.TryGetInputs(runtime.Settings.SessionPlanner.FuelReserveLaps, out PlanFuelInputs inputs, out string error))
     {
-        return Results.Json(new { outcome = "Invalid", error }, json);
+        FuelHistoryFigures history = await Task.Run(() => fuelHistory.ForRace(body.ToContext()), ct);
+        return Results.Json(new { outcome = "Invalid", error, history }, json);
     }
 
     TelemetryFrame frame = state.Telemetry.Frame;

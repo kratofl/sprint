@@ -50,5 +50,7 @@ public sealed class PlanFuelEstimateRequestTests
 
         Assert.False(request.TryGetInputs(defaultReserveLaps: 1, out _, out string error));
         Assert.Contains(named, error, StringComparison.Ordinal);
+        // Refused figures still name the car and track, whose lap history the answer carries.
+        Assert.Equal(new PlanContext("Le Mans Ultimate", "Porsche 963", "Spa"), request.ToContext());
     }
 }

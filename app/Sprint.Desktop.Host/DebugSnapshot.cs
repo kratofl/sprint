@@ -343,7 +343,11 @@ public sealed record DebugLink(
 /// <summary>The lap-history session being recorded into: what, since when, how many laps, and the last lap's fuel.</summary>
 public sealed record DebugRecorder(string SessionId, HistorySessionKind Kind, string Track, string Car, DateTimeOffset StartedAt, int Laps, double? LastLapFuelLiters)
 {
-    /// <summary>Null when nothing is being recorded. The telemetry thread appends laps; a count read mid-append is one lap behind at worst.</summary>
+    /// <summary>
+    /// Null when nothing is being recorded. The telemetry thread appends laps to the live list with
+    /// no lock to share, and <see cref="List{T}.Add"/> counts a lap before it stores it, so the
+    /// newest slot can read null for an instant: that lap's fuel then shows on the next poll.
+    /// </summary>
     public static DebugRecorder? From(LapHistorySession? session)
     {
         if (session is null)
@@ -353,6 +357,7 @@ public sealed record DebugRecorder(string SessionId, HistorySessionKind Kind, st
 
         List<LapHistoryRecord> laps = session.Laps;
         int count = laps.Count;
+        LapHistoryRecord? last = count > 0 ? laps[count - 1] : null;
         return new DebugRecorder(
             session.Id,
             session.Kind,
@@ -360,12 +365,16 @@ public sealed record DebugRecorder(string SessionId, HistorySessionKind Kind, st
             session.Context.CarModel,
             session.StartedAt,
             count,
-            count > 0 ? laps[count - 1].FuelUsedLiters : null);
+            last?.FuelUsedLiters);
     }
 }
 
-/// <summary>How long the host's last <c>/api/state</c> took to build and its telemetry loop's last tick took to run.</summary>
-public sealed record DebugTimingsSnapshot(double StateBuildMs, double PublishTickMs);
+/// <summary>
+/// How long the host's last <c>/api/state</c> took to assemble — its figures gathered, not yet
+/// serialised (<c>Results.Json</c> writes the body after the handler returns) — and how long its
+/// telemetry loop's last tick took to run.
+/// </summary>
+public sealed record DebugTimingsSnapshot(double StateAssembledMs, double PublishTickMs);
 
 /// <summary>
 /// The host's own timings for the debug window, written by the loops that are timed: one
@@ -373,12 +382,12 @@ public sealed record DebugTimingsSnapshot(double StateBuildMs, double PublishTic
 /// </summary>
 public sealed class DebugTimings
 {
-    private double _stateBuildMs;
+    private double _stateAssembledMs;
     private double _publishTickMs;
 
-    public DebugTimingsSnapshot Snapshot => new(Volatile.Read(ref this._stateBuildMs), Volatile.Read(ref this._publishTickMs));
+    public DebugTimingsSnapshot Snapshot => new(Volatile.Read(ref this._stateAssembledMs), Volatile.Read(ref this._publishTickMs));
 
-    public void StateBuilt(TimeSpan elapsed) => Volatile.Write(ref this._stateBuildMs, elapsed.TotalMilliseconds);
+    public void StateAssembled(TimeSpan elapsed) => Volatile.Write(ref this._stateAssembledMs, elapsed.TotalMilliseconds);
 
     public void PublishTicked(TimeSpan elapsed) => Volatile.Write(ref this._publishTickMs, elapsed.TotalMilliseconds);
 }

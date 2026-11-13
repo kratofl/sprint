@@ -335,63 +335,117 @@ export const positiveOrNull = (text: string): number | null => {
 
 // ── A plan's lap time and fuel per lap (the plan dialogs' fields) ───────────
 
+/** A car at a track, as the plan dialogs name it and the calculator answers about it. */
+export type PlanContextNames = { game: string; car: string; track: string }
+
 /**
- * A plan dialog's lap time or fuel per lap. Filled from the driver's laps with this car at this
- * track (`history`, with the laps the median rests on) until the driver types into it; from then
- * on it is theirs (`typed`), emptied too, and a new car or track never overwrites it.
+ * What the driver's laps with a dialog's car at its track say about one figure: their median and the
+ * laps it rests on, `none` when they have no such figure, `unknown` until the calculator has answered
+ * for this car and track.
  */
-export type FigureField = { source: 'empty' } | { source: 'history'; value: number; laps: number } | { source: 'typed'; text: string }
-
-export const EMPTY_FIGURE: FigureField = { source: 'empty' }
-
-/** What the field shows. */
-export const figureText = (field: FigureField): string => (field.source === 'typed' ? field.text : field.source === 'history' ? String(field.value) : '')
-
-/** What the field shows, as a number (its hint), or null when it shows none. */
-export const figureValue = (field: FigureField): number | null => positiveOrNull(figureText(field))
+export type FigureHistory = { kind: 'unknown' } | { kind: 'none' } | { kind: 'median'; value: number; laps: number }
 
 /**
- * What the field sends and saves: only a value the driver typed. A field still at its pre-fill saves
+ * A plan dialog's lap time or fuel per lap. `typed` is the driver's text; null while the field
+ * follows their laps, when it shows the median, says so under it and saves null. A typed text that is
+ * no positive number (emptied, 0) is no value: the field follows the laps again — at once in what it
+ * saves and says, and in what it shows once the driver leaves it (`settledFigure`). A new car or
+ * track changes only `history`, never what the driver typed.
+ */
+export type FigureField = { typed: string | null; history: FigureHistory }
+
+const UNKNOWN: FigureHistory = { kind: 'unknown' }
+
+export const EMPTY_FIGURE: FigureField = { typed: null, history: UNKNOWN }
+
+/** The laps' median for the field, or null when they have none (or are not known yet). */
+const medianOf = (field: FigureField): number | null => (field.history.kind === 'median' ? field.history.value : null)
+
+/** What the field shows: the driver's text, else the laps' median. */
+export const figureText = (field: FigureField): string => field.typed ?? (medianOf(field)?.toString() ?? '')
+
+/**
+ * What an empty field shows greyed: the laps' median it falls back to, `Not used` when the laps have
+ * no such figure (so nothing stands in), else `Optional` before they are known.
+ */
+export const figurePlaceholder = (field: FigureField): string => medianOf(field)?.toString() ?? (field.history.kind === 'none' ? 'Not used' : 'Optional')
+
+/**
+ * What the field sends and saves: only a value the driver typed. A field that follows the laps saves
  * null ("from your laps"), so the plan's race fuel keeps following new laps (`RaceFuelEstimate.For`).
  */
-export const savedFigure = (field: FigureField): number | null => (field.source === 'typed' ? positiveOrNull(field.text) : null)
+export const savedFigure = (field: FigureField): number | null => (field.typed === null ? null : positiveOrNull(field.typed))
 
-/** A stored plan's own value is the driver's; a plan without one starts empty, ready for its history. */
-export const storedFigure = (value: number | null): FigureField => (value ? { source: 'typed', text: String(value) } : EMPTY_FIGURE)
+/** The value the plan will work with (the field's hint): the driver's, else the laps' median, else none. */
+export const figureValue = (field: FigureField): number | null => savedFigure(field) ?? medianOf(field)
 
 /**
- * The field once the history for its car and track has arrived: the driver's own value stays;
- * otherwise the median, rounded to what the field shows (`decimals`), or empty when the laps have
- * none. Returns the field itself when nothing changed, so a repeat answer does not re-render.
+ * Under a field that saves nothing, what stands in for it: "From your 11 laps", or that the laps have
+ * no such figure (its placeholder then says it is not used). Null under the driver's own value, and
+ * before the laps are known.
  */
-export function prefillFigure(field: FigureField, median: number | null, laps: number, decimals: number): FigureField {
-  if (field.source === 'typed') return field
-  if (median === null || laps === 0) return field.source === 'empty' ? field : EMPTY_FIGURE
-  const value = Number(median.toFixed(decimals))
-  return field.source === 'history' && field.value === value && field.laps === laps ? field : { source: 'history', value, laps }
+export function figureNote(field: FigureField): string | null {
+  if (savedFigure(field) !== null) return null
+  switch (field.history.kind) {
+    case 'median':
+      return `From your ${field.history.laps} ${field.history.laps === 1 ? 'lap' : 'laps'}`
+    case 'none':
+      return 'None from your laps'
+    case 'unknown':
+      return null
+  }
 }
 
-/** "From your 11 laps" under a field the driver's laps filled; null under any other. */
-export const figureNote = (field: FigureField): string | null =>
-  field.source === 'history' ? `From your ${field.laps} ${field.laps === 1 ? 'lap' : 'laps'}` : null
+/** The field as the driver types into it. */
+export const typedFigure = (field: FigureField, text: string): FigureField => ({ ...field, typed: text })
+
+/** The field once the driver leaves it: emptied or 0 shows the laps' value again. The same object otherwise. */
+export const settledFigure = (field: FigureField): FigureField =>
+  field.typed !== null && savedFigure(field) === null ? { ...field, typed: null } : field
+
+/** A stored plan's own value is the driver's; a plan without one (or a legacy 0) follows its laps. */
+export const storedFigure = (value: number | null): FigureField => (value !== null && value > 0 ? { typed: String(value), history: UNKNOWN } : EMPTY_FIGURE)
+
+const sameHistory = (a: FigureHistory, b: FigureHistory): boolean =>
+  a.kind === 'median' && b.kind === 'median' ? a.value === b.value && a.laps === b.laps : a.kind === b.kind
+
+/**
+ * The field once the history for its car and track has arrived: the median, rounded to what the
+ * field shows (`decimals`), or none when the laps have no such figure. What the driver typed stays.
+ * Returns the field itself when nothing changed, so a repeat answer does not re-render.
+ */
+export function prefillFigure(field: FigureField, median: number | null, laps: number, decimals: number): FigureField {
+  const history: FigureHistory = median === null || laps === 0 ? { kind: 'none' } : { kind: 'median', value: Number(median.toFixed(decimals)), laps }
+  return sameHistory(field.history, history) ? field : { ...field, history }
+}
 
 /** How many decimals a pre-filled figure keeps: a lap time to the thousandth, litres to the hundredth. */
 const LAP_TIME_DECIMALS = 3
 const FUEL_DECIMALS = 2
 
-/** A plan dialog's two figures. */
-export type PlanFigures = { lapTime: FigureField; fuelPerLap: FigureField }
+/** A plan dialog's two figures, and the car and track whose laps they show (null before any). */
+export type PlanFigures = { lapTime: FigureField; fuelPerLap: FigureField; historyFor: PlanContextNames | null }
 
-/** Both figures once the history for the dialog's car and track has arrived (`prefillFigure`); the same object when neither changed. */
-export function prefillFigures<T extends PlanFigures>(current: T, history: FuelHistory): T {
+/**
+ * Both figures once the calculator answered about the dialog's car and track (`context`). With that
+ * history, both take it and remember whose it is. Without (the calculator gave no answer), laps of
+ * another car or track are dropped rather than shown as this one's, and this one's stay. What the
+ * driver typed always stays. The same object when nothing changed.
+ */
+export function prefillFigures<T extends PlanFigures>(current: T, context: PlanContextNames, history: FuelHistory | null): T {
+  const ours = current.historyFor !== null && sameContext(current.historyFor, context)
+  if (history === null) {
+    if (current.historyFor === null || ours) return current
+    return { ...current, lapTime: { ...current.lapTime, history: UNKNOWN }, fuelPerLap: { ...current.fuelPerLap, history: UNKNOWN }, historyFor: null }
+  }
   const lapTime = prefillFigure(current.lapTime, history.lapTimeSeconds, history.lapTimeLaps, LAP_TIME_DECIMALS)
   const fuelPerLap = prefillFigure(current.fuelPerLap, history.fuelPerLapLiters, history.fuelLaps, FUEL_DECIMALS)
-  return lapTime === current.lapTime && fuelPerLap === current.fuelPerLap ? current : { ...current, lapTime, fuelPerLap }
+  if (ours && lapTime === current.lapTime && fuelPerLap === current.fuelPerLap) return current
+  return { ...current, lapTime, fuelPerLap, historyFor: { game: context.game, car: context.car, track: context.track } }
 }
 
 /** Whether a calculator answer was for this plan's car and track, so its history may fill this plan's fields. */
-export const sameContext = (a: { game: string; car: string; track: string }, b: { game: string; car: string; track: string }): boolean =>
-  a.game === b.game && a.car === b.car && a.track === b.track
+export const sameContext = (a: PlanContextNames, b: PlanContextNames): boolean => a.game === b.game && a.car === b.car && a.track === b.track
 
 /** What the race fuel still needs before it can be worked out, as Quick plan says it under the dash; null once it has a figure. */
 export function fuelGap(plan: CreatePlanInput, estimate: RaceFuelEstimate): string | null {
@@ -414,7 +468,7 @@ export const planFuelRequest = (plan: CreatePlanInput): PlanFuelRequest => ({
 })
 
 /** The calculator asked only for the history of a car at a track: a plan dialog filling its figures. */
-export const historyRequest = (context: { game: string; car: string; track: string }): PlanFuelRequest => ({
+export const historyRequest = (context: PlanContextNames): PlanFuelRequest => ({
   ...context,
   raceLengthFormat: 'Unknown',
   raceLengthValue: 0,
@@ -435,6 +489,8 @@ export type QuickPlanAnswers = {
   raceLength: string
   lapTime: FigureField
   fuelPerLap: FigureField
+  /** The car and track whose laps the figures show (PlanFigures). */
+  historyFor: PlanContextNames | null
   fuelReserveLaps: number
 }
 
