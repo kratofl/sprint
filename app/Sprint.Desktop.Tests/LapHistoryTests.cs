@@ -1024,6 +1024,65 @@ public sealed class LapHistoryTests
         Assert.Equal([1, 2], store.LapCounts);
     }
 
+    [Fact]
+    public async Task AFlushWaitsForTheClosedSessionQueuedBehindTheLastLap()
+    {
+        // At shutdown the finished session's save waits behind the last lap's write; exiting
+        // before it lands would leave the session looking live.
+        using GatedLapHistoryStore store = new GatedLapHistoryStore();
+        LapHistoryRecorder recorder = new LapHistoryRecorder(store, clock: () => Now, idFactory: () => "hs-1");
+
+        recorder.Ingest(Frame(SessionType.Race, lap: 1));
+        recorder.Ingest(Frame(SessionType.Race, lap: 2, lastLapTime: 131.0));
+        recorder.Close();
+
+        Assert.False(await recorder.FlushAsync(TimeSpan.FromMilliseconds(50)));
+        store.Release.Set();
+        Assert.True(await recorder.FlushAsync(TimeSpan.FromSeconds(5)));
+
+        Assert.Collection(
+            store.Saved,
+            lap => Assert.Null(lap.EndedAt),
+            closed => Assert.NotNull(closed.EndedAt));
+    }
+
+    /// <summary>Holds every write until <see cref="Release"/> is set, then keeps what was saved.</summary>
+    private sealed class GatedLapHistoryStore : ILapHistoryStore, IDisposable
+    {
+        private readonly Lock _gate = new();
+        private readonly List<LapHistorySession> _saved = [];
+
+        public ManualResetEventSlim Release { get; } = new(false);
+
+        public IReadOnlyList<LapHistorySession> Saved
+        {
+            get
+            {
+                lock (this._gate)
+                {
+                    return [.. this._saved];
+                }
+            }
+        }
+
+        public IReadOnlyList<LapHistorySession> LoadAll() => [];
+
+        public void Save(LapHistorySession session)
+        {
+            this.Release.Wait(TimeSpan.FromSeconds(30));
+            lock (this._gate)
+            {
+                this._saved.Add(session);
+            }
+        }
+
+        public void Delete(string sessionId)
+        {
+        }
+
+        public void Dispose() => this.Release.Dispose();
+    }
+
     private sealed class OrderedLapHistoryStore : ILapHistoryStore, IDisposable
     {
         private readonly Lock _gate = new();

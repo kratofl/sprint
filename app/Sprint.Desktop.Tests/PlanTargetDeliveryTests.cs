@@ -149,7 +149,7 @@ public sealed class PlanTargetDeliveryTests
             Car = Car,
             Targets = [new PlanTargets { Kind = SegmentKind.Qualifying, LapTime = RaceTarget() }],
         };
-        PlanTargetDelivery delivery = new PlanTargetDelivery(() => plan, Corpus());
+        PlanTargetDelivery delivery = new PlanTargetDelivery(() => PlanTargetDelivery.Aim.Of(plan), Corpus());
 
         delivery.Observe(RaceFrame(lap: 1, sessionType: SessionType.Race));
         Assert.True(delivery.Targets.IsEmpty);
@@ -321,7 +321,7 @@ public sealed class PlanTargetDeliveryTests
         HasReferenceCurve = hasReferenceCurve,
     };
 
-    private static SessionPlan PlanWith(PlanTarget? lapTime, double? fuelPerLapLiters = null) => new()
+    private static PlanTargetDelivery.Aim PlanWith(PlanTarget? lapTime, double? fuelPerLapLiters = null) => PlanTargetDelivery.Aim.Of(new SessionPlan
     {
         Id = "plan-1",
         Game = Game,
@@ -332,7 +332,7 @@ public sealed class PlanTargetDeliveryTests
         Targets = lapTime is null
             ? []
             : [new PlanTargets { Kind = SegmentKind.Race, LapTime = lapTime }],
-    };
+    });
 
     // One recorded lap whose curve is exactly p * 100.
     private static ILapHistoryStore Corpus() => new FakeLapHistoryStore(

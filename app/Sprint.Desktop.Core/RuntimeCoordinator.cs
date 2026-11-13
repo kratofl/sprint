@@ -1488,8 +1488,7 @@ public sealed class RuntimeCoordinator
         PlanTargetOption? option = PlanTargetResolver.ForPlan(this._lapHistory, plan).Find(scope, programType, statistic, lapSessionId, lapNumber);
         if (option is null) { error = "no such lap for this car and track"; return false; }
 
-        plan.SetLapTimeTarget(kind, option.ToTarget(DateTimeOffset.UtcNow));
-        this._planner.UpdatePlan(plan);
+        this._planner.SetLapTimeTarget(plan, kind, option.ToTarget(DateTimeOffset.UtcNow));
         return true;
     }
 
@@ -1497,8 +1496,7 @@ public sealed class RuntimeCoordinator
     {
         if (!this.TryPlan(command, out SessionPlan plan, out error)) return false;
         if (!TrySegmentKind(command, out SegmentKind kind, out error)) return false;
-        plan.SetLapTimeTarget(kind, null);
-        this._planner.UpdatePlan(plan);
+        this._planner.SetLapTimeTarget(plan, kind, null);
         return true;
     }
 

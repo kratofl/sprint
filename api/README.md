@@ -26,7 +26,7 @@ api/
 │   ├── Data/                  ← EF Core entities + SprintDbContext (Postgres)
 │   ├── Live/                  ← live hub, ingest socket, SSE stream
 │   ├── Telemetry/             ← ITelemetryStore + InfluxDB implementation
-│   ├── Services/              ← users, catalog, lap sharing, race engineers
+│   ├── Services/              ← users, catalog, race engineers
 │   └── GraphQL/               ← Query / Mutation
 ├── Sprint.Api.Tests/          ← xunit tests
 └── Sprint.Api.slnx            ← solution (server + tests + shared contracts)

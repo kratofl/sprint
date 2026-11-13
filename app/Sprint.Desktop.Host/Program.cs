@@ -216,7 +216,7 @@ telemetryEngine.Start();
 // target onto the delta tracker. Built over the SAME lapHistoryStore/lapTraceStore/plannerService
 // instances above -- not fresh ones -- so a recorded lap or a plan write is visible on the very
 // next /api/state poll and a plan.* command sees exactly what the ingest loop just did.
-PlanTargetDelivery planTargets = new(() => plannerService.ActivePlan, lapHistoryStore, fuelHistory);
+PlanTargetDelivery planTargets = new(() => plannerService.ReadActive(PlanTargetDelivery.Aim.Of), lapHistoryStore, fuelHistory);
 TelemetryIngestionPipeline ingestion = new(
     runtime,
     plannerService,
@@ -414,11 +414,9 @@ Task usbScanLoop = Task.Run(async () =>
 
 app.Lifetime.ApplicationStopping.Register(() =>
 {
+    // The open lap-history session is closed once this loop has finished its tick, after the
+    // host has stopped (below): closing it here could race a tick filing a lap.
     telemetryPublishCts.Cancel();
-    // Stamp the open lap-history session as finished so it is not left looking live, before
-    // the engine that feeds it is torn down (mirrors the deleted Avalonia client's OnClosed).
-    ingestion.Close();
-    telemetryEngine.Dispose();
     screenReconcileCts.Cancel();
     usbScanCts.Cancel();
     cloudSyncCts.Cancel();
@@ -455,8 +453,17 @@ app.MapGet("/api/state", () =>
     // planner's lock, and serializing them here would race it.
     IReadOnlyList<SessionPlan> plans = planStore.LoadAll();
     // The active plan's target-lap curves, found here so the start/finish latch on the telemetry
-    // loop never reads the corpus itself (PlanTargetDelivery.ResolveReferences).
-    planTargets.ResolveReferences();
+    // loop never reads the corpus itself (PlanTargetDelivery.ResolveReferences). A failed resolve
+    // leaves the curves the last one found, for the next poll to retry; it never fails this one.
+    try
+    {
+        planTargets.ResolveReferences();
+    }
+    catch (Exception ex)
+    {
+        log.Debug($"Resolving the plan's target laps failed: {ex.Message}");
+    }
+
     IResult result = Results.Json(new
     {
         telemetry = state.Telemetry,
@@ -1022,6 +1029,27 @@ static ITelemetrySource CreateTelemetrySource(ILog log)
 try
 {
     await app.RunAsync();
+
+    // Stamp the open lap-history session as finished so it is not left looking live (mirrors the
+    // deleted Avalonia client's OnClosed). Only once the publish loop ApplicationStopping cancelled
+    // has finished its tick: the recorder belongs to that loop, and a tick may be filing a lap.
+    // Then wait for the finished session's save, queued behind that lap's writes, and only then
+    // tear down the engine that fed it. Bounded: the desktop app kills the host 3 s after asking.
+    if (await Task.WhenAny(telemetryPublishLoop, Task.Delay(TimeSpan.FromSeconds(1))) == telemetryPublishLoop)
+    {
+        ingestion.Close();
+        if (!await lapHistoryRecorder.FlushAsync(TimeSpan.FromSeconds(1.5)))
+        {
+            AppDiagnostics.Log.Warn("Lap history was still saving at exit");
+        }
+    }
+    else
+    {
+        AppDiagnostics.Log.Warn("The telemetry loop did not stop before exit; the open lap-history session was left open");
+    }
+
+    telemetryEngine.Dispose();
+
     // ApplicationStopping cancelled the uplink; give it the moment it needs to send the live
     // session's `end` (EndTimeout) and close the socket, so engineers see "ended" rather than a drop.
     try

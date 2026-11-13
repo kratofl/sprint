@@ -30,8 +30,10 @@ namespace Sprint.Desktop.Features.SessionPlanning;
 /// member for other threads.
 /// </remarks>
 /// <param name="activePlan">
-/// The plan holding the active slot, or null. A plan that is neither armed nor tracking is not
-/// aiming at anything, so the caller — not this service — decides what "active" means.
+/// What the plan holding the active slot aims at, or null. A plan that is neither armed nor
+/// tracking is not aiming at anything, so the caller — not this service — decides what "active"
+/// means. Called from the telemetry loop and the state poll alike, so the caller copies it out
+/// under the planner's lock (<c>planner.ReadActive(PlanTargetDelivery.Aim.Of)</c>).
 /// </param>
 /// <param name="history">
 /// The corpus the chosen lap's curve is read back from, by <see cref="ResolveReferences"/> only. A
@@ -46,11 +48,11 @@ namespace Sprint.Desktop.Features.SessionPlanning;
 /// (the host just started, or a car or track no poll has asked about yet) means no fuel target yet: it fills in at the
 /// next line after a poll has worked the figure out, as does a median a new lap moved.
 /// </param>
-public sealed class PlanTargetDelivery(Func<SessionPlan?> activePlan, ILapHistoryStore history, IFuelHistorySource? fuelHistory = null)
+public sealed class PlanTargetDelivery(Func<PlanTargetDelivery.Aim?> activePlan, ILapHistoryStore history, IFuelHistorySource? fuelHistory = null)
 {
     private readonly IFuelHistorySource _fuelHistory = fuelHistory ?? NoFuelHistorySource.Instance;
 
-    private readonly Func<SessionPlan?> _activePlan =
+    private readonly Func<Aim?> _activePlan =
         activePlan ?? throw new ArgumentNullException(nameof(activePlan));
 
     private readonly ILapHistoryStore _history =
@@ -139,15 +141,15 @@ public sealed class PlanTargetDelivery(Func<SessionPlan?> activePlan, ILapHistor
 
     private void Apply(TelemetryFrame frame)
     {
-        SessionPlan? plan = this._activePlan();
+        Aim? aim = this._activePlan();
         PlanTarget? target = KindFor(frame.Session.SessionType) is { } kind
-            ? plan?.TargetsFor(kind)?.LapTime
+            ? aim?.TargetFor(kind)
             : null;
 
         this.Targets = new DashTargets
         {
             LapTimeSeconds = target?.LapTimeSeconds,
-            FuelPerLapLiters = plan is null ? null : this.FuelPerLapFor(plan),
+            FuelPerLapLiters = aim is null ? null : this.FuelPerLapFor(aim),
         };
         this.Reference = this.ReferenceFor(target);
     }
@@ -155,9 +157,9 @@ public sealed class PlanTargetDelivery(Func<SessionPlan?> activePlan, ILapHistor
     // A typed figure wins (RaceFuelEstimate.TypedValue: a legacy 0 is none); a plan that left it to
     // the driver's laps gets the median the planner's Race card shows. Only the cached figure: this
     // runs on the telemetry loop, which must never read the corpus or wait on the store's lock.
-    private double? FuelPerLapFor(SessionPlan plan) =>
-        RaceFuelEstimate.TypedValue(plan.FuelPerLapLiters)
-        ?? this._fuelHistory.Cached(new PlanContext(plan.Game, plan.Car, plan.Track))?.FuelPerLapLiters;
+    private double? FuelPerLapFor(Aim aim) =>
+        RaceFuelEstimate.TypedValue(aim.FuelPerLapLiters)
+        ?? this._fuelHistory.Cached(aim.Context)?.FuelPerLapLiters;
 
     /// <summary>
     /// Finds the reference curve of each lap the active plan targets (qualifying and race) in the
@@ -170,11 +172,11 @@ public sealed class PlanTargetDelivery(Func<SessionPlan?> activePlan, ILapHistor
     {
         lock (this._resolveGate)
         {
-            SessionPlan? plan = this._activePlan();
+            Aim? aim = this._activePlan();
             List<(string SessionId, int LapNumber)> wanted = [];
             foreach (SegmentKind kind in TargetedKinds)
             {
-                if (plan?.TargetsFor(kind)?.LapTime is { LapSessionId: { } sessionId, LapNumber: { } lapNumber })
+                if (aim?.TargetFor(kind) is { LapSessionId: { } sessionId, LapNumber: { } lapNumber })
                 {
                     wanted.Add((sessionId, lapNumber));
                 }
@@ -235,4 +237,27 @@ public sealed class PlanTargetDelivery(Func<SessionPlan?> activePlan, ILapHistor
         SessionType.Race => SegmentKind.Race,
         _ => null,
     };
+
+    /// <summary>
+    /// What the delivery reads off the active plan, copied out so it is never read while a
+    /// <c>plan.*</c> command changes the plan on another thread. The targets are kept by
+    /// reference: a target is replaced whole when the driver picks another, never changed in place.
+    /// </summary>
+    public sealed record Aim(PlanContext Context, double? FuelPerLapLiters, PlanTarget? Qualifying, PlanTarget? Race)
+    {
+        /// <summary>Copies what the delivery needs off <paramref name="plan"/>; call it under the planner's lock.</summary>
+        public static Aim Of(SessionPlan plan) => new(
+            new PlanContext(plan.Game, plan.Car, plan.Track),
+            plan.FuelPerLapLiters,
+            plan.TargetsFor(SegmentKind.Qualifying)?.LapTime,
+            plan.TargetsFor(SegmentKind.Race)?.LapTime);
+
+        /// <summary>The lap-time target for <paramref name="kind"/>, or null when none was chosen.</summary>
+        public PlanTarget? TargetFor(SegmentKind kind) => kind switch
+        {
+            SegmentKind.Qualifying => this.Qualifying,
+            SegmentKind.Race => this.Race,
+            _ => null,
+        };
+    }
 }

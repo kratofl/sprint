@@ -44,7 +44,7 @@ public sealed class SessionPlannerService
     private readonly List<SessionPlan> _plans;
 
     // The host drives this service from two independent threads: the telemetry ingest loop
-    // (Ingest, and ActivePlan through PlanTargetDelivery) and HTTP plan.* command handlers,
+    // (Ingest, and ReadActive through PlanTargetDelivery) and HTTP plan.* command handlers,
     // which Kestrel can dispatch concurrently. Every public entry point locks on this, so the
     // plan list and the single active slot are never read or mutated half-updated. A plain
     // Monitor lock is fine here (laps complete roughly once a minute; plan.* commands are rarer
@@ -185,6 +185,21 @@ public sealed class SessionPlannerService
 
             this._plans[index] = plan;
             this._store.Save(plan);
+        }
+    }
+
+    /// <summary>
+    /// Sets, or with null clears, <paramref name="plan"/>'s lap-time target and saves it, under the
+    /// planner's lock: other threads read the active plan's targets through <see cref="ReadActive{T}"/>
+    /// (the state poll, the telemetry loop), and must never enumerate them mid-change.
+    /// </summary>
+    public void SetLapTimeTarget(SessionPlan plan, SegmentKind kind, PlanTarget? target)
+    {
+        ArgumentNullException.ThrowIfNull(plan);
+        lock (this._gate)
+        {
+            plan.SetLapTimeTarget(kind, target);
+            this.UpdatePlan(plan);
         }
     }
 

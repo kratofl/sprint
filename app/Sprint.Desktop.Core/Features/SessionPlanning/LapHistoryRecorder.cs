@@ -46,7 +46,8 @@ public sealed class LapHistoryRecorder
     // curve (#181) and the named-channel trace (#194).
     private readonly List<LapTraceSample> _samples = [];
 
-    // The tail of the default hand-off's write chain. Only the telemetry thread extends it.
+    // The tail of the default hand-off's write chain. Only the telemetry thread extends it; the
+    // host closes the recorder at shutdown only after that thread has stopped (FlushAsync).
     private Task _writes = Task.CompletedTask;
 
     private LapHistorySession? _session;
@@ -177,6 +178,26 @@ public sealed class LapHistoryRecorder
         if (finished.Laps.Count > 0)
         {
             this.Persist(finished);
+        }
+    }
+
+    /// <summary>
+    /// Waits, for at most <paramref name="timeout"/>, for every write handed off so far to land;
+    /// true when they did. The host calls it on shutdown, once the telemetry thread has stopped and
+    /// <see cref="Close"/> has queued the finished session behind the last lap's writes, so the
+    /// process does not exit with the session still looking live. A custom <c>dispatch</c> owns its
+    /// own writes, so with one this returns true at once.
+    /// </summary>
+    public async Task<bool> FlushAsync(TimeSpan timeout)
+    {
+        try
+        {
+            await this._writes.WaitAsync(timeout);
+            return true;
+        }
+        catch (TimeoutException)
+        {
+            return false;
         }
     }
 
