@@ -24,6 +24,30 @@ node scripts/preview/screenshot.mjs --view Devices --theme dark --query "platfor
 You can also open `dist/preview.html?view=Settings&theme=dark` in a Chromium
 browser launched with `--allow-file-access-from-files`.
 
+## Design mockups
+
+A mockup is three options, A, B and C, built from the app's own components, primitives and tokens
+and shown where they will live: on their page inside the real app shell (sidebar, toolbar, light
+trails; a `PageHeader`'s actions land in the toolbar as on a real page), or as one of the app's
+windows. Never hand-written HTML with its own CSS: that drifts from the design system.
+
+1. Write `src/mockups/<name>.tsx` (gitignored, type-checked with the app). It default-exports a
+   `Mockup` (`src/mockup/mockup.ts`): `{ view: 'Analysis', variants: { A, B, C } }`, or
+   `{ window: 'pitwall' | 'designer' | 'hud', variants }`. Each option is a component; compose the
+   real views and components, and put CSS for a genuinely new shape next to it
+   (`src/mockups/<name>.css`, scoped under one class, tokens only).
+2. Shoot it: `node scripts/preview/mockup.mjs <name>` — builds the preview, screenshots A/B/C in
+   dark and light into `.dev/mockups/<name>/`, and writes `sheet.html` comparing them. Options:
+   `--size 1600,900` (the pit wall), `--query "platform=mac&click=..."` (the Mac look, open a
+   dialog first), `--clip x,y,w,h` (the part that differs, also shown at full size),
+   `--themes dark`, `--skip-build`, `--dist dist-<slug>`.
+3. Read every PNG, then show the sheet: its contents as `html` to T3's `html_preview`, then
+   `html_render`. Each picture fits the width; tapping one shows it at full size.
+
+Once an option is picked, build it into the real view and delete the mockup file. Only the preview
+build mounts mockups (`?mockup=<name>&variant=A`, built with `--mode preview`); every other build
+drops them.
+
 ## Query parameters
 
 | Parameter | Effect |
@@ -63,7 +87,7 @@ browser launched with `--allow-file-access-from-files`.
   logged to the console and otherwise ignored; nothing updates live.
 - Pages are opened through the app's own inputs (Alt+1…8, ⌘1…8 with
   `platform=mac`, or a click on the pane item for Settings/Help), so production
-  code has no preview-only paths. `palette=1` presses Ctrl+K or ⌘K the same way.
+  code has no preview-only paths (design mockups aside, which only the preview build has). `palette=1` presses Ctrl+K or ⌘K the same way.
 - `screenshot.mjs` starts Electron on `screenshot-electron.mjs`, which loads the
   page in a hidden offscreen window at `--size` with a device scale factor of 1,
   so the PNG is exactly that size. Electron gets a throwaway profile

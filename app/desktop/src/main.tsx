@@ -3,6 +3,7 @@
 import './styles.css'
 // Mac overrides, every rule scoped to [data-platform="mac"], so Windows and Linux render exactly styles.css.
 import './styles.mac.css'
+import { lazy, Suspense } from 'react'
 import { createRoot } from 'react-dom/client'
 import { App } from './App'
 import { HudWindow } from './hud/HudWindow'
@@ -17,6 +18,11 @@ import { platform } from './platform'
 const hudWindow = new URLSearchParams(window.location.search).has('hud')
 const designerDashId = new URLSearchParams(window.location.search).get('designer')
 const pitWall = pitWallRoute(window.location.search)
+
+// A design mockup (?mockup=<name>&variant=A|B|C, mockup/mockup.ts). The mode is a build-time
+// constant, so every build but the preview harness's (--mode preview) drops this, mockups and all.
+const MockupRoot = import.meta.env.MODE === 'preview' ? lazy(() => import('./mockup/MockupRoot')) : null
+const mockupName = MockupRoot ? new URLSearchParams(window.location.search).get('mockup') : null
 
 // The HUD sits on a game image, not on the app, so it is dark glass whatever the OS theme is.
 if (hudWindow) {
@@ -40,7 +46,11 @@ if (!hudWindow && !designerDashId && !pitWall && new URLSearchParams(window.loca
 }
 
 createRoot(document.getElementById('root')!).render(
-  hudWindow ? (
+  MockupRoot && mockupName ? (
+    <Suspense>
+      <MockupRoot name={mockupName} variant={new URLSearchParams(window.location.search).get('variant')} />
+    </Suspense>
+  ) : hudWindow ? (
     <HudWindow />
   ) : designerDashId ? (
     <DashDesigner dashId={designerDashId} />

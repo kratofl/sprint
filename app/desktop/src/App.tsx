@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { bridge, type AppView, type ResultsImportOffer, type SprintCommand, type UpdateStatus } from './bridge'
 import type { RuntimeState } from './shell/runtime'
 import { TitleBar } from './shell/TitleBar'
@@ -28,8 +28,12 @@ import { ToolbarActionsContext, type ToolbarActions } from './shell/toolbarActio
 
 export type { RuntimeState }
 
-export function App() {
-  const [view, setView] = useState<AppView>('Home')
+/**
+ * The main window. `mockup` (preview build only, mockup/MockupRoot.tsx) opens on its page and
+ * shows its content there in place of the real view; every other page stays the real one.
+ */
+export function App({ mockup }: { mockup?: { view: AppView; content: ReactNode } } = {}) {
+  const [view, setView] = useState<AppView>(mockup?.view ?? 'Home')
   // The page above the current one, registered by the view (shell/pageUp.ts): where
   // Alt+Left / ⌘[ goes. Null on a top-level page.
   const [up, setUp] = useState<PageUp | null>(null)
@@ -333,17 +337,21 @@ export function App() {
         <main className="content">
           <ToolbarActionsContext value={toolbarActions}>
             <PageUpContext value={setUp}>
-              <ViewRouter
-                view={view}
-                focus={focus}
-                runtime={runtime}
-                send={send}
-                onNavigate={navigate}
-                onOpenItem={openItem}
-                onImportResults={importResults}
-                onSetUpCloud={openSetup}
-                updateStatus={updateStatus}
-              />
+              {mockup && view === mockup.view ? (
+                mockup.content
+              ) : (
+                <ViewRouter
+                  view={view}
+                  focus={focus}
+                  runtime={runtime}
+                  send={send}
+                  onNavigate={navigate}
+                  onOpenItem={openItem}
+                  onImportResults={importResults}
+                  onSetUpCloud={openSetup}
+                  updateStatus={updateStatus}
+                />
+              )}
             </PageUpContext>
           </ToolbarActionsContext>
         </main>

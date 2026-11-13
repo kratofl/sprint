@@ -8,6 +8,11 @@
 //
 //   node scripts/preview/screenshot.mjs --out /abs/path/shot.png [--view Devices] [--theme dark]
 //        [--size 1440,900] [--query collapsed=1&palette=1] [--dist dist-views-a]
+//        [--clip x,y,w,h --clip-out /abs/path/detail.png]   also writes that part of the picture
+//   node scripts/preview/screenshot.mjs --url http://localhost:3107/mockups/x --out ... [--theme] [--size]
+//        any page instead of the preview (the web's mockups, web/scripts/mockup.mjs); --theme then
+//        only sets the OS colour scheme, which the page follows; --hide <css selector> hides
+//        what is not part of the page, e.g. Next's dev indicator
 import { spawn } from 'node:child_process'
 import { existsSync, mkdirSync, rmSync } from 'node:fs'
 import path from 'node:path'
@@ -46,18 +51,23 @@ if (!out || !path.isAbsolute(out)) {
   console.error('--out <absolute .png path> is required')
   process.exit(1)
 }
-if (!existsSync(preview)) {
+const pageUrl = option('url')
+if (!pageUrl && !existsSync(preview)) {
   console.error(`Missing ${preview}; run node scripts/preview/build-preview.mjs first.`)
   process.exit(1)
 }
 mkdirSync(path.dirname(out), { recursive: true })
 rmSync(out, { force: true })
 
+const theme = option('theme')
+if (theme && theme !== 'dark' && theme !== 'light') {
+  console.error('--theme must be dark or light')
+  process.exit(1)
+}
 const query = new URLSearchParams(option('query', ''))
 query.set('view', option('view', 'Home'))
-const theme = option('theme')
 if (theme) query.set('theme', theme)
-const url = `${pathToFileURL(preview).href}?${query.toString()}`
+const url = pageUrl ?? `${pathToFileURL(preview).href}?${query.toString()}`
 
 const size = option('size', '1440,900')
 const [width, height] = size.split(',').map(Number)
@@ -66,7 +76,19 @@ if (!Number.isInteger(width) || !Number.isInteger(height) || width < 1 || height
   process.exit(1)
 }
 
-const job = { url, out, width, height, userData: profileDir, settleMs: 4000 }
+const clipOption = option('clip')
+const clipOut = option('clip-out')
+let clip = null
+if (clipOption) {
+  const [x, y, clipWidth, clipHeight] = clipOption.split(',').map(Number)
+  if (![x, y, clipWidth, clipHeight].every(Number.isInteger) || clipWidth < 1 || clipHeight < 1 || !clipOut || !path.isAbsolute(clipOut)) {
+    console.error('--clip takes x,y,width,height in pixels and needs --clip-out <absolute .png path>')
+    process.exit(1)
+  }
+  clip = { x, y, width: clipWidth, height: clipHeight, out: clipOut }
+}
+
+const job = { url, out, width, height, userData: profileDir, settleMs: 4000, clip, theme: theme ?? null, hide: option('hide') ?? null }
 // ELECTRON_RUN_AS_NODE (set when this runs under an Electron-based tool) would make
 // Electron start as plain Node and fail on `import { app } from 'electron'`.
 const { ELECTRON_RUN_AS_NODE, ...env } = process.env

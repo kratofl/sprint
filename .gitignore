@@ -97,6 +97,10 @@ app/build/bin/
 app/Sprint.Desktop.Tests/artifacts/
 # Renamed Electron bundle that `make dev-app` runs from on macOS (scripts/dev.mjs).
 app/desktop/.dev/
+# Design mockups (src/mockup/mockup.ts): throwaway A/B/C options, local only.
+app/desktop/src/mockups/
+web/mockups/*
+!web/mockups/README.md
 
 # ─── Next.js ──────────────────────────────────────────────────────────────────
 .next/

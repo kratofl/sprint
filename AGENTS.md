@@ -321,6 +321,16 @@ more code. Review should converge, not just find more.
 - `packages/dashboard` is hardware output, not app UI; it keeps its own palette.
 - Keep screens dense, scannable, keyboard-operable, and explicit about focus,
   hover, selected, disabled, loading, empty, and destructive states.
+- A design mockup is always three options, A, B and C, in the real design
+  system, shown where it will live. Desktop: build them as components in
+  `app/desktop/src/mockups/` and shoot them with
+  `node scripts/preview/mockup.mjs <name>`, which renders each option inside the
+  real app shell (or its window) in light and dark and writes a sheet for
+  `html_render` (`app/desktop/scripts/preview/README.md` → Design mockups). Web:
+  `web/mockups/<name>.tsx` from `web/components/ui` and `web/components/app`, shot
+  with `node scripts/mockup.mjs <name>` from `web/`, inside the real web shell,
+  wide and at phone width (`web/mockups/README.md`). Never a hand-drawn look with
+  its own CSS.
 
 ### Typography
 

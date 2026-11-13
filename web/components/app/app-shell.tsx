@@ -43,8 +43,11 @@ const TABS: readonly NavEntry[] = [
   { href: '/settings', label: 'Settings', icon: IconSettings },
 ]
 
-export function AppShell({ viewer, backdrop, children }: { viewer: ViewerState; backdrop: ReactNode; children: ReactNode }) {
-  const pathname = usePathname()
+// `page` is the path the sidebar marks as current; a design mockup (app/mockups) passes the page
+// it stands in for, every real page leaves it to the URL.
+export function AppShell({ viewer, backdrop, page, children }: { viewer: ViewerState; backdrop: ReactNode; page?: string; children: ReactNode }) {
+  const currentPath = usePathname()
+  const pathname = page ?? currentPath
   const active = (href: string) => isActive(pathname, href)
   const { collapsed, toggle } = useSidebarCollapsed()
   const folds = useSidebarFolds(TOOLS.some((entry) => active(entry.href)) ? ['tools'] : [])
