@@ -112,7 +112,7 @@ internal sealed class LmuTelemetryMapper
                 TotalSessionTime = PlausibleSessionLength(parsed.ScoringInfo.EndElapsedTime),
                 SessionTimeRemaining = PlausibleTimeRemaining(parsed.ScoringInfo),
                 BestLapTime = ToF64(scoring.BestLapTime),
-                MaxLaps = parsed.ScoringInfo.MaxLaps,
+                MaxLaps = LapLimit(parsed.ScoringInfo.MaxLaps),
                 InCar = true,
                 Phase = MapPhase(parsed.ScoringInfo.GamePhase)
             },
@@ -236,7 +236,7 @@ internal sealed class LmuTelemetryMapper
                 SessionTime = ToF64(scoringInfo.CurrentElapsedTime),
                 TotalSessionTime = PlausibleSessionLength(scoringInfo.EndElapsedTime),
                 SessionTimeRemaining = PlausibleTimeRemaining(scoringInfo),
-                MaxLaps = scoringInfo.MaxLaps,
+                MaxLaps = LapLimit(scoringInfo.MaxLaps),
                 InCar = false,
                 Phase = MapPhase(scoringInfo.GamePhase)
             },
@@ -887,6 +887,9 @@ internal sealed class LmuTelemetryMapper
     /// </summary>
     private const double MaxPlausibleSessionSeconds = 30 * 60 * 60;
 
+    /// <summary>A 24-hour race on the shortest circuit stays well under this.</summary>
+    private const int MaxPlausibleLaps = 10_000;
+
     /// <summary>
     /// A session length only survives if it could describe a real timed session. Zero,
     /// negative, non-finite and absurd values become null (unknown) instead of a number a
@@ -920,6 +923,14 @@ internal sealed class LmuTelemetryMapper
     /// </summary>
     private static double? PlausibleTrackLength(double value) =>
         double.IsFinite(value) && value > 0 ? value : null;
+
+    /// <summary>
+    /// The session's lap limit, or 0 when it has none. LMU reports a session without a lap
+    /// limit as int.MaxValue, which anything reading "MaxLaps > 0" would take for a
+    /// lap-based race of two billion laps.
+    /// </summary>
+    private static int LapLimit(int value) =>
+        value > 0 && value <= MaxPlausibleLaps ? value : 0;
 
     /// <summary>
     /// Turns the sim's cumulative sector marks into per-sector durations: mLastSector1 is

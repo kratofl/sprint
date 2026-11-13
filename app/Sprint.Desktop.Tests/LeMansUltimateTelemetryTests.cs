@@ -109,6 +109,21 @@ public sealed class LeMansUltimateTelemetryTests
         Assert.Equal(1200.5, frame.Session.SessionTimeRemaining!.Value, precision: 3);
     }
 
+    [Theory]
+    [InlineData(int.MaxValue)]
+    [InlineData(-1)]
+    public void Lmu_source_reports_a_session_without_a_lap_limit_as_zero_laps(int maxLaps)
+    {
+        byte[] buffer = EmptyLmuBuffer();
+        // LMU writes int.MaxValue here for a timed or open session.
+        WriteInt32(buffer, LmuBinary.ScoringStart + 84, maxLaps);
+        using LeMansUltimateTelemetrySource source = new LeMansUltimateTelemetrySource(new InMemoryLmuSnapshotProvider(buffer));
+        source.Connect();
+
+        Assert.True(source.TryRead(out TelemetryFrame? frame));
+        Assert.Equal(0, frame.Session.MaxLaps);
+    }
+
     [Fact]
     public void Lmu_source_reports_no_time_remaining_when_the_session_has_no_known_length()
     {

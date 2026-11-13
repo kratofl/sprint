@@ -230,6 +230,7 @@ public sealed record SessionInfo
     /// </summary>
     public double? SessionTimeRemaining { get; init; }
     public double BestLapTime { get; init; }
+    /// <summary>The session's lap limit, or 0 when it has none (a timed or open session).</summary>
     public int MaxLaps { get; init; }
     public bool InCar { get; init; }
 
