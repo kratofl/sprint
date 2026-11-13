@@ -504,8 +504,8 @@
       // Lap 1 carries two of your notes (at C3, and where the bias went forward).
       notes: lap.lapNumber === 1
         ? [
-            { id: 'note-c3', distanceMeters: 3190, text: 'Lift earlier into C3, the car rotates better with TC 5', author: 'Luca', createdAt: '2026-09-28T19:30:00Z', mine: true },
-            { id: 'note-bias', distanceMeters: 4250, text: 'Bias forward helps the stop into C4', author: 'Luca', createdAt: '2026-09-28T19:31:00Z', mine: true },
+            { id: 'note-c3', distanceMeters: 3190, text: 'Lift earlier into C3, the car rotates better with TC 5', author: 'Alex', createdAt: '2026-09-28T19:30:00Z', mine: true },
+            { id: 'note-bias', distanceMeters: 4250, text: 'Bias forward helps the stop into C4', author: 'Alex', createdAt: '2026-09-28T19:31:00Z', mine: true },
           ]
         : [],
     }))

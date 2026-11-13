@@ -1253,10 +1253,10 @@ public sealed class RuntimeCoordinatorTests
         RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot, analysis: analysis);
         try
         {
-            runtime.Settings.DriverName = "Luca";
+            runtime.Settings.DriverName = "Alex";
             Assert.True(coordinator.Execute(Command("""{"type":"lap.note.add","sessionId":"session-a","lapNumber":5,"distanceMeters":3200,"text":"Lift earlier into C3"}"""), out string addError), addError);
             CorpusLapNote note = Assert.Single(browser.Find("session-a", 5)?.Notes ?? []);
-            Assert.Equal("Luca", note.Author);
+            Assert.Equal("Alex", note.Author);
             Assert.Equal(3200, note.DistanceMeters);
 
             string update = JsonSerializer.Serialize(new { type = "lap.note.update", sessionId = "session-a", lapNumber = 5, noteId = note.Id, text = "Lift into C3" });

@@ -1026,7 +1026,7 @@ public sealed class LeMansUltimateTelemetryTests
         byte[] buffer = InCarBuffer(playerIndex: 1);
         WriteInt32(buffer, LmuBinary.ScoringStart + 104, 3);
         WriteVehicle(buffer, 0, id: 7, driver: "A. Leader", car: "Toyota #7", carClass: "Hyper", place: 1);
-        WriteVehicle(buffer, 1, id: 3, driver: "Luca", car: "Oreca #22", carClass: "LMP2", place: 2);
+        WriteVehicle(buffer, 1, id: 3, driver: "Alex", car: "Oreca #22", carClass: "LMP2", place: 2);
         WriteVehicle(buffer, 2, id: 9, driver: "C. Third", car: "Oreca #30", carClass: "LMP2", place: 3);
         int player = LmuBinary.VehicleScoringBase + LmuBinary.VehicleScoringSize;
         WriteBool(buffer, player + 196, true);
@@ -1067,7 +1067,7 @@ public sealed class LeMansUltimateTelemetryTests
             new FieldCar
             {
                 Id = 3,
-                Driver = "Luca",
+                Driver = "Alex",
                 Car = "Oreca #22",
                 CarClass = "LMP2",
                 IsPlayer = true,
@@ -1130,7 +1130,7 @@ public sealed class LeMansUltimateTelemetryTests
     public void Lmu_mapper_hands_out_the_same_field_until_scoring_changes()
     {
         LmuTelemetryMapper mapper = new(() => DateTimeOffset.UnixEpoch);
-        LmuVehicleScoring car = new() { Id = 1, DriverName = "Luca", Place = 1, VehicleClass = "LMP2" };
+        LmuVehicleScoring car = new() { Id = 1, DriverName = "Alex", Place = 1, VehicleClass = "LMP2" };
         LmuParsedFrame parsed = CreateInCarParsedFrame(lapNumber: 3) with { Vehicles = [car] };
 
         IReadOnlyList<FieldCar>? first = mapper.Map(parsed).Field;

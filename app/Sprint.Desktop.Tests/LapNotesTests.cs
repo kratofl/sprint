@@ -33,12 +33,12 @@ public sealed class LapNotesTests : IDisposable
     {
         (AnalysisController analysis, LapCorpusBrowser browser, _, _) = this.Corpus();
 
-        Assert.True(analysis.AddNote("mine", 5, 3200, "  Lift earlier into C3  ", " Luca ", out string error), error);
+        Assert.True(analysis.AddNote("mine", 5, 3200, "  Lift earlier into C3  ", " Alex ", out string error), error);
 
         CorpusLapNote note = Assert.Single(Assert.IsType<CorpusLap>(browser.Find("mine", 5)).Notes);
         Assert.Equal(3200, note.DistanceMeters);
         Assert.Equal("Lift earlier into C3", note.Text);
-        Assert.Equal("Luca", note.Author);
+        Assert.Equal("Alex", note.Author);
         Assert.Equal(Now, note.CreatedAt);
         Assert.True(note.Mine);
 
@@ -51,7 +51,7 @@ public sealed class LapNotesTests : IDisposable
     public void ADriverEditsAndDeletesTheirOwnNote()
     {
         (AnalysisController analysis, LapCorpusBrowser browser, _, _) = this.Corpus();
-        Assert.True(analysis.AddNote("mine", 5, 100, "TC 5 here", "Luca", out _));
+        Assert.True(analysis.AddNote("mine", 5, 100, "TC 5 here", "Alex", out _));
         string id = Assert.Single(Assert.IsType<CorpusLap>(browser.Find("mine", 5)).Notes).Id;
 
         Assert.True(analysis.UpdateNote("mine", 5, id, "TC 6 here", out string updateError), updateError);
@@ -74,7 +74,7 @@ public sealed class LapNotesTests : IDisposable
     {
         (AnalysisController analysis, _, _, _) = this.Corpus();
 
-        Assert.False(analysis.AddNote(sessionId, lapNumber, distance, text, "Luca", out string error));
+        Assert.False(analysis.AddNote(sessionId, lapNumber, distance, text, "Alex", out string error));
         Assert.Equal(expected, error);
     }
 
@@ -83,7 +83,7 @@ public sealed class LapNotesTests : IDisposable
     {
         (AnalysisController analysis, _, _, _) = this.Corpus();
 
-        Assert.False(analysis.AddNote("mine", 5, 100, new string('x', LapNote.MaxTextLength + 1), "Luca", out string error));
+        Assert.False(analysis.AddNote("mine", 5, 100, new string('x', LapNote.MaxTextLength + 1), "Alex", out string error));
         Assert.Contains("500", error, StringComparison.Ordinal);
     }
 
@@ -91,9 +91,9 @@ public sealed class LapNotesTests : IDisposable
     public void NotesTravelInTheLapFileAndArriveReadOnlyWithTheirAuthor()
     {
         (AnalysisController analysis, _, FakeHistory history, FakeTraces traces) = this.Corpus();
-        Assert.True(analysis.AddNote("mine", 5, 3200, "TC 5 from here", "Luca", out _));
+        Assert.True(analysis.AddNote("mine", 5, 3200, "TC 5 from here", "Alex", out _));
 
-        SharedLapExportResult export = SharedLapExport.Build(history, traces, "mine", 5, "Luca", Now, new LapNotes(this.NotesPath).For("mine", 5));
+        SharedLapExportResult export = SharedLapExport.Build(history, traces, "mine", 5, "Alex", Now, new LapNotes(this.NotesPath).For("mine", 5));
         Assert.NotNull(export.Lap);
         SharedLap? received = SharedLapFile.Read(Written(export.Lap)).Lap;
         Assert.NotNull(received);
@@ -106,7 +106,7 @@ public sealed class LapNotesTests : IDisposable
 
         CorpusLapNote note = Assert.Single(Assert.IsType<CorpusLap>(friendBrowser.Find(imported.SessionId, 5)).Notes);
         Assert.Equal("TC 5 from here", note.Text);
-        Assert.Equal("Luca", note.Author);
+        Assert.Equal("Alex", note.Author);
         Assert.Equal(3200, note.DistanceMeters);
         Assert.False(note.Mine);
         Assert.False(friend.UpdateNote(imported.SessionId, 5, note.Id, "Mine now", out string error));

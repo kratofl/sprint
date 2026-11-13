@@ -49,7 +49,7 @@ test('pit state, cockpit settings and the scored field cross over', () => {
     ...hostFrame,
     car: { inPitLane: true, pitState: 'Stopped', pitLimiter: true },
     electronics: { tractionControlCut: 2, tractionControlCutMax: 6, migration: 3, migrationMax: 5 },
-    field: [{ id: 7, driver: 'Luca', isPlayer: true, classPlace: 2, pitState: 'Exiting', finishStatus: 'Dnf', bestLapTime: null, lastLapTime: 121.5 }],
+    field: [{ id: 7, driver: 'Alex', isPlayer: true, classPlace: 2, pitState: 'Exiting', finishStatus: 'Dnf', bestLapTime: null, lastLapTime: 121.5 }],
   })
   assert.ok(frame)
   assert.deepEqual([frame.car.inPitLane, frame.car.pitState, frame.car.pitLimiter, frame.car.inGarage], [true, 'stopped', true, null])
@@ -59,7 +59,7 @@ test('pit state, cockpit settings and the scored field cross over', () => {
   assert.ok(car)
   assert.deepEqual(
     [car.id, car.driver, car.isPlayer, car.classPlace, car.pitState, car.finishStatus, car.bestLapTime, car.lastLapTime],
-    [7, 'Luca', true, 2, 'exiting', 'dnf', null, 121.5],
+    [7, 'Alex', true, 2, 'exiting', 'dnf', null, 121.5],
   )
   assert.deepEqual(parseHostFrame(hostFrame)?.field, [])
 })
