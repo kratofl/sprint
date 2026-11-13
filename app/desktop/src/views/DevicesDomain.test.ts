@@ -2,10 +2,13 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import {
   NO_CATALOG_FILTER,
+  browserDisplayAddress,
   catalogBrands,
   catalogLine,
   commandErrorMessage,
+  describeDeviceStatus,
   deviceImageKey,
+  deviceSummary,
   foundEntries,
   matchesCatalogFilter,
   matchesDevicesFilter,
@@ -13,6 +16,8 @@ import {
   parseCatalog,
   parseDevice,
   parseScreen,
+  purposesFor,
+  screenSettings,
 } from './DevicesDomain'
 import type { Device, ScreenOutput } from './DevicesDomain'
 
@@ -87,6 +92,46 @@ test('a catalog card says what the hardware is, not the panel size the wheel tur
   assert.ok(omega && vocore)
   assert.equal(catalogLine(omega), 'VoCore screen · buttons')
   assert.equal(catalogLine(vocore), 'Any size, read when it connects')
+})
+
+const browserDisplay = (fields: Record<string, unknown> = {}): Device =>
+  device({ presetId: 'browser-display', name: 'Browser / VR display', type: 'screen', driver: 'browser', width: 1024, height: 576, rotation: 90, ...fields })
+
+const browserScreen = (state: string, viewers: number | null, detail?: string): ScreenOutput => {
+  const parsed = parseScreen({ deviceId: 'd1', hardware: { status: { state, detail, isConnected: state === 'Connected' }, performance: {}, viewers } })
+  assert.ok(parsed)
+  return parsed
+}
+
+test('a browser display says whether a page shows it, and its own fault, in its own words', () => {
+  const display = browserDisplay()
+  assert.deepEqual(describeDeviceStatus(display, browserScreen('Connected', 2)), { label: 'Showing', detail: '2 pages showing this display now.', tone: 'success' })
+  assert.equal(describeDeviceStatus(display, browserScreen('Connected', 1)).detail, '1 page showing this display now.')
+  assert.equal(describeDeviceStatus(display, browserScreen('WaitingForViewer', 0)).label, 'Waiting for a viewer')
+  const fault = describeDeviceStatus(display, browserScreen('Faulted', 0, 'Port 28780 is in use by another program.'))
+  assert.deepEqual(fault, { label: "Can't serve it", detail: 'Port 28780 is in use by another program.', tone: 'danger' })
+  assert.equal(describeDeviceStatus({ ...display, disabled: true }, undefined).label, 'Off')
+
+  // Waiting for a viewer is normal (the VR tool is not running), not something to fix.
+  assert.equal(matchesDevicesFilter('attention', display, browserScreen('WaitingForViewer', 0)), false)
+  assert.equal(matchesDevicesFilter('attention', display, browserScreen('Faulted', 0, 'Port 28780 is in use.')), true)
+  assert.equal(matchesDevicesFilter('connected', display, browserScreen('Connected', 1)), true)
+})
+
+test('a browser display shows its address and picture settings, never a panel’s mounting', () => {
+  const display = browserDisplay()
+  assert.deepEqual(screenSettings(display), ['address', 'resolution', 'background'])
+  assert.deepEqual(screenSettings(device({ type: 'screen', driver: 'vocore' })), ['frameRate', 'orientation', 'offset', 'margin'])
+  assert.equal(purposesFor(display).some((purpose) => purpose.id === 'rear-view-mirror'), false)
+  assert.equal(purposesFor(device({ driver: 'vocore' })).some((purpose) => purpose.id === 'rear-view-mirror'), true)
+  assert.equal(browserDisplayAddress('browser-0000-0000-sim-001'), 'http://127.0.0.1:28780/dash/browser-0000-0000-sim-001')
+  assert.equal(deviceSummary(browserDisplay({ width: 600, height: 900, rotation: 0 })), 'Browser · 600 × 900')
+  assert.equal(deviceImageKey(display, catalog), 'browser-display')
+  const [entry] = parseCatalog([{ id: 'browser-display', name: 'Browser / VR display', type: 'screen', driver: 'browser', width: 1024, height: 576 }])
+  assert.ok(entry)
+  assert.equal(catalogLine(entry), 'In a browser or VR overlay')
+  assert.equal(display.transparent, false)
+  assert.equal(browserDisplay({ transparent: true }).transparent, true)
 })
 
 test('found devices keep one entry per device plugged in and drop ids the catalog does not know', () => {

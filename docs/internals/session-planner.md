@@ -79,9 +79,12 @@ Two writers (the live recorder, the results importer), one reader. One JSON file
 - Virtual energy is recorded beside fuel: an LMU hypercar stint is energy-limited as much as
   fuel-limited.
 - The recorder, the importer and the planner share one store instance (host composition), so a
-  recorded lap is visible on the next state poll. `CachingLapHistoryStore` exists for repaint-heavy
-  readers; if it is put in front, it must be that one shared instance — it drops its cache on write,
-  and a second instance would let the corpus change behind it.
+  recorded lap is visible on the next state poll. That instance is a `CachingLapHistoryStore`: it
+  drops its cache on write, so every writer must go through it — a second store would let the corpus
+  change behind it.
+- The corpus never goes into `/api/state`. At 470 sessions it was 2.5 MB of a 3.1 MB poll and made
+  each poll take ~200 ms. The state carries what views show (`sessionCount`, Home's
+  `RecentSessions`), built on the host; anything that needs laps gets its own endpoint.
 
 ### Reference curve and channel trace
 

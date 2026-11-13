@@ -37,6 +37,14 @@ public sealed record PitWallSession
 
     /// <summary>The game's own grip grade, comparable only with itself (LMU mTrackGripLevel); null when it does not say.</summary>
     public double? GripLevel { get; init; }
+
+    /// <summary>Seconds into the session on the game's clock: what the race control feed is timed by.</summary>
+    public double Elapsed { get; init; }
+
+    public SessionPhase Phase { get; init; }
+
+    /// <summary>A local yellow in sector 1, 2, 3; always three entries.</summary>
+    public IReadOnlyList<bool> YellowSectors { get; init; } = [false, false, false];
 }
 
 /// <summary>One car in the timing table, the track map and the relative. Times in seconds.</summary>
@@ -89,6 +97,19 @@ public sealed record PitWallCar
     public PitState PitState { get; init; }
 
     public int PitStops { get; init; }
+
+    /// <summary>Penalties still to serve; the game gives a count, not the kind.</summary>
+    public int Penalties { get; init; }
+
+    public bool BlueFlag { get; init; }
+
+    public FinishStatus FinishStatus { get; init; }
+
+    /// <summary>
+    /// Standing still on track while the race runs, as the engineer's desktop works it out (no game
+    /// says so); the driver's desktop always sends false.
+    /// </summary>
+    public bool Stopped { get; init; }
 
     public string? Compound { get; init; }
 
@@ -164,6 +185,37 @@ public sealed record PitWallPoint(double X, double Z);
 /// <summary>The four pressures (kPa) as a lap of the stint was completed.</summary>
 public sealed record PitWallLapPressures(int Lap, double Fl, double Fr, double Rl, double Rr);
 
+/// <summary>What race control's feed lists: a change of the session's flag, a sector's yellow, or something one car did.</summary>
+public enum PitWallEventKind
+{
+    Green,
+    FullCourseYellow,
+    Stopped,
+    Over,
+    SectorYellow,
+    SectorClear,
+    CarStopped,
+    Penalty,
+    PenaltyServed,
+    BlueFlag,
+    Retired,
+    Disqualified,
+}
+
+/// <summary>
+/// One line of the race control feed, at <paramref name="Time"/> seconds into the session. A car's
+/// event names the car as it was then (it may have left since); a sector event its sector, 1–3.
+/// </summary>
+public sealed record PitWallEvent(double Time, PitWallEventKind Kind, int? CarId, string Driver, string Car, int? Sector, int? Lap);
+
+/// <summary>
+/// What a stop costs, measured from the stops the engineer's desktop has seen this session:
+/// <paramref name="Lane"/> is the time lost driving through the pit lane instead of past it (every
+/// car's stops), <paramref name="Standing"/> the time stood in the box — from our car's stops, or
+/// the class's until ours has made one (<paramref name="StandingFromOwn"/>). Seconds; null until seen.
+/// </summary>
+public sealed record PitWallPitLoss(double? Lane, int LaneStops, double? Standing, int StandingStops, bool StandingFromOwn);
+
 /// <summary>What the driver's desktop sends twice a second as the <c>board</c> blob.</summary>
 public sealed record PitWallBoard(PitWallSession Session, IReadOnlyList<PitWallCar> Field, PitWallCarStatus Car);
 
@@ -212,6 +264,11 @@ public sealed record PitWallState
     /// <summary>The session plan as the driver's desktop stores it (one entry of <c>state.plans</c>), while the driver shares it.</summary>
     public JsonElement? Plan { get; init; }
 
+    /// <summary>Race control's feed this session, oldest first.</summary>
+    public IReadOnlyList<PitWallEvent> RaceControl { get; init; } = [];
+
+    public PitWallPitLoss PitLoss { get; init; } = new(null, 0, null, 0, false);
+
     /// <summary>Unix ms when the newest board arrived.</summary>
     public long ReceivedAt { get; init; }
 }
@@ -247,7 +304,11 @@ public static class PitWallWire
             return null;
 
         return new PitWallBoard(
-            session with { Track = session.Track ?? "" },
+            session with
+            {
+                Track = session.Track ?? "",
+                YellowSectors = session.YellowSectors is { Count: 3 } yellows ? yellows : [false, false, false],
+            },
             [.. (field ?? []).OfType<PitWallCar>().Select(Clean)],
             car with
             {

@@ -1,4 +1,4 @@
-import type { AppView, SprintCommand } from '../bridge'
+import type { AppView, SprintCommand, UpdateStatus } from '../bridge'
 import type { RuntimeState } from './runtime'
 import { HomeView } from '../views/HomeView'
 import { SessionPlannerView } from '../views/SessionPlannerView'
@@ -49,6 +49,7 @@ export function ViewRouter({
   onOpenItem,
   onImportResults,
   onSetUpCloud,
+  updateStatus,
 }: {
   view: AppView
   focus: NavigationTarget | null
@@ -59,6 +60,8 @@ export function ViewRouter({
   onImportResults?: () => void
   /** Opens the Sprint web setup (Settings' "Set up Sprint web"). */
   onSetUpCloud: () => void
+  /** Where the self-update stands (App.tsx follows it), for Settings. */
+  updateStatus: UpdateStatus
 }) {
   switch (view) {
     case 'Home':
@@ -94,7 +97,7 @@ export function ViewRouter({
     case 'LiveLink':
       return <LiveLinkView runtime={runtime} send={send} onNavigate={onNavigate} />
     case 'Settings':
-      return <SettingsView runtime={runtime} send={send} onSetUpCloud={onSetUpCloud} />
+      return <SettingsView runtime={runtime} send={send} onSetUpCloud={onSetUpCloud} updateStatus={updateStatus} />
     case 'Help':
       return <HelpView runtime={runtime} send={send} onNavigate={onNavigate} onOpenItem={onOpenItem} />
   }

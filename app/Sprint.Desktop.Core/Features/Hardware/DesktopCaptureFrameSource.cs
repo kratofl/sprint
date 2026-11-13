@@ -7,7 +7,7 @@ namespace Sprint.Desktop.Features.Hardware;
 /// <summary>
 /// Rear-view frame source: desktop capture at the screen's logical orientation,
 /// followed by the same rotation, margin, and offset pipeline as dashboards. Always
-/// composes through the managed <see cref="Rgb565.ComposeFromBgra"/> path — the
+/// composes through the managed <see cref="Rgb565Composer"/> path — the
 /// SkiaSharp-accelerated composer the Avalonia client used for this was UI-only and
 /// did not survive the web/Electron cutover; nothing here depends on it for
 /// correctness, only for the fast path's throughput.
@@ -15,11 +15,10 @@ namespace Sprint.Desktop.Features.Hardware;
 public sealed class DesktopCaptureFrameSource : IDashFrameSource
 {
     private readonly ScreenCaptureRegion _region;
-    private readonly ScreenConfig _config;
     private readonly IDesktopRegionCapturer _capturer;
     private readonly int _logicalWidth;
     private readonly int _logicalHeight;
-    private readonly DeviceOrientationTransform _transform;
+    private readonly Rgb565Composer _composer;
     private readonly LatestBgraFrameExchange? _sharedFrames;
     private readonly byte[]? _bgra;
 
@@ -46,16 +45,22 @@ public sealed class DesktopCaptureFrameSource : IDashFrameSource
         }
 
         this._region = region;
-        this._config = config;
         this._capturer = capturer;
         this.Width = config.Width;
         this.Height = config.Height;
-        this._transform = DeviceOrientations.Transform(
+        DeviceOrientationTransform transform = DeviceOrientations.Transform(
             this.Width,
             this.Height,
             config.Orientation);
-        this._logicalWidth = this._transform.LogicalWidth;
-        this._logicalHeight = this._transform.LogicalHeight;
+        this._logicalWidth = transform.LogicalWidth;
+        this._logicalHeight = transform.LogicalHeight;
+        this._composer = new Rgb565Composer(
+            this.Width,
+            this.Height,
+            transform,
+            config.Margin,
+            config.OffsetX,
+            config.OffsetY);
         if (sharedFrames is not null
             && (sharedFrames.Width != this._logicalWidth || sharedFrames.Height != this._logicalHeight))
         {
@@ -92,15 +97,7 @@ public sealed class DesktopCaptureFrameSource : IDashFrameSource
         long sourceCompleted = Stopwatch.GetTimestamp();
         this._sharedFrames?.Publish();
         long transformStarted = sourceCompleted;
-        Rgb565.ComposeFromBgra(
-            bgra,
-            this.Width,
-            this.Height,
-            this._transform,
-            this._config.Margin,
-            this._config.OffsetX,
-            this._config.OffsetY,
-            rgb565);
+        this._composer.Compose(bgra, rgb565);
         long transformCompleted = Stopwatch.GetTimestamp();
         return new ScreenFrameTiming(
             Stopwatch.GetElapsedTime(sourceStarted, sourceCompleted),

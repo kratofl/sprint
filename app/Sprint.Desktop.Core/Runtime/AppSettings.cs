@@ -15,6 +15,13 @@ public sealed class AppSettings
     public static readonly string[] Channels = ["stable", "pre-release"];
 
     /// <summary>
+    /// Updates download in the background and install when Sprint quits. Off, the driver starts
+    /// each one from Settings. The Electron main process acts on it; the host only keeps it.
+    /// </summary>
+    [JsonPropertyName("autoInstallUpdates")]
+    public bool AutoInstallUpdates { get; set; } = true;
+
+    /// <summary>
     /// Maps a persisted or user-supplied channel string to the canonical two-channel
     /// model. Legacy <c>beta</c>/<c>alpha</c> (and any non-stable value) collapse to
     /// <c>pre-release</c>; everything else is <c>stable</c>.

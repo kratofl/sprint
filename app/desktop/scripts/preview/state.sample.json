@@ -2650,6 +2650,75 @@
       "warnings": []
     }
   ],
+  "sessionCount": 4,
+  "recentSessions": {
+    "last": {
+      "id": "sample-spa-quali",
+      "kind": "Qualifying",
+      "track": "Circuit de Spa-Francorchamps",
+      "car": "Porsche 963",
+      "startedAt": "2026-09-28T19:10:00+00:00",
+      "lapCount": 4,
+      "bestLapSeconds": 124.501,
+      "bestSectors": [
+        36.105,
+        53.535,
+        34.861
+      ]
+    },
+    "comparison": {
+      "gapSeconds": -0.7620000000000005,
+      "sectorGaps": [
+        -0.22100000000000364,
+        -0.32800000000000296,
+        -0.21300000000000097
+      ]
+    },
+    "earlier": [
+      {
+        "id": "sample-spa-practice",
+        "kind": "Practice",
+        "track": "Circuit de Spa-Francorchamps",
+        "car": "Porsche 963",
+        "startedAt": "2026-09-28T18:02:00+00:00",
+        "lapCount": 9,
+        "bestLapSeconds": 125.263,
+        "bestSectors": [
+          36.326,
+          53.863,
+          35.074
+        ]
+      },
+      {
+        "id": "sample-monza-race",
+        "kind": "Race",
+        "track": "Autodromo Nazionale Monza",
+        "car": "Ferrari 499P",
+        "startedAt": "2026-09-24T19:30:00+00:00",
+        "lapCount": 12,
+        "bestLapSeconds": 97.86,
+        "bestSectors": [
+          28.379,
+          42.08,
+          27.401
+        ]
+      },
+      {
+        "id": "sample-lemans-practice",
+        "kind": "Practice",
+        "track": "Circuit de la Sarthe",
+        "car": "Oreca 07",
+        "startedAt": "2026-09-20T16:00:00+00:00",
+        "lapCount": 6,
+        "bestLapSeconds": 214.309,
+        "bestSectors": [
+          62.15,
+          92.153,
+          60.006
+        ]
+      }
+    ]
+  },
   "lapHistory": [
     {
       "id": "sample-spa-practice",

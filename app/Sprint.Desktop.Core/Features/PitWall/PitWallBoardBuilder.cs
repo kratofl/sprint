@@ -109,6 +109,9 @@ public sealed class PitWallBoardBuilder
             // (1 in a wet race at Le Mans), so the fraction stays unknown and the grade goes as is.
             Grip = null,
             GripLevel = conditions.TrackGripLevel,
+            Elapsed = Math.Round(frame.Session.SessionTime, 1),
+            Phase = frame.Session.Phase,
+            YellowSectors = [frame.Flags.Sector1Yellow, frame.Flags.Sector2Yellow, frame.Flags.Sector3Yellow],
         };
     }
 
@@ -135,6 +138,9 @@ public sealed class PitWallBoardBuilder
         InPit = car.InPitLane,
         PitState = car.PitState,
         PitStops = car.PitStops,
+        Penalties = car.Penalties,
+        BlueFlag = car.BlueFlag,
+        FinishStatus = car.FinishStatus,
         Compound = car.Compound,
         X = Math.Round(car.PositionX, 1),
         Z = Math.Round(car.PositionZ, 1),

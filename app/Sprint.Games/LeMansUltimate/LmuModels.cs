@@ -170,6 +170,9 @@ internal sealed record LmuVehicleScoring
     public double LastSector2 { get; init; }
     public byte PitState { get; init; }
     public double TimeIntoLap { get; init; }
+
+    /// <summary>mFlag: the flag shown to this car, 0 green or 6 blue.</summary>
+    public byte Flag { get; init; }
     public bool UnderYellow { get; init; }
     public byte CountLapFlag { get; init; }
     public bool InGarageStall { get; init; }
@@ -212,6 +215,12 @@ internal sealed record LmuScoringInfo
     public double LapDistance { get; init; }
     public int NumVehicles { get; init; }
     public byte GamePhase { get; init; }
+
+    /// <summary>
+    /// mSectorFlag: a local yellow per sector, above 0 while one is out (-1 reads as invalid). Read in mSector's order
+    /// (index 0 is sector 3); the header itself is unsure, so this wants checking in a live session.
+    /// </summary>
+    public IReadOnlyList<sbyte> SectorFlags { get; init; } = [0, 0, 0];
     public bool InRealtime { get; init; }
 
     /// <summary>mAvgPathWetness: average wetness on the main path, 0–1.</summary>

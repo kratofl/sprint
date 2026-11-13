@@ -1,21 +1,14 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { displayVersion, parseUpdateCheck } from './updates'
+import { displayVersion, parseUpdateStatus } from './updates'
 
-test('parseUpdateCheck returns the release when one is available', () => {
-  const release = parseUpdateCheck({
-    updateAvailable: true,
-    latest: { version: '1.2.3', channel: 'stable', url: 'https://example.test/1.2.3' },
-    currentVersion: '1.2.0',
-  })
-  assert.deepEqual(release, { version: '1.2.3', channel: 'stable', url: 'https://example.test/1.2.3' })
-})
-
-test('parseUpdateCheck returns null when up to date, malformed, or absent', () => {
-  assert.equal(parseUpdateCheck({ updateAvailable: false, latest: null, currentVersion: '1.2.0' }), null)
-  assert.equal(parseUpdateCheck({ updateAvailable: true, latest: { version: 1, channel: 'stable', url: 'x' } }), null)
-  assert.equal(parseUpdateCheck(null), null)
-  assert.equal(parseUpdateCheck(undefined), null)
+test('the update status is narrowed once, and anything malformed reads as a failure', () => {
+  assert.deepEqual(parseUpdateStatus({ kind: 'downloading', version: '1.2.0', percent: 40 }), { kind: 'downloading', version: '1.2.0', percent: 40 })
+  assert.deepEqual(parseUpdateStatus({ kind: 'ready', version: '1.2.0' }), { kind: 'ready', version: '1.2.0' })
+  assert.deepEqual(parseUpdateStatus({ kind: 'up-to-date' }), { kind: 'up-to-date' })
+  assert.equal(parseUpdateStatus({ kind: 'ready' }).kind, 'failed')
+  assert.equal(parseUpdateStatus({ kind: 'nope' }).kind, 'failed')
+  assert.equal(parseUpdateStatus(null).kind, 'failed')
 })
 
 test('displayVersion prefixes a bare version with v and leaves an already-prefixed one alone', () => {

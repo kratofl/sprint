@@ -73,6 +73,11 @@ pnpm-debug.log*
 # ─── Rust ────────────────────────────────────────────────────────────────────
 target/
 Cargo.lock
+# The dash renderer crate builds a shipped library: its lockfile is committed so every build
+# resolves the same dependencies.
+!packages/dashboard/renderer/Cargo.lock
+# Its WebAssembly build (scripts/build-dash-renderer.mjs --wasm), which the dashboard package loads.
+packages/dashboard/generated/
 
 # ─── Environment & Secrets ───────────────────────────────────────────────────
 .env

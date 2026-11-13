@@ -4,9 +4,8 @@ import { existsSync } from 'node:fs'
 import { readFile, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { isRecord, readScreenOutputs } from './frames.js'
+import { isRecord } from './frames.js'
 import { NativeHost } from './native-host.js'
-import { OffscreenOutputs } from './offscreen.js'
 import { hudRouteFor, TrainingHud } from './hud.js'
 import { HUD_CLOSED, readHudWanted } from './hudFeed.js'
 import { macMenuTemplate } from './appMenu.js'
@@ -15,6 +14,7 @@ import { DashDesigners } from './designerWindows.js'
 import { readDashIds, readDesignerDashId } from './designerRoute.js'
 import { PitWallWindows } from './pitWallWindows.js'
 import { pitWallQuery, readPitWallTarget, readPitWallWindows, readTraceLap } from './pitWallRoute.js'
+import { Updates } from './updates.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const desktopRoot = path.resolve(__dirname, '..')
@@ -39,8 +39,18 @@ function resolveDotnetCommand(): string {
 const nativeHost = new NativeHost()
 let hostStartError: string | undefined
 
+/**
+ * An installed build runs the host published into its resources (`make build-app`); a dev run
+ * builds and runs it from source.
+ */
 async function startNativeHost(): Promise<void> {
   try {
+    if (app.isPackaged) {
+      const hostDir = path.join(process.resourcesPath, 'host')
+      const hostExe = path.join(hostDir, process.platform === 'win32' ? 'Sprint.Desktop.Host.exe' : 'Sprint.Desktop.Host')
+      await nativeHost.start(hostExe, [], hostDir)
+      return
+    }
     await nativeHost.start(resolveDotnetCommand(), ['run', '--project', hostProject], path.dirname(hostProject))
   } catch (error) {
     hostStartError = error instanceof Error ? error.message : String(error)
@@ -55,8 +65,6 @@ function shutdown(): Promise<void> {
   if (!shutdownPromise) {
     polling = false
     if (pollTimer !== undefined) { clearTimeout(pollTimer); pollTimer = undefined }
-    offscreen?.closeAll()
-    offscreen = undefined
     hud?.close()
     hud = undefined
     shutdownPromise = nativeHost.stop().catch((error: unknown) => {
@@ -71,7 +79,6 @@ function shutdown(): Promise<void> {
 const subscribers = new Set<WebContents>()
 let pollTimer: ReturnType<typeof setTimeout> | undefined
 let polling = false
-let offscreen: OffscreenOutputs | undefined
 let hud: TrainingHud | undefined
 
 function rendererBaseUrl(): string {
@@ -91,9 +98,6 @@ async function pollTick(): Promise<void> {
     for (const contents of subscribers) {
       if (!contents.isDestroyed()) contents.send('sprint:state', state)
     }
-    // Dashboard output is driven from the same poll rather than from a renderer
-    // subscription, so screens keep painting with the main window hidden.
-    offscreen?.reconcile(readScreenOutputs(state))
     // Click-through while driving and only stopped from the app; without the main window
     // nothing could turn it off, so it only shows while that window exists.
     hud?.reconcile(mainWindow ? readHudWanted(state) : HUD_CLOSED)
@@ -101,6 +105,7 @@ async function pollTick(): Promise<void> {
     designers.reconcile(readDashIds(state))
     // Pages and tiles the engineer put in their own windows open and close with the layout.
     pitWall.reconcile(readPitWallWindows(state))
+    updates.reconcile(state)
   } catch (error) {
     console.error('[sprint] state poll failed:', error)
   }
@@ -206,33 +211,13 @@ ipcMain.handle('sprint:cloud-discover', () => nativeHost.cloudDiscover())
 ipcMain.handle('sprint:cloud-push', () => nativeHost.cloudPush())
 ipcMain.handle('sprint:cloud-pull', () => nativeHost.cloudPull())
 
-ipcMain.handle('sprint:updates-check', (_event: IpcMainInvokeEvent, force: unknown) => {
-  return nativeHost.checkUpdates(force === true)
-})
+// Only an installed Windows build updates itself (the NSIS installer is the update).
+const updates = new Updates(app.isPackaged && process.platform === 'win32', () => shutdown())
 
-/**
- * One-click self-replacing install (old app: `ConfirmAndInstallUpdate`/`InstallUpdate`).
- * Only the main process knows its own pid, install directory, and executable name — the
- * renderer never supplies them, so it cannot point the host's self-replace at anything else.
- * Refuses outright when not packaged: in a dev run `app.getPath('exe')` resolves to
- * `electron.exe` inside node_modules, and self-replacing that would corrupt the dev toolchain.
- */
-ipcMain.handle('sprint:updates-install', async () => {
-  if (!app.isPackaged) return { outcome: 'unavailable-in-dev' }
-  const exePath = app.getPath('exe')
-  const result = await nativeHost.installUpdate({
-    pid: process.pid,
-    installDir: path.dirname(exePath),
-    exeName: path.basename(exePath),
-  })
-  // The staged self-replace batch waits for this process to exit before it can copy the new
-  // build over the install directory, so the app must actually quit once staging succeeds.
-  // Deferred one tick so the IPC reply above reaches the renderer before shutdown begins.
-  if (isRecord(result) && result.outcome === 'Staged') {
-    setImmediate(() => { void shutdown().finally(() => app.quit()) })
-  }
-  return result
-})
+ipcMain.on('sprint:updates-subscribe', (event: IpcMainEvent) => updates.subscribe(event.sender))
+ipcMain.handle('sprint:updates-check', () => updates.check())
+ipcMain.handle('sprint:updates-download', () => updates.download())
+ipcMain.handle('sprint:updates-restart', () => updates.restart())
 
 /** The lap file filter for both dialogs. The extension matches `SharedLapFile.Extension`. */
 const LAP_FILE_FILTERS = [{ name: 'Sprint lap', extensions: ['sprintlap'] }]
@@ -452,7 +437,7 @@ function createAppWindow({ size, title, query }: AppWindowOptions): BrowserWindo
     ...chromeOptions(currentChrome()),
     icon: path.join(desktopRoot, 'resources', 'icon.png'),
     // An agent run never appears on screen; it is driven and captured over CDP. A merely hidden
-    // window paints nothing, so it renders offscreen instead, as the dash outputs do.
+    // window paints nothing, so it renders offscreen instead.
     show: !agentRun,
     webPreferences: {
       offscreen: agentRun,
@@ -504,7 +489,7 @@ function createAppWindow({ size, title, query }: AppWindowOptions): BrowserWindo
 
 function createWindow(): BrowserWindow {
   // `?backdrop=window` tells the renderer it is the main window, drawn over the
-  // backdrop above (the offscreen dash pages and the preview harness are not).
+  // backdrop above (the other windows and the preview harness are not).
   // `?platform=` picks the look the chrome above was built for.
   const window = createAppWindow({
     size: { width: 1440, height: 900, minWidth: 1040, minHeight: 680 },
@@ -585,12 +570,6 @@ async function bootstrap(): Promise<void> {
   // the version already shaped and inset to Apple's icon grid.
   if (isMac && !app.isPackaged) app.dock?.setIcon(path.join(desktopRoot, 'resources', 'icon-mac.png'))
   await startNativeHost()
-  offscreen = new OffscreenOutputs(
-    rendererBaseUrl(),
-    path.join(__dirname, 'preload.cjs'),
-    (deviceId, frame, signal) => nativeHost.frame(deviceId, frame, signal),
-    (deviceId, error) => { console.error(`[sprint] frame delivery failed for ${deviceId}:`, error) },
-  )
   const baseUrl = rendererBaseUrl()
   hud = new TrainingHud(
     (windowId) => hudRouteFor(baseUrl, windowId),

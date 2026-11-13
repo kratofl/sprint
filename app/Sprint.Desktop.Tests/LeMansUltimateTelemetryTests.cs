@@ -1101,6 +1101,32 @@ public sealed class LeMansUltimateTelemetryTests
     }
 
     [Fact]
+    public void Lmu_source_reads_the_session_phase_sector_yellows_and_each_cars_blue_flag_and_penalties()
+    {
+        byte[] buffer = InCarBuffer(playerIndex: 1);
+        WriteInt32(buffer, LmuBinary.ScoringStart + 104, 2);
+        WriteVehicle(buffer, 0, id: 7, driver: "A. Leader", car: "Toyota #7", carClass: "Hyper", place: 1);
+        WriteVehicle(buffer, 1, id: 3, driver: "E. Varga", car: "Oreca #63", carClass: "LMP2", place: 2);
+        WriteBool(buffer, LmuBinary.VehicleScoringBase + LmuBinary.VehicleScoringSize + 196, true);
+        // mGamePhase@108 (6 = full course yellow), mSectorFlag[3]@110 in mSector's order: index 0 is sector 3.
+        buffer[LmuBinary.ScoringStart + 108] = 6;
+        buffer[LmuBinary.ScoringStart + 110] = 1;
+        buffer[LmuBinary.ScoringStart + 112] = 1;
+        // The leader: mNumPenalties@194 and mFlag@504 (6 = blue).
+        BitConverter.TryWriteBytes(buffer.AsSpan(LmuBinary.VehicleScoringBase + 194, sizeof(short)), (short)2);
+        buffer[LmuBinary.VehicleScoringBase + 504] = 6;
+        using LeMansUltimateTelemetrySource source = new(new InMemoryLmuSnapshotProvider(buffer));
+        source.Connect();
+
+        Assert.True(source.TryRead(out TelemetryFrame frame));
+
+        Assert.Equal(SessionPhase.FullCourseYellow, frame.Session.Phase);
+        Assert.Equal((false, true, true), (frame.Flags.Sector1Yellow, frame.Flags.Sector2Yellow, frame.Flags.Sector3Yellow));
+        IReadOnlyList<FieldCar> field = Assert.IsAssignableFrom<IReadOnlyList<FieldCar>>(frame.Field);
+        Assert.Equal<(int, int, bool)>([(7, 2, true), (3, 0, false)], field.Select(car => (car.Id, car.Penalties, car.BlueFlag)));
+    }
+
+    [Fact]
     public void Lmu_mapper_hands_out_the_same_field_until_scoring_changes()
     {
         LmuTelemetryMapper mapper = new(() => DateTimeOffset.UnixEpoch);

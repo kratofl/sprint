@@ -2,19 +2,10 @@
 
 /* Desktop UI type is Figtree, the brand face the web uses too, bundled so nothing
    loads from the internet (--font-text/--font-display in desktop.css; macos.css
-   swaps in SF on a Mac). Inter and Saira SemiCondensed exist only for the dash
-   renderer (packages/dashboard), which names Inter for wheel labels and Saira
-   SemiCondensed for wheel numerics. Without them every dash readout — in the
-   editor preview and on the USB panel — silently falls back to system-ui. App UI
+   swaps in SF on a Mac). The dash faces (Inter, Saira SemiCondensed) are not app
+   fonts: the dash renderer (packages/dashboard/renderer) compiles them in. App UI
    must never name either family. */
 @font-face { font-family: Figtree; font-style: normal; font-weight: 300 900; font-display: block; src: url('./fonts/Figtree-latin.woff2') format('woff2'); }
-@font-face { font-family: Inter; font-style: normal; font-weight: 400; font-display: block; src: url('./fonts/Inter-Regular.ttf') format('truetype'); }
-@font-face { font-family: Inter; font-style: normal; font-weight: 500; font-display: block; src: url('./fonts/Inter-Medium.ttf') format('truetype'); }
-@font-face { font-family: Inter; font-style: normal; font-weight: 600; font-display: block; src: url('./fonts/Inter-SemiBold.ttf') format('truetype'); }
-@font-face { font-family: Inter; font-style: normal; font-weight: 700; font-display: block; src: url('./fonts/Inter-Bold.ttf') format('truetype'); }
-@font-face { font-family: 'Saira SemiCondensed'; font-style: normal; font-weight: 400; font-display: block; src: url('./fonts/SairaSemiCondensed-Regular.ttf') format('truetype'); }
-@font-face { font-family: 'Saira SemiCondensed'; font-style: normal; font-weight: 500; font-display: block; src: url('./fonts/SairaSemiCondensed-Medium.ttf') format('truetype'); }
-@font-face { font-family: 'Saira SemiCondensed'; font-style: normal; font-weight: 700; font-display: block; src: url('./fonts/SairaSemiCondensed-Bold.ttf') format('truetype'); }
 
 /* ── Base ───────────────────────────────────────────────────────────────────
    The Sprint brand look, the one the web app wears: 13px/20px Figtree on a
@@ -38,13 +29,6 @@ html,
 body {
   margin: 0;
   min-width: 900px;
-}
-
-/* A wheel screen (DashOutput) is the panel's exact size: no app minimum width, no scrollbar. */
-[data-surface="dash"],
-[data-surface="dash"] body {
-  min-width: 0;
-  overflow: hidden;
 }
 
 /* A dash designer window (designer/DashDesigner.tsx) lays out its own stage at any size. */
@@ -1355,6 +1339,24 @@ a:hover {
 .infobar.success .infobar-icon { background: var(--infobar-success-icon); }
 .infobar.info { background: var(--infobar-info); }
 .infobar.info .infobar-icon { background: var(--infobar-info-icon); }
+
+/* ── Dash pictures (DashCanvas in packages/dashboard) ────────────────────────
+   A dash the renderer cannot draw shows the renderer's message over its empty
+   canvas, in the error InfoBar's tint, so a broken layout is obvious. */
+
+.dash-canvas-error {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  padding: 8px 12px;
+  border-radius: var(--radius-control);
+  background: var(--infobar-error);
+  color: var(--infobar-error-text);
+  font-size: 13px;
+  text-align: center;
+}
 
 /* ── Glass: menu flyout, command palette, notifications ───────────────────── */
 

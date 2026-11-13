@@ -20,7 +20,8 @@ function state(overrides: Partial<SprintState>): SprintState {
     radioLog: [],
     engineerPushState: {},
     plans: [],
-    lapHistory: [],
+    sessionCount: 0,
+    recentSessions: null,
     screens: [],
     ...overrides,
   }
@@ -118,47 +119,27 @@ test('planFacts takes the earliest planned start, the race target lap and a read
 
 // ── recentSessions ───────────────────────────────────────────────────────
 
-const lap = (lapTimeSeconds: number, sectorsSeconds: number[], isValid = true) => ({ lapNumber: 1, isValid, lapTimeSeconds, sectorsSeconds })
-const session = (id: string, startedAt: string, track: string, laps: unknown[]) => ({
-  id,
-  startedAt,
-  kind: 'Qualifying',
-  context: { game: 'LeMansUltimate', trackCourse: track, carModel: 'Porsche 963' },
-  laps,
+// The comparison itself is computed on the host (RecentSessionsTests.cs); this side narrows and labels.
+const hostSession = (id: string, kind: string) => ({
+  id, kind, track: 'Spa', car: 'Porsche 963', startedAt: '2026-09-28T19:00:00+00:00', lapCount: 2, bestLapSeconds: 125, bestSectors: [36.1, 53.8, 35.1],
 })
 
-test('recentSessions opens up the newest session and compares it with your earlier best on the same car and track', () => {
-  const sprint = state({
-    lapHistory: [
-      session('older-spa', '2026-09-20T18:00:00Z', 'Spa', [lap(125.2, [36.3, 53.9, 35.0]), lap(120, [30, 50, 40], false)]),
-      session('monza', '2026-09-27T18:00:00Z', 'Monza', [lap(97.8, [30, 35, 32.8])]),
-      session('newest-spa', '2026-09-28T19:00:00Z', 'Spa', [lap(125.0, [36.1, 53.8, 35.1]), lap(126.0, [36.0, 54, 36])]),
-      { id: 'no-start', laps: [] },
-    ],
-  })
-
-  const recent = recentSessions(sprint)
+test('recentSessions narrows the host summary and labels each kind', () => {
+  const recent = recentSessions(state({
+    recentSessions: {
+      last: hostSession('newest', 'TestDay'),
+      comparison: { gapSeconds: -0.2, sectorGaps: [-0.2, null, 0.1] },
+      earlier: [hostSession('older', 'Qualifying'), { id: 'no-start' }],
+    },
+  }))
 
   assert.ok(recent)
-  assert.equal(recent.last.id, 'newest-spa')
-  assert.equal(recent.last.bestLapSeconds, 125.0)
-  assert.deepEqual(recent.last.bestSectors, [36.1, 53.8, 35.1], "the best lap's own sectors")
-  // Against 125.2 at Spa: the invalid 120 and the Monza lap do not count.
-  assert.ok(Math.abs((recent.comparison.gapSeconds ?? 0) + 0.2) < 1e-9)
-  assert.deepEqual(
-    recent.comparison.sectorGaps.map((gap) => (gap === null ? null : Math.round(gap * 1000) / 1000)),
-    [-0.2, -0.1, 0.1],
-  )
-  assert.deepEqual(
-    recent.earlier.map((entry) => entry.id),
-    ['monza', 'older-spa'],
-  )
+  assert.equal(recent.last.kind, 'Test day')
+  assert.deepEqual(recent.last.bestSectors, [36.1, 53.8, 35.1])
+  assert.deepEqual(recent.comparison, { gapSeconds: -0.2, sectorGaps: [-0.2, null, 0.1] })
+  assert.deepEqual(recent.earlier.map((entry) => [entry.id, entry.kind]), [['older', 'Qualifying']], 'a malformed row is dropped')
 })
 
-test('recentSessions has no gap for a first visit, and nothing at all without sessions', () => {
-  const first = recentSessions(state({ lapHistory: [session('only', '2026-09-28T19:00:00Z', 'Spa', [lap(125, [])])] }))
-  assert.equal(first?.comparison.gapSeconds, null)
-  assert.deepEqual(first?.comparison.sectorGaps, [])
-
-  assert.equal(recentSessions(state({})), null)
+test('recentSessions is nothing without sessions', () => {
+  assert.equal(recentSessions(state({ recentSessions: null })), null)
 })

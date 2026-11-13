@@ -100,9 +100,9 @@ Where the mockups are silent, the macOS look follows Apple's Human Interface Gui
 - Web: the type styles under [Web app](#web-app) — 13px `callout` base on desktop, the 17px semibold
   toolbar title names the page, 14px semibold card titles, 11px caption column heads.
 - Continuously changing values use tabular figures (`.tabular`).
-- Inter is not an app UI face; the desktop bundles it only because the dash names it for wheel
-  labels. Saira Semi Condensed is only for numeric values on the rendered wheel. Brand lettering is
-  artwork, not a font choice.
+- Inter and Saira Semi Condensed are the wheel dash's faces, compiled into its renderer; app UI
+  neither bundles nor names them. Inter is for wheel labels, Saira Semi Condensed only for numeric
+  values on the rendered wheel. Brand lettering is artwork, not a font choice.
 
 ### Shape and spacing
 

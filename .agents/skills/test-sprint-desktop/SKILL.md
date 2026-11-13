@@ -50,9 +50,12 @@ data, `FILE=<recording>` for live telemetry), driven with `app/desktop/scripts/c
 
 ### 3. Release pass (packaged build)
 
-After `make build-app`, launch `app/build/bin/Sprint-<platform>-<arch>/Sprint.exe` (`Sprint.app` on
-macOS): the same shell renders, the host's `presets/` shipped, Settings shows the stamped version,
-and "Check for updates" answers without crashing.
+After `make build-app`, launch `app/build/bin/win-unpacked/Sprint.exe` (`mac-<arch>/Sprint.app` on
+macOS), or run the installer beside it (`sprint-<version>-setup.exe`): the same shell renders with
+data (the bundled host started), the host's `presets/` shipped and Settings shows the stamped version.
+The dash renderer shipped too: the Dashes page draws its dashes, and a browser display added on
+Devices shows its dash at its address (a wheel screen with red and black stripes, or a display
+reading `Faulted`, means the renderer library is missing).
 
 ### Report
 

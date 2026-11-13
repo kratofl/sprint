@@ -122,6 +122,8 @@ public sealed class RuntimeCoordinator
             case "devices.purpose": return this.UpdateDevicePurpose(command, out error);
             case "devices.captureRegion": return this.UpdateDeviceCaptureRegion(command, out error);
             case "devices.refreshHz": return this.UpdateDeviceRefreshHz(command, out error);
+            case "devices.resolution": return this.UpdateBrowserDisplaySize(command, out error);
+            case "devices.transparent": return this.UpdateDeviceTransparent(command, out error);
             case "devices.save": return this.SaveDevice(command, out error);
             case "devices.multiDial": return this.UpdateMultiDial(command, out error);
             case "dash.create": return this.CreateDash(command, out error);
@@ -390,6 +392,12 @@ public sealed class RuntimeCoordinator
             if (TryStringField(command, "updateChannel", out string updateChannel))
             {
                 this._runtime.Settings.UpdateChannel = AppSettings.NormalizeChannel(updateChannel);
+                applied = true;
+            }
+
+            if (TryBool(command, "autoInstallUpdates", out bool autoInstallUpdates))
+            {
+                this._runtime.Settings.AutoInstallUpdates = autoInstallUpdates;
                 applied = true;
             }
 
@@ -667,6 +675,14 @@ public sealed class RuntimeCoordinator
         if (!TryStringField(command, "dashId", out string dashId)) { error = "dashId is required"; return false; }
 
         DeviceOrientation orientation = DeviceOrientations.Resolve(rotation);
+        // A browser display is not a panel: its orientation follows its resolution and it has no
+        // offset or margin, so only the name and the dash can change through here.
+        if (BrowserDisplays.Is(device) && (orientation != device.Orientation || offsetX != 0 || offsetY != 0 || margin != 0))
+        {
+            error = "a browser display has no orientation, offset or margin";
+            return false;
+        }
+
         DeviceOrientation previousOrientation = device.Orientation;
         // A saved capture region describes a rectangle in the panel's own axes; a rotation that
         // flips landscape<->portrait has to swap its width/height along with it, or the region
@@ -691,6 +707,13 @@ public sealed class RuntimeCoordinator
         error = "";
         if (!this.FindDevice(command, out SavedDevice device, out error)) return false;
         if (!TryString(command, "purpose", out string purpose)) { error = "purpose is required"; return false; }
+        // A browser display shows dashes; mirroring the desktop into a browser is not built.
+        if (BrowserDisplays.Is(device) && DevicePurposes.Resolve(purpose).Output is DevicePurposeOutputKind.DesktopCaptureRegion)
+        {
+            error = "a browser display cannot mirror the desktop";
+            return false;
+        }
+
         this._runtime.UpdateDevicePurpose(device, purpose);
         return true;
     }
@@ -718,6 +741,34 @@ public sealed class RuntimeCoordinator
         if (!this.FindDevice(command, out SavedDevice device, out error)) return false;
         if (!TryInt(command, "refreshHz", out int refreshHz)) { error = "refreshHz is required"; return false; }
         this._runtime.UpdateDeviceRefreshHz(device, refreshHz);
+        return true;
+    }
+
+    /// <summary>A browser display's resolution: <c>{ deviceId, width, height }</c> within <see cref="BrowserDisplays"/>' bounds.</summary>
+    private bool UpdateBrowserDisplaySize(JsonElement command, out string error)
+    {
+        error = "";
+        if (!this.FindDevice(command, out SavedDevice device, out error)) return false;
+        if (!BrowserDisplays.Is(device)) { error = "only a browser display has a resolution to set"; return false; }
+        if (!TryInt(command, "width", out int width) || !TryInt(command, "height", out int height))
+        {
+            error = "width and height are required";
+            return false;
+        }
+
+        if (BrowserDisplays.SizeError(width, height) is { } invalid) { error = invalid; return false; }
+        this._runtime.UpdateBrowserDisplaySize(device, width, height);
+        return true;
+    }
+
+    /// <summary>A browser display's background: <c>{ deviceId, transparent }</c>.</summary>
+    private bool UpdateDeviceTransparent(JsonElement command, out string error)
+    {
+        error = "";
+        if (!this.FindDevice(command, out SavedDevice device, out error)) return false;
+        if (!BrowserDisplays.Is(device)) { error = "only a browser display has a transparent background"; return false; }
+        if (!TryBool(command, "transparent", out bool transparent)) { error = "transparent is required"; return false; }
+        this._runtime.UpdateDeviceTransparent(device, transparent);
         return true;
     }
 

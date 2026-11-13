@@ -1,5 +1,6 @@
 // A page's widgets organised into groups: the tree the designer's sidebar shows and the rule for
-// which widgets the wheel draws. Pure, no React — `DashRenderer` and the desktop designer share it.
+// which widgets the wheel draws. Pure, no React. The Rust renderer applies the same rule
+// (renderer/src/groups.rs, tests ported from groups.test.ts); the designer uses this copy.
 //
 // The model is flat on purpose. `page.widgets` holds every widget in page grid coordinates, in
 // draw order; a widget's `group` names its group, a group's `parent` names the group it sits in.

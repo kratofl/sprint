@@ -31,6 +31,10 @@ splits searches and confuses the next agent.
 - **Condition** — what a dash color means: Neutral, Good/OnTarget, ColdLow, AssistActive, Warning,
   Critical, Fault, RaceControl.
 - **Device** — a saved wheel or screen entry. Its **screen** is the physical panel.
+- **Browser display** — a dash device with no USB link, shown by any browser or VR overlay tool on
+  this PC ([browser-displays.md](browser-displays.md)).
+- **Scene** — what the dash renderer draws besides the telemetry frame: layout, page, idle, logical
+  size, driver name and number, plan targets (`DashSceneContent`).
 - **Purpose** — what a device's screen shows: `dash`, `rear-view-mirror`, `flags`, `lap-times`.
 - **Native size** — the panel's physical pixel size; **logical size** is the size the dash is laid out
   at before rotation.

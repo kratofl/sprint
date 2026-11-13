@@ -220,6 +220,69 @@ public sealed class PitWallTests
     }
 
     [Fact]
+    public void ACarStandingOnTrackWhileRacingIsStoppedAndRaceControlSaysSo()
+    {
+        PitWallAccumulator wall = new();
+        PitWallCar standing = Entry(5, 4) with { LapFraction = 0.4, Sector = 2, LapsCompleted = 30, Driver = "J. Marchetti" };
+        // The grid stands still before the start without anyone being stopped.
+        wall.Board(At(80, SessionPhase.Formation, standing), T0);
+        wall.Board(At(95, SessionPhase.Formation, standing), T0);
+        Assert.False(Assert.Single(Assert.IsType<PitWallState>(wall.State(T0)).Field).Stopped);
+
+        wall.Board(At(100, SessionPhase.Green, standing), T0);
+        wall.Board(At(105, SessionPhase.Green, standing with { LapFraction = 0.4002 }), T0);
+        Assert.False(Assert.Single(Assert.IsType<PitWallState>(wall.State(T0)).Field).Stopped);
+
+        wall.Board(At(111, SessionPhase.Green, standing), T0);
+        PitWallState state = Assert.IsType<PitWallState>(wall.State(T0));
+
+        Assert.True(Assert.Single(state.Field).Stopped);
+        Assert.Equal(new PitWallEvent(111, PitWallEventKind.CarStopped, 5, "J. Marchetti", "", 2, 31), state.RaceControl[^1]);
+    }
+
+    [Fact]
+    public void RaceControlListsFlagsYellowsPenaltiesAndRetirementsAsTheyChange()
+    {
+        PitWallAccumulator wall = new();
+        // Penalties and retirements already there when the engineer joins are not news.
+        wall.Board(At(10, SessionPhase.Green, Entry(3, 1) with { Penalties = 1, LapFraction = 0.1 }, Entry(4, 2)), T0);
+        wall.Board(At(20, SessionPhase.Green, Entry(3, 1) with { Penalties = 2, LapFraction = 0.2 }, Entry(4, 2) with { FinishStatus = FinishStatus.Dnf }) with
+        {
+            Session = new PitWallSession { Track = "Spa", SessionType = SessionType.Race, Elapsed = 20, Phase = SessionPhase.Green, YellowSectors = [false, true, false] },
+        }, T0);
+        wall.Board(At(30, SessionPhase.FullCourseYellow, Entry(3, 1) with { Penalties = 1, LapFraction = 0.3 }, Entry(4, 2) with { FinishStatus = FinishStatus.Dnf }), T0);
+
+        IReadOnlyList<PitWallEvent> feed = Assert.IsType<PitWallState>(wall.State(T0)).RaceControl;
+
+        Assert.Equal(
+            [
+                (20.0, PitWallEventKind.SectorYellow, (int?)null, (int?)2),
+                (20.0, PitWallEventKind.Penalty, 3, null),
+                (20.0, PitWallEventKind.Retired, 4, null),
+                (30.0, PitWallEventKind.FullCourseYellow, null, null),
+                (30.0, PitWallEventKind.SectorClear, null, 2),
+                (30.0, PitWallEventKind.PenaltyServed, 3, null),
+            ],
+            feed.Select(entry => (entry.Time, entry.Kind, entry.CarId, entry.Sector)));
+    }
+
+    [Fact]
+    public void APitStopsLossIsMeasuredFromTheStopsSeen()
+    {
+        PitWallAccumulator wall = new();
+        PitWallCar ours = Entry(1, 1) with { IsPlayer = true, CarClass = "LMP2", LapFraction = 0.5 };
+        PitWallCar theirs = Entry(7, 2) with { CarClass = "LMP2", BestLap = 120 };
+        wall.Board(At(1000, SessionPhase.Green, ours, theirs with { LapFraction = 0.95 }), T0);
+        wall.Board(At(1001, SessionPhase.Green, ours, theirs with { LapFraction = 0.96, InPit = true, PitState = PitState.Entering }), T0);
+        wall.Board(At(1010, SessionPhase.Green, ours, theirs with { LapFraction = 0.98, InPit = true, PitState = PitState.Stopped }), T0);
+        wall.Board(At(1040, SessionPhase.Green, ours, theirs with { LapFraction = 0.98, InPit = true, PitState = PitState.Exiting }), T0);
+        wall.Board(At(1050, SessionPhase.Green, ours, theirs with { LapFraction = 0.02 }), T0);
+
+        // In the lane 49 s, 30 of them standing, and the 0.06 of a lap it covered takes 7.2 s on track.
+        Assert.Equal(new PitWallPitLoss(11.8, 1, 30, 1, StandingFromOwn: false), Assert.IsType<PitWallState>(wall.State(T0)).PitLoss);
+    }
+
+    [Fact]
     public void RadarGoesQuietWhenItStopsArriving()
     {
         PitWallAccumulator wall = new();
@@ -484,6 +547,9 @@ public sealed class PitWallTests
 
     private static PitWallBoard Board(params PitWallCar[] field) =>
         new(new PitWallSession { Track = "Spa", SessionType = SessionType.Race }, field, new PitWallCarStatus());
+
+    private static PitWallBoard At(double elapsed, SessionPhase phase, params PitWallCar[] field) =>
+        new(new PitWallSession { Track = "Spa", SessionType = SessionType.Race, TrackLengthMeters = 7004, Elapsed = elapsed, Phase = phase }, field, new PitWallCarStatus());
 
     private static PitWallCarStatus Status(double kpa) => new()
     {

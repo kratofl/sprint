@@ -1,0 +1,65 @@
+<!doctype html>
+<!--
+  A Browser / VR display (served by BrowserDisplayServer.cs at /dash/<device id>): one dash, live,
+  fitted to whatever window shows it. display.js does the work; nothing here is built.
+-->
+<html lang="en" class="opaque">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Sprint dash</title>
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+        overflow: hidden;
+        background: transparent;
+      }
+      html.opaque,
+      html.opaque body {
+        background: #000;
+      }
+      /* Drawn at the display's own resolution and scaled to the window, aspect ratio kept. */
+      canvas {
+        position: fixed;
+        inset: 0;
+        display: block;
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+      }
+      #message {
+        position: fixed;
+        inset: 0;
+        display: grid;
+        place-content: center;
+        gap: 8px;
+        padding: 24px;
+        text-align: center;
+        color: #fff;
+        font: 600 28px/1.4 system-ui, sans-serif;
+        text-shadow: 0 1px 3px #000;
+      }
+      #message p {
+        margin: 0;
+      }
+      #detail {
+        font-weight: 400;
+        font-size: 20px;
+        color: #bbb;
+      }
+      [hidden] {
+        display: none !important;
+      }
+    </style>
+    <script type="module" src="/assets/display.js"></script>
+  </head>
+  <body>
+    <canvas id="dash" hidden></canvas>
+    <div id="message" role="status">
+      <p id="title">Connecting to Sprint…</p>
+      <p id="detail"></p>
+    </div>
+  </body>
+</html>

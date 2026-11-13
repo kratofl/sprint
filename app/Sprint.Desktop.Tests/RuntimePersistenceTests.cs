@@ -795,6 +795,8 @@ public sealed class RuntimePersistenceTests
             DesktopRuntime runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot, legacyRoot);
 
             Assert.Equal("pre-release", runtime.Settings.UpdateChannel);
+            // Settings from before the opt-out existed install updates automatically.
+            Assert.True(runtime.Settings.AutoInstallUpdates);
             Assert.Equal("Legacy Driver", runtime.Settings.DriverName);
             Assert.Equal("77", runtime.Settings.DriverNumber);
             Assert.Equal("advanced", runtime.Settings.NewDashDefaults.Mode);

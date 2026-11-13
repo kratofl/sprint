@@ -511,6 +511,30 @@ button.controls-swatch {
   width: 84px;
 }
 
+/* A browser display's address: selectable text in the row's description line, not a boxed field. */
+.device-address {
+  width: 100%;
+  height: auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--label);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.device-address:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.device-note {
+  margin: 0;
+  padding: 0 4px;
+  font-size: 12px;
+  line-height: 16px;
+}
+
 /* ── Add device dialog (DevicesAddDialog.tsx) ─────────────────────────────── */
 
 /* Wide enough for three picture cards; the results keep a floor so filtering does not make
@@ -662,4 +686,9 @@ button.controls-swatch {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
+}
+
+/* Four digits each. */
+.device-resolution input {
+  width: 48px;
 }

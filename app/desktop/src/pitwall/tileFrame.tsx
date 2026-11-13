@@ -21,6 +21,8 @@ export const KIND_LABEL: Record<TileKind, string> = {
   damage: 'Damage',
   radar: 'Radar',
   traces: 'Telemetry',
+  control: 'Race control',
+  pitstop: 'Pit stop',
 }
 
 /** A stack's header controls: which layer shows, its countdown, and the dots and arrows to pick one. */

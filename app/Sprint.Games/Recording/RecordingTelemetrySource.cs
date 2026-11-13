@@ -94,6 +94,19 @@ public sealed class RecordingTelemetrySource : ITelemetrySource
             ? null
             : $"{frame.Session.Track}|{frame.Session.Car}|{frame.Session.SessionType}";
 
+    // Recordings get shared and trimmed into test fixtures, so no real name goes to disk: the
+    // driver is "Player", everyone else "Driver <car id>", stable for the whole session.
+    // FieldCar.Driver is the only person's name the frame carries.
+    internal static TelemetryFrame WithoutNames(TelemetryFrame frame) =>
+        frame.Field is null
+            ? frame
+            : frame with
+            {
+                Field = frame.Field
+                    .Select(car => car with { Driver = car.IsPlayer ? "Player" : $"Driver {car.Id}" })
+                    .ToArray(),
+            };
+
     private void WriteFrame(TelemetryFrame frame)
     {
         string? key = SessionKeyOf(frame);
@@ -109,7 +122,7 @@ public sealed class RecordingTelemetrySource : ITelemetrySource
         }
 
         TimeSpan now = this._elapsed();
-        writer.Write(new RecordedFrame(this.SecondsAt(now), frame));
+        writer.Write(new RecordedFrame(this.SecondsAt(now), WithoutNames(frame)));
         if (now - this._lastFlush >= FlushEvery)
         {
             writer.Flush();

@@ -113,7 +113,8 @@ internal sealed class LmuTelemetryMapper
                 SessionTimeRemaining = PlausibleTimeRemaining(parsed.ScoringInfo),
                 BestLapTime = ToF64(scoring.BestLapTime),
                 MaxLaps = parsed.ScoringInfo.MaxLaps,
-                InCar = true
+                InCar = true,
+                Phase = MapPhase(parsed.ScoringInfo.GamePhase)
             },
             Car = new CarState
             {
@@ -159,7 +160,10 @@ internal sealed class LmuTelemetryMapper
                 Yellow = scoring.UnderYellow,
                 SafetyCar = parsed.ScoringInfo.GamePhase == 6,
                 Red = parsed.ScoringInfo.GamePhase == 7,
-                Checkered = scoring.FinishStatus == 1
+                Checkered = scoring.FinishStatus == 1,
+                Sector1Yellow = SectorYellow(parsed.ScoringInfo, 1),
+                Sector2Yellow = SectorYellow(parsed.ScoringInfo, 2),
+                Sector3Yellow = SectorYellow(parsed.ScoringInfo, 3)
             },
             Electronics = new ElectronicsState
             {
@@ -233,7 +237,8 @@ internal sealed class LmuTelemetryMapper
                 TotalSessionTime = PlausibleSessionLength(scoringInfo.EndElapsedTime),
                 SessionTimeRemaining = PlausibleTimeRemaining(scoringInfo),
                 MaxLaps = scoringInfo.MaxLaps,
-                InCar = false
+                InCar = false,
+                Phase = MapPhase(scoringInfo.GamePhase)
             },
             Conditions = MapConditions(scoringInfo),
             Field = field
@@ -308,6 +313,8 @@ internal sealed class LmuTelemetryMapper
             InGarage = vehicle.InGarageStall,
             PitState = MapPitState(vehicle.PitState),
             PitStops = vehicle.PitStops,
+            Penalties = Math.Max(0, (int)vehicle.Penalties),
+            BlueFlag = vehicle.Flag == 6,
             Compound = compound,
             FinishStatus = vehicle.FinishStatus switch
             {
@@ -707,6 +714,27 @@ internal sealed class LmuTelemetryMapper
 
         return count == 0 ? 0 : sum / count;
     }
+
+    /// <summary>
+    /// mGamePhase: 0 before the session, 1–3 reconnaissance, grid and formation, 4 the start
+    /// lights, 5 green, 6 full course yellow or safety car, 7 stopped, 8 over. 9 (paused) and
+    /// anything newer say nothing about the track.
+    /// </summary>
+    private static SessionPhase MapPhase(byte phase) => phase switch
+    {
+        0 => SessionPhase.BeforeStart,
+        1 or 2 or 3 => SessionPhase.Formation,
+        4 => SessionPhase.Countdown,
+        5 => SessionPhase.Green,
+        6 => SessionPhase.FullCourseYellow,
+        7 => SessionPhase.Stopped,
+        8 => SessionPhase.Over,
+        _ => SessionPhase.Unknown
+    };
+
+    /// <summary>Whether mSectorFlag shows a yellow in <paramref name="sector"/> (1–3); the array runs like mSector, sector 3 first.</summary>
+    private static bool SectorYellow(LmuScoringInfo scoring, int sector) =>
+        scoring.SectorFlags.Count == 3 && scoring.SectorFlags[sector % 3] > 0;
 
     private static SessionType MapSessionType(int session)
     {

@@ -1,54 +1,69 @@
+using System.Text.Json;
 using Sprint.Desktop.Api.Telemetry;
+using Sprint.Desktop.Core;
+using Sprint.Desktop.Features.Dashes;
 using Sprint.Desktop.Features.Devices;
 using Sprint.Desktop.Features.Diagnostics;
 using Sprint.Desktop.Features.Hardware;
+using Sprint.Desktop.Features.Input;
 
 namespace Sprint.Desktop.Host;
 
-/// <summary>Real link status and delivery performance for one device's active screen output.</summary>
-public sealed record ScreenOutputHardware(ScreenStatus Status, ScreenPerformanceSnapshot Performance);
-
-public enum ScreenFramePublishResult
-{
-    /// <summary>The frame was copied into the device's exchange for its publisher to pick up.</summary>
-    Routed,
-
-    /// <summary>No active output exists for this device (disabled, non-dash, or not yet reconciled).</summary>
-    NoActiveOutput,
-
-    /// <summary>The posted frame's size does not match the device's configured logical size.</summary>
-    DimensionMismatch,
-}
+/// <summary>
+/// Real link status and delivery performance for one device's active screen output.
+/// <paramref name="Viewers"/> is a browser display's count of pages showing it, null for a USB screen.
+/// </summary>
+public sealed record ScreenOutputHardware(ScreenStatus Status, ScreenPerformanceSnapshot Performance, int? Viewers = null);
 
 /// <summary>
-/// Connects frames POSTed by Electron's offscreen browsers (<c>POST /api/screens/{id}/frame</c>)
-/// to real USB screens — the last mile <see cref="FrameStore"/> alone cannot reach — and, for the
-/// rear-view mirror purpose, captures the desktop natively (no browser involved at all). One
-/// <see cref="ScreenPublisher"/> runs per enabled screen device whose purpose has an implemented
-/// output (the same selection <see cref="ScreenOutputs.Describe"/> uses, via
-/// <see cref="DeviceCapabilities.DrivesScreenOutput"/>, so the devices Electron is told about are
-/// exactly the devices this service drives to hardware): a dashboard/flag-display/lap-timer device
-/// pulls its latest received BGRA frame through a <see cref="BrowserFrameSource"/>, and a rear-view
-/// mirror device captures its stored desktop region directly through a
-/// <see cref="DesktopCaptureFrameSource"/> — either way pushing native RGB565 to its
-/// <see cref="IScreenDriver"/>. <see cref="Reconcile"/> is idempotent and safe to call repeatedly:
-/// it only tears down and rebuilds the outputs whose device configuration actually changed.
+/// What every dash screen's scene is built from, read by the reconcile loop under the devices gate:
+/// the dashes (each device resolves its own, <see cref="DevicePurposeLayouts.Resolve"/>), the
+/// driver's name and number, and the active plan's targets.
+/// </summary>
+public sealed record DashSceneInputs(
+    IReadOnlyList<DashLayout> Layouts,
+    string DriverName,
+    string DriverNumber,
+    DashTargets Targets);
+
+/// <summary>
+/// Drives the real USB screens. One <see cref="ScreenPublisher"/> runs per enabled screen device
+/// whose purpose has an implemented output (<see cref="DeviceCapabilities.DrivesScreenOutput"/>,
+/// the same selection <see cref="ScreenOutputs.Describe"/> uses), each on its own thread at the
+/// device's refresh rate: a dashboard/flag-display/lap-timer device draws its dash in-process with
+/// the Rust renderer (<see cref="NativeDashFrameSource"/>), and a rear-view mirror device captures
+/// its stored desktop region (<see cref="DesktopCaptureFrameSource"/>) — either way pushing native
+/// RGB565 to its <see cref="IScreenDriver"/>. No browser and no HTTP are on this path.
+/// <para>
+/// A browser display (<see cref="BrowserDisplays"/>) has no USB link, so it gets no driver and no
+/// publisher: it gets the very same scene feed a wheel's renderer reads, handed to the
+/// <see cref="BrowserDisplayServer"/>, whose page draws it with the same renderer in WebAssembly.
+/// </para>
+/// <para>
+/// <see cref="Reconcile"/> is idempotent and safe to call repeatedly: it only tears down and
+/// rebuilds the outputs whose device configuration actually changed, and hands each dash output its
+/// scene, which the output only takes when the scene's bytes changed. The page a wheel button
+/// selects, the live/idle switch and a turn of the wheel's multi-dial do not wait for it: each
+/// output reads those per frame.
+/// </para>
 /// </summary>
 public sealed class ScreenOutputService : IDisposable
 {
     /// <summary>Creates the driver for one device. Overridable so tests can inject <see cref="FakeScreenDriver"/>.</summary>
     public delegate IScreenDriver DriverFactory(string deviceId, string driver, ILog log);
 
-    // ScreenPublisher's frame provider exists for the dash-painting path (matrix WS7); neither the
-    // browser render path (BrowserFrameSource.Render only inspects rgb565) nor desktop capture
-    // reads it, so one shared placeholder instance is all every output needs.
-    private static readonly TelemetryFrame UnusedFrame = new();
+    /// <summary>Creates a dash output's frame source; the default draws with the Rust renderer.
+    /// Overridable so tests can inject a source that fails on demand.</summary>
+    public delegate IDashFrameSource DashSourceFactory(ScreenConfig config, DashSceneFeed scenes);
+
+    // Desktop capture never reads the telemetry frame; neither does a dash output before the
+    // host publishes one (tests without a DesktopState).
+    private static readonly TelemetryFrame NoFrame = new();
 
     /// <summary>The device fields that decide driver identity/output config; a change to any of
-    /// these forces a rebuild. Deliberately excludes <see cref="SavedDevice.DashId"/>: which
-    /// layout is rendered is Electron's concern (it reads <see cref="ScreenOutputs.Describe"/>
-    /// and posts whatever it rendered), not this service's — rebuilding a hardware output just
-    /// because the assigned dash changed would needlessly drop the USB link.</summary>
+    /// these forces a rebuild. Deliberately excludes <see cref="SavedDevice.DashId"/>: a different
+    /// dash is a new scene for the running output (<see cref="Reconcile"/>), and rebuilding the
+    /// output would needlessly drop the USB link.</summary>
     private sealed record OutputConfig(
         string Driver,
         ushort Vid,
@@ -78,20 +93,15 @@ public sealed class ScreenOutputService : IDisposable
             device.CaptureRegion);
     }
 
-    /// <summary>
-    /// <paramref name="Exchange"/>/<paramref name="ProducerGate"/> are null for a rear-view
-    /// mirror output: <see cref="DesktopCaptureFrameSource"/> captures the desktop itself and
-    /// never receives a POSTed frame, so there is nothing for <see cref="PublishFrameAsync"/> to
-    /// route into.
-    /// </summary>
+    /// <summary><paramref name="Scenes"/> is null for a rear-view mirror output, which has no dash.</summary>
     private sealed record Output(
         OutputConfig Config,
-        LatestBgraFrameExchange? Exchange,
-        SemaphoreSlim? ProducerGate,
+        DashSceneFeed? Scenes,
         ScreenPublisher Publisher);
 
     private readonly object _sync = new();
     private readonly Dictionary<string, Output> _outputs = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, BrowserDisplay> _browserDisplays = new(StringComparer.OrdinalIgnoreCase);
 
     // Devices that lost Reconcile's duplicate-physical-screen tie-break: no output was ever
     // created for them, so HardwareFor reports this instead of silently returning null (a
@@ -102,17 +112,42 @@ public sealed class ScreenOutputService : IDisposable
     private readonly DriverFactory _driverFactory;
     private readonly IDesktopRegionCapturer _desktopCapturer;
     private readonly bool _ownsDesktopCapturer;
+    private readonly DesktopState? _telemetry;
+    private readonly DashPageCycle? _pageCycle;
+    private readonly MultiDialTracker? _multiDials;
+    private readonly DashSourceFactory _dashSourceFactory;
+    private readonly BrowserDisplayServer? _browserServer;
+    private readonly JsonSerializerOptions _json = HostJson.Create();
     private bool _disposed;
 
+    /// <summary>
+    /// <paramref name="telemetry"/> is the published telemetry the dash outputs draw (and whose
+    /// liveness picks the idle page); <paramref name="pageCycle"/> the page each device's wheel
+    /// buttons selected; <paramref name="multiDials"/> where each wheel's multi-dial stands. All are
+    /// read on the outputs' own threads and are safe there (an immutable published snapshot, a
+    /// concurrent dictionary, a locked tracker). Without them a dash output shows its idle page with
+    /// an empty frame and no dial popup. <paramref name="browserServer"/> serves the browser
+    /// displays; without it they are left out.
+    /// </summary>
     public ScreenOutputService(
         ILog? log = null,
         DriverFactory? driverFactory = null,
-        IDesktopRegionCapturer? desktopCapturer = null)
+        IDesktopRegionCapturer? desktopCapturer = null,
+        DesktopState? telemetry = null,
+        DashPageCycle? pageCycle = null,
+        DashSourceFactory? dashSourceFactory = null,
+        BrowserDisplayServer? browserServer = null,
+        MultiDialTracker? multiDials = null)
     {
+        this._browserServer = browserServer;
         this._log = log ?? NullLog.Instance;
         this._driverFactory = driverFactory ?? ((_, driver, driverLog) => ScreenDriverFactory.Create(driver, driverLog));
         this._ownsDesktopCapturer = desktopCapturer is null;
         this._desktopCapturer = desktopCapturer ?? new WindowsDesktopRegionCapturer();
+        this._telemetry = telemetry;
+        this._pageCycle = pageCycle;
+        this._multiDials = multiDials;
+        this._dashSourceFactory = dashSourceFactory ?? ((config, scenes) => new NativeDashFrameSource(config, scenes, this._json));
     }
 
     /// <summary>Device ids with an active output (for tests/diagnostics).</summary>
@@ -132,6 +167,11 @@ public sealed class ScreenOutputService : IDisposable
     /// <see cref="Reconcile"/>).</summary>
     public ScreenOutputHardware? HardwareFor(string deviceId)
     {
+        if (this._browserServer?.HardwareFor(deviceId) is { } browser)
+        {
+            return browser;
+        }
+
         lock (this._sync)
         {
             if (this._outputs.TryGetValue(deviceId, out Output? output))
@@ -158,8 +198,16 @@ public sealed class ScreenOutputService : IDisposable
     /// <see cref="ScreenConnectionState.DeviceConflict"/> instead of it silently going dark
     /// (mirrors the deleted Avalonia client's <c>DeviceScreenService.TargetsSamePhysicalScreen</c>).
     /// </para>
+    /// <para>
+    /// <paramref name="scenes"/> builds each dash output's scene (its dash, settings and targets),
+    /// serialized here on the caller's thread: a new output starts with it, a running one takes it
+    /// only when its bytes changed. Without it a new dash output starts with no dash (a dark
+    /// screen) and a running one keeps what it has. <paramref name="catalog"/> (the device presets)
+    /// gives each wheel output its multi-dial the same way; without it a new output has no dial
+    /// popup and a running one keeps what it has.
+    /// </para>
     /// </summary>
-    public void Reconcile(IEnumerable<SavedDevice> devices)
+    public void Reconcile(IEnumerable<SavedDevice> devices, DashSceneInputs? scenes = null, IReadOnlyList<CatalogDevice>? catalog = null)
     {
         ArgumentNullException.ThrowIfNull(devices);
         if (this._disposed)
@@ -168,12 +216,18 @@ public sealed class ScreenOutputService : IDisposable
         }
 
         List<SavedDevice> candidates = [];
+        List<SavedDevice> browser = [];
         foreach (SavedDevice device in devices)
         {
             if (!device.Disabled && DeviceCapabilities.DrivesScreenOutput(device))
             {
-                candidates.Add(device);
+                (BrowserDisplays.Is(device) ? browser : candidates).Add(device);
             }
+        }
+
+        if (this._browserServer is null)
+        {
+            browser.Clear();
         }
 
         Dictionary<string, SavedDevice> desired = new(StringComparer.OrdinalIgnoreCase);
@@ -196,8 +250,9 @@ public sealed class ScreenOutputService : IDisposable
             this._log.Warn($"Duplicate screen target suppressed: device={device.Id} owner={owner.Id}.");
         }
 
+        Dictionary<string, DashSceneContent?> contents = this.BuildScenes(desired.Values.Concat(browser), scenes);
         List<(string Id, Output Output)> stopping = [];
-        List<SavedDevice> starting = [];
+        List<BrowserDisplay> served;
         lock (this._sync)
         {
             foreach (string id in this._outputs.Keys.ToList())
@@ -212,14 +267,24 @@ public sealed class ScreenOutputService : IDisposable
 
             foreach ((string id, SavedDevice device) in desired)
             {
-                if (this._outputs.ContainsKey(id))
+                bool known = contents.TryGetValue(id, out DashSceneContent? content);
+                DashMultiDial? dial = catalog is null ? null : DashMultiDial.Of(device, catalog);
+                if (this._outputs.TryGetValue(id, out Output? running))
                 {
+                    if (known)
+                    {
+                        running.Scenes?.Publish(content);
+                    }
+
+                    if (catalog is not null)
+                    {
+                        running.Scenes?.PublishDial(dial);
+                    }
+
                     continue;
                 }
 
-                Output output = this.CreateOutput(device);
-                this._outputs[id] = output;
-                starting.Add(device);
+                this._outputs[id] = this.CreateOutput(device, content, dial);
             }
 
             this._conflicts.Clear();
@@ -227,14 +292,104 @@ public sealed class ScreenOutputService : IDisposable
             {
                 this._conflicts[id] = hardware;
             }
+
+            served = this.ReconcileBrowserDisplays(browser, contents);
         }
 
         foreach ((string id, Output output) in stopping)
         {
             this._log.Info($"Screen output stopping: device={id}.");
             output.Publisher.Dispose();
-            output.ProducerGate?.Dispose();
         }
+
+        this._browserServer?.Reconcile(served);
+    }
+
+    /// <summary>
+    /// Keeps one <see cref="BrowserDisplay"/> per browser display device, with the same scene feed a
+    /// wheel's output gets: a new one starts with its scene, a running one takes a changed scene and
+    /// its current resolution and background. Called under <see cref="_sync"/>.
+    /// </summary>
+    private List<BrowserDisplay> ReconcileBrowserDisplays(List<SavedDevice> devices, Dictionary<string, DashSceneContent?> contents)
+    {
+        HashSet<string> wanted = devices.Select(device => device.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (string id in this._browserDisplays.Keys.Where(id => !wanted.Contains(id)).ToList())
+        {
+            this._browserDisplays.Remove(id);
+        }
+
+        foreach (SavedDevice device in devices)
+        {
+            DeviceOrientationTransform size = DeviceOrientations.Transform(device.Width, device.Height, device.Orientation);
+            BrowserDisplayLook look = new(size.LogicalWidth, size.LogicalHeight, device.Transparent);
+            bool known = contents.TryGetValue(device.Id, out DashSceneContent? content);
+            if (!this._browserDisplays.TryGetValue(device.Id, out BrowserDisplay? display))
+            {
+                display = new BrowserDisplay(device.Id, this.NewSceneFeed(device.Id), look);
+                this._browserDisplays[device.Id] = display;
+                this._log.Info($"Browser display on: device={device.Id} size={look.Width}x{look.Height} at {BrowserDisplays.Address(device.Id)}.");
+            }
+            else if (display.Look != look)
+            {
+                display.Look = look;
+            }
+
+            if (known)
+            {
+                display.Scenes.Publish(content);
+            }
+        }
+
+        return [.. this._browserDisplays.Values];
+    }
+
+    /// <summary>
+    /// Each dash device's scene content: null when it has no dash at all, absent when it is not
+    /// known this time (no inputs given, or the dash could not be serialized — a command can be
+    /// editing it in place on another thread — so the screen keeps its scene until the next
+    /// call). A dash two devices share is serialized once.
+    /// </summary>
+    private Dictionary<string, DashSceneContent?> BuildScenes(IEnumerable<SavedDevice> devices, DashSceneInputs? scenes)
+    {
+        Dictionary<string, DashSceneContent?> contents = new(StringComparer.OrdinalIgnoreCase);
+        if (scenes is null)
+        {
+            return contents;
+        }
+
+        Dictionary<DashLayout, DashSceneContent> byLayout = new(ReferenceEqualityComparer.Instance);
+        foreach (SavedDevice device in devices)
+        {
+            if (DevicePurposes.Resolve(device.Purpose).Output is DevicePurposeOutputKind.DesktopCaptureRegion)
+            {
+                continue;
+            }
+
+            if (DevicePurposeLayouts.Resolve(device, scenes.Layouts) is not { } layout)
+            {
+                contents[device.Id] = null;
+                continue;
+            }
+
+            if (!byLayout.TryGetValue(layout, out DashSceneContent? content))
+            {
+                try
+                {
+                    content = DashSceneContent.Build(layout, scenes.DriverName, scenes.DriverNumber, scenes.Targets, this._json);
+                }
+                catch (Exception ex)
+                {
+                    this._log.Warn($"Screen scene not updated this time: device={device.Id} dash={layout.Id}.", ex);
+                    continue;
+                }
+
+                byLayout[layout] = content;
+            }
+
+            contents[device.Id] = content;
+        }
+
+        return contents;
     }
 
     /// <summary>Whether <paramref name="left"/> and <paramref name="right"/> would open the same
@@ -262,8 +417,8 @@ public sealed class ScreenOutputService : IDisposable
     /// Writes panel sizes learned at connect time back onto <paramref name="devices"/>: a
     /// USBD480 NX reports its real dimensions once connected, and a generic/auto-detect entry
     /// starts with a placeholder guess -- without this the publisher renders at the correct
-    /// native size while the saved device (and therefore <c>/api/state</c>'s <c>screens</c>, the
-    /// size Electron is told to render at, and any dash sizing) keeps the stale guess. Mutates
+    /// native size while the saved device (and therefore <c>/api/state</c>'s <c>screens</c> and
+    /// any dash sizing) keeps the stale guess. Mutates
     /// matching devices in place (mirrors the deleted Avalonia client's
     /// <c>DeviceScreenService.AdoptDetectedResolutions</c>) and returns true when anything
     /// changed, so the caller knows to persist. Call before <see cref="Reconcile"/> in the same
@@ -305,52 +460,7 @@ public sealed class ScreenOutputService : IDisposable
         return changed;
     }
 
-    /// <summary>
-    /// Routes one BGRA frame to its device's active output. Only copies into the shared
-    /// exchange and marks it published — the USB write happens later, on the publisher's own
-    /// background thread — so this never blocks on hardware and the HTTP request it backs
-    /// stays fast regardless of USB latency or a stalled device.
-    /// </summary>
-    public async Task<ScreenFramePublishResult> PublishFrameAsync(
-        string deviceId,
-        int width,
-        int height,
-        ReadOnlyMemory<byte> bgra,
-        CancellationToken cancellationToken)
-    {
-        Output? output;
-        lock (this._sync)
-        {
-            this._outputs.TryGetValue(deviceId, out output);
-        }
-
-        if (output is null || output.Exchange is null || output.ProducerGate is null)
-        {
-            // Null Exchange/ProducerGate for a rear-view mirror output (captures the desktop
-            // itself; Electron never posts a frame for it), same result as no active output.
-            return ScreenFramePublishResult.NoActiveOutput;
-        }
-
-        if (output.Exchange.Width != width || output.Exchange.Height != height)
-        {
-            return ScreenFramePublishResult.DimensionMismatch;
-        }
-
-        await output.ProducerGate.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try
-        {
-            bgra.Span.CopyTo(output.Exchange.ProducerBuffer);
-            output.Exchange.Publish();
-        }
-        finally
-        {
-            output.ProducerGate.Release();
-        }
-
-        return ScreenFramePublishResult.Routed;
-    }
-
-    private Output CreateOutput(SavedDevice device)
+    private Output CreateOutput(SavedDevice device, DashSceneContent? content, DashMultiDial? dial)
     {
         ScreenConfig config = new()
         {
@@ -372,7 +482,7 @@ public sealed class ScreenOutputService : IDisposable
         DevicePurpose purpose = DevicePurposes.Resolve(device.Purpose);
         Output output = purpose.Output is DevicePurposeOutputKind.DesktopCaptureRegion
             ? this.CreateCaptureOutput(device, config, driver)
-            : this.CreateBrowserOutput(device, config, driver);
+            : this.CreateDashOutput(device, config, driver, content, dial);
 
         this._log.Info(
             $"Screen output starting: device={device.Id} driver={device.Driver} purpose={purpose.Id} " +
@@ -381,29 +491,48 @@ public sealed class ScreenOutputService : IDisposable
     }
 
     /// <summary>
-    /// The dashboard/flag-display/lap-timer path: Electron paints the layout in an offscreen
-    /// browser and POSTs the BGRA result, which <see cref="BrowserFrameSource"/> composes onto
-    /// the panel.
+    /// A device's scene feed: the content <see cref="Reconcile"/> publishes, plus the idle page and the
+    /// wheel buttons' page read live, so a page change shows within a frame. Every dash output gets
+    /// one, a wheel's and a browser display's alike; only a wheel's reads its multi-dial
+    /// (<paramref name="dialStatus"/>).
     /// </summary>
-    private Output CreateBrowserOutput(SavedDevice device, ScreenConfig config, IScreenDriver driver)
+    private DashSceneFeed NewSceneFeed(string deviceId, Func<MultiDialStatus>? dialStatus = null)
     {
-        DeviceOrientationTransform transform = DeviceOrientations.Transform(device.Width, device.Height, device.Orientation);
-        LatestBgraFrameExchange exchange = new(transform.LogicalWidth, transform.LogicalHeight);
-        BrowserFrameSource source = new(exchange, config);
-        ScreenPublisher publisher = new(
-            driver,
-            source,
-            () => UnusedFrame,
-            new ScreenPublisherOptions { TargetFps = config.TargetFps },
-            this._log,
-            device.Id);
-        publisher.Start();
-        return new Output(OutputConfig.From(device), exchange, new SemaphoreSlim(1, 1), publisher);
+        DesktopState? telemetry = this._telemetry;
+        DashPageCycle? pageCycle = this._pageCycle;
+        return new DashSceneFeed(
+            idle: () => telemetry is null || !telemetry.Telemetry.Status.IsLive,
+            pageId: () => pageCycle?.CurrentPageId(deviceId),
+            dialStatus);
     }
 
     /// <summary>
-    /// The rear-view mirror path: no browser involved. <see cref="DesktopCaptureFrameSource"/>
-    /// captures the device's stored desktop region natively on the publisher's own render loop.
+    /// The dashboard/flag-display/lap-timer path: the publisher's thread draws the device's dash
+    /// with the Rust renderer from the published telemetry, at the device's refresh rate. The scene
+    /// and the wheel's multi-dial are in place before the first frame.
+    /// </summary>
+    private Output CreateDashOutput(SavedDevice device, ScreenConfig config, IScreenDriver driver, DashSceneContent? content, DashMultiDial? dial)
+    {
+        string deviceId = device.Id;
+        DesktopState? telemetry = this._telemetry;
+        MultiDialTracker? multiDials = this._multiDials;
+        DashSceneFeed scenes = this.NewSceneFeed(deviceId, multiDials is null ? null : () => multiDials.StatusOf(deviceId));
+        scenes.Publish(content);
+        scenes.PublishDial(dial);
+        ScreenPublisher publisher = new(
+            driver,
+            this._dashSourceFactory(config, scenes),
+            () => telemetry?.Telemetry.Frame ?? NoFrame,
+            new ScreenPublisherOptions { TargetFps = config.TargetFps },
+            this._log,
+            deviceId);
+        publisher.Start();
+        return new Output(OutputConfig.From(device), scenes, publisher);
+    }
+
+    /// <summary>
+    /// The rear-view mirror path: <see cref="DesktopCaptureFrameSource"/> captures the device's
+    /// stored desktop region natively on the publisher's own render loop.
     /// <see cref="DeviceCapabilities.DrivesScreenOutput"/> already requires a valid
     /// <see cref="SavedDevice.CaptureRegion"/> for this purpose to be a candidate at all, so the
     /// null-region case below is defensive rather than reachable through <see cref="Reconcile"/>.
@@ -416,12 +545,12 @@ public sealed class ScreenOutputService : IDisposable
         ScreenPublisher publisher = new(
             driver,
             source,
-            () => UnusedFrame,
+            () => NoFrame,
             new ScreenPublisherOptions { TargetFps = config.TargetFps },
             this._log,
             device.Id);
         publisher.Start();
-        return new Output(OutputConfig.From(device), null, null, publisher);
+        return new Output(OutputConfig.From(device), null, publisher);
     }
 
     /// <summary>Stops every active output: disconnects and disposes each driver, and joins each publisher's threads.</summary>
@@ -439,12 +568,15 @@ public sealed class ScreenOutputService : IDisposable
             outputs = this._outputs.Values.ToList();
             this._outputs.Clear();
             this._conflicts.Clear();
+            this._browserDisplays.Clear();
         }
+
+        // Ends their feeds; the server's own loop closes the port.
+        this._browserServer?.Reconcile([]);
 
         foreach (Output output in outputs)
         {
             output.Publisher.Dispose();
-            output.ProducerGate?.Dispose();
         }
 
         if (this._ownsDesktopCapturer && this._desktopCapturer is IDisposable disposableCapturer)

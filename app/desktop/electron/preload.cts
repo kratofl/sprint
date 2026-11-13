@@ -21,8 +21,16 @@ contextBridge.exposeInMainWorld('sprint', {
   resultsImportScan: (includeDeclined: boolean): Promise<unknown> => ipcRenderer.invoke('sprint:results-import-scan', includeDeclined),
   resultsImport: (ids: readonly string[]): Promise<unknown> => ipcRenderer.invoke('sprint:results-import', ids),
   resultsImportDecline: (ids: readonly string[]): Promise<unknown> => ipcRenderer.invoke('sprint:results-import-decline', ids),
-  checkUpdates: (force: boolean): Promise<unknown> => ipcRenderer.invoke('sprint:updates-check', force),
-  installUpdate: (): Promise<unknown> => ipcRenderer.invoke('sprint:updates-install'),
+  /** Self-update (electron/updates.ts): the status now, then every change. */
+  subscribeUpdates: (listener: (status: unknown) => void): (() => void) => {
+    const onStatus = (_event: Electron.IpcRendererEvent, status: unknown): void => listener(status)
+    ipcRenderer.on('sprint:updates', onStatus)
+    ipcRenderer.send('sprint:updates-subscribe')
+    return () => { ipcRenderer.removeListener('sprint:updates', onStatus) }
+  },
+  checkUpdates: (): Promise<unknown> => ipcRenderer.invoke('sprint:updates-check'),
+  downloadUpdate: (): Promise<unknown> => ipcRenderer.invoke('sprint:updates-download'),
+  restartToUpdate: (): Promise<unknown> => ipcRenderer.invoke('sprint:updates-restart'),
   signIn: (serverUrl: string, email: string, password: string, createAccount: boolean): Promise<unknown> =>
     ipcRenderer.invoke('sprint:account-sign-in', serverUrl, email, password, createAccount),
   signInWithDiscord: (serverUrl: string): Promise<unknown> => ipcRenderer.invoke('sprint:account-discord', serverUrl),

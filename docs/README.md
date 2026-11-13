@@ -14,6 +14,7 @@ note for the area you are changing before you change it.
 - [Live link: driver to engineer, no server](internals/live-link.md)
 - [Dash rendering](internals/dash-rendering.md) · [color research behind it](internals/dash-color-research.md)
 - [Screen protocols (VoCore, USBD480, WinUSB)](internals/screen-protocols.md)
+- [Browser displays: the tokenless dash for VR overlays](internals/browser-displays.md)
 - Research: [RACELOGIC-style lap timer](internals/racelogic-lap-timer.md) ·
   [LMU weekly schedule feed](internals/lmu-schedule-feed.md)
 

@@ -194,10 +194,8 @@ function raceLength(plan: SessionPlan): string | null {
 }
 
 // ── Recent sessions ──────────────────────────────────────────────────────
-// `state.lapHistory` is the recorded/imported corpus (LapHistorySession[]). Each row is narrowed
-// here just far enough for the list: what/where/when, the lap count and the best valid lap with
-// its sectors. The newest session is also compared with your best on the same game, track and
-// car from the sessions before it.
+// Built on the host from the lap-history corpus (`RecentSessions` in Core), so the corpus never
+// travels in the polled state. Narrowed here; only the kind's label is decided on this side.
 
 export type HomeSession = {
   id: string
@@ -223,70 +221,37 @@ export type RecentSessions = { last: HomeSession; comparison: LastSessionCompari
 
 const SESSION_KIND_LABELS: Record<string, string> = { TestDay: 'Test day', Warmup: 'Warm-up', Unknown: 'Session' }
 
-type ValidLap = { lapTimeSeconds: number; sectors: number[] }
-type ParsedSession = { session: HomeSession; comboKey: string; laps: ValidLap[] }
+const numberOrNull = (value: unknown): number | null => (typeof value === 'number' && Number.isFinite(value) ? value : null)
 
-function validLaps(value: unknown): ValidLap[] {
-  if (!Array.isArray(value)) return []
-  const laps: ValidLap[] = []
-  for (const lap of value) {
-    if (!isRecord(lap) || lap.isValid === false || typeof lap.lapTimeSeconds !== 'number' || !(lap.lapTimeSeconds > 0)) continue
-    const sectors = Array.isArray(lap.sectorsSeconds) ? lap.sectorsSeconds.filter((item): item is number => typeof item === 'number' && item > 0) : []
-    laps.push({ lapTimeSeconds: lap.lapTimeSeconds, sectors })
-  }
-  return laps
-}
-
-function parseHistorySession(row: Record<string, unknown>): ParsedSession | null {
-  if (typeof row.id !== 'string' || typeof row.startedAt !== 'string' || Number.isNaN(Date.parse(row.startedAt))) return null
-  const context = isRecord(row.context) ? row.context : {}
-  const text = (value: unknown) => (typeof value === 'string' ? value : '')
-  const kind = text(row.kind)
-  const laps = validLaps(row.laps)
-  let best: ValidLap | null = null
-  for (const lap of laps) if (best === null || lap.lapTimeSeconds < best.lapTimeSeconds) best = lap
-  const track = text(context.trackCourse)
-  const car = text(context.carModel)
+function parseRecentSession(value: unknown): HomeSession | null {
+  if (!isRecord(value) || typeof value.id !== 'string' || typeof value.startedAt !== 'string' || Number.isNaN(Date.parse(value.startedAt))) return null
+  const text = (field: unknown) => (typeof field === 'string' ? field : '')
+  const kind = text(value.kind)
   return {
-    session: {
-      id: row.id,
-      kind: SESSION_KIND_LABELS[kind] ?? (kind || 'Session'),
-      track,
-      car,
-      startedAt: row.startedAt,
-      lapCount: Array.isArray(row.laps) ? row.laps.length : 0,
-      bestLapSeconds: best?.lapTimeSeconds ?? null,
-      bestSectors: best?.sectors ?? [],
-    },
-    comboKey: JSON.stringify([text(context.game), track, car]),
-    laps,
+    id: value.id,
+    kind: SESSION_KIND_LABELS[kind] ?? (kind || 'Session'),
+    track: text(value.track),
+    car: text(value.car),
+    startedAt: value.startedAt,
+    lapCount: typeof value.lapCount === 'number' && Number.isInteger(value.lapCount) ? value.lapCount : 0,
+    bestLapSeconds: numberOrNull(value.bestLapSeconds),
+    bestSectors: Array.isArray(value.bestSectors) ? value.bestSectors.filter((item): item is number => typeof item === 'number' && Number.isFinite(item)) : [],
   }
 }
 
-/** The newest `limit` sessions, newest first; the first opened up with its comparison. Null with no sessions. */
-export function recentSessions(sprint: SprintState, limit = 4): RecentSessions | null {
-  const parsed = sprint.lapHistory
-    .map(parseHistorySession)
-    .filter((entry): entry is ParsedSession => entry !== null)
-    .sort((a, b) => Date.parse(b.session.startedAt) - Date.parse(a.session.startedAt))
-  const [newest, ...older] = parsed
-  if (!newest) return null
-
-  const earlierLaps = older.filter((entry) => entry.comboKey === newest.comboKey).flatMap((entry) => entry.laps)
-  const fastest = (times: number[]): number | null => (times.length > 0 ? Math.min(...times) : null)
-  const earlierBest = fastest(earlierLaps.map((lap) => lap.lapTimeSeconds))
-  const best = newest.session.bestLapSeconds
-
+/** The host's recent sessions, newest first; the first opened up with its comparison. Null with no sessions. */
+export function recentSessions(sprint: SprintState): RecentSessions | null {
+  const value = sprint.recentSessions
+  if (!isRecord(value)) return null
+  const last = parseRecentSession(value.last)
+  if (!last) return null
+  const comparison = isRecord(value.comparison) ? value.comparison : {}
   return {
-    last: newest.session,
+    last,
     comparison: {
-      gapSeconds: best !== null && earlierBest !== null ? best - earlierBest : null,
-      sectorGaps: newest.session.bestSectors.map((time, index) => {
-        // Only laps split the same way compare sector by sector.
-        const previous = fastest(earlierLaps.flatMap((lap) => (lap.sectors.length === newest.session.bestSectors.length ? lap.sectors.slice(index, index + 1) : [])))
-        return previous === null ? null : time - previous
-      }),
+      gapSeconds: numberOrNull(comparison.gapSeconds),
+      sectorGaps: Array.isArray(comparison.sectorGaps) ? comparison.sectorGaps.map(numberOrNull) : [],
     },
-    earlier: older.slice(0, limit - 1).map((entry) => entry.session),
+    earlier: Array.isArray(value.earlier) ? value.earlier.map(parseRecentSession).filter((entry): entry is HomeSession => entry !== null) : [],
   }
 }

@@ -1,6 +1,6 @@
 import { useEffect, useState, type KeyboardEvent } from 'react'
 import { ChevronLeft } from 'lucide-react'
-import { MultiDialPopup, multiDialInk, multiDialSwatches } from '@sprint/dashboard'
+import { DashCanvas, multiDialInk, multiDialSwatches, type DashLayout } from '@sprint/dashboard'
 import type { MultiDial, MultiDialLabel, SprintCommand } from '../bridge'
 import { blurOnEnter, Switch } from './SettingsLayout'
 import {
@@ -291,14 +291,13 @@ function DialEditor({
 
       <div className="controls-field">
         <span>Popup on the wheel</span>
-        <div className="controls-preview" style={{ height: preview.height * previewScale }} aria-hidden="true">
-          <div style={{ position: 'relative', width: preview.width, height: preview.height, transform: `scale(${previewScale})`, transformOrigin: '0 0' }}>
-            <MultiDialPopup
-              popup={{ kind: 'multiDial', caption: dial.label, label: position.label, color: position.color, inverted: dial.invertPopup }}
-              width={preview.width}
-              height={preview.height}
-            />
-          </div>
+        <div className="controls-preview" aria-hidden="true">
+          <DashCanvas
+            layout={PREVIEW_LAYOUT}
+            width={PREVIEW_WIDTH}
+            height={Math.round(preview.height * previewScale)}
+            alertBanner={{ kind: 'multiDial', caption: dial.label, label: position.label, color: position.color, inverted: dial.invertPopup }}
+          />
         </div>
       </div>
 
@@ -325,3 +324,17 @@ const RING_KEYS: Record<string, number> = { ArrowRight: 1, ArrowDown: 1, ArrowLe
 
 /** The popup preview's width in the panel, in CSS pixels. */
 const PREVIEW_WIDTH = 320
+
+/**
+ * What the preview draws the popup over. The popup covers the whole dash, so the page never
+ * shows; the layout only gives the popup its background, the default palette's.
+ */
+const PREVIEW_LAYOUT: DashLayout = {
+  id: 'multi-dial-preview',
+  name: 'Multi-dial preview',
+  mode: 'race',
+  gridCols: 20,
+  gridRows: 12,
+  pages: [{ id: 'page', name: 'Page', widgets: [] }],
+  alerts: [],
+}

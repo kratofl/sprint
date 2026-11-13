@@ -18,7 +18,7 @@ type HudEntry = { window: BrowserWindow; placement: HudPlacement; lastSent: stri
 /**
  * The training HUD (docs/internals/live-compare.md "HUD"): one small transparent, topmost window
  * per reading over the game, fed a frame every `FRAME_INTERVAL_MS` while it is open. Opened and
- * closed from the state poll, like the offscreen dash outputs.
+ * closed from the state poll, like the dash designer windows.
  *
  * The windows never take focus, so the game keeps the keyboard. While driving every click passes
  * through to the game. While arranging, a window is dragged by its body, sized by its corner grip

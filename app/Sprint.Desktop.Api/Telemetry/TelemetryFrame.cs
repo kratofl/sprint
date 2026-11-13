@@ -86,6 +86,12 @@ public sealed record FieldCar
     public int PitStops { get; init; }
     public FinishStatus FinishStatus { get; init; }
 
+    /// <summary>Penalties the car still has to serve (a count: the game does not say which kind).</summary>
+    public int Penalties { get; init; }
+
+    /// <summary>The car is being shown the blue flag: a faster car is about to lap it.</summary>
+    public bool BlueFlag { get; init; }
+
     /// <summary>The front tyre compound as the game names it (e.g. "Medium"); null when the game does not say for this car.</summary>
     public string? Compound { get; init; }
 
@@ -226,6 +232,25 @@ public sealed record SessionInfo
     public double BestLapTime { get; init; }
     public int MaxLaps { get; init; }
     public bool InCar { get; init; }
+
+    /// <summary>Where the session stands: before the start, green, under a full course yellow, stopped, over.</summary>
+    public SessionPhase Phase { get; init; }
+}
+
+/// <summary>
+/// The session's state for the whole field. A full course yellow and a safety car are one phase:
+/// the game does not tell them apart.
+/// </summary>
+public enum SessionPhase
+{
+    Unknown,
+    BeforeStart,
+    Formation,
+    Countdown,
+    Green,
+    FullCourseYellow,
+    Stopped,
+    Over
 }
 
 public enum SessionType
@@ -442,6 +467,11 @@ public sealed record RaceFlags
     public bool SafetyCar { get; init; }
     public bool VirtualSafetyCar { get; init; }
     public bool Checkered { get; init; }
+
+    /// <summary>A local yellow somewhere in sector 1, 2 or 3; the game says which sector, not where in it.</summary>
+    public bool Sector1Yellow { get; init; }
+    public bool Sector2Yellow { get; init; }
+    public bool Sector3Yellow { get; init; }
 }
 
 /// <summary>

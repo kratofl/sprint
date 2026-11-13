@@ -89,6 +89,34 @@ public sealed class TelemetryRecordingTests : IDisposable
     }
 
     [Fact]
+    public void Writes_no_real_driver_names()
+    {
+        TelemetryFrame frame = Frame("Spa", SessionType.Race, 1) with
+        {
+            Field =
+            [
+                new FieldCar { Id = 3, Driver = "Luca Achler", IsPlayer = true },
+                new FieldCar { Id = 7, Driver = "Jane Doe" },
+            ],
+        };
+        ScriptedTelemetrySource game = new() { ReadFrame = n => n == 1 ? frame : null };
+        string file;
+        using (RecordingTelemetrySource recorder = this.Recorder(game))
+        {
+            recorder.Connect();
+            Assert.True(recorder.TryRead(out TelemetryFrame live));
+            // The app itself still sees the names; only the file goes without.
+            Assert.Equal("Luca Achler", Assert.IsAssignableFrom<IReadOnlyList<FieldCar>>(live.Field)[0].Driver);
+            file = Assert.IsType<string>(recorder.CurrentFile);
+        }
+
+        using TelemetryRecordingReader reader = TelemetryRecordingReader.Open(file);
+        RecordedFrame recorded = Assert.Single(ReadAll(reader).OfType<RecordedFrame>());
+        IReadOnlyList<FieldCar> field = Assert.IsAssignableFrom<IReadOnlyList<FieldCar>>(recorded.Frame.Field);
+        Assert.Equal(["Player", "Driver 7"], field.Select(car => car.Driver));
+    }
+
+    [Fact]
     public void Writes_the_field_only_when_it_changes_and_reads_it_back_on_every_frame()
     {
         FieldCar leader = new() { Id = 7, Driver = "Luca", CarClass = "LMP2", Place = 1, LapDistanceMeters = 10 };

@@ -47,6 +47,9 @@ public enum ScreenConnectionState
     DeviceConflict,
     Unsupported,
     Faulted,
+
+    /// <summary>A browser display that is served, with no page showing it right now.</summary>
+    WaitingForViewer,
 }
 
 public sealed record ScreenStatus
@@ -206,6 +209,8 @@ public static class ScreenStatusPresentation
                 new ScreenStatusView("Unsupported", "This screen transport is not supported on the current operating system."),
             ScreenConnectionState.Faulted =>
                 new ScreenStatusView("Connection failed", "The USB operation failed. Open the diagnostics log for the native error and attempted step.", ScreenStatusTone.Error),
+            ScreenConnectionState.WaitingForViewer =>
+                new ScreenStatusView("Waiting for a viewer", "Sprint serves this display, and no page is showing it yet.", ScreenStatusTone.Info),
             _ =>
                 new ScreenStatusView("Not found", "No matching screen was found. Check the USB connection and configured VID/PID."),
         };
@@ -294,7 +299,12 @@ public interface IScreenDriver : IDisposable
     void Disconnect();
 }
 
-/// <summary>Produces native-format RGB565 frames for a telemetry frame (the WS7 bridge onto the WS6 painter).</summary>
+/// <summary>
+/// Produces native-format RGB565 frames for a telemetry frame: the host's dash renderer or a
+/// desktop capture. Called only from its <see cref="ScreenPublisher"/>'s thread. A throw is a
+/// visible failure, never a frozen picture: the publisher reports Faulted with the exception's
+/// message and shows its failure pattern until a later call succeeds.
+/// </summary>
 public interface IDashFrameSource : IDisposable
 {
     /// <summary>Native screen width in pixels (post-rotation).</summary>

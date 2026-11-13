@@ -3,7 +3,6 @@ import assert from 'node:assert/strict'
 import {
   canonicalAlertColorToken,
   defaultDashPalette,
-  dimColor,
   effectiveColorSystem,
   findPresetByAlertColorToken,
   matchLayoutThemeName,
@@ -11,7 +10,6 @@ import {
   presetSwatchColor,
   resolveDashPalette,
   resolveStyleColor,
-  resolveTyreColor,
 } from './palette'
 import type { DashTheme } from './index'
 
@@ -64,23 +62,6 @@ test('resolveStyleColor maps known tokens and treats anything else as inherit', 
   assert.equal(resolveStyleColor('', palette), undefined)
   assert.equal(resolveStyleColor(undefined, palette), undefined)
   assert.equal(resolveStyleColor('not-a-token', palette), undefined)
-})
-
-test('resolveTyreColor buckets by the desktop painter thresholds', () => {
-  const palette = defaultDashPalette
-  assert.equal(resolveTyreColor(120, palette), palette.critical)
-  assert.equal(resolveTyreColor(105, palette), palette.warning)
-  assert.equal(resolveTyreColor(85, palette), palette.goodOnTarget)
-  assert.equal(resolveTyreColor(40, palette), palette.coldLow)
-})
-
-test('dimColor scales RGB channels by the factor, truncating toward zero', () => {
-  assert.equal(dimColor('#64C8FF', 0.5), '#32647f') // 255 * 0.5 = 127.5, truncated to 127 (0x7f)
-  assert.equal(dimColor('#010101', 0.5), '#000000')
-})
-
-test('dimColor preserves an explicit alpha channel (AARRGGBB)', () => {
-  assert.equal(dimColor('#8064C8FF', 0.5), '#8032647f')
 })
 
 test('canonicalAlertColorToken maps shorthand tokens to their preset name', () => {

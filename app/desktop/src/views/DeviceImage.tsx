@@ -1,5 +1,6 @@
 import { Cpu } from 'lucide-react'
 import omegaPro from '../assets/devices/bavarian-omega-v2-pro.webp'
+import browserDisplay from '../assets/devices/browser-display.svg'
 import genericUsbd480 from '../assets/devices/generic-usbd480.svg'
 import genericVocore from '../assets/devices/generic-vocore.svg'
 import genericWheel from '../assets/devices/generic-wheel.svg'
@@ -12,6 +13,7 @@ const DEVICE_IMAGES: Record<DeviceImageKey, string> = {
   'generic-vocore': genericVocore,
   'generic-usbd480': genericUsbd480,
   'generic-wheel': genericWheel,
+  'browser-display': browserDisplay,
 }
 
 /** The picture's URL, for a view that draws on top of it (the Controls tab). */

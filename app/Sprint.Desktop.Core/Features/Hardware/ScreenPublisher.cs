@@ -48,7 +48,10 @@ internal enum ScreenStepOutcome
 /// </summary>
 public sealed class ScreenPublisher : IDisposable
 {
-    private static readonly TimeSpan PerformanceLogInterval = TimeSpan.FromSeconds(5);
+    // Timings go to the log where a user's report will have them (Info), once a minute per screen;
+    // frames slower than the screen's refresh are a warning, at most once a minute per screen.
+    private static readonly TimeSpan PerformanceLogInterval = TimeSpan.FromMinutes(1);
+    private static readonly TimeSpan SlowFrameWarningInterval = TimeSpan.FromMinutes(1);
 
     private readonly record struct RenderedFrame(
         byte[] Buffer,
@@ -78,6 +81,10 @@ public sealed class ScreenPublisher : IDisposable
     private bool _loggedFirstFrame;
     private long _connectAttemptStarted;
     private long _lastPerformanceLog;
+    private readonly TimeSpan _frameInterval;
+    private long _lastSlowFrameWarning;
+    private int _slowFrames;
+    private string? _sourceFailure;
 
     public ScreenPublisher(
         IScreenDriver driver,
@@ -95,6 +102,7 @@ public sealed class ScreenPublisher : IDisposable
         this._options = options ?? new ScreenPublisherOptions();
         this._log = log ?? NullLog.Instance;
         this._deviceId = string.IsNullOrWhiteSpace(deviceId) ? driver.Name : deviceId;
+        this._frameInterval = TimeSpan.FromMilliseconds(1000.0 / Math.Max(1, this._options.TargetFps));
         this._buffer = new byte[source.Width * source.Height * 2];
         this._lastSentBuffer = new byte[this._buffer.Length];
     }
@@ -204,7 +212,7 @@ public sealed class ScreenPublisher : IDisposable
     private void RunLoop()
     {
         CancellationToken token = this._cts.Token;
-        TimeSpan frameInterval = TimeSpan.FromMilliseconds(1000.0 / Math.Max(1, this._options.TargetFps));
+        TimeSpan frameInterval = this._frameInterval;
         using ScreenTransferWorker transfers = new ScreenTransferWorker(this._driver);
         byte[]? alternateBuffer = null;
         try
@@ -385,28 +393,68 @@ public sealed class ScreenPublisher : IDisposable
         return connected;
     }
 
+    /// <summary>
+    /// Renders the next frame into <paramref name="buffer"/>. A source that throws never stops the
+    /// screen and never leaves its last picture up as if nothing happened: the frame becomes the
+    /// <see cref="ScreenFailurePattern"/>, <see cref="Status"/> reads Faulted with the source's
+    /// message, and the source is asked again on the next frame, so the screen recovers by itself.
+    /// </summary>
     private RenderedFrame RenderCurrentFrame(byte[] buffer)
     {
         long frameStarted = Stopwatch.GetTimestamp();
         ScreenTestPattern pattern = this.TestPattern;
-        ScreenFrameTiming renderTiming;
-        if (pattern == ScreenTestPattern.Dashboard)
-        {
-            renderTiming = this._source.Render(this._frameProvider(), buffer);
-        }
-        else
+        if (pattern != ScreenTestPattern.Dashboard)
         {
             ScreenTestPatternRenderer.Fill(pattern, buffer, this._source.Width, this._source.Height);
-            renderTiming = new ScreenFrameTiming(
-                Stopwatch.GetElapsedTime(frameStarted),
-                TimeSpan.Zero);
+            this._lastError = null;
+            return new RenderedFrame(
+                buffer,
+                frameStarted,
+                new ScreenFrameTiming(Stopwatch.GetElapsedTime(frameStarted), TimeSpan.Zero));
         }
 
+        try
+        {
+            ScreenFrameTiming renderTiming = this._source.Render(this._frameProvider(), buffer);
+            this.NoteSourceWorking();
+            return new RenderedFrame(buffer, frameStarted, renderTiming);
+        }
+        catch (Exception ex)
+        {
+            this.NoteSourceFailure(ex);
+            ScreenFailurePattern.Fill(buffer, this._source.Width, this._source.Height);
+            return new RenderedFrame(
+                buffer,
+                frameStarted,
+                new ScreenFrameTiming(Stopwatch.GetElapsedTime(frameStarted), TimeSpan.Zero));
+        }
+    }
+
+    // Logged once per distinct failure: a source failing every frame would otherwise log 30 times a second.
+    private void NoteSourceFailure(Exception ex)
+    {
+        this._lastError = ex.Message;
+        if (string.Equals(this._sourceFailure, ex.Message, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        this._sourceFailure = ex.Message;
+        this._log.Error(
+            $"Screen frame source failed: device={this._deviceId}. The screen shows the failure pattern until it renders again.",
+            ex);
+    }
+
+    private void NoteSourceWorking()
+    {
         this._lastError = null;
-        return new RenderedFrame(
-            buffer,
-            frameStarted,
-            renderTiming);
+        if (this._sourceFailure is null)
+        {
+            return;
+        }
+
+        this._sourceFailure = null;
+        this._log.Info($"Screen frame source recovered: device={this._deviceId}.");
     }
 
     private bool IsDuplicate(byte[] buffer) =>
@@ -423,6 +471,7 @@ public sealed class ScreenPublisher : IDisposable
             TimeSpan.Zero,
             Stopwatch.GetElapsedTime(rendered.StartedAt, completedAt),
             ScreenFrameDisposition.Skipped);
+        this.WarnIfSlow(rendered.Timing, TimeSpan.Zero, completedAt);
         this.LogPerformanceIfDue(completedAt);
     }
 
@@ -444,6 +493,7 @@ public sealed class ScreenPublisher : IDisposable
                 transfer.Elapsed,
                 rendered.Timing.FrameTime + transfer.Elapsed,
                 ScreenFrameDisposition.Sent);
+            this.WarnIfSlow(rendered.Timing, transfer.Elapsed, transfer.CompletedAt);
             this.LogPerformanceIfDue(transfer.CompletedAt);
             if (!this._loggedFirstFrame)
             {
@@ -483,7 +533,7 @@ public sealed class ScreenPublisher : IDisposable
 
         this._lastPerformanceLog = completedAt;
         ScreenPerformanceSnapshot performance = this._performance.Snapshot;
-        this._log.Debug(
+        this._log.Info(
             $"Screen performance: device={this._deviceId} " +
             $"fps={performance.FramesPerSecond:0.0} " +
             $"sourceMs={performance.SourceTime.TotalMilliseconds:0.0} " +
@@ -492,6 +542,41 @@ public sealed class ScreenPublisher : IDisposable
             $"totalMs={performance.TotalFrameTime.TotalMilliseconds:0.0} " +
             $"rendered={performance.FramesRendered} sent={performance.FramesSent} " +
             $"skipped={performance.FramesSkipped}.");
+    }
+
+    /// <summary>
+    /// Warns when a frame's work took longer than the screen's frame interval, naming the slowest
+    /// stage. Rendering and the USB transfer overlap (the next frame renders while the previous one
+    /// is on the wire), so either one alone over the interval is what costs frames.
+    /// </summary>
+    private void WarnIfSlow(ScreenFrameTiming timing, TimeSpan usb, long completedAt)
+    {
+        // The first frame pays for loading fonts and compiling the pixel path; a warning for it
+        // on every start would teach everyone to ignore the real ones.
+        if (!this._loggedFirstFrame
+            || (timing.FrameTime <= this._frameInterval && usb <= this._frameInterval))
+        {
+            return;
+        }
+
+        this._slowFrames++;
+        if (this._lastSlowFrameWarning != 0
+            && Stopwatch.GetElapsedTime(this._lastSlowFrameWarning, completedAt) < SlowFrameWarningInterval)
+        {
+            return;
+        }
+
+        string stage = timing.SourceTime >= timing.PixelTransformTime && timing.SourceTime >= usb ? "render"
+            : timing.PixelTransformTime >= usb ? "pixel transform"
+            : "USB";
+        this._log.Warn(
+            $"Screen frame slower than the {this._options.TargetFps} Hz frame interval " +
+            $"({this._frameInterval.TotalMilliseconds:0.0} ms): device={this._deviceId} stage={stage} " +
+            $"renderMs={timing.SourceTime.TotalMilliseconds:0.0} " +
+            $"pixelMs={timing.PixelTransformTime.TotalMilliseconds:0.0} " +
+            $"usbMs={usb.TotalMilliseconds:0.0} slowFrames={this._slowFrames}.");
+        this._lastSlowFrameWarning = completedAt;
+        this._slowFrames = 0;
     }
 
     private static void WaitForNextFrame(

@@ -16,6 +16,37 @@ verify work and the traps that are not visible from the source.
   it on for a dev run with the environment variable `Sprint__Features__SprintWeb=true`; Electron
   passes it to the host.
 
+## Rust toolchain
+
+The dash renderer (`packages/dashboard/renderer`) is Rust, and the host's build and the desktop
+app's Vite config both compile it (`scripts/build-dash-renderer.mjs`), so nothing desktop builds
+without it. On a new machine install [rustup](https://rustup.rs) (on Windows with the MSVC linker,
+i.e. Visual Studio Build Tools with C++, which rustup-init offers), then add the targets:
+
+```sh
+rustup target add wasm32-unknown-unknown   # the editor, dash stills, browser displays
+rustup target add i686-pc-windows-msvc     # Windows, only when the working dotnet is the x86 SDK
+```
+
+The native target must match the process the host runs as, not the machine: under the x86 SDK the
+host builds and tests as 32-bit and needs `i686-pc-windows-msvc`, while `make build-app` publishes
+`win-x64` (`x86_64-pc-windows-msvc`, rustup's default on 64-bit Windows). cargo is found on `PATH`
+or in `~/.cargo/bin`, so a shell started before the install still works. Install nothing on a
+user's behalf; when it is missing, say which command to run.
+
+What a missing piece looks like:
+
+- No cargo: the build stops with `build-dash-renderer: error: the Rust toolchain is required ...`
+  (an MSBuild error in `dotnet build`, a thrown error in Vite).
+- No target: `build-dash-renderer: error: the Rust target <triple> is not installed. Run: rustup
+  target add <triple>`.
+- A host built without its library, or for the other architecture: every dash screen shows red and
+  black stripes and reads `Faulted`, `the dash renderer library (sprint_dash.dll) could not be
+  loaded into this X86 process ...`.
+
+The first build of each target compiles the crate in release with full LTO and takes a while;
+after that cargo has nothing to do. `make clean` deletes the crate's `target` folder.
+
 ## Developing on macOS
 
 The host builds, tests and runs on macOS, and the app wears the macOS look. Game and hardware
@@ -30,7 +61,7 @@ integration is Windows-only, and each piece degrades instead of failing:
   `app/Sprint.Desktop.Tests/README.md`).
 - The live data folder is `~/.config/Sprint` (.NET's `ApplicationData`), not `%AppData%\Sprint`.
 - `make dev-app` launches Electron from `app/desktop/.dev/Sprint.app` (gitignored) so the Dock
-  says "Sprint" ([why](../internals/overview.md#one-renderer-two-native-looks)). It is rebuilt when
+  says "Sprint" ([why](../internals/overview.md#one-renderer-two-looks)). It is rebuilt when
   the Electron version or `resources/icon.icns` changes; deleting `app/desktop/.dev/` is always safe.
 - The Mac icons (`resources/icon-mac.png`, `resources/icon.icns`) are regenerated from the brand
   artwork with `node app/desktop/scripts/icons/make-mac-icon.mjs` (macOS only, needs `iconutil`);
@@ -82,24 +113,23 @@ Running the real app:
   preload in a sandboxed window fails silently: `window.sprint` is undefined and every view shows an
   empty state, not an error.
 - The host log does not record commands, so a quiet log does not prove a command arrived.
-- Host JSON uses C# names; `app/desktop/src/telemetryFrame.ts` converts frames to the dash renderer's
-  shape once, from `bridge.ts`. Views never see host shapes.
+- Host JSON uses C# names. The views read the `@sprint/types` mirror, which `parseHostFrame`
+  (`packages/dashboard/src/hostFrame.ts`) makes once, in `bridge.ts`; views never see host shapes.
+  The dash renderer is the exception: it reads the host's telemetry JSON as it is.
 
 ## Verifying the dash renderer
 
-From `packages/dashboard`:
+From `packages/dashboard/renderer`:
 
 ```sh
-pnpm exec tsx scripts/render-check.tsx <preset.json> <fonts-dir> <out.html> [pageId] [panels|grid|bars]
+cargo run --release --example render -- --dash ../../../app/Sprint.Desktop.Host/presets/dash/default.json <out.png> [--page <id>] [--style panels|grid|bars] [--size 800x480]
 ```
 
-The page defaults to the preset's first; the dash style overrides the preset's own, so one layout
-can be checked in every style.
-
-Presets are in `app/Sprint.Desktop.Host/presets/dash/`; fonts in `app/desktop/src/fonts/`. Open the
-HTML at the panel size in a browser and screenshot it (Playwright MCP, or headless Edge on Windows);
-the preview harness's `screenshot.mjs` only captures the desktop preview page. Check layout, alignment, clip direction,
-weights and color against [dash rendering](../internals/dash-rendering.md) — not the telemetry values.
+It draws one page of a layout (the first, unless `--page`) against a fixed mid-race frame; the
+style overrides the layout's own, so one layout can be checked in every style. Render at the panel
+size and read the PNG. Check layout, alignment, clip direction, weights and color against
+[dash rendering](../internals/dash-rendering.md) — not the telemetry values. `cargo test` covers the
+display list; `--ops <case.json>` prints it for a case file.
 
 ## Hardware
 

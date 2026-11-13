@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Sprint.Desktop.Api.Telemetry;
 using Sprint.Desktop.Features.Devices;
+using Sprint.Desktop.Features.Diagnostics;
 using Sprint.Desktop.Features.Hardware;
 using Sprint.Desktop.Runtime;
 using Xunit;
@@ -100,6 +101,7 @@ public sealed class ScreenPipelineTests
         public int Width => 8;
         public int Height => 8;
         public ManualResetEventSlim SecondRenderStarted { get; } = new();
+        public TimeSpan SourceTime { get; init; }
 
         public ScreenFrameTiming Render(TelemetryFrame frame, Span<byte> rgb565)
         {
@@ -110,7 +112,7 @@ public sealed class ScreenPipelineTests
                 this.SecondRenderStarted.Set();
             }
 
-            return new ScreenFrameTiming(TimeSpan.Zero, TimeSpan.Zero);
+            return new ScreenFrameTiming(this.SourceTime, TimeSpan.Zero);
         }
 
         public void Dispose() => this.SecondRenderStarted.Dispose();
@@ -214,12 +216,13 @@ public sealed class ScreenPipelineTests
         public int Width => 8;
         public int Height => 8;
         public bool Failing { get; set; } = true;
+        public string Message { get; set; } = "capture unavailable";
 
         public ScreenFrameTiming Render(TelemetryFrame frame, Span<byte> rgb565)
         {
             if (this.Failing)
             {
-                throw new InvalidOperationException("capture unavailable");
+                throw new InvalidOperationException(this.Message);
             }
 
             rgb565.Fill(0x1f);
@@ -444,15 +447,23 @@ public sealed class ScreenPipelineTests
     }
 
     [Fact]
-    public void PublisherNeverThrowsWhenSourceFaults()
+    public void AFailingSourceShowsTheFailurePatternAndReadsFaulted()
     {
         FakeScreenDriver driver = new FakeScreenDriver { ConnectResult = ScreenConnectionState.Connected };
         using ScreenPublisher publisher = new ScreenPublisher(driver, new ThrowingFrameSource(), () => new TelemetryFrame());
 
-        Assert.Equal(ScreenStepOutcome.Reconnecting, publisher.Step());
+        // The screen keeps getting frames — the failure pattern, never the last good picture.
+        Assert.Equal(ScreenStepOutcome.SentFrame, publisher.Step());
         Assert.Equal("boom", publisher.LastError);
         Assert.Equal(ScreenConnectionState.Faulted, publisher.Status.State);
         Assert.Contains("boom", publisher.Status.Detail, StringComparison.Ordinal);
+
+        byte[] expected = new byte[8 * 8 * 2];
+        ScreenFailurePattern.Fill(expected, 8, 8);
+        Assert.Equal(expected, driver.LastFrame);
+        Assert.Contains(Pixels(expected), pixel => pixel == 0xF800);
+        Assert.Contains(Pixels(expected), pixel => pixel == 0x0000);
+        Assert.All(Pixels(expected), pixel => Assert.True(pixel is 0xF800 or 0x0000));
     }
 
     [Fact]
@@ -462,12 +473,89 @@ public sealed class ScreenPipelineTests
         RecoveringFrameSource source = new RecoveringFrameSource();
         using ScreenPublisher publisher = new ScreenPublisher(driver, source, () => new TelemetryFrame());
 
-        Assert.Equal(ScreenStepOutcome.Reconnecting, publisher.Step());
+        publisher.Step();
         Assert.Equal(ScreenConnectionState.Faulted, publisher.Status.State);
 
         source.Failing = false;
         Assert.Equal(ScreenStepOutcome.SentFrame, publisher.Step());
         Assert.Null(publisher.LastError);
         Assert.Equal(ScreenConnectionState.Connected, publisher.Status.State);
+        Assert.All(driver.LastFrame!, value => Assert.Equal(0x1f, value));
+    }
+
+    [Fact]
+    public void ASourceFailureIsLoggedOncePerDistinctFailureAndItsRecoveryOnce()
+    {
+        FakeScreenDriver driver = new FakeScreenDriver { ConnectResult = ScreenConnectionState.Connected };
+        RecoveringFrameSource source = new RecoveringFrameSource();
+        RecordingLog log = new RecordingLog();
+        using ScreenPublisher publisher = new ScreenPublisher(driver, source, () => new TelemetryFrame(), log: log, deviceId: "wheel");
+
+        for (int frame = 0; frame < 30; frame++)
+        {
+            publisher.Step();
+        }
+
+        source.Message = "another failure";
+        publisher.Step();
+        publisher.Step();
+        source.Failing = false;
+        publisher.Step();
+        publisher.Step();
+
+        Assert.Equal(
+            ["capture unavailable", "another failure"],
+            log.Records.Where(record => record.Level == LogLevel.Error).Select(record => record.Exception?.Message));
+        Assert.Single(log.Records, record => record.Level == LogLevel.Info && record.Message.Contains("recovered", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void AFrameSlowerThanTheFrameIntervalWarnsOnceAMinuteNamingTheStage()
+    {
+        FakeScreenDriver driver = new FakeScreenDriver { ConnectResult = ScreenConnectionState.Connected };
+        RecordingLog log = new RecordingLog();
+        // 2 ms of rendering is slow for a 1000 Hz screen (1 ms frame interval).
+        using ScreenPublisher publisher = new ScreenPublisher(
+            driver,
+            new CoordinatedFrameSource { SourceTime = TimeSpan.FromMilliseconds(2) },
+            () => new TelemetryFrame(),
+            new ScreenPublisherOptions { TargetFps = 1000 },
+            log,
+            "wheel");
+
+        publisher.Step();
+        publisher.Step();
+        publisher.Step();
+
+        LogRecord warning = Assert.Single(log.Records, record => record.Level == LogLevel.Warn);
+        Assert.Contains("device=wheel stage=render", warning.Message, StringComparison.Ordinal);
+    }
+
+    private static IEnumerable<ushort> Pixels(byte[] rgb565)
+    {
+        for (int offset = 0; offset < rgb565.Length; offset += 2)
+        {
+            yield return (ushort)(rgb565[offset] | rgb565[offset + 1] << 8);
+        }
+    }
+
+    private sealed record LogRecord(LogLevel Level, string Message, Exception? Exception);
+
+    private sealed class RecordingLog : ILog
+    {
+        private readonly List<LogRecord> _records = [];
+
+        public IReadOnlyList<LogRecord> Records
+        {
+            get { lock (this._records) { return this._records.ToArray(); } }
+        }
+
+        public void Write(LogLevel level, string message, Exception? exception = null)
+        {
+            lock (this._records)
+            {
+                this._records.Add(new LogRecord(level, message, exception));
+            }
+        }
     }
 }

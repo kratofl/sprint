@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from 'react'
 import { Play, SlidersHorizontal } from 'lucide-react'
-import { DashRenderer, alertColorSwatch, dashSettingColors, gridRect, previewAlertBanner, resolveDashPalette, resolvePreviewFrame } from '@sprint/dashboard'
+import { DashCanvas, alertColorSwatch, dashSettingColors, gridRect, previewAlertBanner, resolveDashPalette, resolvePreviewFrame } from '@sprint/dashboard'
 import type { DashLayout, DashPage, DashPaletteColors } from '@sprint/dashboard'
 import type { TelemetryFrame } from '@sprint/types'
 import {
@@ -126,7 +126,7 @@ export function AlertsSection({ layout, apply, frame, page, idle }: { layout: Da
         {canvas && (
           <div className="designer-bezel" style={{ padding: BEZEL }}>
             <div className="alerts-canvas" style={{ width: canvas.width, height: canvas.height }}>
-              <DashRenderer layout={layout} frame={resolvePreviewFrame('live', frame)} width={canvas.width} height={canvas.height} pageId={page?.id} idle={idle} alertBanner={banner} />
+              <DashCanvas layout={layout} frame={resolvePreviewFrame('live', frame)} width={canvas.width} height={canvas.height} pageId={page?.id} idle={idle} alertBanner={banner} />
               {boxed && type !== null && (
                 <AlertBox
                   layout={layout}

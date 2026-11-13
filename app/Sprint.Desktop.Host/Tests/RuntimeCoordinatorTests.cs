@@ -80,6 +80,26 @@ public sealed class RuntimeCoordinatorTests
     }
 
     [Fact]
+    public void SettingsUpdate_AutomaticUpdatesAreOnUntilTurnedOff()
+    {
+        RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
+        try
+        {
+            Assert.True(runtime.Settings.AutoInstallUpdates);
+
+            Assert.True(coordinator.Execute(Command("""{"type":"settings.update","autoInstallUpdates":false}"""), out string error), error);
+            Assert.False(new DesktopRuntime(dataRoot, PresetRoot).Settings.AutoInstallUpdates);
+
+            Assert.True(coordinator.Execute(Command("""{"type":"settings.update","autoInstallUpdates":true}"""), out error), error);
+            Assert.True(new DesktopRuntime(dataRoot, PresetRoot).Settings.AutoInstallUpdates);
+        }
+        finally
+        {
+            Cleanup(dataRoot);
+        }
+    }
+
+    [Fact]
     public void SettingsUpdate_DashesViewMode_PersistsAndRejectsUnknownModes()
     {
         RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
@@ -365,6 +385,76 @@ public sealed class RuntimeCoordinatorTests
             Assert.False(ok);
             Assert.Equal("a capture region needs a positive size", error);
             Assert.Null(device.CaptureRegion);
+        }
+        finally
+        {
+            Cleanup(dataRoot);
+        }
+    }
+
+    [Fact]
+    public void ABrowserDisplayIsAddedAt1024x576AndKeepsAValidatedResolutionAndBackground()
+    {
+        RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
+        try
+        {
+            Assert.True(coordinator.Execute(Command("""{"type":"devices.add","catalogId":"browser-display"}"""), out string addError), addError);
+            SavedDevice device = Assert.Single(runtime.Devices);
+            Assert.True(BrowserDisplays.Is(device));
+            Assert.Equal((1024, 576, DeviceOrientation.Landscape, false), (device.Width, device.Height, device.Orientation, device.Transparent));
+
+            Assert.True(coordinator.Execute(Command($$"""{"type":"devices.resolution","deviceId":"{{device.Id}}","width":720,"height":1080}"""), out string sizeError), sizeError);
+            Assert.True(coordinator.Execute(Command($$"""{"type":"devices.transparent","deviceId":"{{device.Id}}","transparent":true}"""), out string backgroundError), backgroundError);
+
+            SavedDevice reloaded = new DesktopRuntime(dataRoot, PresetRoot).Devices.Single();
+            Assert.Equal((720, 1080, DeviceOrientation.Portrait, true), (reloaded.Width, reloaded.Height, reloaded.Orientation, reloaded.Transparent));
+
+            Assert.False(coordinator.Execute(Command($$"""{"type":"devices.resolution","deviceId":"{{device.Id}}","width":1921,"height":1080}"""), out string tooWide));
+            Assert.Equal("a browser display is 100 to 1920 pixels wide and 100 to 1080 high", tooWide);
+            Assert.False(coordinator.Execute(Command($$"""{"type":"devices.resolution","deviceId":"{{device.Id}}","width":800,"height":99}"""), out _));
+            Assert.False(coordinator.Execute(Command($$"""{"type":"devices.resolution","deviceId":"{{device.Id}}","width":800}"""), out string missing));
+            Assert.Equal("width and height are required", missing);
+            Assert.False(coordinator.Execute(Command($$"""{"type":"devices.transparent","deviceId":"{{device.Id}}","transparent":"yes"}"""), out string notBool));
+            Assert.Equal("transparent is required", notBool);
+            Assert.Equal((720, 1080, true), (device.Width, device.Height, device.Transparent));
+        }
+        finally
+        {
+            Cleanup(dataRoot);
+        }
+    }
+
+    [Fact]
+    public void ABrowserDisplayIsNoPanelAndAPanelHasNoBrowserSettings()
+    {
+        RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
+        try
+        {
+            Assert.True(coordinator.Execute(Command("""{"type":"devices.add","catalogId":"browser-display"}"""), out _));
+            Assert.True(coordinator.Execute(Command("""{"type":"devices.add","catalogId":"generic-vocore"}"""), out _));
+            SavedDevice browser = runtime.Devices.Single(BrowserDisplays.Is);
+            SavedDevice panel = runtime.Devices.Single(device => !BrowserDisplays.Is(device));
+
+            // Renaming keeps working; turning, shifting or insetting it does not.
+            Assert.True(coordinator.Execute(
+                Command($$"""{"type":"devices.update","deviceId":"{{browser.Id}}","name":"Headset","rotation":90,"offsetX":0,"offsetY":0,"margin":0,"dashId":"default"}"""),
+                out string renameError), renameError);
+            Assert.Equal("Headset", browser.Name);
+            Assert.False(coordinator.Execute(
+                Command($$"""{"type":"devices.update","deviceId":"{{browser.Id}}","name":"Headset","rotation":0,"offsetX":0,"offsetY":0,"margin":0,"dashId":"default"}"""),
+                out string rotateError));
+            Assert.Equal("a browser display has no orientation, offset or margin", rotateError);
+            Assert.False(coordinator.Execute(
+                Command($$"""{"type":"devices.update","deviceId":"{{browser.Id}}","name":"Headset","rotation":90,"offsetX":0,"offsetY":0,"margin":4,"dashId":"default"}"""),
+                out _));
+            Assert.False(coordinator.Execute(Command($$"""{"type":"devices.purpose","deviceId":"{{browser.Id}}","purpose":"rear-view-mirror"}"""), out string mirrorError));
+            Assert.Equal("a browser display cannot mirror the desktop", mirrorError);
+            Assert.True(coordinator.Execute(Command($$"""{"type":"devices.purpose","deviceId":"{{browser.Id}}","purpose":"lap-times"}"""), out _));
+
+            Assert.False(coordinator.Execute(Command($$"""{"type":"devices.resolution","deviceId":"{{panel.Id}}","width":800,"height":480}"""), out string panelSize));
+            Assert.Equal("only a browser display has a resolution to set", panelSize);
+            Assert.False(coordinator.Execute(Command($$"""{"type":"devices.transparent","deviceId":"{{panel.Id}}","transparent":true}"""), out _));
+            Assert.False(panel.Transparent);
         }
         finally
         {

@@ -63,3 +63,9 @@ twice a second, radar ten times a second, and the shared plan and its target lap
   `PeerMessage.Deserialize` that way when adding types.
 - **The plan travels as `state.plans` writes it** and the engineer passes the JSON through unparsed,
   so the pit wall reads the same shape the planner does, whatever build the driver runs.
+- **Race control, stopped cars and the pit loss are the engineer's own work**
+  (`PitWallAccumulator`), from the changes between boards on the game's clock (`Elapsed`): the game
+  says none of them. So an engineer who links mid-race sees only what changed since, a stop counts
+  only when it was seen from its pit entry, and a full course yellow and a safety car stay one phase
+  because LMU reports them as one. The order of LMU's `mSectorFlag` is read like `mSector`
+  (sector 3 first); its own header is unsure, so check it the first time a yellow is live.

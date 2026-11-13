@@ -24,4 +24,69 @@
          the copy-to-output metadata rather than including them a second time. -->
     <Content Update="presets\**\*.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
+
+  <ItemGroup>
+    <!-- The Browser / VR display page (BrowserDisplayServer.cs serves it from browser-display\ next to
+         the executable): its own files, and the dashboard package's renderer glue as it is. The
+         WebAssembly renderer joins them in BuildDashRendererWasm below. Kept out of a single-file
+         bundle: they are read from disk by path. -->
+    <None Update="browser-display\**" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
+    <None Include="..\..\packages\dashboard\src\dashWasm.js" Link="browser-display\dashWasm.js" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
+  </ItemGroup>
+
+  <!--
+    The wheel-dash renderer (packages/dashboard/renderer, Rust), which ScreenOutputService draws
+    the wheel screens with through P/Invoke (DashRenderer.cs). Built in release on every build by
+    scripts/build-dash-renderer.mjs (a no-op cargo build is ~0.2 s) and shipped next to the host
+    executable; projects referencing this one (the host tests) get it copied too.
+
+    It must match the architecture the output runs as: the RID when one is given (publish -r
+    win-x64), else the apphost's, which is the SDK's own (an x86 dotnet builds and tests as a 32-bit
+    process) unless PlatformTarget names one. Each architecture is staged in its own obj folder,
+    and the copy is IfDifferent, not PreserveNewest: switching SDKs must replace a newer file of
+    the other architecture in the same bin folder.
+    Design-time builds (IDEs) skip it.
+  -->
+  <Target Name="BuildDashRenderer" BeforeTargets="AssignTargetPaths" Condition="'$(DesignTimeBuild)' != 'true'">
+    <PropertyGroup>
+      <DashRendererRid>$(RuntimeIdentifier)</DashRendererRid>
+      <DashRendererRid Condition="'$(DashRendererRid)' == ''">$(DefaultAppHostRuntimeIdentifier)</DashRendererRid>
+      <DashRendererRid Condition="'$(DashRendererRid)' == ''">$(NETCoreSdkRuntimeIdentifier)</DashRendererRid>
+      <DashRendererFile Condition="$(DashRendererRid.StartsWith('win'))">sprint_dash.dll</DashRendererFile>
+      <DashRendererFile Condition="$(DashRendererRid.StartsWith('osx'))">libsprint_dash.dylib</DashRendererFile>
+      <DashRendererFile Condition="'$(DashRendererFile)' == ''">libsprint_dash.so</DashRendererFile>
+      <DashRendererDir>$([System.IO.Path]::Combine('$(MSBuildProjectDirectory)', '$(BaseIntermediateOutputPath)', 'dash-renderer', '$(DashRendererRid)'))</DashRendererDir>
+    </PropertyGroup>
+    <!-- The script prefixes every failure with "build-dash-renderer: error: "; that line becomes the build
+         error. Cargo's own warnings stay messages, so -warnaserror is about C# only. -->
+    <Exec Command="node &quot;$(MSBuildProjectDirectory)/../../scripts/build-dash-renderer.mjs&quot; --rid $(DashRendererRid) --out &quot;$(DashRendererDir)&quot;"
+          IgnoreStandardErrorWarningFormat="true"
+          CustomErrorRegularExpression="^build-dash-renderer: error: "
+          StandardOutputImportance="low" />
+    <ItemGroup>
+      <None Include="$(DashRendererDir)\$(DashRendererFile)"
+            Link="$(DashRendererFile)"
+            CopyToOutputDirectory="IfDifferent"
+            CopyToPublishDirectory="IfDifferent"
+            ExcludeFromSingleFile="true" />
+    </ItemGroup>
+  </Target>
+
+  <!-- The same renderer as WebAssembly, for the browser display page; one file for every architecture. -->
+  <Target Name="BuildDashRendererWasm" BeforeTargets="AssignTargetPaths" Condition="'$(DesignTimeBuild)' != 'true'">
+    <PropertyGroup>
+      <DashRendererWasmDir>$([System.IO.Path]::Combine('$(MSBuildProjectDirectory)', '$(BaseIntermediateOutputPath)', 'dash-renderer', 'wasm'))</DashRendererWasmDir>
+    </PropertyGroup>
+    <Exec Command="node &quot;$(MSBuildProjectDirectory)/../../scripts/build-dash-renderer.mjs&quot; --wasm --out &quot;$(DashRendererWasmDir)&quot;"
+          IgnoreStandardErrorWarningFormat="true"
+          CustomErrorRegularExpression="^build-dash-renderer: error: "
+          StandardOutputImportance="low" />
+    <ItemGroup>
+      <None Include="$(DashRendererWasmDir)\sprint_dash.wasm"
+            Link="browser-display\sprint_dash.wasm"
+            CopyToOutputDirectory="PreserveNewest"
+            CopyToPublishDirectory="PreserveNewest"
+            ExcludeFromSingleFile="true" />
+    </ItemGroup>
+  </Target>
 </Project>

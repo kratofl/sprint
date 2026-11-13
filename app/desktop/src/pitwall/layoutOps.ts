@@ -28,6 +28,8 @@ const PREFERRED_SIZE: Record<TileKind, { w: number; h: number }> = {
   damage: { w: 5, h: 3 },
   radar: { w: 3, h: 3 },
   traces: { w: 12, h: 4 },
+  control: { w: 4, h: 3 },
+  pitstop: { w: 4, h: 3 },
 }
 
 export const insideGrid = (rect: Rect): boolean =>

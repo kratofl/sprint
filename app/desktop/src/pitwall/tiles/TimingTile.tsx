@@ -1,6 +1,8 @@
 import { useState } from 'react'
+import { Flag } from 'lucide-react'
 import type { FieldEntry } from '../pitWallData'
-import { carNumber, classShade, classesOf, compoundLetter, gapCell, lapClock, placesGained, sectorMarks, timingRows, timingSummary } from '../timing'
+import { outCell } from '../raceControl'
+import { carNumber, classShade, classesOf, compoundLetter, gapCell, isOut, lapClock, placesGained, sectorMarks, timingRows, timingSummary } from '../timing'
 import { TileFrame, type FrameProps, type TileData } from '../tileFrame'
 
 /** Places gained since the start: ▲2 green, ▼1 red, – none; blank outside a race. */
@@ -36,7 +38,9 @@ function PitCell({ entry }: { entry: FieldEntry }) {
 /**
  * The field: a summary strip (lap, position, time left, last, best, overall best), then every car
  * with places gained, gaps, last lap and its sectors (purple the class best, green its own best).
- * The header filters by class.
+ * A car shown blue gets a blue edge and a flag by its name, penalties to serve a red count, and a
+ * car out of the race stays in its place dimmed, saying so where its gap was. The header filters
+ * by class.
  */
 export function TimingTile({ data, frame }: { data: TileData; frame: FrameProps }) {
   const [carClass, setCarClass] = useState<string | null>(null)
@@ -92,23 +96,35 @@ export function TimingTile({ data, frame }: { data: TileData; frame: FrameProps 
         {rows.map((entry) => {
           const mark = marks.get(entry.id) ?? [null, null, null]
           const leader = entry.place === 1
+          const out = isOut(entry)
+          const rowClass = ['pw-trow', entry.isPlayer && 'you', entry.blueFlag && !out && 'blue', out && 'out'].filter(Boolean).join(' ')
           return (
-            <div key={entry.id} role="row" className={entry.isPlayer ? 'pw-trow you' : 'pw-trow'}>
+            <div key={entry.id} role="row" className={rowClass}>
               <span className="tabular">{entry.place || '—'}</span>
               <Gained entry={entry} />
               <span className={`pw-classbar c${classShade(wall.field, entry.carClass)}`} aria-hidden="true" />
               <span className="tabular muted">{carNumber(entry)}</span>
-              <span className="pw-ellipsis">{entry.driver}</span>
+              <span className="pw-driver">
+                <span className="pw-ellipsis">{entry.driver}</span>
+                {entry.blueFlag && !out && <Flag size={11} className="pw-blue" aria-label="Blue flag" />}
+                {entry.penalties > 0 && !out && <span className="pw-pen">{entry.penalties} pen</span>}
+              </span>
               <span className="c">
                 <TyreChip compound={entry.compound} />
               </span>
               <span className="r tabular muted">{entry.lapsCompleted}</span>
-              <span className="r tabular">{gapCell(entry.gapToLeader, entry.lapsToLeader, leader)}</span>
-              <span className="r tabular muted">{leader ? '' : gapCell(entry.gapToNext, entry.lapsToNext, false)}</span>
-              <span className="r tabular">{lapClock(entry.lastLap)}</span>
+              {out ? (
+                <span className="pw-outcell tabular">{outCell(entry)}</span>
+              ) : (
+                <>
+                  <span className="r tabular">{gapCell(entry.gapToLeader, entry.lapsToLeader, leader)}</span>
+                  <span className="r tabular muted">{leader ? '' : gapCell(entry.gapToNext, entry.lapsToNext, false)}</span>
+                </>
+              )}
+              <span className="r tabular">{out ? '—' : lapClock(entry.lastLap)}</span>
               {entry.lastSectors.map((time, index) => (
-                <span key={index} className={`r tabular pw-sec ${mark[index] ?? ''}`}>
-                  {time === null ? '—' : time.toFixed(1)}
+                <span key={index} className={`r tabular pw-sec ${out ? '' : (mark[index] ?? '')}`}>
+                  {time === null || out ? '—' : time.toFixed(1)}
                 </span>
               ))}
               <span className="r tabular muted">{lapClock(entry.bestLap)}</span>

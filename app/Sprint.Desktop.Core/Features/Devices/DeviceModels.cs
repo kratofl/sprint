@@ -134,6 +134,12 @@ public sealed class SavedDevice
 
     /// <summary>The driver's names and colours for the preset's dial positions; null keeps the preset's defaults.</summary>
     public MultiDialSettings? MultiDial { get; set; }
+
+    /// <summary>
+    /// Browser displays only (<see cref="BrowserDisplays"/>): the page shows the dash over a
+    /// transparent background instead of black, for an overlay.
+    /// </summary>
+    public bool Transparent { get; set; }
 }
 
 public sealed record ScreenCaptureRegion(int X, int Y, int Width, int Height)

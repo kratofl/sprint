@@ -1,6 +1,5 @@
 import { memo } from 'react'
-import '@sprint/dashboard/styles.css'
-import { DashRenderer, previewFrame } from '@sprint/dashboard'
+import { DashCanvas, previewFrame } from '@sprint/dashboard'
 import type { DashLayout } from '@sprint/dashboard'
 import { fitScreenSize, layoutScreenProfile, sameDashContent } from './DashesDomain'
 
@@ -24,7 +23,7 @@ export const DashStill = memo(function DashStill({ layout, maxWidth, maxHeight, 
   const size = fitScreenSize(layoutScreenProfile(layout), maxWidth, maxHeight)
   return (
     <span className={className ? `dash-still ${className}` : 'dash-still'} aria-hidden="true">
-      <DashRenderer layout={layout} frame={STILL_FRAME} width={size.width} height={size.height} pageId={layout.pages[0]?.id} />
+      <DashCanvas layout={layout} frame={STILL_FRAME} width={size.width} height={size.height} pageId={layout.pages[0]?.id} />
     </span>
   )
 }, sameStill)

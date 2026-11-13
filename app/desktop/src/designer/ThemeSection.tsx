@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Check } from 'lucide-react'
-import { DashRenderer, dashPreviewStates, dashStyles, dashThemePresets, matchLayoutThemeName, resolveDashPalette, resolvePreviewFrame } from '@sprint/dashboard'
+import { DashCanvas, dashPreviewStates, dashStyles, dashThemePresets, matchLayoutThemeName, resolveDashPalette, resolvePreviewFrame } from '@sprint/dashboard'
 import type { DashColorSystem, DashLayout, DashPage, DashPreviewState, DashStyle } from '@sprint/dashboard'
 import type { TelemetryFrame } from '@sprint/types'
 import { applyThemePreset, setDashStyle } from '../views/DashesDomain'
@@ -93,7 +93,7 @@ export function ThemeSection({ layout, apply, frame, page, idle }: { layout: Das
       <div ref={setFitElement} className="designer-fit">
         {canvas && (
           <div className="designer-bezel" style={{ padding: BEZEL }}>
-            <DashRenderer layout={layout} frame={resolvePreviewFrame(previewState, frame)} width={canvas.width} height={canvas.height} pageId={page?.id} idle={idle} />
+            <DashCanvas layout={layout} frame={resolvePreviewFrame(previewState, frame)} width={canvas.width} height={canvas.height} pageId={page?.id} idle={idle} />
           </div>
         )}
       </div>

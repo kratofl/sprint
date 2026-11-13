@@ -1,7 +1,6 @@
 using System.Net;
 using System.Security.Cryptography;
 using System.Text.Json;
-using System.Text.Json.Serialization;
 using Sprint.Contracts;
 using Sprint.Desktop;
 using Sprint.Desktop.Api.Telemetry;
@@ -20,7 +19,6 @@ using Sprint.Desktop.Features.PitWall;
 using Sprint.Desktop.Features.SessionPlanning;
 using Sprint.Desktop.Features.Setup;
 using Sprint.Desktop.Features.Sharing;
-using Sprint.Desktop.Features.Updates;
 using Sprint.Desktop.Host;
 using Sprint.Desktop.Runtime;
 using Sprint.Games;
@@ -60,35 +58,38 @@ LiveLogStore liveLog = AppDiagnostics.LiveLog
 
 DesktopRuntime runtime = new(dataRoot: dataRoot, log: log);
 RuntimeCoordinator coordinator;
-FrameStore frames = new();
-// Last mile of the dash pipeline: connects frames POSTed by Electron's offscreen browsers to
-// real USB screens (and, for the rear-view mirror purpose, captures the desktop natively). FrameStore
-// above only remembers delivery stats for /api/state; this is what actually opens a driver and
-// pushes RGB565 to hardware.
-ScreenOutputService screenOutputs = new(log);
 // Which page each screen currently shows (dash.page.next/prev). One shared instance: the
-// RuntimeCoordinator command handlers advance it, and /api/state's screens[] below reads it back
-// -- a command's effect would never be visible otherwise.
+// RuntimeCoordinator command handlers advance it, the wheel screens read it on every frame, and
+// /api/state's screens[] below reads it back -- a command's effect would never be visible otherwise.
 DashPageCycle dashPageCycle = new();
+// Enums as names, the dash document's own spelling for its enums (see HostJson).
+JsonSerializerOptions json = HostJson.Create();
+// Browser / VR displays: a second, tokenless, read-only listener on 127.0.0.1:28780 that is open
+// only while one is added and turned on. Its loop opens and closes the port; the screen outputs
+// below hand it each display's scene.
+BrowserDisplayServer browserDisplays = new(state, json, log);
+CancellationTokenSource browserDisplaysCts = new();
+Task browserDisplaysLoop = browserDisplays.RunAsync(browserDisplaysCts.Token);
+// Where each wheel's multi-position dial stands, from its held position buttons (Raw Input, wired
+// below). The wheel screens read it every frame to pop a turn up on the dash; /api/state reports it.
+MultiDialTracker multiDials = new();
+// The wheel screens: one render loop per enabled screen device draws its dash in-process with the
+// Rust renderer from the published telemetry (or, for the rear-view mirror purpose, captures the
+// desktop) and pushes RGB565 to the USB panel; browser displays get the same scenes, served. The
+// reconcile loop below keeps it in step with the saved devices and dashes.
+ScreenOutputService screenOutputs = new(log, telemetry: state, pageCycle: dashPageCycle, browserServer: browserDisplays, multiDials: multiDials);
 // What a change of screen size would leave out of each dash, for /api/state's dashRefitLosses;
 // it refits a dash again only once its layout has changed, not on every poll.
 DashRefitLosses dashRefitLosses = new();
-// Enums cross the wire as names, not ordinals: the TypeScript client models them
-// as string unions, and a bare number is unreadable in a payload dump.
-// The dash document's own enums are the exception: a dash crosses the wire whole (and comes back
-// whole with dash.save), so they keep the spelling of the dash files and the renderer's unions.
-// A converter in the options outranks one on the type, so theirs go first.
-JsonSerializerOptions json = new(JsonSerializerDefaults.Web);
-json.Converters.Add(new DashStyleJsonConverter());
-json.Converters.Add(new DashColorSystemJsonConverter());
-json.Converters.Add(new DashGroupModeJsonConverter());
-json.Converters.Add(new JsonStringEnumConverter());
 
 // Session-planning/analysis persistence (WEB_DESKTOP_CUTOVER item 3) lives beside the
 // runtime's other data (devices.json, dash-layouts/) rather than duplicating its own
 // AppData/Sprint default, so both stores read/write the same directory the runtime does.
 ISessionPlanStore planStore = new LocalSessionPlanStore(Path.Combine(runtime.DataRoot, "session-plans"), log);
-ILapHistoryStore lapHistoryStore = new LocalLapHistoryStore(Path.Combine(runtime.DataRoot, "lap-history"), log);
+// Cached: every reader (state poll, Analysis, Live Compare, targets) would otherwise parse every
+// history file on each call. Every writer in the host goes through this one instance, which keeps
+// the cache true to disk (see CachingLapHistoryStore).
+ILapHistoryStore lapHistoryStore = new CachingLapHistoryStore(new LocalLapHistoryStore(Path.Combine(runtime.DataRoot, "lap-history"), log));
 ILapTraceStore lapTraceStore = new LocalLapTraceStore(Path.Combine(runtime.DataRoot, "lap-traces"), log);
 // Where Le Mans Ultimate is installed. Applied before anything reads the game's files, and again
 // by game.setFolder: setups and results are read through the provider per use, so they follow.
@@ -163,10 +164,6 @@ ResultsImports resultsImports = new(
     new ResultsImportLedger(runtime.DataRoot, log),
     log);
 
-// Update checks (WEB_DESKTOP_CUTOVER item 4): check-and-notify only, by product decision — no
-// unattended install. UpdateCheckSession caches the last result per (version, channel) so
-// repeated polls do not re-hit the network; ?force=true bypasses the cache for an explicit
-// "Check for updates" action.
 // The Sprint account: signing in goes over the network, so it has focused endpoints rather than
 // a command, and /api/state only reports who is signed in. Kept beside the runtime's other data.
 // Discovery and sync share its transport. The official server's address ships in appsettings.json
@@ -195,9 +192,6 @@ DiscordSignIn discordSignIn = new(cloudAccount);
 // the telemetry loop below without waiting on it; its own worker owns the WebSocket.
 LiveUplink liveUplink = new(WebSocketLiveConnection.ConnectAsync, log);
 Task liveUplinkLoop = sprintWeb ? liveUplink.RunAsync(cloudSyncCts.Token) : Task.CompletedTask;
-
-GitHubReleaseSource releaseSource = new();
-UpdateCheckSession updateSession = new(ct => releaseSource.FetchAsync(GitHubReleaseSource.DefaultRepo, ct));
 
 // Real game telemetry (WEB_DESKTOP_CUTOVER item 2): the shared provider selection,
 // started headless and polled into DesktopState so /api/telemetry and /api/state carry
@@ -317,7 +311,6 @@ Task telemetryPublishLoop = Task.Run(async () =>
 // multi-position dials are followed: the tracker turns a wheel's held position button into the
 // dial position /api/state reports, which the desktop shows and the dash pops up on a turn. Its
 // dials are re-read from the saved devices on every reconcile tick below.
-MultiDialTracker multiDials = new();
 lock (runtime.DevicesGate)
 {
     multiDials.Configure(MultiDials.Sources(runtime.Devices, runtime.Catalog));
@@ -352,7 +345,22 @@ Task screenReconcileLoop = Task.Run(async () =>
                     runtime.SaveDevices();
                 }
 
-                screenOutputs.Reconcile(devices);
+                // Each dash screen's scene (its dash, the driver's name and number, the plan's
+                // targets) is serialized here once a tick and only taken by a screen when it
+                // changed, so a dash edit reaches the wheel within a second. The page and the
+                // live/idle switch do not wait for this loop: the screens read those per frame.
+                // Dash commands change the dash list without this gate; a copy that races one is
+                // skipped, and the screens keep their scenes until the next tick.
+                DashSceneInputs? scenes = null;
+                try
+                {
+                    scenes = new DashSceneInputs([.. runtime.DashLayouts], runtime.Settings.DriverName, runtime.Settings.DriverNumber, planTargets.Targets);
+                }
+                catch (InvalidOperationException)
+                {
+                }
+
+                screenOutputs.Reconcile(devices, scenes, runtime.Catalog);
                 multiDials.Configure(MultiDials.Sources(devices, runtime.Catalog));
             }
         }
@@ -406,6 +414,7 @@ app.Lifetime.ApplicationStopping.Register(() =>
     discordSignIn.Cancel();
     screenOutputs.Dispose();
     hardwareInput.Dispose();
+    browserDisplaysCts.Cancel();
 });
 
 app.Use(async (context, next) =>
@@ -460,8 +469,13 @@ app.MapGet("/api/state", () =>
         engineerControls = runtime.EngineerControls,
         radioLog = runtime.RadioLog,
         engineerPushState = runtime.EngineerPushState,
+        // From disk, not the planner's live objects: the telemetry loop mutates those under the
+        // planner's lock, and serializing them here would race it.
         plans = planStore.LoadAll(),
-        lapHistory = lapHistoryStore.LoadAll(),
+        // Never the corpus itself: it runs to megabytes and this is polled several times a second.
+        // Views get what they show; pages that need laps fetch them on their own endpoints.
+        sessionCount = lapHistoryStore.LoadAll().Count,
+        recentSessions = RecentSessions.From(lapHistoryStore.LoadAll()),
         analysis = new
         {
             filter = new
@@ -528,6 +542,8 @@ app.MapGet("/api/state", () =>
         {
             version = BuildInfo.Version,
             channel = runtime.Settings.UpdateChannel,
+            // The Electron main process updates the app (electron/updates.ts); it reads these two here.
+            autoInstall = runtime.Settings.AutoInstallUpdates,
         },
         // What the stored laps' telemetry takes on disk, for Settings. Nothing caps it.
         storage = new
@@ -536,7 +552,7 @@ app.MapGet("/api/state", () =>
             traceLaps = traceUsage.Laps,
             traceExpiryDays = runtime.Settings.SessionPlanner.TraceExpiryDays,
         },
-        screens = ScreenOutputs.Describe(runtime.Devices, runtime.DashLayouts, frames, state.Telemetry.Status.IsLive, screenOutputs.HardwareFor, dashPageCycle)
+        screens = ScreenOutputs.Describe(runtime.Devices, runtime.DashLayouts, state.Telemetry.Status.IsLive, screenOutputs.HardwareFor, dashPageCycle)
     }, json);
 });
 
@@ -839,140 +855,12 @@ app.MapGet("/api/diagnostics/logs", (HttpRequest request) =>
     return Results.Json(liveLog.Filter(minLevel, text), json);
 });
 
-app.MapPost("/api/updates/check", async (HttpRequest request) =>
-{
-    bool force = string.Equals(request.Query["force"], "true", StringComparison.OrdinalIgnoreCase);
-    UpdateCheckResult result = await updateSession.CheckAsync(BuildInfo.Version, runtime.Settings.UpdateChannel, forceRefresh: force);
-    return Results.Json(result, json);
-});
-
-// One-click self-replacing install (WEB_DESKTOP_CUTOVER item 2), explicitly requested only --
-// never triggered automatically. The Electron main process is this host's parent and the only
-// party that knows its own pid/install directory/executable name (the host itself runs from
-// resources/host/, not the app), so it supplies them in the request body rather than the host
-// deriving them from its own Environment.ProcessPath. Every field is validated strictly before
-// anything touches disk: this endpoint overwrites installDir and launches a batch file.
-app.MapPost("/api/updates/install", async (HttpRequest request, CancellationToken ct) =>
-{
-    string body;
-    using (StreamReader reader = new(request.Body))
-    {
-        body = await reader.ReadToEndAsync(ct);
-    }
-
-    int pid = 0;
-    string? installDir = null;
-    string? exeName = null;
-    try
-    {
-        using JsonDocument document = JsonDocument.Parse(body);
-        JsonElement root = document.RootElement;
-        if (root.TryGetProperty("pid", out JsonElement pidElement) && pidElement.TryGetInt32(out int parsedPid))
-        {
-            pid = parsedPid;
-        }
-
-        if (root.TryGetProperty("installDir", out JsonElement installDirElement) && installDirElement.ValueKind == JsonValueKind.String)
-        {
-            installDir = installDirElement.GetString();
-        }
-
-        if (root.TryGetProperty("exeName", out JsonElement exeNameElement) && exeNameElement.ValueKind == JsonValueKind.String)
-        {
-            exeName = exeNameElement.GetString();
-        }
-    }
-    catch (JsonException)
-    {
-        return Results.BadRequest(new { error = "request body must be valid JSON." });
-    }
-
-    if (!UpdateInstallTargetValidator.TryValidate(pid, installDir, exeName, out UpdateInstallTarget? target, out string? validationError))
-    {
-        return Results.BadRequest(new { error = validationError });
-    }
-
-    if (!UpdateInstaller.SupportsSelfReplace)
-    {
-        return Results.BadRequest(new { error = "self-replacing update install is only supported on Windows." });
-    }
-
-    UpdateInstallResult result = await InstallUpdateAsync(target, ct);
-    return Results.Json(result, json);
-});
-
-app.MapPost("/api/screens/{id}/frame", async (string id, HttpRequest request) =>
-{
-    if (!int.TryParse(request.Headers["x-frame-width"], out int width)
-        || !int.TryParse(request.Headers["x-frame-height"], out int height)
-        || !long.TryParse(request.Headers["x-frame-sequence"], out long sequence)
-        || width <= 0 || height <= 0)
-    {
-        return Results.BadRequest(new { error = "frame headers are invalid" });
-    }
-    int expected = checked(width * height * 4);
-    byte[] bgra = new byte[expected];
-    int read = 0;
-    while (read < expected)
-    {
-        int count = await request.Body.ReadAsync(bgra.AsMemory(read, expected - read), request.HttpContext.RequestAborted);
-        if (count == 0) break;
-        read += count;
-    }
-    if (read != expected) return Results.BadRequest(new { error = "frame body size does not match headers" });
-
-    // Routing (real device output) and FrameStore (delivery stats for /api/state) are
-    // independent: a frame for a device with no active output still counts as delivered.
-    ScreenFramePublishResult routed = await screenOutputs.PublishFrameAsync(id, width, height, bgra, request.HttpContext.RequestAborted);
-    if (routed == ScreenFramePublishResult.DimensionMismatch)
-    {
-        return Results.BadRequest(new { error = "frame dimensions do not match the device's configured output size" });
-    }
-
-    frames.Publish(id, width, height, sequence, bgra.Length);
-    return Results.Accepted($"/api/screens/{id}/frame", new { accepted = true, sequence, routed = routed == ScreenFramePublishResult.Routed });
-});
-
 app.Lifetime.ApplicationStarted.Register(() =>
 {
     string? address = app.Urls.FirstOrDefault();
     int port = address is null ? 0 : new Uri(address).Port;
     Console.WriteLine(JsonSerializer.Serialize(new { type = "ready", port }, json));
 });
-
-// Backs POST /api/updates/install: check → pick the platform asset → download/stage → build and
-// launch the self-replace batch at the caller-supplied target. Downloading can take a while, so
-// this stays async and threads the request's CancellationToken instead of blocking other
-// endpoints. Never bricks the running host: any failure is reported back as a result, not thrown.
-async Task<UpdateInstallResult> InstallUpdateAsync(UpdateInstallTarget target, CancellationToken ct)
-{
-    UpdateCheckResult check = await updateSession.CheckAsync(BuildInfo.Version, runtime.Settings.UpdateChannel, ct: ct);
-    if (!check.UpdateAvailable || check.Latest is null)
-    {
-        return new UpdateInstallResult(UpdateInstallOutcome.NoUpdate);
-    }
-
-    ReleaseInfo latest = check.Latest;
-    ReleaseAsset? asset = ReleaseAssetSelector.Select(latest.Assets, UpdateInstaller.CurrentRid);
-    if (asset is null)
-    {
-        return new UpdateInstallResult(UpdateInstallOutcome.Failed, latest.Version, "No download is published for this platform.");
-    }
-
-    try
-    {
-        UpdateInstaller installer = new();
-        StagedUpdate staged = await installer.DownloadAsync(latest.Version, asset, ct: ct);
-        UpdateInstaller.LaunchWindowsSelfReplace(staged.StagingDir, target.Pid, target.InstallDir, target.ExeName);
-        log.Info($"Update install staged and launched: version={latest.Version} pid={target.Pid} installDir={target.InstallDir}.");
-        return new UpdateInstallResult(UpdateInstallOutcome.Staged, latest.Version);
-    }
-    catch (Exception ex)
-    {
-        log.Warn($"Update install failed: version={latest.Version}.", ex);
-        return new UpdateInstallResult(UpdateInstallOutcome.Failed, latest.Version, UpdateInstaller.DescribeFailure(ex));
-    }
-}
 
 // The remembered game/car/track (TelemetryIngestionPipeline keeps it current from every frame),
 // as the planner controller's prefill and its "live" context option.
@@ -1049,6 +937,16 @@ try
     catch (TimeoutException)
     {
         AppDiagnostics.Log.Warn("Live link did not close before exit");
+    }
+
+    // The browser displays' port closes with the host.
+    try
+    {
+        await browserDisplaysLoop.WaitAsync(TimeSpan.FromSeconds(5));
+    }
+    catch (TimeoutException)
+    {
+        AppDiagnostics.Log.Warn("Browser displays did not close before exit");
     }
 
     AppDiagnostics.Log.Info("Sprint Desktop Host exited normally");

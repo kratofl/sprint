@@ -93,6 +93,8 @@ export type Device = {
   disabled: boolean
   captureRegion: CaptureRegion | null
   bindingCount: number
+  /** Browser displays only: the page's background is transparent instead of black. */
+  transparent: boolean
 }
 
 export type CatalogEntry = {
@@ -115,6 +117,52 @@ export const deviceHasScreen = (device: Device): boolean =>
   device.width > 0 &&
   device.height > 0 &&
   (device.type.toLowerCase() === 'screen' || device.driver.toLowerCase() === 'vocore' || device.driver.toLowerCase() === 'usbd480')
+
+// ── Browser / VR displays ────────────────────────────────────────────────────
+//
+// Hand-mirrored from app/Sprint.Desktop.Core/Features/Devices/BrowserDisplays.cs: a dash device
+// with no USB link that any browser on this PC shows at its address. Its resolution is its own
+// width × height (the host keeps the orientation to match), and it has no orientation, offset or
+// margin to set.
+
+export const BROWSER_DISPLAY_DRIVER = 'browser'
+export const BROWSER_DISPLAY_PORT = 28780
+export const BROWSER_DISPLAY_MIN_SIZE = 100
+export const BROWSER_DISPLAY_MAX_WIDTH = 1920
+export const BROWSER_DISPLAY_MAX_HEIGHT = 1080
+
+export const isBrowserDisplay = (device: Pick<Device, 'driver'>): boolean => device.driver.toLowerCase() === BROWSER_DISPLAY_DRIVER
+
+/** Where a browser shows the device's dash (`BrowserDisplays.Address`). */
+export const browserDisplayAddress = (deviceId: string): string => `http://127.0.0.1:${BROWSER_DISPLAY_PORT}/dash/${encodeURIComponent(deviceId)}`
+
+/** One setting on a device's Screen tab. */
+export type ScreenSetting = 'frameRate' | 'orientation' | 'offset' | 'margin' | 'address' | 'resolution' | 'background'
+
+/**
+ * The Screen tab's settings for a device: a panel's frame rate and mounting, or a browser
+ * display's address and picture. A browser display is sent every frame and is no panel, so it gets
+ * none of the panel's (rather than controls that would do nothing).
+ */
+export const screenSettings = (device: Pick<Device, 'driver'>): readonly ScreenSetting[] =>
+  isBrowserDisplay(device) ? ['address', 'resolution', 'background'] : ['frameRate', 'orientation', 'offset', 'margin']
+
+/** The purposes the Output tab offers: a browser display cannot mirror the desktop. */
+export const purposesFor = (device: Pick<Device, 'driver'>): readonly DevicePurpose[] =>
+  isBrowserDisplay(device) ? PURPOSES.filter((purpose) => !purpose.needsCaptureRegion) : PURPOSES
+
+export const buildBrowserDisplaySize = (device: Pick<Device, 'id'>, width: number, height: number): SprintCommand => ({
+  type: 'devices.resolution',
+  deviceId: device.id,
+  width,
+  height,
+})
+
+export const buildBrowserDisplayBackground = (device: Pick<Device, 'id'>, transparent: boolean): SprintCommand => ({
+  type: 'devices.transparent',
+  deviceId: device.id,
+  transparent,
+})
 
 // DeviceOrientations.Transform, without the pixel-rotation component: the
 // short/long native edge swaps into the logical width/height a landscape
@@ -190,6 +238,7 @@ export const parseDevice = (row: Record<string, unknown>): Device | null => {
     disabled: bool(row, 'disabled'),
     captureRegion: parseCaptureRegion(row.captureRegion),
     bindingCount: Array.isArray(bindings) ? bindings.length : 0,
+    transparent: bool(row, 'transparent'),
   }
 }
 
@@ -248,7 +297,7 @@ export const buildDeviceUpdate = (device: Device, overrides: Partial<DeviceUpdat
   dashId: overrides.dashId ?? device.dashId,
 })
 
-// Offsets are signed: negative moves the image left or up (Rgb565.ComposeFromBgra).
+// Offsets are signed: negative moves the image left or up (Rgb565Composer).
 export const OFFSET_MIN = -2000
 export const OFFSET_MAX = 2000
 export const MARGIN_MIN = 0
@@ -275,10 +324,11 @@ export type ScreenConnectionState =
   | 'DeviceConflict'
   | 'Unsupported'
   | 'Faulted'
+  | 'WaitingForViewer'
 
 const SCREEN_CONNECTION_STATES: readonly ScreenConnectionState[] = [
   'Disconnected', 'Connecting', 'Connected', 'ConfigurationRequired',
-  'PermissionDenied', 'DeviceBusy', 'DeviceConflict', 'Unsupported', 'Faulted',
+  'PermissionDenied', 'DeviceBusy', 'DeviceConflict', 'Unsupported', 'Faulted', 'WaitingForViewer',
 ]
 
 const isScreenConnectionState = (value: unknown): value is ScreenConnectionState =>
@@ -299,10 +349,8 @@ export type ScreenHardwarePerformance = {
   hasSamples: boolean
 }
 
-export type ScreenHardware = { status: ScreenHardwareStatus; performance: ScreenHardwarePerformance }
-
-/** Electron's offscreen-browser frame delivery stats (FrameStore) — separate from `hardware.performance`, which is the real USB delivery. */
-export type ScreenDelivery = { sequence: number; bytes: number; receivedAt: string | null }
+/** `viewers` is a browser display's count of pages showing it; null for a USB screen. */
+export type ScreenHardware = { status: ScreenHardwareStatus; performance: ScreenHardwarePerformance; viewers: number | null }
 
 export type ScreenOutput = {
   deviceId: string
@@ -312,7 +360,6 @@ export type ScreenOutput = {
   layout: DashLayout | null
   pageId: string
   idle: boolean
-  delivery: ScreenDelivery | null
   hardware: ScreenHardware | null
 }
 
@@ -354,12 +401,8 @@ const parseScreenHardware = (value: unknown): ScreenHardware | null => {
   if (!isRecord(value)) return null
   const status = parseScreenHardwareStatus(value.status)
   const performance = parseScreenHardwarePerformance(value.performance)
-  return status && performance ? { status, performance } : null
-}
-
-const parseScreenDelivery = (value: unknown): ScreenDelivery | null => {
-  if (!isRecord(value)) return null
-  return { sequence: num(value, 'sequence'), bytes: num(value, 'bytes'), receivedAt: optionalStr(value.receivedAt) }
+  const viewers = typeof value.viewers === 'number' && Number.isInteger(value.viewers) && value.viewers >= 0 ? value.viewers : null
+  return status && performance ? { status, performance, viewers } : null
 }
 
 /** Parses one raw `screens[]` row. Returns `null` for a row with no device id — never a fabricated entry. */
@@ -373,7 +416,6 @@ export const parseScreen = (value: unknown): ScreenOutput | null => {
     layout: isRecord(value.layout) ? parseDashLayout(value.layout) : null,
     pageId: str(value, 'pageId'),
     idle: bool(value, 'idle'),
-    delivery: parseScreenDelivery(value.performance),
     hardware: parseScreenHardware(value.hardware),
   }
 }
@@ -436,6 +478,8 @@ const describeScreenStatus = (status: ScreenHardwareStatus): ScreenStatusPresent
           detail: 'The USB operation failed. Open the diagnostics log for the native error and attempted step.',
           tone: 'danger',
         }
+      case 'WaitingForViewer':
+        return { label: 'Waiting for a viewer', detail: 'Sprint serves this display, and no page is showing it yet.', tone: 'info' }
       default:
         return { label: 'Not found', detail: 'No matching screen was found. Check the USB connection and configured VID/PID.', tone: 'neutral' }
     }
@@ -455,7 +499,32 @@ export const describeDeviceStatus = (device: Device, screen: ScreenOutput | unde
     return { label: 'Setup needed', detail: 'Select the desktop area to mirror before Sprint starts output.', tone: 'warning' }
   }
 
+  if (isBrowserDisplay(device)) return describeBrowserDisplayStatus(screen?.hardware ?? null)
   return describeScreenStatus(screen?.hardware?.status ?? NO_ACTIVE_OUTPUT_STATUS)
+}
+
+/** "1 page", "2 pages": how many are showing a browser display. */
+export const viewerCount = (viewers: number): string => (viewers === 1 ? '1 page' : `${viewers} pages`)
+
+/**
+ * A browser display's status in its own words: it is served, not plugged in, so "Showing" rather
+ * than "Connected", and its fault is the host's own reason (the port is taken), not a USB one.
+ */
+const describeBrowserDisplayStatus = (hardware: ScreenHardware | null): ScreenStatusPresentation => {
+  switch (hardware?.status.state) {
+    case 'Connected': {
+      const viewers = hardware.viewers ?? 1
+      return { label: 'Showing', detail: `${viewerCount(viewers)} showing this display now.`, tone: 'success' }
+    }
+    case 'WaitingForViewer':
+      return { label: 'Waiting for a viewer', detail: 'Open its address in your VR tool or a browser to show it.', tone: 'info' }
+    case 'Connecting':
+      return { label: 'Starting', detail: 'Sprint is opening its address.', tone: 'info' }
+    case 'Faulted':
+      return { label: "Can't serve it", detail: hardware.status.detail ?? 'Sprint could not open its address.', tone: 'danger' }
+    default:
+      return { label: 'Not served', detail: 'There is no dash for it to show. Create one on the Dashes page.', tone: 'neutral' }
+  }
 }
 
 export const formatFramesPerSecond = (performance: ScreenHardwarePerformance): string =>
@@ -484,9 +553,9 @@ export type DeviceKind = 'wheel' | 'screen'
 export const deviceKind = (device: Pick<Device, 'type'>): DeviceKind => (device.type.toLowerCase() === 'wheel' ? 'wheel' : 'screen')
 
 /** The pictures the app ships (src/assets/devices), named after the preset id they belong to. */
-export type DeviceImageKey = 'bavarian-omega-v2-pro' | 'generic-vocore' | 'generic-usbd480' | 'generic-wheel'
+export type DeviceImageKey = 'bavarian-omega-v2-pro' | 'generic-vocore' | 'generic-usbd480' | 'generic-wheel' | 'browser-display'
 
-const PRESET_IMAGES: readonly DeviceImageKey[] = ['bavarian-omega-v2-pro']
+const PRESET_IMAGES: readonly DeviceImageKey[] = ['bavarian-omega-v2-pro', 'browser-display']
 const isPresetImage = (id: string): id is DeviceImageKey => PRESET_IMAGES.some((key) => key === id)
 
 /**
@@ -508,6 +577,7 @@ const imageKey = (presetId: string, hardware: Pick<Device, 'type' | 'driver'>): 
   if (isPresetImage(presetId)) return presetId
   if (deviceKind(hardware) === 'wheel') return 'generic-wheel'
   const driver = hardware.driver.toLowerCase()
+  if (driver === BROWSER_DISPLAY_DRIVER) return 'browser-display'
   if (driver === 'vocore') return 'generic-vocore'
   if (driver.includes('usbd')) return 'generic-usbd480'
   return null
@@ -543,6 +613,7 @@ export const matchesDevicesFilter = (filter: DevicesFilter, device: Device, scre
 /** One quiet line about the hardware: "VoCore · 800 × 480 landscape", or "Buttons only". */
 export const deviceSummary = (device: Device): string => {
   if (!deviceHasScreen(device)) return 'Buttons only'
+  if (isBrowserDisplay(device)) return `Browser · ${device.width} × ${device.height}`
   const size = logicalSize(device)
   return `${driverLabel(device.driver)} · ${size.width} × ${size.height} ${orientationLabel(device.rotation).toLowerCase()}`
 }
@@ -576,6 +647,7 @@ export const ownWheelMatchesFilter = (filter: CatalogFilter): boolean =>
 /** The quiet line under a catalog entry: "VoCore screen · buttons", a screen's size, or that it is read on connect. */
 export const catalogLine = (entry: CatalogEntry): string => {
   if (deviceKind(entry) === 'wheel') return entry.driver ? `${driverLabel(entry.driver)} screen · buttons` : 'Buttons'
+  if (isBrowserDisplay(entry)) return 'In a browser or VR overlay'
   return entry.width > 0 && entry.height > 0 ? `${entry.width} × ${entry.height}` : 'Any size, read when it connects'
 }
 

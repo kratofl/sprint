@@ -127,6 +127,8 @@ internal static class LmuParser
             LapDistance = LmuBinary.ReadDouble(bytes, 88),
             NumVehicles = LmuBinary.ReadInt32(bytes, 104),
             GamePhase = LmuBinary.ReadByte(bytes, 108),
+            // mYellowFlagState@109, then mSectorFlag[3]@110 in mSector's order (index 0 is sector 3).
+            SectorFlags = [unchecked((sbyte)LmuBinary.ReadByte(bytes, 110)), unchecked((sbyte)LmuBinary.ReadByte(bytes, 111)), unchecked((sbyte)LmuBinary.ReadByte(bytes, 112))],
             SessionTimeRemaining = LmuBinary.ReadSingle(bytes, 340),
             AveragePathWetness = LmuBinary.ReadDouble(bytes, 332),
             // Weather, after mPlrFileName ends at 212: mDarkCloud@212, then these three.
@@ -277,6 +279,8 @@ internal static class LmuParser
             LastSector2 = LmuBinary.ReadDouble(bytes, 160),
             PitState = LmuBinary.ReadByte(bytes, 457),
             TimeIntoLap = LmuBinary.ReadDouble(bytes, 464),
+            // mFlag@504 follows mPitGroup[24]@480.
+            Flag = LmuBinary.ReadByte(bytes, 504),
             UnderYellow = LmuBinary.ReadBool(bytes, 505),
             CountLapFlag = LmuBinary.ReadByte(bytes, 506),
             InGarageStall = LmuBinary.ReadBool(bytes, 507),

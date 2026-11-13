@@ -47,6 +47,8 @@ public interface IDesktopRuntime
     void UpdateDevicePurpose(SavedDevice device, string purpose);
     void UpdateDeviceCaptureRegion(SavedDevice device, ScreenCaptureRegion region);
     void UpdateDeviceRefreshHz(SavedDevice device, int refreshHz);
+    void UpdateBrowserDisplaySize(SavedDevice device, int width, int height);
+    void UpdateDeviceTransparent(SavedDevice device, bool transparent);
     void RemoveDevice(SavedDevice device);
     DashLayout CreateBlankDashLayout(ScreenProfile profile, string? name, string? category);
     void SetDashScreenProfile(DashLayout layout, ScreenProfile profile);

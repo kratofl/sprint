@@ -1,7 +1,8 @@
 import type { TelemetryFrame } from '@sprint/types'
-import { parseHostFrame } from './telemetryFrame'
+import { parseHostFrame } from '@sprint/dashboard'
 import { parseHudMessage } from './hud/hudModel'
 import type { HudMessage } from './hud/hudModel'
+import { parseUpdateStatus } from './shell/updates'
 import { parseSetupDriven, parseSetupLibrary, parseSetupSheet } from './views/SetupsDomain'
 import type { SetupDriven, SetupLibrary, SetupSheet } from './views/SetupsDomain'
 import { EMPTY_TRACE, parsePitWall, parsePitWallLayout, parsePitWallTrace } from './pitwall/pitWallData'
@@ -229,14 +230,18 @@ export type GameFolder = { folder: string; chosen: boolean; found: boolean; setu
 export type FirstRun = { done: boolean; game: GameFolder | null }
 
 export type SprintState = {
-  /** `frame` is already converted from the host's C# shape to the dash renderer's (`telemetryFrame.ts`). */
+  /** `frame` is converted from the host's telemetry JSON to the `@sprint/types` mirror the views read (`parseHostFrame` in `packages/dashboard/src/hostFrame.ts`). */
   telemetry: { frame: TelemetryFrame | null; link: TelemetryLink; hz: number }
   /** Active plan targets (`DashTargets` on the host). The dash renderer narrows it. */
   targets: unknown
   settings: Record<string, unknown>; controls: Record<string, unknown>; catalog: Record<string, unknown>; devices: Array<Record<string, unknown>>
   dashLayouts: Array<Record<string, unknown>>; setupTemplates: Array<Record<string, unknown>>; setupPrograms: Array<Record<string, unknown>>
   engineerControls: Array<Record<string, unknown>>; radioLog: Array<Record<string, unknown>>; engineerPushState: Record<string, unknown>
-  plans: Array<Record<string, unknown>>; lapHistory: Array<Record<string, unknown>>
+  plans: Array<Record<string, unknown>>
+  /** How many sessions the lap-history corpus holds. The corpus itself is never in the state. */
+  sessionCount: number
+  /** Home's recent sessions, built on the host (`RecentSessions`); HomeDomain narrows it. Null with no sessions. */
+  recentSessions: unknown
   resultsImport: ResultsImportSource
   firstRun: FirstRun
   account: Account
@@ -254,7 +259,7 @@ export type SprintState = {
   dashRefitLosses: DashRefitLosses
   /** Every saved wheel whose preset has a multi-position dial. */
   multiDials: MultiDial[]
-  screens: Array<{ deviceId: string; width: number; height: number; refreshHz: number; layout: unknown; pageId?: string; idle?: boolean; status: string; performance?: { sequence: number; bytes: number } }>
+  screens: Array<{ deviceId: string; width: number; height: number; refreshHz: number; layout: unknown; pageId?: string; idle?: boolean; status: string }>
 }
 export type SprintCommand = { type: string; [key: string]: unknown }
 
@@ -277,16 +282,19 @@ export type LapImportResult =
   | { outcome: 'failed'; error: string }
 
 /**
- * Result of one self-replacing install attempt (host: `POST /api/updates/install`,
- * `UpdateInstallResult`/`UpdateInstallOutcome`). `unavailable-in-dev` is synthesized by
- * the main process itself (see electron/main.ts) rather than the host — dev runs refuse
- * before ever making the request.
+ * Where Sprint's self-update stands (electron/updatePolicy.ts). `available` only happens with
+ * automatic installs off; `ready` installs when Sprint quits, or now via `restartToUpdate`.
+ * `unsupported` is a dev build, another platform, or no Electron at all.
  */
-export type UpdateInstallResult =
-  | { outcome: 'unavailable-in-dev' }
-  | { outcome: 'no-update' }
-  | { outcome: 'staged'; version: string }
-  | { outcome: 'failed'; version: string | null; reason: string }
+export type UpdateStatus =
+  | { kind: 'unsupported' }
+  | { kind: 'idle' }
+  | { kind: 'checking' }
+  | { kind: 'up-to-date' }
+  | { kind: 'available'; version: string }
+  | { kind: 'downloading'; version: string; percent: number }
+  | { kind: 'ready'; version: string }
+  | { kind: 'failed'; reason: string }
 
 export type SprintBridge = {
   getState(): Promise<SprintState>
@@ -315,8 +323,13 @@ export type SprintBridge = {
   resultsImportScan(includeDeclined: boolean): Promise<ResultsImportOffer>
   resultsImport(entries: readonly string[]): Promise<ResultsImportResult>
   resultsImportDecline(entries: readonly string[]): Promise<void>
-  checkUpdates(force: boolean): Promise<unknown>
-  installUpdate(): Promise<UpdateInstallResult>
+  /** The update status now, then every change. */
+  subscribeUpdates(listener: (status: UpdateStatus) => void): () => void
+  /** Each resolves once started; the outcome arrives through `subscribeUpdates`. */
+  checkUpdates(): Promise<void>
+  downloadUpdate(): Promise<void>
+  /** Quits, installs the downloaded update and starts the new version. */
+  restartToUpdate(): Promise<void>
   signIn(serverUrl: string, email: string, password: string, createAccount: boolean): Promise<SignInResult>
   /** Opens Discord in the system browser and resolves once the sign-in came back, was cancelled or timed out. */
   signInWithDiscord(serverUrl: string): Promise<DiscordSignInResult>
@@ -357,8 +370,11 @@ type RawBridge = {
   resultsImportScan(includeDeclined: boolean): Promise<unknown>
   resultsImport(entries: readonly string[]): Promise<unknown>
   resultsImportDecline(entries: readonly string[]): Promise<unknown>
-  checkUpdates(force: boolean): Promise<unknown>
-  installUpdate(): Promise<unknown>
+  /** All four absent in the preview harness's stub. */
+  subscribeUpdates?(listener: (status: unknown) => void): () => void
+  checkUpdates?(): Promise<unknown>
+  downloadUpdate?(): Promise<unknown>
+  restartToUpdate?(): Promise<unknown>
   signIn(serverUrl: string, email: string, password: string, createAccount: boolean): Promise<unknown>
   signInWithDiscord(serverUrl: string): Promise<unknown>
   cancelDiscordSignIn(): Promise<unknown>
@@ -377,7 +393,7 @@ type RawBridge = {
   pitWallTrace?(lap: string): Promise<unknown>
 }
 declare global { interface Window { sprint?: RawBridge } }
-const emptyState = (): SprintState => ({ telemetry: { frame: null, link: noLink(), hz: 0 }, targets: null, settings: {}, controls: {}, catalog: {}, devices: [], dashLayouts: [], setupTemplates: [], setupPrograms: [], engineerControls: [], radioLog: [], engineerPushState: {}, plans: [], lapHistory: [], resultsImport: { available: false }, firstRun: { done: true, game: null }, account: { signedIn: false, serverUrl: '' }, cloud: emptyCloud(), link: { phase: 'Off' }, pitWallLayout: null, features: { sprintWeb: false }, foundDevices: [], multiDials: [], dashCategories: { builtIn: [], custom: [] }, dashRefitLosses: {}, screens: [] })
+const emptyState = (): SprintState => ({ telemetry: { frame: null, link: noLink(), hz: 0 }, targets: null, settings: {}, controls: {}, catalog: {}, devices: [], dashLayouts: [], setupTemplates: [], setupPrograms: [], engineerControls: [], radioLog: [], engineerPushState: {}, plans: [], sessionCount: 0, recentSessions: null, resultsImport: { available: false }, firstRun: { done: true, game: null }, account: { signedIn: false, serverUrl: '' }, cloud: emptyCloud(), link: { phase: 'Off' }, pitWallLayout: null, features: { sprintWeb: false }, foundDevices: [], multiDials: [], dashCategories: { builtIn: [], custom: [] }, dashRefitLosses: {}, screens: [] })
 const emptyCloud = (): CloudState => ({ setupDone: true, server: 'None', storage: 'Local', officialServerUrl: null, progress: null, lastSync: null, live: liveOff() })
 const liveOff = (): LiveUplink => ({ status: 'Off', detail: null })
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null
@@ -713,6 +729,7 @@ const parseState = (value: unknown): SprintState => {
     link: parseLink(telemetry.status),
     hz: typeof telemetry.hz === 'number' && Number.isFinite(telemetry.hz) ? telemetry.hz : 0,
   }
+  parsed.sessionCount = typeof value.sessionCount === 'number' && Number.isInteger(value.sessionCount) && value.sessionCount >= 0 ? value.sessionCount : 0
   parsed.resultsImport = parseResultsImportSource(value.resultsImport)
   parsed.firstRun = parseFirstRun(value.firstRun)
   parsed.account = parseAccount(value.account)
@@ -740,28 +757,6 @@ const parseDashRefitLosses = (value: unknown): DashRefitLosses => {
     losses[dashId] = counts
   }
   return losses
-}
-/** Narrows the host's `UpdateInstallResult` once, here, so callers never re-interpret it. */
-const parseUpdateInstallResult = (value: unknown): UpdateInstallResult => {
-  if (!isRecord(value) || typeof value.outcome !== 'string') {
-    return { outcome: 'failed', version: null, reason: 'The host returned an unexpected response.' }
-  }
-  switch (value.outcome) {
-    case 'unavailable-in-dev':
-      return { outcome: 'unavailable-in-dev' }
-    case 'NoUpdate':
-      return { outcome: 'no-update' }
-    case 'Staged':
-      return { outcome: 'staged', version: typeof value.version === 'string' ? value.version : 'unknown' }
-    case 'Failed':
-      return {
-        outcome: 'failed',
-        version: typeof value.version === 'string' ? value.version : null,
-        reason: typeof value.reason === 'string' ? value.reason : 'The update could not be installed.',
-      }
-    default:
-      return { outcome: 'failed', version: null, reason: 'The host returned an unexpected response.' }
-  }
 }
 
 const parseLapExportResult = (value: unknown): LapExportResult => {
@@ -811,8 +806,16 @@ export const bridge: SprintBridge = raw
       resultsImportScan: async (includeDeclined) => parseResultsImportOffer(await raw.resultsImportScan(includeDeclined)),
       resultsImport: async (entries) => parseResultsImportResult(await raw.resultsImport(entries)),
       resultsImportDecline: async (entries) => { await raw.resultsImportDecline(entries) },
-      checkUpdates: (force) => raw.checkUpdates(force),
-      installUpdate: async () => parseUpdateInstallResult(await raw.installUpdate()),
+      subscribeUpdates: (listener) => {
+        if (!raw.subscribeUpdates) {
+          listener({ kind: 'unsupported' })
+          return () => undefined
+        }
+        return raw.subscribeUpdates((status) => listener(parseUpdateStatus(status)))
+      },
+      checkUpdates: async () => { await raw.checkUpdates?.() },
+      downloadUpdate: async () => { await raw.downloadUpdate?.() },
+      restartToUpdate: async () => { await raw.restartToUpdate?.() },
       signIn: async (serverUrl, email, password, createAccount) => parseSignInResult(await raw.signIn(serverUrl, email, password, createAccount)),
       signInWithDiscord: (serverUrl) => raw.signInWithDiscord(serverUrl).then(parseDiscordSignInResult, discordFailed),
       cancelDiscordSignIn: async () => { await raw.cancelDiscordSignIn() },
@@ -851,8 +854,13 @@ export const bridge: SprintBridge = raw
       resultsImportScan: async () => ({ entries: [], counts: [] }),
       resultsImport: async () => ({ outcome: 'failed', error: 'There is no Sprint host to import into.' }),
       resultsImportDecline: async () => undefined,
-      checkUpdates: async () => null,
-      installUpdate: async () => ({ outcome: 'unavailable-in-dev' }),
+      subscribeUpdates: (listener) => {
+        listener({ kind: 'unsupported' })
+        return () => undefined
+      },
+      checkUpdates: async () => undefined,
+      downloadUpdate: async () => undefined,
+      restartToUpdate: async () => undefined,
       signIn: async () => ({ ok: false, error: 'There is no Sprint host to sign in from.' }),
       signInWithDiscord: async () => ({ outcome: 'failed', error: 'There is no Sprint host to sign in from.' }),
       cancelDiscordSignIn: async () => undefined,

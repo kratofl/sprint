@@ -5,10 +5,9 @@ using Xunit;
 namespace Sprint.Desktop.Host.Tests;
 
 /// <summary>
-/// <see cref="ScreenOutputs.Describe"/> builds the <c>screens</c> array Electron uses to decide
-/// which offscreen browsers to create. It has to be derived from configured devices, not received
-/// frames (see the type's own doc comment for why) — these tests pin the device-selection,
-/// layout-fallback, orientation, and idle-page rules that make that derivation correct.
+/// <see cref="ScreenOutputs.Describe"/> builds the <c>screens</c> array of <c>/api/state</c>
+/// from the configured devices — these tests pin the device-selection,
+/// layout-fallback, orientation, and idle-page rules of that derivation.
 /// </summary>
 public sealed class ScreenOutputsTests
 {
@@ -23,7 +22,6 @@ public sealed class ScreenOutputsTests
         IReadOnlyList<ScreenOutputDescription> outputs = ScreenOutputs.Describe(
             [disabled, notDash, buttonBox, enabled],
             [Layout("layout-1")],
-            new FrameStore(),
             telemetryLive: true);
 
         ScreenOutputDescription only = Assert.Single(outputs);
@@ -40,7 +38,6 @@ public sealed class ScreenOutputsTests
         ScreenOutputDescription output = Assert.Single(ScreenOutputs.Describe(
             [device],
             [zeta, alpha],
-            new FrameStore(),
             telemetryLive: true));
 
         Assert.Same(alpha, output.Layout);
@@ -52,7 +49,6 @@ public sealed class ScreenOutputsTests
         Assert.Empty(ScreenOutputs.Describe(
             [Device("d1", dashId: "deleted")],
             [],
-            new FrameStore(),
             telemetryLive: true));
     }
 
@@ -66,7 +62,6 @@ public sealed class ScreenOutputsTests
         ScreenOutputDescription output = Assert.Single(ScreenOutputs.Describe(
             [device],
             [fallback, assigned],
-            new FrameStore(),
             telemetryLive: true));
 
         Assert.Same(assigned, output.Layout);
@@ -82,7 +77,6 @@ public sealed class ScreenOutputsTests
         ScreenOutputDescription output = Assert.Single(ScreenOutputs.Describe(
             [device],
             [layout],
-            new FrameStore(),
             telemetryLive: false));
 
         Assert.True(output.Idle);
@@ -99,7 +93,6 @@ public sealed class ScreenOutputsTests
         ScreenOutputDescription output = Assert.Single(ScreenOutputs.Describe(
             [device],
             [layout],
-            new FrameStore(),
             telemetryLive: true));
 
         Assert.False(output.Idle);
@@ -115,36 +108,10 @@ public sealed class ScreenOutputsTests
         ScreenOutputDescription output = Assert.Single(ScreenOutputs.Describe(
             [device],
             [Layout("layout-1")],
-            new FrameStore(),
             telemetryLive: true));
 
         Assert.Equal(800, output.Width);
         Assert.Equal(480, output.Height);
-    }
-
-    [Fact]
-    public void Describe_PerformanceIsNullBeforeAFrameAndPresentAfterOne()
-    {
-        SavedDevice device = Device("d1", dashId: "layout-1");
-        FrameStore frames = new();
-
-        ScreenOutputDescription beforeFrame = Assert.Single(ScreenOutputs.Describe(
-            [device],
-            [Layout("layout-1")],
-            frames,
-            telemetryLive: true));
-        Assert.Null(beforeFrame.Performance);
-
-        frames.Publish("d1", 480, 800, sequence: 1, bytes: 10);
-
-        ScreenOutputDescription afterFrame = Assert.Single(ScreenOutputs.Describe(
-            [device],
-            [Layout("layout-1")],
-            frames,
-            telemetryLive: true));
-        Assert.NotNull(afterFrame.Performance);
-        Assert.Equal(1, afterFrame.Performance!.Sequence);
-        Assert.Equal(10, afterFrame.Performance!.Bytes);
     }
 
     [Fact]
@@ -156,7 +123,6 @@ public sealed class ScreenOutputsTests
         ScreenOutputDescription output = Assert.Single(ScreenOutputs.Describe(
             [device],
             [Layout("layout-1")],
-            new FrameStore(),
             telemetryLive: true));
 
         Assert.Equal(60, output.RefreshHz);

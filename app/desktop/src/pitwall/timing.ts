@@ -109,6 +109,9 @@ export const timingRows = (field: readonly FieldEntry[], carClass: string | null
 
 export const playerOf = (field: readonly FieldEntry[]): FieldEntry | null => field.find((car) => car.isPlayer) ?? null
 
+/** Out of the race: retired or disqualified. Such a car keeps its place in the timing but is off the road. */
+export const isOut = (entry: Pick<FieldEntry, 'finishStatus'>): boolean => entry.finishStatus === 'Dnf' || entry.finishStatus === 'Disqualified'
+
 /** The lap time the field's spread is measured in: our last lap, else our best, else the field's best. */
 export function referenceLap(field: readonly FieldEntry[]): number | null {
   const player = playerOf(field)
@@ -155,7 +158,7 @@ export type RelativeRow = {
 
 /**
  * The cars round ours on the road, nearest `each` ahead and behind, by lap fraction against the
- * reference lap. Cars in the pit lane are left out. Ahead first, ours in the middle.
+ * reference lap. Cars in the pit lane or out of the race are left out. Ahead first, ours in the middle.
  */
 export function relativeRows(field: readonly FieldEntry[], each = 3): RelativeRow[] {
   const player = playerOf(field)
@@ -163,7 +166,7 @@ export function relativeRows(field: readonly FieldEntry[], each = 3): RelativeRo
   if (!player || lap === null) return []
   const progress = (car: FieldEntry) => car.lapsCompleted + car.lapFraction
   const others = field
-    .filter((car) => !car.isPlayer && !car.inPit)
+    .filter((car) => !car.isPlayer && !car.inPit && !isOut(car))
     .map((car): RelativeRow => {
       let ahead = car.lapFraction - player.lapFraction
       if (ahead > 0.5) ahead -= 1

@@ -12,11 +12,8 @@ It exists because the suite used to reach out of the process on a developer's ma
   a desk with a wheel screen attached, the suite was driving it. `ScreenDriverFactory.Create`
   now returns `FakeScreenDriver` whenever the gate is off, so no WinUSB transport is ever
   opened — the render loop and Devices UI stay fully exercisable against the fake.
-- **File-manager windows.** `UpdateInstaller.RevealInFolder` and the diagnostics log-folder
-  action go through `HostEffects.TryRevealInFileManager`, which no-ops and returns false.
-  `UpdateScript.BuildWindowsBatch` also omits its `explorer.exe` line by default, because
-  `UpdateScriptTests` executes the generated batch for real; pass
-  `revealStagingOnFailure: true` when asserting on the script text.
+- **File-manager windows.** The diagnostics log-folder action goes through
+  `HostEffects.TryRevealInFileManager`, which no-ops and returns false.
 
 If you add a test that needs to reach the OS or a device, inject a fake at the seam — do not
 re-enable the gate. `HostEffectsTests` pins all of this.

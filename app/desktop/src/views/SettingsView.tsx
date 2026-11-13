@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Check, CloudDownload, CloudUpload, Download, Pencil } from 'lucide-react'
 import { bridge } from '../bridge'
-import type { Account, CloudState, CloudStorageMode, LiveUplink, LiveUplinkStatus, SprintCommand, SyncDirection, SyncReport } from '../bridge'
+import type { Account, CloudState, CloudStorageMode, LiveUplink, LiveUplinkStatus, SprintCommand, SyncDirection, SyncReport, UpdateStatus } from '../bridge'
 import { syncReportText } from '../onboarding/summary'
 import { accountName, accountWhere, initialsFor } from '../shell/account'
 import { ConfirmDialog } from '../shell/ContentDialog'
@@ -13,8 +13,8 @@ import { CHANNELS, parseSettings } from './SettingsDomain'
 import type { AppSettings, UpdateChannel } from './SettingsDomain'
 import { TRACE_EXPIRY_DAYS, lapsText, parseStorageInfo, sizeText } from './SettingsStorage'
 import type { StorageInfo } from './SettingsStorage'
-import { parseUpdatesInfo, useUpdateCheck, useUpdateInstall } from './SettingsUpdates'
-import type { UpdateCheckState } from './SettingsUpdates'
+import { parseUpdatesInfo } from './SettingsUpdates'
+import type { UpdatesInfo } from './SettingsUpdates'
 import { ListRow, SettingsList, Switch } from './SettingsLayout'
 
 type Send = (command: SprintCommand) => Promise<void>
@@ -22,11 +22,21 @@ type Send = (command: SprintCommand) => Promise<void>
 /**
  * Settings: you first, as a driver card (name and race number, renamed in place with the pen),
  * then grouped lists — Sprint web (only with the feature on), Updates, Storage, and Reset on its own
- * at the bottom. Everything saves on commit; risky changes (pre-release builds, installing an
+ * at the bottom. Everything saves on commit; risky changes (pre-release builds, restarting into an
  * update, web-only storage, deleting old laps' telemetry, resetting preferences) confirm first. The page has no primary button until an
  * update is ready to install.
  */
-export function SettingsView({ runtime, send, onSetUpCloud }: { runtime: RuntimeState; send: Send; onSetUpCloud: () => void }) {
+export function SettingsView({
+  runtime,
+  send,
+  onSetUpCloud,
+  updateStatus,
+}: {
+  runtime: RuntimeState
+  send: Send
+  onSetUpCloud: () => void
+  updateStatus: UpdateStatus
+}) {
   if (runtime.kind === 'loading') {
     return (
       <div className="settings">
@@ -47,7 +57,7 @@ export function SettingsView({ runtime, send, onSetUpCloud }: { runtime: Runtime
       <PageHeader title="Settings" />
       <DriverCard settings={settings} send={send} />
       {runtime.sprint.features.sprintWeb && <CloudGroup account={runtime.sprint.account} cloud={runtime.sprint.cloud} send={send} onSetUp={onSetUpCloud} />}
-      <UpdatesGroup channel={settings.updateChannel} version={updatesInfo?.version ?? null} send={send} />
+      <UpdatesGroup info={updatesInfo} channel={settings.updateChannel} status={updateStatus} send={send} />
       {storageInfo && <StorageGroup info={storageInfo} send={send} />}
       <ResetGroup send={send} />
     </div>
@@ -303,114 +313,113 @@ function CloudGroup({ account, cloud, send, onSetUp }: { account: Account; cloud
 
 // ── Updates ──────────────────────────────────────────────────────────────
 
-/** The status word beside "Check now"; idle (not checked yet this visit) shows none. */
-const CHECK_STATUS: Record<Exclude<UpdateCheckState['status'], 'available'>, { label: string; tone: StatusTone } | null> = {
+/** The status word beside "Check now"; idle (not checked yet) shows none. */
+const CHECK_STATUS: Record<'idle' | 'checking' | 'up-to-date' | 'failed', { label: string; tone: StatusTone } | null> = {
   idle: null,
   checking: { label: 'Checking…', tone: 'neutral' },
   'up-to-date': { label: 'Up to date', tone: 'success' },
-  failed: { label: 'Couldn’t check', tone: 'danger' },
+  failed: { label: 'Couldn’t update', tone: 'danger' },
 }
 
 /**
- * The running version as a row that turns into the update itself once one is out: "Sprint 0.2.0
- * is out" with the page's one primary, Install and restart (confirmed first). Otherwise a quiet
- * Check now with the last result beside it.
+ * The running version as a row that turns into the update itself once one is out. With automatic
+ * installs off, "Sprint 0.3.0 is out" carries Update; once downloaded, "Sprint 0.3.0 is ready"
+ * carries Restart now (confirmed first) — either is the page's one primary. Otherwise a quiet
+ * Check now with the last result beside it. A dev build cannot update and says so.
  */
-function UpdatesGroup({ channel, version, send }: { channel: UpdateChannel; version: string | null; send: Send }) {
+function UpdatesGroup({ info, channel, status, send }: { info: UpdatesInfo | null; channel: UpdateChannel; status: UpdateStatus; send: Send }) {
   const [confirmPreRelease, setConfirmPreRelease] = useState(false)
-  const { state: updateState, check: checkUpdates } = useUpdateCheck(bridge.checkUpdates)
-  const { state: installState, requestConfirm, cancel: cancelInstall, install } = useUpdateInstall(bridge.installUpdate)
+  const [confirmRestart, setConfirmRestart] = useState(false)
 
   const channelLabel = CHANNELS.find((option) => option.id === channel)?.label ?? 'Stable'
-  const latestVersion = updateState.status === 'available' ? updateState.latestVersion : null
+  const you = info ? `You have ${info.version}` : channelLabel
 
   const setChannel = (next: UpdateChannel) => {
     void send({ type: 'settings.update', updateChannel: next })
   }
 
-  return (
-    <>
-      <SettingsList title="Updates" footer="Pre-release builds get new features early and may contain bugs.">
-        {updateState.status === 'available' ? (
-          <ListRow
-            id="settings-update"
-            label={`Sprint ${updateState.latestVersion} is out`}
-            detail={
-              <>
-                {version ? `You have ${version}` : channelLabel}
-                {updateState.releaseUrl && (
-                  <>
-                    {' · '}
-                    <a href={updateState.releaseUrl} target="_blank" rel="noreferrer">
-                      What’s new
-                    </a>
-                  </>
-                )}
-              </>
-            }
-          >
+  const updateRow = (() => {
+    switch (status.kind) {
+      case 'available':
+        return (
+          <ListRow id="settings-update" label={`Sprint ${status.version} is out`} detail={you}>
             {(labels) => (
-              <button
-                type="button"
-                className="button primary"
-                aria-describedby={labels['aria-describedby']}
-                onClick={requestConfirm}
-                disabled={installState.status === 'installing' || installState.status === 'confirming'}
-              >
+              <button type="button" className="button primary" aria-describedby={labels['aria-describedby']} onClick={() => void bridge.downloadUpdate()}>
                 <Download />
-                {installState.status === 'installing' ? 'Downloading…' : 'Install and restart'}
+                Update
               </button>
             )}
           </ListRow>
-        ) : (
-          <ListRow id="settings-update" label={version ? `Sprint ${version}` : 'Sprint'} detail={channelLabel}>
-            {(labels) => {
-              const status = CHECK_STATUS[updateState.status]
-              return (
-                <>
-                  {status && (
-                    <Status tone={status.tone} quiet role="status">
-                      {status.label}
-                    </Status>
-                  )}
-                  <button
-                    type="button"
-                    className="button subtle"
-                    aria-describedby={labels['aria-describedby']}
-                    onClick={() => void checkUpdates(true)}
-                    disabled={updateState.status === 'checking'}
-                  >
-                    {updateState.status === 'failed' ? 'Try again' : 'Check now'}
-                  </button>
-                </>
-              )
-            }}
+        )
+      case 'downloading':
+        return (
+          <ListRow id="settings-update" label={`Sprint ${status.version} is out`} detail={you}>
+            {() => (
+              <Status tone="neutral" quiet role="status">
+                Downloading… {status.percent}%
+              </Status>
+            )}
           </ListRow>
-        )}
+        )
+      case 'ready':
+        return (
+          <ListRow id="settings-update" label={`Sprint ${status.version} is ready`} detail="It installs when you quit Sprint">
+            {(labels) => (
+              <button type="button" className="button primary" aria-describedby={labels['aria-describedby']} onClick={() => setConfirmRestart(true)}>
+                Restart now
+              </button>
+            )}
+          </ListRow>
+        )
+      case 'unsupported':
+        return (
+          <ListRow id="settings-update" label={info ? `Sprint ${info.version}` : 'Sprint'} detail="This build doesn’t update itself; the installed app does">
+            {() => null}
+          </ListRow>
+        )
+      default: {
+        const shown = CHECK_STATUS[status.kind]
+        return (
+          <ListRow id="settings-update" label={info ? `Sprint ${info.version}` : 'Sprint'} detail={channelLabel}>
+            {(labels) => (
+              <>
+                {shown && (
+                  <Status tone={shown.tone} quiet role="status">
+                    {shown.label}
+                  </Status>
+                )}
+                <button
+                  type="button"
+                  className="button subtle"
+                  aria-describedby={labels['aria-describedby']}
+                  onClick={() => void bridge.checkUpdates()}
+                  disabled={status.kind === 'checking'}
+                >
+                  {status.kind === 'failed' ? 'Try again' : 'Check now'}
+                </button>
+              </>
+            )}
+          </ListRow>
+        )
+      }
+    }
+  })()
+
+  return (
+    <>
+      <SettingsList title="Updates" footer="Pre-release builds get new features early and may contain bugs.">
+        {updateRow}
+
+        <ListRow id="settings-auto-update" label="Install updates automatically" detail="Downloads in the background and installs when you quit Sprint">
+          {(labels) => (
+            <Switch {...labels} checked={info?.autoInstall ?? true} onChange={(next) => void send({ type: 'settings.update', autoInstallUpdates: next })} />
+          )}
+        </ListRow>
 
         <ListRow id="settings-pre-release" label="Pre-release builds">
           {(labels) => <Switch {...labels} checked={channel === 'pre-release'} onChange={(next) => (next ? setConfirmPreRelease(true) : setChannel('stable'))} />}
         </ListRow>
       </SettingsList>
-
-      {installState.status === 'unavailable' && (
-        <div className="infobar info" role="status">
-          <span className="infobar-icon" aria-hidden="true">
-            i
-          </span>
-          <strong className="infobar-title">Can’t install here</strong>
-          <span className="infobar-message">Installing updates only works in the installed app, not in this dev build.</span>
-        </div>
-      )}
-      {installState.status === 'failed' && (
-        <div className="infobar error" role="alert">
-          <span className="infobar-icon" aria-hidden="true">
-            !
-          </span>
-          <strong className="infobar-title">Couldn’t install the update</strong>
-          <span className="infobar-message">{installState.reason}</span>
-        </div>
-      )}
 
       {confirmPreRelease && (
         <ConfirmDialog
@@ -426,14 +435,17 @@ function UpdatesGroup({ channel, version, send }: { channel: UpdateChannel; vers
         />
       )}
 
-      {installState.status === 'confirming' && (
+      {confirmRestart && status.kind === 'ready' && (
         <ConfirmDialog
-          title={latestVersion ? `Install Sprint ${latestVersion}?` : 'Install the update?'}
-          message="Sprint will close and restart to install the update."
-          confirmLabel="Install and restart"
+          title={`Install Sprint ${status.version} now?`}
+          message="Sprint will close, install the update and start again."
+          confirmLabel="Restart now"
           initialFocus="cancel"
-          onConfirm={() => void install()}
-          onCancel={cancelInstall}
+          onConfirm={() => {
+            setConfirmRestart(false)
+            void bridge.restartToUpdate()
+          }}
+          onCancel={() => setConfirmRestart(false)}
         />
       )}
     </>

@@ -162,9 +162,11 @@ public static class PeerLinkRules
 {
     /// <summary>
     /// What this build's link carries. Raise it when one side starts needing something an older
-    /// peer does not send: 1 the telemetry (builds that put no level in their pings), 2 the pit wall.
+    /// peer does not send: 1 the telemetry (builds that put no level in their pings), 2 the pit wall,
+    /// 3 its flags, penalties and race control (session phase and clock, sector yellows, each car's
+    /// blue flag, penalties and finish).
     /// </summary>
-    public const int Level = 2;
+    public const int Level = 3;
 
     /// <summary>How often the worker steps; also the most a sample waits before it is sent.</summary>
     public static readonly TimeSpan Step = TimeSpan.FromMilliseconds(50);

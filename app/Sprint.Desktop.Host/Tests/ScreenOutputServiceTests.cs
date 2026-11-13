@@ -1,3 +1,5 @@
+using Sprint.Desktop.Api.Telemetry;
+using Sprint.Desktop.Features.Dashes;
 using Sprint.Desktop.Features.Devices;
 using Sprint.Desktop.Features.Hardware;
 using Xunit;
@@ -5,98 +7,59 @@ using Xunit;
 namespace Sprint.Desktop.Host.Tests;
 
 /// <summary>
-/// <see cref="ScreenOutputService"/> is the last mile of the dash pipeline: it takes the BGRA
-/// bytes an offscreen browser POSTs and gets real RGB565 pixels onto a <see cref="FakeScreenDriver"/>
-/// (in production, a real USB screen). These tests drive the whole path — HTTP-shaped
-/// <c>PublishFrameAsync</c> call, through the shared exchange, through the real
-/// <see cref="Rgb565"/> composition, onto the driver — and pin device
+/// <see cref="ScreenOutputService"/> drives the real USB screens: these tests run it against a
+/// <see cref="FakeScreenDriver"/> (in production, a real USB screen) — a dash device drawn by the
+/// real Rust renderer, a failing source made visible and recovering — and pin device
 /// add/remove/disable/reconfigure reconciliation and clean shutdown.
 /// </summary>
 public sealed class ScreenOutputServiceTests
 {
     [Fact]
-    public async Task PublishFrameAsync_RoutesABgraFrameToTheDriverAtNativeSizeAndColor()
+    public async Task ADashDeviceShowsItsDashDrawnByTheNativeRenderer()
     {
         FakeScreenDriver? driver = null;
-        ScreenOutputService.DriverFactory factory = (_, _, _) => driver = new FakeScreenDriver();
-        using ScreenOutputService service = new(driverFactory: factory);
+        using ScreenOutputService service = new(driverFactory: (_, _, _) => driver = new FakeScreenDriver());
 
-        // No rotation: native == logical (2x4), so this only proves size and color survive the pipe.
-        SavedDevice device = Device("d1", width: 2, height: 4, refreshHz: 60);
-        service.Reconcile([device]);
-        await WaitUntilAsync(() => driver!.Status.IsConnected, TimeSpan.FromSeconds(3));
+        SavedDevice device = Device("d1", width: 80, height: 48, refreshHz: 60);
+        device.DashId = "dash";
+        service.Reconcile([device], Scenes(TestDash.Layout("dash")));
 
-        byte[] red = SolidBgra(2, 4, b: 0x00, g: 0x00, r: 0xF8);
-        ScreenFramePublishResult result = await service.PublishFrameAsync("d1", 2, 4, red, CancellationToken.None);
-
-        Assert.Equal(ScreenFramePublishResult.Routed, result);
-        await WaitForPostedFrameAsync(driver!);
-
+        await WaitUntilAsync(() => driver?.LastFrame is not null, TimeSpan.FromSeconds(5));
         byte[] sent = driver!.LastFrame!;
-        Assert.Equal(2 * 4 * 2, sent.Length);
-        Assert.Equal(
-            Enumerable.Repeat(new byte[] { 0x00, 0xF8 }, 2 * 4).SelectMany(pair => pair),
-            sent);
+        Assert.Equal(80 * 48 * 2, sent.Length);
+        // The dash canvas is a near-black colour, never the all-zero black of "nothing drawn".
+        Assert.Contains(sent, value => value != 0);
+        Assert.Equal(ScreenConnectionState.Connected, service.HardwareFor("d1")!.Status.State);
     }
 
     [Fact]
-    public async Task PublishFrameAsync_AppliesTheDeviceOrientationBeforeReachingTheDriver()
+    public async Task AFailingSourceShowsTheFailurePatternAndFaultedThenRecoversByItself()
     {
         FakeScreenDriver? driver = null;
-        ScreenOutputService.DriverFactory factory = (_, _, _) => driver = new FakeScreenDriver();
-        using ScreenOutputService service = new(driverFactory: factory);
+        SwitchableSource? source = null;
+        using ScreenOutputService service = new(
+            driverFactory: (_, _, _) => driver = new FakeScreenDriver(),
+            dashSourceFactory: (config, _) => source = new SwitchableSource(config.Width, config.Height));
 
-        // Native panel is 2 wide x 4 tall; Landscape rotates the browser's 4x2 logical frame
-        // 90 degrees clockwise onto it (DeviceOrientations.Transform).
-        SavedDevice device = Device("d1", width: 2, height: 4, orientation: DeviceOrientation.Landscape, refreshHz: 60);
-        service.Reconcile([device]);
-        await WaitUntilAsync(() => driver!.Status.IsConnected, TimeSpan.FromSeconds(3));
+        service.Reconcile([Device("d1", width: 64, height: 32, refreshHz: 60)]);
+        await WaitUntilAsync(
+            () => service.HardwareFor("d1")?.Status.State == ScreenConnectionState.Faulted && driver?.LastFrame is not null,
+            TimeSpan.FromSeconds(3));
 
-        byte[] logical = new byte[4 * 2 * 4];
-        SetBgraPixel(logical, logicalWidth: 4, x: 0, y: 1, b: 0x00, g: 0x00, r: 0xF8); // bottom-left logical pixel
+        ScreenStatus status = service.HardwareFor("d1")!.Status;
+        Assert.Contains("scene rejected: layout has no pages array", status.Detail, StringComparison.Ordinal);
+        byte[] failure = driver!.LastFrame!;
+        // Red and black stripes: both colours on the panel and nothing else, unlike any test pattern.
+        Assert.True(HasOnly(failure, (0x00, 0xF8), (0x00, 0x00)));
+        Assert.Contains((byte)0xF8, failure);
+        Assert.Contains((byte)0x00, failure);
 
-        ScreenFramePublishResult result = await service.PublishFrameAsync("d1", 4, 2, logical, CancellationToken.None);
-        Assert.Equal(ScreenFramePublishResult.Routed, result);
-        await WaitForPostedFrameAsync(driver!);
-
-        byte[] native = driver!.LastFrame!;
-        Assert.Equal(2 * 4 * 2, native.Length);
-        // The marked pixel lands at native (0,0) under a 90-degree clockwise rotation.
-        Assert.Equal(0x00, native[0]);
-        Assert.Equal(0xF8, native[1]);
-        for (int offset = 2; offset < native.Length; offset += 2)
-        {
-            Assert.Equal(0x00, native[offset]);
-            Assert.Equal(0x00, native[offset + 1]);
-        }
-    }
-
-    [Fact]
-    public async Task ASlowConsumerNeverSeesIntermediateFramesQueued()
-    {
-        // A driver that records every frame it was ever sent, so we can prove the ones in
-        // between never arrived at all (dropped), rather than merely checking the last one.
-        FrameHistoryDriver driver = new();
-        using ScreenOutputService service = new(driverFactory: (_, _, _) => driver);
-
-        // 5 Hz (200ms) gives ample room for three rapid posts to land between two renders.
-        SavedDevice device = Device("d1", width: 2, height: 2, refreshHz: 5);
-        service.Reconcile([device]);
-        await WaitUntilAsync(() => driver.Sent.Count >= 1, TimeSpan.FromSeconds(3));
-
-        byte[] red = SolidBgra(2, 2, 0x00, 0x00, 0xF8);
-        byte[] green = SolidBgra(2, 2, 0x00, 0xFC, 0x00);
-        byte[] blue = SolidBgra(2, 2, 0xF8, 0x00, 0x00);
-        await service.PublishFrameAsync("d1", 2, 2, red, CancellationToken.None);
-        await service.PublishFrameAsync("d1", 2, 2, green, CancellationToken.None);
-        await service.PublishFrameAsync("d1", 2, 2, blue, CancellationToken.None);
-
-        int beforeCount = driver.Sent.Count;
-        await WaitUntilAsync(() => driver.Sent.Count > beforeCount, TimeSpan.FromSeconds(3));
-
-        Assert.True(IsSolid(driver.Sent[^1], 0x1F, 0x00), "The most recent send should be the latest posted frame (blue).");
-        Assert.DoesNotContain(driver.Sent, frame => IsSolid(frame, 0x00, 0xF8)); // red never reached the driver
-        Assert.DoesNotContain(driver.Sent, frame => IsSolid(frame, 0xE0, 0x07)); // green never reached the driver
+        source!.Failing = false;
+        await WaitUntilAsync(
+            () => service.HardwareFor("d1")?.Status.State == ScreenConnectionState.Connected
+                && driver!.LastFrame is { } frame
+                && HasOnly(frame, (0x2A, 0x2A)),
+            TimeSpan.FromSeconds(3));
     }
 
     [Fact]
@@ -191,11 +154,8 @@ public sealed class ScreenOutputServiceTests
         Assert.NotNull(loserHardware);
         Assert.Equal(ScreenConnectionState.DeviceConflict, loserHardware!.Status.State);
         Assert.Contains("owner", loserHardware.Status.Detail);
-
-        ScreenFramePublishResult result = await service.PublishFrameAsync(
-            "duplicate", duplicate.Width, duplicate.Height, new byte[duplicate.Width * duplicate.Height * 4], CancellationToken.None);
-        Assert.Equal(ScreenFramePublishResult.NoActiveOutput, result);
     }
+
 
     [Fact]
     public void Reconcile_ADeviceWithAConcretePidWinsOwnershipOverAGenericAutoDetectEntry()
@@ -290,37 +250,8 @@ public sealed class ScreenOutputServiceTests
         Assert.Empty(service.ActiveDeviceIds);
     }
 
-    [Fact]
-    public async Task PublishFrameAsync_ReturnsNoActiveOutputForAnUnreconciledDevice()
-    {
-        using ScreenOutputService service = new();
-
-        ScreenFramePublishResult result = await service.PublishFrameAsync(
-            "unknown", 2, 2, new byte[2 * 2 * 4], CancellationToken.None);
-
-        Assert.Equal(ScreenFramePublishResult.NoActiveOutput, result);
-    }
-
-    [Fact]
-    public async Task PublishFrameAsync_ReturnsDimensionMismatchForTheWrongFrameSize()
-    {
-        using ScreenOutputService service = new(driverFactory: (_, _, _) => new FakeScreenDriver());
-        SavedDevice device = Device("d1", width: 2, height: 4);
-        service.Reconcile([device]);
-
-        ScreenFramePublishResult result = await service.PublishFrameAsync(
-            "d1", width: 4, height: 2, new byte[4 * 2 * 4], CancellationToken.None);
-
-        Assert.Equal(ScreenFramePublishResult.DimensionMismatch, result);
-    }
-
-    /// <summary>
-    /// Until the driver shows something other than the black idle picture the publisher resends on
-    /// every tick: only a posted frame puts colour on it. Waiting for "a newer frame" instead races
-    /// that tick, which on a slow runner lands between counting frames and posting.
-    /// </summary>
-    private static Task WaitForPostedFrameAsync(FakeScreenDriver driver) =>
-        WaitUntilAsync(() => driver.LastFrame is { } frame && frame.Any(value => value != 0), TimeSpan.FromSeconds(3));
+    private static DashSceneInputs Scenes(params DashLayout[] layouts) =>
+        new(layouts, "Driver", "22", DashTargets.None);
 
     private static async Task WaitUntilAsync(Func<bool> condition, TimeSpan timeout)
     {
@@ -338,34 +269,12 @@ public sealed class ScreenOutputServiceTests
         Assert.True(condition(), "Condition was not met before the timeout.");
     }
 
-    private static byte[] SolidBgra(int width, int height, byte b, byte g, byte r, byte a = 0xFF)
-    {
-        byte[] buffer = new byte[width * height * 4];
-        for (int index = 0; index < buffer.Length; index += 4)
-        {
-            buffer[index] = b;
-            buffer[index + 1] = g;
-            buffer[index + 2] = r;
-            buffer[index + 3] = a;
-        }
-
-        return buffer;
-    }
-
-    private static void SetBgraPixel(byte[] bgra, int logicalWidth, int x, int y, byte b, byte g, byte r, byte a = 0xFF)
-    {
-        int index = (y * logicalWidth + x) * 4;
-        bgra[index] = b;
-        bgra[index + 1] = g;
-        bgra[index + 2] = r;
-        bgra[index + 3] = a;
-    }
-
-    private static bool IsSolid(byte[] rgb565, byte lowByte, byte highByte)
+    private static bool HasOnly(byte[] rgb565, params (byte Low, byte High)[] colors)
     {
         for (int offset = 0; offset < rgb565.Length; offset += 2)
         {
-            if (rgb565[offset] != lowByte || rgb565[offset + 1] != highByte)
+            (byte, byte) pixel = (rgb565[offset], rgb565[offset + 1]);
+            if (!colors.Contains(pixel))
             {
                 return false;
             }
@@ -402,43 +311,34 @@ public sealed class ScreenOutputServiceTests
         };
     }
 
-    /// <summary>Records every frame it is sent, so a test can assert an intermediate frame never arrived at all.</summary>
-    private sealed class FrameHistoryDriver : IScreenDriver
+    /// <summary>Fails with a renderer-shaped message until told not to, then fills a constant colour.</summary>
+    private sealed class SwitchableSource(int width, int height) : IDashFrameSource
     {
-        private readonly List<byte[]> _sent = [];
-        private readonly object _gate = new();
+        private volatile bool _failing = true;
 
-        public string Name => "History";
+        public int Width => width;
 
-        public ScreenStatus Status { get; private set; } = ScreenStatus.Disconnected();
+        public int Height => height;
 
-        public IReadOnlyList<byte[]> Sent
+        public bool Failing
         {
-            get { lock (this._gate) { return this._sent.ToArray(); } }
+            get => this._failing;
+            set => this._failing = value;
         }
 
-        public void Configure(ScreenConfig config)
+        public ScreenFrameTiming Render(TelemetryFrame frame, Span<byte> rgb565)
         {
-        }
-
-        public bool Connect()
-        {
-            this.Status = new ScreenStatus { State = ScreenConnectionState.Connected };
-            return true;
-        }
-
-        public bool TrySendFrame(byte[] rgb565)
-        {
-            lock (this._gate)
+            if (this._failing)
             {
-                this._sent.Add((byte[])rgb565.Clone());
+                throw new DashRendererException("scene rejected: layout has no pages array");
             }
 
-            return true;
+            rgb565.Fill(0x2A);
+            return new ScreenFrameTiming(TimeSpan.Zero, TimeSpan.Zero);
         }
 
-        public void Disconnect() => this.Status = ScreenStatus.Disconnected();
-
-        public void Dispose() => this.Disconnect();
+        public void Dispose()
+        {
+        }
     }
 }

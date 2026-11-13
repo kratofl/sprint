@@ -164,6 +164,7 @@ public sealed class DesktopRuntime : IDesktopRuntime
             AppSettings defaults = this.LoadDefaultSettings();
             this.Settings.SidebarCollapsed = defaults.SidebarCollapsed;
             this.Settings.UpdateChannel = defaults.UpdateChannel;
+            this.Settings.AutoInstallUpdates = defaults.AutoInstallUpdates;
             this.Settings.DriverName = defaults.DriverName;
             this.Settings.DriverNumber = defaults.DriverNumber;
             this.Settings.DashEditorUI = defaults.DashEditorUI;
@@ -333,6 +334,39 @@ public sealed class DesktopRuntime : IDesktopRuntime
         }
 
         this._log.Info($"Device refresh rate changed: id={device.Id} hz={normalized}.");
+    }
+
+    /// <summary>
+    /// A browser display's resolution, already validated (<see cref="BrowserDisplays.SizeError"/>).
+    /// The orientation follows it, so the logical size is exactly what was asked for.
+    /// </summary>
+    public void UpdateBrowserDisplaySize(SavedDevice device, int width, int height)
+    {
+        lock (this.DevicesGate)
+        {
+            device.Width = width;
+            device.Height = height;
+            device.Orientation = BrowserDisplays.OrientationFor(width, height);
+            this.SaveDevices();
+        }
+
+        this._log.Info($"Browser display resized: id={device.Id} size={width}x{height}.");
+    }
+
+    public void UpdateDeviceTransparent(SavedDevice device, bool transparent)
+    {
+        lock (this.DevicesGate)
+        {
+            if (device.Transparent == transparent)
+            {
+                return;
+            }
+
+            device.Transparent = transparent;
+            this.SaveDevices();
+        }
+
+        this._log.Info($"Device background changed: id={device.Id} transparent={transparent}.");
     }
 
     public void RemoveDevice(SavedDevice device)

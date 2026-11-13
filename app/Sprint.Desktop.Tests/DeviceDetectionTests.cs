@@ -74,6 +74,15 @@ public sealed class DeviceDetectionTests
     }
 
     [Fact]
+    public void A_browser_display_is_never_plugged_in_and_owns_no_usb_device()
+    {
+        CatalogDevice browserEntry = new() { Id = "browser-display", Driver = BrowserDisplays.Driver };
+        SavedDevice browser = new() { Id = "b1", PresetId = "browser-display", Driver = BrowserDisplays.Driver };
+
+        Assert.Equal(["generic-usbd480"], DeviceDetection.FindNew([.. Catalog, browserEntry], [browser], [Usbd480Panel, Mouse]));
+    }
+
+    [Fact]
     public void Each_device_is_offered_once_per_unit_plugged_in()
     {
         IReadOnlyList<string> found = DeviceDetection.FindNew(Catalog, [], [Usbd480Panel, Usbd480Panel]);

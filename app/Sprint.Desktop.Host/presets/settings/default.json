@@ -1,5 +1,6 @@
 {
   "updateChannel": "stable",
+  "autoInstallUpdates": true,
   "dashEditorUI": {
     "palette": {
       "open": true,

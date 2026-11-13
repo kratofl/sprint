@@ -77,10 +77,13 @@ public static class PitWallLayouts
     /// <summary>Every tile kind the renderer draws.</summary>
     public static IReadOnlySet<string> Kinds { get; } = new HashSet<string>(StringComparer.Ordinal)
     {
-        "session", "timing", "track", "stint", "fuel", "relative", "target", "tyres", "pressure", "damage", "radar", "traces",
+        "session", "timing", "track", "stint", "fuel", "relative", "target", "tyres", "pressure", "damage", "radar", "traces", "control", "pitstop",
     };
 
-    /// <summary>The approved mockups: a Race, a Car and a Traces page.</summary>
+    /// <summary>
+    /// The approved mockups: a Race, a Car and a Traces page. The pit stop and race control tiles
+    /// came later and sit behind the stint plan and the target lap, switched by hand.
+    /// </summary>
     public static PitWallLayout Default { get; } = new()
     {
         Pages =
@@ -89,9 +92,9 @@ public static class PitWallLayouts
                 Tile("race-session", "session", 0, 0, 12, 1),
                 Tile("race-timing", "timing", 0, 1, 7, 5),
                 Tile("race-track", "track", 7, 1, 5, 4),
-                Tile("race-stint", "stint", 7, 5, 3, 3),
+                Tile("race-stint", "stint", 7, 5, 3, 3) with { Layers = ["stint", "pitstop"] },
                 Tile("race-relative", "relative", 10, 5, 2, 3),
-                Tile("race-target", "target", 0, 6, 3, 2),
+                Tile("race-target", "target", 0, 6, 3, 2) with { Layers = ["target", "control"] },
                 Tile("race-fuel", "fuel", 3, 6, 4, 2)),
             Page("car", "Car",
                 Tile("car-tyres", "tyres", 0, 0, 7, 4),

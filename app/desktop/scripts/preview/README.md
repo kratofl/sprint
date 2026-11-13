@@ -91,12 +91,3 @@ browser launched with `--allow-file-access-from-files`.
   The script starts the host with its own bearer token, reads one state, asks it
   to shut down and stops its process tree by PID if needed; run
   `dotnet build-server shutdown` afterwards.
-
-## Known issue
-
-The host's telemetry frame uses its C# field names (`car.fuelLiters`,
-`car.fuelPerLapLiters`, `speedMetersPerSecond`, …) while `packages/dashboard`
-reads `car.fuel`, `car.fuelPerLap`, `speedMS`. The Home and Dashes previews hand
-the raw frame to `DashRenderer`, whose fuel widget then throws and unmounts the
-whole app. Until that is fixed, add `frame=none` (Home renders first, so this
-affects every view).

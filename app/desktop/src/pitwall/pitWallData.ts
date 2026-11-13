@@ -5,14 +5,32 @@ import { parsePlan, type SessionPlan } from '../views/SessionPlannerDomain'
 // everything inward of it trusts the result.
 
 /** Every tile the pit wall has. A tile slot holds one (a plain tile) or several (a stack). */
-export type TileKind = 'session' | 'timing' | 'track' | 'stint' | 'fuel' | 'relative' | 'target' | 'tyres' | 'pressure' | 'damage' | 'radar' | 'traces'
+export type TileKind = 'session' | 'timing' | 'track' | 'stint' | 'fuel' | 'relative' | 'target' | 'tyres' | 'pressure' | 'damage' | 'radar' | 'traces' | 'control' | 'pitstop'
 
-export const TILE_KINDS: readonly TileKind[] = ['session', 'timing', 'track', 'stint', 'fuel', 'relative', 'target', 'tyres', 'pressure', 'damage', 'radar', 'traces']
+export const TILE_KINDS: readonly TileKind[] = ['session', 'timing', 'track', 'stint', 'fuel', 'relative', 'target', 'tyres', 'pressure', 'damage', 'radar', 'traces', 'control', 'pitstop']
 
 /** Mirrors `SessionType` in Sprint.Desktop.Api; the host sends enum names. */
 export type SessionKind = 'Practice' | 'Qualify' | 'Race' | 'Warmup' | 'Unknown'
 /** Mirrors `PitState` in Sprint.Desktop.Api. */
 export type PitState = 'None' | 'Requested' | 'Entering' | 'Stopped' | 'Exiting'
+/** Mirrors `SessionPhase` in Sprint.Desktop.Api: a full course yellow and a safety car are one phase. */
+export type SessionPhase = 'Unknown' | 'BeforeStart' | 'Formation' | 'Countdown' | 'Green' | 'FullCourseYellow' | 'Stopped' | 'Over'
+/** Mirrors `FinishStatus` in Sprint.Desktop.Api. */
+export type FinishStatus = 'None' | 'Finished' | 'Dnf' | 'Disqualified'
+/** Mirrors `PitWallEventKind` in Sprint.Desktop.Core. */
+export type RaceEventKind =
+  | 'Green'
+  | 'FullCourseYellow'
+  | 'Stopped'
+  | 'Over'
+  | 'SectorYellow'
+  | 'SectorClear'
+  | 'CarStopped'
+  | 'Penalty'
+  | 'PenaltyServed'
+  | 'BlueFlag'
+  | 'Retired'
+  | 'Disqualified'
 export type TyrePosition = 'FrontLeft' | 'FrontRight' | 'RearLeft' | 'RearRight'
 
 /** Three sector times (s1, s2, s3 durations, seconds); null where unknown. */
@@ -33,6 +51,11 @@ export type PitWallSession = {
   raining: number | null
   /** The game's own grip grade (LMU's `mTrackGripLevel`), comparable only with itself; not 0..1. */
   gripLevel: number | null
+  /** Seconds into the session on the game's clock. */
+  elapsed: number
+  phase: SessionPhase
+  /** A local yellow in sector 1, 2, 3. */
+  yellowSectors: readonly [boolean, boolean, boolean]
 }
 
 /** One car in the field, the driver's own included (`isPlayer`). */
@@ -60,10 +83,37 @@ export type FieldEntry = {
   inPit: boolean
   pitState: PitState
   pitStops: number
+  /** Penalties still to serve: a count, the game does not say which kind. */
+  penalties: number
+  blueFlag: boolean
+  finishStatus: FinishStatus
+  /** Standing still on track while the race runs (the engineer's desktop works it out). */
+  stopped: boolean
   compound: string | null
   x: number
   z: number
 }
+
+/** One line of race control's feed; a car's event names the car as it was then. */
+export type RaceEvent = {
+  /** Seconds into the session. */
+  time: number
+  kind: RaceEventKind
+  carId: number | null
+  driver: string
+  car: string
+  /** 1–3 for a sector's yellow, or where a car stopped. */
+  sector: number | null
+  /** The lap the car was on. */
+  lap: number | null
+}
+
+/**
+ * What a stop costs, measured from the stops the engineer's desktop saw (seconds, null until
+ * seen): the lane against driving past it (every car's stops), and the time stood in the box
+ * (ours, or the class's until ours has stopped).
+ */
+export type PitLoss = { lane: number | null; laneStops: number; standing: number | null; standingStops: number; standingFromOwn: boolean }
 
 /** One tyre: surface inner/middle/outer, carcass core and brake (°C), pressure and tread. */
 export type TyreCorner = {
@@ -113,6 +163,9 @@ export type PitWall = {
   pressures: TyrePressures[]
   /** The driver's session plan while they share it. */
   plan: SessionPlan | null
+  /** Race control's feed this session, oldest first. */
+  raceControl: RaceEvent[]
+  pitLoss: PitLoss
   receivedAt: number
 }
 
@@ -163,6 +216,22 @@ const numbers = (value: unknown): number[] => (Array.isArray(value) ? value.map(
 
 const SESSION_KINDS: readonly SessionKind[] = ['Practice', 'Qualify', 'Race', 'Warmup', 'Unknown']
 const PIT_STATES: readonly PitState[] = ['None', 'Requested', 'Entering', 'Stopped', 'Exiting']
+const PHASES: readonly SessionPhase[] = ['Unknown', 'BeforeStart', 'Formation', 'Countdown', 'Green', 'FullCourseYellow', 'Stopped', 'Over']
+const FINISHES: readonly FinishStatus[] = ['None', 'Finished', 'Dnf', 'Disqualified']
+const EVENT_KINDS: readonly RaceEventKind[] = [
+  'Green',
+  'FullCourseYellow',
+  'Stopped',
+  'Over',
+  'SectorYellow',
+  'SectorClear',
+  'CarStopped',
+  'Penalty',
+  'PenaltyServed',
+  'BlueFlag',
+  'Retired',
+  'Disqualified',
+]
 const TYRE_POSITIONS: readonly TyrePosition[] = ['FrontLeft', 'FrontRight', 'RearLeft', 'RearRight']
 
 const pick = <T extends string>(options: readonly T[], value: unknown, fallback: T): T => options.find((option) => option === value) ?? fallback
@@ -187,6 +256,28 @@ const parseSession = (value: unknown): PitWallSession => {
     wetness: optional(row.wetness),
     raining: optional(row.raining),
     gripLevel: optional(row.gripLevel),
+    elapsed: finite(row.elapsed),
+    phase: pick(PHASES, row.phase, 'Unknown'),
+    yellowSectors: Array.isArray(row.yellowSectors) ? [row.yellowSectors[0] === true, row.yellowSectors[1] === true, row.yellowSectors[2] === true] : [false, false, false],
+  }
+}
+
+/** An event of a kind this build does not know (a newer driver's desktop) is left out. */
+const parseRaceEvent = (value: unknown): RaceEvent[] => {
+  if (!isRecord(value)) return []
+  const kind = EVENT_KINDS.find((candidate) => candidate === value.kind)
+  if (!kind) return []
+  return [{ time: finite(value.time), kind, carId: optional(value.carId), driver: text(value.driver), car: text(value.car), sector: optional(value.sector), lap: optional(value.lap) }]
+}
+
+const parsePitLoss = (value: unknown): PitLoss => {
+  const row = isRecord(value) ? value : {}
+  return {
+    lane: optional(row.lane),
+    laneStops: finite(row.laneStops),
+    standing: optional(row.standing),
+    standingStops: finite(row.standingStops),
+    standingFromOwn: row.standingFromOwn === true,
   }
 }
 
@@ -216,6 +307,10 @@ const parseFieldEntry = (value: unknown): FieldEntry[] => {
       inPit: value.inPit === true,
       pitState: pick(PIT_STATES, value.pitState, 'None'),
       pitStops: finite(value.pitStops),
+      penalties: Math.max(0, finite(value.penalties)),
+      blueFlag: value.blueFlag === true,
+      finishStatus: pick(FINISHES, value.finishStatus, 'None'),
+      stopped: value.stopped === true,
       compound: typeof value.compound === 'string' && value.compound.length > 0 ? value.compound : null,
       x: finite(value.x),
       z: finite(value.z),
@@ -287,6 +382,8 @@ export const parsePitWall = (value: unknown): PitWall | null => {
         )
       : [],
     plan: isRecord(value.plan) ? parsePlan(value.plan) : null,
+    raceControl: Array.isArray(value.raceControl) ? value.raceControl.flatMap(parseRaceEvent) : [],
+    pitLoss: parsePitLoss(value.pitLoss),
     receivedAt: finite(value.receivedAt),
   }
 }

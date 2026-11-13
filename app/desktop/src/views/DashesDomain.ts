@@ -109,7 +109,7 @@ function isTelemetryFrame(value: unknown): value is TelemetryFrame {
   )
 }
 
-/** Narrows `SprintState.telemetry.frame` (an untyped record) for the live preview. `DashRenderer` treats a missing frame as "no data" on its own. */
+/** Narrows `SprintState.telemetry.frame` (an untyped record) for the live preview. The dash renderer treats a missing frame as "no data" on its own. */
 export const toTelemetryFrame = (value: unknown): TelemetryFrame | null => (isTelemetryFrame(value) ? value : null)
 
 // ── Screen profiles (ScreenProfile.cs / ScreenProfileCatalog) ───────────────
@@ -150,9 +150,10 @@ export const fitScreenSize = (screen: Pick<ScreenProfile, 'width' | 'height'>, m
 // ── Widget catalog (DashWidgetCatalog.cs) — type list vs. UI metadata ───────
 //
 // The widget TYPE list is not hand-mirrored here: `DashWidgetType` and
-// `dashboardWidgetTypes` come from `@sprint/dashboard` (packages/dashboard/src/widgets.tsx),
+// `dashboardWidgetTypes` come from `@sprint/dashboard` (packages/dashboard/src/widgetTypes.ts),
 // which is itself the one hand-mirrored copy of `DashWidgetCatalog.cs`'s type
-// list shared by every desktop-app consumer. `WIDGET_CATALOG` below is typed
+// list shared by every desktop-app consumer (a Rust test pins it to what the
+// renderer draws). `WIDGET_CATALOG` below is typed
 // `Record<DashWidgetType, ...>`, so adding a type in the package without adding
 // an entry here is a compile error — the two cannot silently drift apart.
 //
@@ -304,7 +305,7 @@ export const WIDGET_STYLE_COLOR_TOKENS: readonly { value: string; label: string 
 // ── Alert catalog ──
 //
 // `AlertTypeId` is `DashAlertType` from `@sprint/dashboard`, the authoritative
-// set the tracker fires on. Only the labels below are UI copy; adding an alert
+// set the renderer fires on. Only the labels below are UI copy; adding an alert
 // type to the package without labelling it here is a compile error, so the two
 // cannot drift silently.
 

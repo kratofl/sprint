@@ -10,6 +10,8 @@ import { carNumber, gapCell, lapClock, placesGained, relativeRows, sectorMarks, 
 import { fullStintLaps, planStints, range, stintRows, strategy } from './fuel'
 import type { SessionPlan } from '../views/SessionPlannerDomain'
 import { damageRows, liveDelta, pressureRange, tyreHeat, worstZone } from './carDomain'
+import { feedLine, flagState, outCell, stoppedCars, stoppedSummary } from './raceControl'
+import { rejoin, trafficText } from './pitStop'
 
 const basePlan: SessionPlan = {
   id: 'plan', name: 'Spa 6h', game: 'LMU', car: 'Porsche 963', track: 'Spa', status: 'Tracking', mode: 'Planned', qualifyingIncluded: true,
@@ -130,7 +132,49 @@ test('a stack that starts before any board arrives still treats the first hit it
 const car = (id: number, place: number, extra: Partial<FieldEntry> = {}): FieldEntry => ({
   id, driver: `Driver ${id}`, car: `Porsche 963 #${id}`, carClass: 'Hypercar', isPlayer: false, place, classPlace: place, startPlace: null,
   lapsCompleted: 10, lapFraction: 0.5, sector: 2, lastLap: 125, bestLap: 124.5, lastSectors: [36, 54, 35], bestSectors: [35.9, 53.8, 35],
-  gapToLeader: 0, lapsToLeader: 0, gapToNext: 0, lapsToNext: 0, inPit: false, pitState: 'None', pitStops: 0, compound: 'Medium', x: 0, z: 0, ...extra,
+  gapToLeader: 0, lapsToLeader: 0, gapToNext: 0, lapsToNext: 0, inPit: false, pitState: 'None', pitStops: 0, penalties: 0, blueFlag: false, finishStatus: 'None', stopped: false, compound: 'Medium', x: 0, z: 0, ...extra,
+})
+
+test('the flag strip puts a full course yellow over local yellows and names the yellow sectors', () => {
+  assert.deepEqual(flagState({ phase: 'Green', yellowSectors: [false, true, true] }), { label: 'Yellow · S2 S3', tone: 'yellow', sectors: [false, true, true] })
+  assert.equal(flagState({ phase: 'Green', yellowSectors: [false, false, false] }).label, 'Green')
+  assert.equal(flagState({ phase: 'FullCourseYellow', yellowSectors: [true, false, false] }).tone, 'fcy')
+  assert.equal(flagState({ phase: 'Stopped', yellowSectors: [false, false, false] }).label, 'Red flag')
+})
+
+test('race control reads each change in words, and says whom a blue flag is for', () => {
+  const player = car(1, 3, { isPlayer: true, car: 'Oreca #63' })
+  const event = (kind: Parameters<typeof feedLine>[0]['kind'], extra: Partial<Parameters<typeof feedLine>[0]> = {}) =>
+    ({ time: 4321, kind, carId: 28, driver: 'J. Marchetti', car: 'Oreca #28', sector: null, lap: 31, ...extra })
+  assert.deepEqual(feedLine(event('CarStopped', { sector: 2 }), 0, player), { key: '0', time: '1:12:01', text: '#28 J. Marchetti stopped', note: 'S2 · lap 31', tone: 'yellow' })
+  assert.equal(feedLine(event('BlueFlag'), 0, player).note, 'for #63')
+  assert.equal(feedLine(event('BlueFlag', { carId: 1, car: 'Oreca #63' }), 0, player).note, '', 'our own blue flag is for nobody in particular')
+  assert.equal(feedLine(event('SectorYellow', { carId: null, sector: 2, lap: null }), 0, player).text, 'Yellow in sector 2')
+
+  const wall = { field: [car(28, 6, { stopped: true, car: 'Oreca #28' })], raceControl: [event('CarStopped', { sector: 2 })] }
+  assert.equal(stoppedSummary(stoppedCars(wall)), '#28 stopped in S2 · since 1:12:01')
+  assert.equal(outCell({ finishStatus: 'Dnf', lapsCompleted: 21 }), 'DNF · lap 22')
+})
+
+test('a stop moves our car back by the loss: rejoin place, the class cars round it and traffic at the exit', () => {
+  const field = [
+    car(1, 3, { isPlayer: true, car: 'Oreca #63', carClass: 'LMP2', lapsCompleted: 10, lapFraction: 0.5, lastLap: 120 }),
+    car(2, 1, { carClass: 'LMP2', lapsCompleted: 10, lapFraction: 0.2, lastLap: 120 }),
+    car(3, 4, { carClass: 'LMP2', lapsCompleted: 9, lapFraction: 0.95, lastLap: 120 }),
+    car(4, 5, { carClass: 'LMGT3', lapsCompleted: 9, lapFraction: 0.01, lastLap: 130 }),
+    car(5, 2, { carClass: 'LMP2', lapsCompleted: 12, lapFraction: 0.1, finishStatus: 'Dnf' }),
+  ]
+  const now = rejoin(field, 60)
+  assert.ok(now)
+  assert.equal(now.classPlace, 2, 'behind #2 only: the retired car does not count')
+  assert.equal(now.ahead?.entry.id, 2)
+  assert.ok(Math.abs((now.ahead?.seconds ?? 0) - 24) < 1e-9)
+  assert.equal(now.behind?.entry.id, 3)
+  assert.ok(Math.abs((now.behind?.seconds ?? 0) + 6) < 1e-9)
+  assert.equal(now.traffic?.entry.id, 4)
+  assert.equal(trafficText(now.traffic, (entry) => `#${entry.id}`), '#4 1.2 s ahead at the exit')
+  assert.ok(Math.abs(now.fraction) < 1e-9, 'out at the line')
+  assert.equal(rejoin(field.slice(1), 60), null, 'no car of ours')
 })
 
 test('timing reads gaps, numbers, lap times and places gained', () => {
@@ -293,4 +337,14 @@ test('a driver on a Sprint from before the pit wall is told apart from one not i
   assert.equal(waiting(engineer({ app: '0.5.0', match: 'Same' }))?.tone, 'info')
   // Before the driver's first ping nothing is known yet: no warning.
   assert.equal(waiting(engineer(null))?.tone, 'info')
+})
+
+test('a board from an older or newer driver’s desktop reads with no flags and drops what it does not know', () => {
+  const wall = parsePitWall({ session: { track: 'Spa' }, field: [{ id: 1 }], car: {}, raceControl: [{ kind: 'Safari', time: 1 }, { kind: 'Penalty', time: 5, carId: 3 }] })
+  assert.ok(wall)
+  assert.deepEqual(wall.session.yellowSectors, [false, false, false])
+  assert.equal(wall.session.phase, 'Unknown')
+  assert.deepEqual([wall.field[0].finishStatus, wall.field[0].penalties, wall.field[0].stopped], ['None', 0, false])
+  assert.deepEqual(wall.raceControl.map((entry) => entry.kind), ['Penalty'])
+  assert.equal(wall.pitLoss.lane, null)
 })

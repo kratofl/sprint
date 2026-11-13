@@ -32,6 +32,8 @@ const cleanPaths = [
   'app/desktop/dist',
   'app/desktop/dist-electron',
   'app/desktop/resources/host',
+  'packages/dashboard/renderer/target',
+  'packages/dashboard/generated',
   'app/Sprint.Desktop.Api/bin',
   'app/Sprint.Desktop.Api/obj',
   'app/Sprint.Contracts/bin',

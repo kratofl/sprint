@@ -451,7 +451,69 @@
   display: flex;
   flex-direction: column;
   min-width: 0;
+}
+
+/* Race control's strip: the flag, the three sectors, a stopped car. It takes the room between the
+   session's name and its facts. */
+.pw-flags {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
   margin-right: auto;
+  font-size: 12px;
+}
+
+.pw-flag {
+  padding: 0 10px;
+  border-radius: 999px;
+  background: var(--control-fill);
+  color: var(--label-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 22px;
+  white-space: nowrap;
+}
+
+.pw-flag.green {
+  background: var(--infobar-success);
+  color: var(--infobar-success-text);
+}
+
+.pw-flag.yellow,
+.pw-flag.fcy {
+  background: var(--infobar-warning);
+  color: var(--infobar-warning-text);
+}
+
+.pw-flag.red {
+  background: var(--infobar-error);
+  color: var(--infobar-error-text);
+}
+
+.pw-flag.over {
+  background: var(--label);
+  color: var(--surface);
+}
+
+.pw-flag-sectors {
+  display: flex;
+  gap: 4px;
+}
+
+.pw-flag-sector {
+  padding: 0 6px;
+  border-radius: 4px;
+  background: var(--control-fill);
+  color: var(--label-tertiary);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 20px;
+}
+
+.pw-flag-sector.yellow {
+  background: var(--yellow-500);
+  color: var(--yellow-900);
 }
 
 .pw-session-fact {
@@ -533,6 +595,45 @@
   background: var(--control-fill);
   font-weight: 600;
   box-shadow: inset 3px 0 0 var(--brand-500);
+}
+
+/* Shown the blue flag: a blue edge, and the flag by the name. */
+.pw-trow.blue {
+  box-shadow: inset 3px 0 0 var(--blue-500);
+}
+
+.pw-trow.out {
+  color: var(--label-tertiary);
+}
+
+.pw-driver {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.pw-blue {
+  flex: none;
+  color: var(--blue-500);
+}
+
+.pw-pen {
+  flex: none;
+  padding: 0 5px;
+  border-radius: 4px;
+  background: var(--infobar-error);
+  color: var(--infobar-error-text);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 16px;
+}
+
+/* An out car's "DNF · lap 22" takes the gap and interval columns. */
+.pw-outcell {
+  grid-column: span 2;
+  text-align: right;
+  white-space: nowrap;
 }
 
 .pw-trow .r {
@@ -653,6 +754,27 @@
   stroke: color-mix(in srgb, var(--track) 70%, var(--label-tertiary));
 }
 
+.pw-ring-arc.yellow {
+  stroke: var(--yellow-500);
+}
+
+.pw-ring-note {
+  fill: var(--label);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.pw-ring-note.ghost {
+  fill: var(--brand-500);
+}
+
+/* A car stopped on track. */
+.pw-halo {
+  fill: none;
+  stroke: var(--yellow-500);
+  stroke-width: 2;
+}
+
 .pw-ring-label {
   fill: var(--label-tertiary);
   font-size: 10px;
@@ -694,6 +816,14 @@
   stroke-dasharray: 2 2;
 }
 
+/* Our car where it would rejoin after a stop now. */
+.pw-car.ghost {
+  fill: none;
+  stroke: var(--brand-500);
+  stroke-width: 2;
+  stroke-dasharray: 3 2;
+}
+
 .pw-ring-legend {
   display: flex;
   flex-direction: column;
@@ -727,6 +857,82 @@
 
 .pw-dot.c2 {
   background: var(--label-secondary);
+}
+
+.pw-dot.ghost {
+  border: 2px dashed var(--brand-500);
+  background: none;
+}
+
+/* ── Race control and pit stop ───────────────────────────────────────────── */
+
+.pw-feed {
+  margin: 0;
+  padding: 4px 12px;
+  overflow: hidden;
+  list-style: none;
+}
+
+.pw-feed-row {
+  display: grid;
+  grid-template-columns: 56px 8px minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  min-height: 28px;
+  border-top: 1px solid var(--divider);
+  font-size: 12px;
+}
+
+.pw-feed-row:first-child {
+  border-top: 0;
+}
+
+.pw-feed-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--label-tertiary);
+}
+
+.pw-feed-dot.green { background: var(--green-500); }
+.pw-feed-dot.yellow,
+.pw-feed-dot.fcy { background: var(--yellow-500); }
+.pw-feed-dot.red,
+.pw-feed-dot.penalty { background: var(--red-500); }
+.pw-feed-dot.blue { background: var(--blue-500); }
+.pw-feed-dot.over { background: var(--label); }
+
+.pw-pitstop {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.pw-pitstop .pw-target-top > div {
+  min-width: 0;
+}
+
+.pw-pit-table {
+  display: flex;
+  flex-direction: column;
+}
+
+.pw-pit-row {
+  display: grid;
+  grid-template-columns: minmax(96px, auto) 52px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  min-height: 28px;
+  border-top: 1px solid var(--divider);
+  font-size: 12px;
+}
+
+.pw-pit-row.head {
+  min-height: 22px;
+  border-top: 0;
+  color: var(--label-secondary);
+  font-size: 11px;
+  font-weight: 600;
 }
 
 /* ── Stints, relative, fuel, target ──────────────────────────────────────── */

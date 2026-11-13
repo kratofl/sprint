@@ -8,7 +8,9 @@
 //   theme=dark|light      force a theme; omitted = follow the OS
 //   collapsed=1           start with the navigation pane in compact mode
 //   palette=1             open the command palette
-//   update=1              report an available update (Settings dot + notification)
+//   update=available|downloading|ready|failed|unsupported
+//                         the self-update status (Settings row, sidebar dot, notification);
+//                         update=1 is available. Default: up to date
 //   frame=none            drop the live telemetry frame (dash previews then render their no-data state)
 //   import=offer          the startup results scan finds sessions (opens the import prompt);
 //                         otherwise every scan finds nothing new
@@ -50,7 +52,9 @@
 //   pitwall=main|page:<id>|tile:<id>  mount a pit wall window instead of the app, linked as the engineer
 //                         to a made-up Spa race (pages race, car, traces; click= works in it). plan=none:
 //                         the driver shares no plan. pitwallAway=car: the Car page is in its own window.
-//                         pitwallStack=1: Relative, Radar and Damage stacked on the Race page
+//                         pitwallStack=1: Relative, Radar and Damage stacked on the Race page.
+//                         pitwallRace=control: the Race page with Race control and Pit stop in view.
+//                         pitwallFlags=none: a quiet green race, no feed, no stop seen yet
 ;(() => {
   const params = new URLSearchParams(window.location.search)
 
@@ -121,7 +125,7 @@
       [2, 'Hypercar', 41, 'R. Lindqvist', 'Medium', [4.2, 0], [4.2, 0], 125.3, [[36.1, 0], [53.9, 0], [35.3, 1]], 124.6, 1, 1, 0.27, 1],
       [3, 'Hypercar', 63, 'E. Varga', 'Medium', [9.8, 0], [5.6, 0], 125.1, [[35.8, 1], [54.0, 0], [35.3, 1]], 124.8, 1, 7, 0.22, 1],
       [4, 'Hypercar', 17, 'T. Okafor', 'Hard', [10.6, 0], [0.8, 0], 125.0, [[36.0, 0], [53.7, 1], [35.3, 0]], 124.7, 1, 4, 0.214, 1],
-      [5, 'Hypercar', 28, 'J. Marchetti', 'Soft', [21.4, 0], [10.8, 0], null, [[36.4, 0], [null, 0], [null, 0]], 124.9, 'PIT', 2, 0.035, 1],
+      [5, 'Hypercar', 28, 'J. Marchetti', 'Soft', [21.4, 0], [10.8, 0], null, [[36.4, 0], [null, 0], [null, 0]], 124.9, 1, 2, 0.52, 2],
       [6, 'Hypercar', 35, 'A. Duval', 'Medium', [0, 1], [0, 1], 126.2, [[36.3, 0], [54.4, 0], [35.5, 0]], 125.4, 2, 6, 0.62, 2],
       [7, 'LMGT3', 88, 'S. Brandt', 'Medium', [0, 3], [0, 2], 140.4, [[40.2, 1], [60.1, 0], [40.1, 0]], 139.8, 1, 10, 0.48, 2],
       [8, 'LMGT3', 21, 'M. Haas', 'Medium', [0, 3], [6.1, 0], 140.9, [[40.4, 0], [60.0, 1], [40.5, 0]], 140.1, 1, 8, 0.47, 2],
@@ -130,6 +134,13 @@
       [11, 'LMGT3', 33, 'P. Ivanova', 'Medium', [0, 4], [3.4, 0], 141.4, [[40.7, 0], [60.5, 0], [40.2, 0]], 140.9, 1, 7, 0.9, 3],
       [12, 'LMGT3', 59, 'B. Coleman', 'Medium', [0, 4], [0.9, 0], 141.2, [[40.5, 0], [60.3, 0], [40.4, 0]], 141.0, 1, 12, 0.55, 2],
     ]
+    // Round 5 (flags, penalties, out of the race; .dev/mockups/_pitwall5.py): #28 stopped in S2,
+    // penalties to serve, blue flags, a retirement and a disqualification.
+    const quiet = params.get('pitwallFlags') === 'none'
+    const flags = quiet
+      ? {}
+      : { 28: { stopped: true }, 35: { penalties: 1 }, 21: { penalties: 2 }, 88: { blueFlag: true }, 46: { blueFlag: true },
+          33: { finishStatus: 'Dnf', lapsCompleted: 21 }, 59: { finishStatus: 'Disqualified', lapsCompleted: 14 } }
     const field = rows.map(([place, carClass, number, driver, compound, gap, interval, last, sectors, best, pit, start, fraction, sector]) => {
       const at = alongLoop(fraction)
       const model = number === 63 ? 'Porsche 963' : carClass === 'Hypercar' ? 'Hypercar' : 'GT3'
@@ -143,15 +154,26 @@
         bestSectors: sectors.map(([time, classBest]) => (time === null ? null : classBest ? time : Math.round((time - 0.1) * 1000) / 1000)),
         gapToLeader: gap[0], lapsToLeader: gap[1], gapToNext: interval[0], lapsToNext: interval[1],
         inPit: pit === 'PIT' || pit === 'OUT', pitState: pit === 'PIT' ? 'Stopped' : pit === 'OUT' ? 'Exiting' : 'None',
-        pitStops: typeof pit === 'number' ? pit : 1, compound, x: at.x, z: at.z,
+        pitStops: typeof pit === 'number' ? pit : 1, penalties: 0, blueFlag: false, finishStatus: 'None', stopped: false,
+        compound, x: at.x, z: at.z, ...(flags[number] ?? {}),
       }
     })
+    const elapsed = 21600 - 13140
+    const event = (ago, kind, number, extra = {}) => {
+      const entry = field.find((candidate) => candidate.id === number)
+      return { time: elapsed - ago, kind, carId: entry?.id ?? null, driver: entry?.driver ?? '', car: entry?.car ?? '', sector: null, lap: entry ? entry.lapsCompleted + 1 : null, ...extra }
+    }
+    const raceControl = quiet
+      ? []
+      : [event(4700, 'Disqualified', 59), event(3300, 'FullCourseYellow', null), event(2950, 'Green', null), event(640, 'Retired', 33),
+          event(130, 'BlueFlag', 88), event(80, 'Penalty', 35), event(23, 'CarStopped', 28, { sector: 2 }), event(20, 'SectorYellow', null, { sector: 2 })]
     const tyre = (position, [inner, middle, outer], core, brake, wearPercent, pressureKPa) => ({ position, inner, middle, outer, core, brake, pressureKPa, wearPercent, compound: 'Medium' })
     const plan = (state.plans ?? []).find((candidate) => candidate.id === 'plan-spa-6h')
     return {
       session: {
         track: 'Circuit de Spa-Francorchamps', trackLengthMeters: 7004, sessionType: 'Race', timeRemaining: 13140, totalTime: 21600,
         maxLaps: 2147483647, airTemp: 22, trackTemp: 31, wetness: 0, raining: 0, grip: null, gripLevel: 1,
+        elapsed, phase: 'Green', yellowSectors: [false, !quiet, false],
       },
       field,
       car: {
@@ -165,6 +187,10 @@
       pressures: [[163, 164, 162, 163], [166, 168, 165, 166], [168, 170, 167, 168], [169, 171, 168, 169], [170, 172, 169, 170],
         [171, 173, 170, 171], [171, 173, 170, 171], [171, 173, 170, 171], [171, 173, 170, 171]].map(([fl, fr, rl, rr], index) => ({ lap: 26 + index, fl, fr, rl, rr })),
       plan: withPlan && plan ? { ...plan, status: 'Tracking' } : null,
+      raceControl,
+      pitLoss: quiet
+        ? { lane: null, laneStops: 0, standing: null, standingStops: 0, standingFromOwn: false }
+        : { lane: 24.6, laneStops: 41, standing: 37.2, standingStops: 1, standingFromOwn: true },
       receivedAt: Date.now(),
     }
   }
@@ -173,14 +199,20 @@
   const samplePitWallLayout = () => ({
     mainBounds: null,
     pages: [
-      { id: 'race', name: 'Race', detached: false, bounds: null, tiles: [
-        pitWallTile('race-session', ['session'], 0, 0, 12, 1), pitWallTile('race-timing', ['timing'], 0, 1, 7, 5),
-        pitWallTile('race-track', ['track'], 7, 1, 5, 4), pitWallTile('race-stint', ['stint'], 7, 5, 3, 3),
-        params.get('pitwallStack') === '1'
-          ? { ...pitWallTile('race-relative', ['relative', 'radar', 'damage'], 10, 5, 2, 3), cycleSeconds: 10, jumpRadar: true, jumpDamage: true }
-          : pitWallTile('race-relative', ['relative'], 10, 5, 2, 3),
-        pitWallTile('race-target', ['target'], 0, 6, 3, 2), pitWallTile('race-fuel', ['fuel'], 3, 6, 4, 2),
-      ] },
+      { id: 'race', name: 'Race', detached: false, bounds: null, tiles: params.get('pitwallRace') === 'control'
+        ? [
+            pitWallTile('race-session', ['session'], 0, 0, 12, 1), pitWallTile('race-timing', ['timing'], 0, 1, 7, 4),
+            pitWallTile('race-track', ['track'], 7, 1, 5, 4), pitWallTile('race-control', ['control'], 0, 5, 4, 3),
+            pitWallTile('race-pitstop', ['pitstop'], 4, 5, 4, 3), pitWallTile('race-relative', ['relative'], 8, 5, 4, 3),
+          ]
+        : [
+            pitWallTile('race-session', ['session'], 0, 0, 12, 1), pitWallTile('race-timing', ['timing'], 0, 1, 7, 5),
+            pitWallTile('race-track', ['track'], 7, 1, 5, 4), pitWallTile('race-stint', ['stint', 'pitstop'], 7, 5, 3, 3),
+            params.get('pitwallStack') === '1'
+              ? { ...pitWallTile('race-relative', ['relative', 'radar', 'damage'], 10, 5, 2, 3), cycleSeconds: 10, jumpRadar: true, jumpDamage: true }
+              : pitWallTile('race-relative', ['relative'], 10, 5, 2, 3),
+            pitWallTile('race-target', ['target', 'control'], 0, 6, 3, 2), pitWallTile('race-fuel', ['fuel'], 3, 6, 4, 2),
+          ] },
       { id: 'car', name: 'Car', detached: params.get('pitwallAway') === 'car', bounds: null, tiles: [
         pitWallTile('car-tyres', ['tyres'], 0, 0, 7, 4), pitWallTile('car-pressure', ['pressure'], 7, 0, 5, 4),
         pitWallTile('car-damage', ['damage'], 0, 4, 5, 4), pitWallTile('car-radar', ['radar'], 5, 4, 3, 4), pitWallTile('car-relative', ['relative'], 8, 4, 4, 4),
@@ -693,11 +725,22 @@
         : { entries: [], counts: [] },
     resultsImport: async (entries) => ({ outcome: 'Imported', importedCount: entries.length }),
     resultsImportDecline: async () => null,
-    checkUpdates: async () =>
-      params.get('update') === '1'
-        ? { updateAvailable: true, latest: { version: '0.2.0', channel: 'stable', url: 'https://example.invalid/release' } }
-        : { updateAvailable: false },
-    installUpdate: async () => ({ outcome: 'unavailable-in-dev' }),
+    subscribeUpdates: (listener) => {
+      const update = params.get('update')
+      const statuses = {
+        1: { kind: 'available', version: '0.3.0' },
+        available: { kind: 'available', version: '0.3.0' },
+        downloading: { kind: 'downloading', version: '0.3.0', percent: 42 },
+        ready: { kind: 'ready', version: '0.3.0' },
+        failed: { kind: 'failed', reason: 'net::ERR_INTERNET_DISCONNECTED' },
+        unsupported: { kind: 'unsupported' },
+      }
+      setTimeout(() => listener(statuses[update] ?? { kind: 'up-to-date' }), 0)
+      return () => undefined
+    },
+    checkUpdates: async () => null,
+    downloadUpdate: async () => null,
+    restartToUpdate: async () => null,
     // Any password signs in except "wrong", which shows the error.
     signIn: async (serverUrl, email, password) =>
       password === 'wrong' ? { ok: false, error: 'Invalid credentials.' } : { ok: true },

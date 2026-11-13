@@ -15,6 +15,8 @@ SHELL = powershell.exe
 endif
 
 TASKS := node scripts/make-tasks.mjs
+# cargo in the wheel-dash renderer crate (packages/dashboard/renderer), found on PATH or in ~/.cargo/bin.
+DASH_CARGO := node scripts/build-dash-renderer.mjs --cargo
 
 APP_DIR    := app
 APP_SOLUTION := $(APP_DIR)/Sprint.Desktop.slnx
@@ -47,6 +49,7 @@ setup: ## Restore project dependencies
 	dotnet restore $(APP_SOLUTION)
 	dotnet restore $(API_SOLUTION)
 	pnpm install
+	$(DASH_CARGO) fetch
 	echo 'Setup complete'
 
 # ─── Development ──────────────────────────────────────────────────────────────
@@ -96,10 +99,10 @@ build-api: ## Publish the API server → api/build/bin
 build-web: ## Build the Next.js web app (production)
 	pnpm --filter @sprint/web build
 
-build-app: types ## Package the desktop app -> app/build/bin (RID=win-x64|osx-arm64|osx-x64|linux-x64)
+build-app: types ## Package the desktop app -> app/build/bin; the Windows installer too (RID=win-x64|osx-arm64|osx-x64|linux-x64)
 	dotnet publish $(APP_HOST_PROJECT) -c Release -r $(RID) -p:PublishSingleFile=true -p:InformationalVersion=$(VERSION) -o $(APP_DESKTOP_DIR)/resources/host
 	pnpm --filter @sprint/desktop build
-	pnpm --filter @sprint/desktop package
+	pnpm --filter @sprint/desktop package $(VERSION)
 
 build: build-api build-web ## Build all (API + web)
 
@@ -110,9 +113,10 @@ test: test-api test-app ## Run API and desktop tests
 test-api: ## Run API server tests (xunit)
 	dotnet test $(API_TEST_PROJECT)
 
-test-app: types ## Run desktop tests (native xunit + dashboard/electron TS)
+test-app: types ## Run desktop tests (native xunit, the dash renderer crate, dashboard/electron TS)
 	dotnet test $(APP_TEST_PROJECT)
 	dotnet test $(APP_HOST_TEST_PROJECT)
+	$(DASH_CARGO) test
 	pnpm --filter @sprint/dashboard test
 	pnpm --filter @sprint/desktop test
 
@@ -122,17 +126,20 @@ lint: ## Build the API solution with warnings as errors and run pnpm lint
 	dotnet build $(API_SOLUTION) -warnaserror
 	pnpm lint
 
-lint-app: types ## Build the desktop solution with warnings as errors and type-check the UI
+lint-app: types ## Build the desktop solution with warnings as errors, lint the dash renderer crate and type-check the UI
 	dotnet build $(APP_SOLUTION) -warnaserror
+	$(DASH_CARGO) clippy --all-targets -- -D warnings
+	$(DASH_CARGO) fmt --check
 	pnpm --filter @sprint/dashboard type-check
 	pnpm --filter @sprint/desktop type-check
 
 lint-api: ## Build the API solution with warnings as errors
 	dotnet build $(API_SOLUTION) -warnaserror
 
-fmt: ## Format C# and TS/JS code
+fmt: ## Format C#, Rust and TS/JS code
 	dotnet format $(APP_SOLUTION)
 	dotnet format $(API_SOLUTION)
+	$(DASH_CARGO) fmt
 	pnpm format
 
 # ─── Docker ───────────────────────────────────────────────────────────────────

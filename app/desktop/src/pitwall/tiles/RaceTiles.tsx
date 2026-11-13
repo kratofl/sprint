@@ -6,6 +6,7 @@ import { planStints, range, stintRows, strategy } from '../fuel'
 import { carNumber, classShade, lapClock, lapsLeft, playerOf, relativeRows, signed } from '../timing'
 import { TileEmpty, TileFrame, type FrameProps, type TileData } from '../tileFrame'
 import { useTraces } from '../useTraces'
+import { FlagStrip } from './ControlTiles'
 
 const SESSION_WORD: Record<PitWall['session']['sessionType'], string> = {
   Practice: 'Practice',
@@ -30,7 +31,7 @@ export const titled = (name: string, pitWall: PitWall | null): string => {
   return car ? `${name} · ${car}` : name
 }
 
-/** The session strip across the top: where and what, track and air, grip and rain now. */
+/** The session strip across the top: where and what, race control's flag, track and air, grip and rain now. */
 export function SessionTile({ data, frame }: { data: TileData; frame: FrameProps }) {
   const wall = data.pitWall
   return (
@@ -46,6 +47,7 @@ export function SessionTile({ data, frame }: { data: TileData; frame: FrameProps
               {wall.session.trackLengthMeters !== null && ` · ${(wall.session.trackLengthMeters / 1000).toFixed(1)} km`}
             </span>
           </div>
+          <FlagStrip wall={wall} />
           <div className="pw-session-fact">
             <span className="muted">
               <Thermometer size={13} aria-hidden="true" /> Track

@@ -30,7 +30,8 @@ public sealed record MultiDialStatus(int? Position, int Changes)
 /// position as a button that stays down, so turning it shows up as a press of the new
 /// position's button; this tracker turns those presses into a position and swallows them, so a
 /// turn never fires whatever is bound to that button. Thread-safe: input arrives on the Raw
-/// Input thread, /api/state reads on a request thread.
+/// Input thread, /api/state reads on a request thread and each wheel screen every frame on its
+/// own render thread.
 /// </summary>
 public sealed class MultiDialTracker
 {

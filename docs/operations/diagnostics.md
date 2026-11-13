@@ -20,6 +20,22 @@ never the live folder.
 Check the logs first for hardware problems: screen enumeration, open, first frame and every state
 change are logged (see [screen protocols](../internals/screen-protocols.md#troubleshooting)).
 
+## Wheel screens
+
+- `Screen performance: device=… fps= sourceMs= pixelMs= usbMs= …` at Info, once a minute per
+  screen while it outputs. `sourceMs` is the dash render (or the desktop capture); `skipped` counts
+  unchanged frames that were not resent, which is normal on a still dash.
+- `Screen frame slower than the <n> Hz frame interval … stage=render|pixel transform|USB` is a
+  warning, at most once a minute per screen, with the count of slow frames since the last one. The
+  first frame after a start is never reported (it loads fonts).
+- Red and black diagonal stripes on a wheel mean its frame source failed. Devices shows the device
+  `Faulted` with `Frame source failed: <reason>` in the renderer's own words; the log has one
+  `Screen frame source failed` error per distinct reason with the stack, and `recovered` once it
+  draws again. A reason naming `sprint_dash` and an architecture means the host was built without
+  its library or for the other one ([Rust toolchain](development.md#rust-toolchain)).
+- Browser displays log when their port opens and closes (`Browser displays served at …`) and a
+  warning when it cannot be bound ([browser displays](../internals/browser-displays.md)).
+
 ## Live access
 
 - `GET /api/diagnostics/logs?minLevel=&text=` returns filtered in-memory entries.

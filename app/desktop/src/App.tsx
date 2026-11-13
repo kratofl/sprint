@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { bridge, type AppView, type ResultsImportOffer, type SprintCommand } from './bridge'
+import { bridge, type AppView, type ResultsImportOffer, type SprintCommand, type UpdateStatus } from './bridge'
 import type { RuntimeState } from './shell/runtime'
 import { TitleBar } from './shell/TitleBar'
 import { Sidebar } from './shell/Sidebar'
@@ -20,7 +20,7 @@ import { primaryNav, viewLabel } from './shell/nav'
 import { matchShortcut } from './shell/shortcuts'
 import { platform } from './platform'
 import { readSidebarCollapsed } from './shell/settings'
-import { parseUpdateCheck, displayVersion, type UpdateRelease } from './shell/updates'
+import { displayVersion } from './shell/updates'
 import { PageUpContext, type PageUp } from './shell/pageUp'
 import { describeBuild } from './shell/build'
 import { parseUpdatesInfo } from './views/SettingsUpdates'
@@ -48,7 +48,7 @@ export function App() {
   // The Sprint web setup: on the first launch, or to connect later (Settings, the account row).
   const [setup, setSetup] = useState<'first-run' | 'connect' | null>(null)
   const firstRunChecked = useRef(false)
-  const [updateRelease, setUpdateRelease] = useState<UpdateRelease | null>(null)
+  const [updateStatus, setUpdateStatus] = useState<UpdateStatus>({ kind: 'idle' })
   // The results import dialog (#185). `offered` is the startup scan's proposal; null means the
   // dialog was opened by hand and searches for itself.
   const [importDialog, setImportDialog] = useState<{ offered: ResultsImportOffer | null } | null>(null)
@@ -123,38 +123,58 @@ export function App() {
     ;(showSidebarRef.current ?? sidebarToggleRef.current)?.focus()
   }, [collapsed])
 
-  // Shared by the startup check and the palette's manual "Check for updates"
-  // (old app: `NotifyIfUpdateAvailableAsync`). `force` only affects whether a
-  // silent "up to date" result also gets a toast — a background check must
-  // never nag, but an explicit user action deserves an answer either way.
-  const runUpdateCheck = useCallback(
-    async (force: boolean) => {
-      try {
-        const result = await bridge.checkUpdates(force)
-        const release = parseUpdateCheck(result)
-        if (release) {
-          setUpdateRelease(release)
-          showToast({
-            tone: 'info',
-            title: `Sprint ${displayVersion(release.version)} is available`,
-            message: 'Install it from Settings.',
-            action: { label: 'Open Settings', onClick: () => navigate('Settings') },
-          })
-        } else if (force) {
-          showToast({ tone: 'info', title: "You're up to date", message: 'Sprint is already on the latest version for your update channel.' })
+  // The main process checks at startup and installs per the driver's settings; this only follows
+  // it. An update gets one toast when it turns up and one when it is ready. A check the driver
+  // asked for from the palette also answers "up to date" or "couldn't check"; a background one
+  // never nags.
+  const manualCheck = useRef(false)
+  const announcedKind = useRef<UpdateStatus['kind'] | null>(null)
+  useEffect(
+    () =>
+      bridge.subscribeUpdates((status) => {
+        setUpdateStatus(status)
+        // A resubscribe repeats the current status; only a change is news.
+        if (announcedKind.current === status.kind) return
+        announcedKind.current = status.kind
+        const manual = manualCheck.current
+        if (status.kind !== 'checking') manualCheck.current = false
+        switch (status.kind) {
+          case 'available':
+            showToast({
+              tone: 'info',
+              title: `Sprint ${displayVersion(status.version)} is available`,
+              message: 'Update from Settings.',
+              action: { label: 'Open Settings', onClick: () => navigate('Settings') },
+            })
+            return
+          case 'ready':
+            showToast({
+              tone: 'info',
+              title: `Sprint ${displayVersion(status.version)} is ready`,
+              message: 'It installs when you quit Sprint.',
+              action: { label: 'Restart now', onClick: () => void bridge.restartToUpdate() },
+            })
+            return
+          case 'up-to-date':
+            if (manual) showToast({ tone: 'info', title: "You're up to date", message: 'Sprint is already on the latest version for your update channel.' })
+            return
+          case 'failed':
+            if (manual) showToast({ tone: 'danger', title: 'Could not check for updates', message: 'Try again later.' })
+            return
+          default:
+            return
         }
-      } catch (error) {
-        console.error('Update check failed', error)
-        if (force) showToast({ tone: 'danger', title: 'Could not check for updates', message: 'Try again later.' })
-      }
-    },
+      }),
     [showToast, navigate],
   )
-
-  // One check at startup only.
-  useEffect(() => {
-    void runUpdateCheck(false)
-  }, [runUpdateCheck])
+  const checkForUpdates = useCallback(() => {
+    if (updateStatus.kind === 'unsupported') {
+      showToast({ tone: 'info', title: 'Updates need the installed app', message: 'This build of Sprint does not update itself.' })
+      return
+    }
+    manualCheck.current = true
+    void bridge.checkUpdates()
+  }, [updateStatus.kind, showToast])
 
   // The startup import offer (old app: `OfferArchivedSessionsAsync`): prompts only when the
   // results archive holds sessions that are neither imported nor previously declined. Nothing is
@@ -247,7 +267,7 @@ export function App() {
     navigate,
     send,
     toggleSidebar,
-    checkForUpdates: () => void runUpdateCheck(true),
+    checkForUpdates,
     newDash: () => openItem({ view: 'Dashes', newDash: true }),
     importResults,
   })
@@ -305,7 +325,7 @@ export function App() {
           toggleRef={sidebarToggleRef}
           onSelect={navigate}
           accountRow={sprintWeb ? { account, onOpen: () => (account?.signedIn ? setAccountOpen(true) : openSetup()) } : null}
-          updateAvailable={updateRelease !== null}
+          updateAvailable={updateStatus.kind === 'available' || updateStatus.kind === 'ready'}
           build={build}
           telemetry={runtime.kind === 'ready' ? runtime.sprint.telemetry : null}
           onOpenDiagnostics={openDiagnostics}
@@ -322,6 +342,7 @@ export function App() {
                 onOpenItem={openItem}
                 onImportResults={importResults}
                 onSetUpCloud={openSetup}
+                updateStatus={updateStatus}
               />
             </PageUpContext>
           </ToolbarActionsContext>

@@ -2,7 +2,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
 import { createInterface } from 'node:readline'
 import { once } from 'node:events'
-import { isRecord, type PixelFrame } from './frames.js'
+import { isRecord } from './frames.js'
 
 export class NativeHost {
   private readonly token = randomBytes(32).toString('hex')
@@ -157,29 +157,12 @@ export class NativeHost {
     await this.request('/api/account/sign-out', { method: 'POST' })
   }
 
-  async checkUpdates(force: boolean): Promise<unknown> {
-    return this.json(`/api/updates/check?force=${force ? 'true' : 'false'}`, { method: 'POST' })
-  }
-
-  /**
-   * Downloads and stages a release, then launches the self-replace helper (see
-   * `Program.cs`'s `POST /api/updates/install`). A download can take a while on a slow
-   * connection, so this gets a far more generous bound than the default 5s request
-   * timeout; `signal` lets the caller still abort earlier if it wants to.
-   */
-  async installUpdate(target: { pid: number; installDir: string; exeName: string }, signal?: AbortSignal): Promise<unknown> {
-    return this.json(
-      '/api/updates/install',
-      { method: 'POST', body: JSON.stringify(target), headers: { 'content-type': 'application/json' }, signal },
-      5 * 60_000,
-    )
-  }
+  async telemetry(): Promise<unknown> { return this.json('/api/telemetry') }
 
   /** A lap of the linked driver's, gathered on this (the engineer's) PC; too large for the polled state. */
   async pitWallTrace(lap: 'current' | 'last' | 'best' | 'target'): Promise<unknown> {
     return this.json(`/api/pitwall/trace?lap=${lap}`)
   }
-  async telemetry(): Promise<unknown> { return this.json('/api/telemetry') }
 
   /** The training HUD's newest snapshot, or null when there is no lap to train against. */
   async compareFrame(): Promise<unknown> { return this.json('/api/compare/frame', undefined, 2000) }
@@ -192,17 +175,6 @@ export class NativeHost {
   async command(command: unknown): Promise<unknown> {
     if (!isRecord(command) || typeof command.type !== 'string') throw new Error('A typed command is required.')
     return this.json('/api/commands', { method: 'POST', body: JSON.stringify(command), headers: { 'content-type': 'application/json' } })
-  }
-
-  async frame(deviceId: string, frame: PixelFrame, signal: AbortSignal): Promise<void> {
-    await this.request(`/api/screens/${encodeURIComponent(deviceId)}/frame`, {
-      method: 'POST', body: frame.bytes, signal,
-      headers: {
-        'content-type': 'application/octet-stream',
-        'x-frame-width': String(frame.width), 'x-frame-height': String(frame.height),
-        'x-frame-sequence': String(frame.sequence),
-      },
-    })
   }
 
   /**

@@ -1,6 +1,6 @@
 import type { CSSProperties, PointerEvent as ReactPointerEvent, RefObject } from 'react'
 import { Group, Plus } from 'lucide-react'
-import { DashRenderer, drawnWidgets, gridRect } from '@sprint/dashboard'
+import { DashCanvas, drawnWidgets, gridRect } from '@sprint/dashboard'
 import type { DashGroupNode, DashLayout, DashNode, DashPage, DashWidgetType, PixelRect } from '@sprint/dashboard'
 import type { TelemetryFrame } from '@sprint/types'
 import { DEFAULT_WIDGET_COL_SPAN, DEFAULT_WIDGET_ROW_SPAN, canPlaceNewWidget, previewMoveRect, previewResizeRect, type GridRect, type ResizeHandle } from '../views/DashesDomain'
@@ -69,8 +69,8 @@ function handleStyle(handle: ResizeHandle): CSSProperties {
 const box = (rect: PixelRect): CSSProperties => ({ left: rect.left, top: rect.top, width: rect.width, height: rect.height })
 
 /**
- * The live dash with an interactive overlay, placed with the same `gridRect` math `DashRenderer`
- * uses so it never drifts from what is drawn. A click on a widget selects its outermost group (a
+ * The live dash with an interactive overlay, placed with the same `gridRect` math the renderer
+ * places widgets with, so it never drifts from what is drawn. A click on a widget selects its outermost group (a
  * double-click the widget itself; Ctrl/Cmd/Shift-click adds to the selection); a drag moves the
  * selection as one, and a single selected item resizes from its handles — a group scales its
  * widgets. Over a stack being worked on, tabs pick the layer to arrange (designer only; the wheel
@@ -124,7 +124,7 @@ export function DesignerCanvas({
   setDragState: (state: DragState) => void
   commit: (mutate: Mutate, failureMessage: string) => void
 }) {
-  // Same fallback as `DashRenderer`'s own cols/rows resolution: the overlay's grid must match what is drawn.
+  // Same fallback as the renderer's own cols/rows resolution: the overlay's grid must match what is drawn.
   const cols = layout.gridCols > 0 ? layout.gridCols : 20
   const rows = layout.gridRows > 0 ? layout.gridRows : 12
   const cellW = width / cols
@@ -214,7 +214,7 @@ export function DesignerCanvas({
         if (event.target === event.currentTarget) onSelect([])
       }}
     >
-      <DashRenderer layout={shownLayout} frame={frame} width={width} height={height} pageId={page.id} idle={isIdlePage} />
+      <DashCanvas layout={shownLayout} frame={frame} width={width} height={height} pageId={page.id} idle={isIdlePage} />
       {showGrid && <div className="designer-grid-overlay" style={{ backgroundSize: `${cellW}px ${cellH}px` }} />}
 
       {drawnWidgets(shownPage).map((widget) => (

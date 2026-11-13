@@ -1,6 +1,7 @@
 import type { TileKind } from '../pitWallData'
 import type { FrameProps, TileData } from '../tileFrame'
 import { DamageTile, PressureTile, RadarTile, TyresTile } from './CarTiles'
+import { PitStopTile, RaceControlTile } from './ControlTiles'
 import { FuelTile, RelativeTile, SessionTile, StintTile, TargetTile } from './RaceTiles'
 import { TimingTile } from './TimingTile'
 import { TracesTile } from './TracesTile'
@@ -33,5 +34,9 @@ export function TileFor({ kind, data, frame }: { kind: TileKind; data: TileData;
       return <RadarTile data={data} frame={frame} />
     case 'traces':
       return <TracesTile data={data} frame={frame} />
+    case 'control':
+      return <RaceControlTile data={data} frame={frame} />
+    case 'pitstop':
+      return <PitStopTile data={data} frame={frame} />
   }
 }

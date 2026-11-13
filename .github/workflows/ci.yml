@@ -47,6 +47,13 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # The dash renderer crate (packages/dashboard/renderer); its WebAssembly build is what the
+      # dashboard tests draw with. The runner image ships rustup.
+      - name: Set up Rust
+        run: |
+          rustup component add clippy rustfmt
+          rustup target add wasm32-unknown-unknown
+
       - name: Build shared packages
         run: pnpm --filter @sprint/types build
 
@@ -58,6 +65,13 @@ jobs:
 
       - name: Build web
         run: pnpm --filter @sprint/web build
+
+      - name: Test and lint the dash renderer crate
+        working-directory: packages/dashboard/renderer
+        run: |
+          cargo test
+          cargo clippy --all-targets -- -D warnings
+          cargo fmt --check
 
       - name: Type check and test the dash renderer
         run: |
@@ -78,6 +92,11 @@ jobs:
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: '10.0.x'
+
+      # The host build compiles the dash renderer crate natively (the runner's own target) and to
+      # WebAssembly. The runner image ships rustup.
+      - name: Set up Rust
+        run: rustup target add wasm32-unknown-unknown
 
       - name: Restore desktop app
         run: dotnet restore app/Sprint.Desktop.slnx
