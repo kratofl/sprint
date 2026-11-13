@@ -978,6 +978,113 @@ public sealed class LapHistoryTests
         Assert.Single(traces.All);
     }
 
+    [Fact]
+    public void AQueuedWriteSavesTheSessionAsItWasWhenTheLapWasFiled()
+    {
+        // The write runs later, off the telemetry thread. By then the recorder has filed the next
+        // lap into its open session, and serialising that live object would race the Laps.Add.
+        CollectingLapHistoryStore store = new CollectingLapHistoryStore();
+        List<Action> queued = new List<Action>();
+        LapHistoryRecorder recorder = new LapHistoryRecorder(
+            store,
+            clock: () => Now,
+            idFactory: () => "hs-1",
+            dispatch: queued.Add);
+
+        recorder.Ingest(Frame(SessionType.Race, lap: 1));
+        recorder.Ingest(Frame(SessionType.Race, lap: 2, lastLapTime: 131.0));
+        Action firstWrite = Assert.Single(queued);
+        recorder.Ingest(Frame(SessionType.Race, lap: 3, lastLapTime: 130.0));
+        LapHistorySession? open = recorder.OpenSession;
+        Assert.NotNull(open);
+        Assert.Equal(2, open.Laps.Count);
+
+        firstWrite();
+
+        LapHistorySession saved = Assert.Single(store.Sessions);
+        Assert.NotSame(open, saved);
+        Assert.Equal(131.0, Assert.Single(saved.Laps).LapTimeSeconds);
+    }
+
+    [Fact]
+    public void WritesLandInTheOrderTheLapsWereFiled()
+    {
+        // Each write carries its own copy, so an older copy saved after a newer one would drop
+        // the laps in between. The default hand-off must not reorder them.
+        using OrderedLapHistoryStore store = new OrderedLapHistoryStore();
+        LapHistoryRecorder recorder = new LapHistoryRecorder(store, clock: () => Now, idFactory: () => "hs-1");
+
+        recorder.Ingest(Frame(SessionType.Race, lap: 1));
+        recorder.Ingest(Frame(SessionType.Race, lap: 2, lastLapTime: 131.0));
+        Assert.True(store.FirstWriteStarted.Wait(TimeSpan.FromSeconds(5)), "the first lap was never written");
+        recorder.Ingest(Frame(SessionType.Race, lap: 3, lastLapTime: 130.0));
+        store.ReleaseFirstWrite.Set();
+
+        Assert.True(store.TwoWritesDone.Wait(TimeSpan.FromSeconds(5)), "the second lap was never written");
+        Assert.Equal([1, 2], store.LapCounts);
+    }
+
+    private sealed class OrderedLapHistoryStore : ILapHistoryStore, IDisposable
+    {
+        private readonly Lock _gate = new();
+        private readonly List<int> _lapCounts = [];
+        private bool _started;
+
+        public ManualResetEventSlim FirstWriteStarted { get; } = new(false);
+
+        public ManualResetEventSlim ReleaseFirstWrite { get; } = new(false);
+
+        public CountdownEvent TwoWritesDone { get; } = new(2);
+
+        public IReadOnlyList<int> LapCounts
+        {
+            get
+            {
+                lock (this._gate)
+                {
+                    return [.. this._lapCounts];
+                }
+            }
+        }
+
+        public IReadOnlyList<LapHistorySession> LoadAll() => [];
+
+        public void Save(LapHistorySession session)
+        {
+            bool first;
+            lock (this._gate)
+            {
+                first = !this._started;
+                this._started = true;
+            }
+
+            if (first)
+            {
+                // Holds the first write until the second is queued behind it.
+                this.FirstWriteStarted.Set();
+                this.ReleaseFirstWrite.Wait(TimeSpan.FromSeconds(30));
+            }
+
+            lock (this._gate)
+            {
+                this._lapCounts.Add(session.Laps.Count);
+            }
+
+            this.TwoWritesDone.Signal();
+        }
+
+        public void Delete(string sessionId)
+        {
+        }
+
+        public void Dispose()
+        {
+            this.FirstWriteStarted.Dispose();
+            this.ReleaseFirstWrite.Dispose();
+            this.TwoWritesDone.Dispose();
+        }
+    }
+
     private sealed class BlockingLapHistoryStore(
         ManualResetEventSlim release,
         ManualResetEventSlim writeStarted) : ILapHistoryStore

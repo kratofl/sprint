@@ -5,9 +5,9 @@ namespace Sprint.Desktop.Features.SessionPlanning;
 /// <summary>
 /// The wire and disk form of a <see cref="LapChannelTrace"/> (#194).
 /// <para>
-/// One codec, three callers: the local trace store, the shareable lap file (#198), and the
-/// cloud blob (#197) all carry the same bytes. Two implementations of this layout would drift,
-/// and the drift would only ever show up on somebody else's machine.
+/// One codec, two callers: the local trace store and the shareable lap file (#198) carry the
+/// same bytes. Two implementations of this layout would drift, and the drift would only ever
+/// show up on somebody else's machine.
 /// </para>
 /// <para>
 /// The layout is length-prefixed and channel names are written into the payload, so a trace

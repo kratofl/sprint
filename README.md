@@ -6,7 +6,8 @@
 
 Sprint is a desktop app for sim racers. It reads live telemetry from the game, renders a dash you
 design onto the USB screen in your wheel, plans race weekends against your own lap history, and
-compares laps trace by trace. A cloud API and web app hold shared laps and sessions.
+compares laps trace by trace, yours or ones a friend sent as a lap file. A cloud API and web app
+hold your sessions and let a race engineer follow along.
 
 Supported game: **Le Mans Ultimate**. Supported screens: **VoCore M-PRO** and **USBD480 NX** over
 WinUSB.

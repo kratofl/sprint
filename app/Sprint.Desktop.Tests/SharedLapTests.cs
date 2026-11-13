@@ -7,9 +7,8 @@ using Xunit;
 namespace Sprint.Desktop.Tests;
 
 /// <summary>
-/// Lap files and the one path a lap from somebody else takes into the corpus (#198, shared with
-/// #197). Trading files is how sim communities already work, so this is not a stopgap for the
-/// cloud — both ship, through the same format and the same importer.
+/// Lap files and the one path a lap from somebody else takes into the corpus (#198). Laps are
+/// shared only as files: trading files is how sim communities already work.
 /// </summary>
 public sealed class SharedLapTests
 {
@@ -199,19 +198,6 @@ public sealed class SharedLapTests
         importer.Import(Lap() with { Provenance = Provenance() with { SharedBy = null } });
 
         Assert.Equal("Unknown driver", history.Saved[0].SharedFrom);
-    }
-
-    [Fact]
-    public void ACloudLapRecordsTheCodeItWasPulledWith()
-    {
-        (FakeHistory? history, FakeTraces _, SharedLapImporter? importer) = Corpus();
-
-        importer.Import(Lap() with
-        {
-            Provenance = Provenance() with { SourceKind = SharedLapSources.Cloud, ShareCode = "ABC123" },
-        });
-
-        Assert.Equal("ABC123", history.Saved[0].ShareCode);
     }
 
     [Fact]

@@ -6,12 +6,11 @@ Epic #193 (#194–#198).
 
 Code: `app/Sprint.Desktop.Core/Features/SessionPlanning/` (`LapChannelTrace`, `LapTraceCodec`,
 `LocalLapTraceStore`, `LapTraceRetention`), `Features/Charts/`, `Features/LiveCompare/`,
-`Features/Analysis/`, `Features/Sharing/`; API `LapTraceEntity` in `api/Sprint.Api/Data/Entities.cs`.
+`Features/Analysis/`, `Features/Sharing/`.
 
-**State:** traces, retention, the Analysis view, lap files, the cloud client and the HUD exist. The
-HUD is the On track page plus Electron windows (`app/desktop/electron/hud.ts`) over
-`LiveCompareService`; it has not yet been driven against a real game. Cloud sharing has never been run
-against a real server.
+**State:** traces, retention, the Analysis view, lap files and the HUD exist. The HUD is the On track
+page plus Electron windows (`app/desktop/electron/hud.ts`) over `LiveCompareService`; it has not yet
+been driven against a real game.
 
 ## Traces: a second tier, not a wider curve
 
@@ -149,21 +148,17 @@ and the primary/comparison laps in state; no page sends or reads them any more.
 
 ## Sharing
 
-- Both a lap file and cloud. The file works with no account and is how sim communities already trade
-  artifacts.
+- Laps are shared only as lap files (`SharedLapFile`, `.sprintlap`): Export on a lap, Import… on the
+  other machine. A file needs no account or server and is how sim communities already trade artifacts.
+  Cloud share codes (#197) were dropped for it, so nothing leaves the machine but a file the driver
+  hands over; the corpus stays local.
 - Opening a lap file never imports it. The host reads it without filing it
   (`/api/laps/import/preview`: the lap, or which way the file is unreadable, and whether it is already
   here), the page shows that, and only Add files it. Electron keeps the file's bytes until then, so what
   is added is exactly what was shown.
-- Per-lap share codes, no friend graph: an unguessable code pulls one lap and the owner can revoke it.
-  A friend graph can layer on later without touching traces or the HUD.
-- A share code is its own entity, not an engineer invite link: an invite links two accounts once, a lap
-  code pulls one lap and must outlive every session.
-- Only explicitly shared laps leave the machine; the corpus stays local.
-- Storage is a compressed blob on Postgres `LapTraceEntity` with game, track, car, lap time, owner and
-  code as indexed columns. Not InfluxDB: the x-axis is track position and the trace is fetched whole.
 - A shared lap enters the corpus as a third-party lap with its provenance, so it can be a target.
-- Shared laps are attributed by the user's display name, never their email address.
+- A lap file credits its driver by the Settings driver name, never an email address; passing on a
+  shared lap keeps its original driver.
 
 ## Deliberately open
 

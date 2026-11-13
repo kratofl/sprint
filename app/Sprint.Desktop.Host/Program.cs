@@ -454,6 +454,9 @@ app.MapGet("/api/state", () =>
     // From disk, not the planner's live objects: the telemetry loop mutates those under the
     // planner's lock, and serializing them here would race it.
     IReadOnlyList<SessionPlan> plans = planStore.LoadAll();
+    // The active plan's target-lap curves, found here so the start/finish latch on the telemetry
+    // loop never reads the corpus itself (PlanTargetDelivery.ResolveReferences).
+    planTargets.ResolveReferences();
     IResult result = Results.Json(new
     {
         telemetry = state.Telemetry,

@@ -11,12 +11,7 @@ public sealed record SharedLapImportResult(bool Added, bool AlreadyPresent, stri
 }
 
 /// <summary>
-/// The one path a lap from somebody else takes into the corpus (#197, #198).
-/// <para>
-/// A file import and a cloud fetch share it rather than each filing their own session: the two
-/// produce the same thing, and two writers would be two chances to record provenance
-/// differently for the same lap.
-/// </para>
+/// The one path a lap from somebody else takes into the corpus (#198).
 /// <para>
 /// A shared lap becomes its own single-lap history session with
 /// <see cref="LapHistoryOrigin.Shared"/>, so every existing corpus reader — statistics, the
@@ -82,7 +77,6 @@ public sealed class SharedLapImporter
             EndedAt = lap.Provenance.DrivenAt ?? lap.Provenance.SharedAt,
             SharedFrom = lap.Attribution,
             SharedAt = this._clock(),
-            ShareCode = lap.Provenance.ShareCode,
             SharedFingerprint = fingerprint,
             Laps =
             [

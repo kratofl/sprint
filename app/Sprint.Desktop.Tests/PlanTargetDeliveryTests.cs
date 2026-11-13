@@ -26,6 +26,7 @@ public sealed class PlanTargetDeliveryTests
     public void A_curve_backed_target_delivers_both_the_reference_and_the_scalar()
     {
         PlanTargetDelivery delivery = new PlanTargetDelivery(() => PlanWith(RaceTarget()), Corpus());
+        delivery.ResolveReferences();
 
         bool latched = delivery.Observe(RaceFrame(lap: 1));
 
@@ -60,6 +61,7 @@ public sealed class PlanTargetDeliveryTests
         PlanTargetDelivery delivery = new PlanTargetDelivery(
             () => PlanWith(RaceTarget()),
             new FakeLapHistoryStore([]));
+        delivery.ResolveReferences();
 
         delivery.Observe(RaceFrame(lap: 1));
 
@@ -72,6 +74,7 @@ public sealed class PlanTargetDeliveryTests
     {
         PlanTarget target = RaceTarget();
         PlanTargetDelivery delivery = new PlanTargetDelivery(() => PlanWith(target), Corpus());
+        delivery.ResolveReferences();
 
         // No lap was in progress, so the first frame in the car applies at once.
         Assert.True(delivery.Observe(RaceFrame(lap: 4)));
@@ -97,6 +100,7 @@ public sealed class PlanTargetDeliveryTests
     {
         PlanTarget? target = RaceTarget();
         PlanTargetDelivery delivery = new PlanTargetDelivery(() => PlanWith(target), Corpus());
+        delivery.ResolveReferences();
 
         delivery.Observe(RaceFrame(lap: 4));
         Assert.NotNull(delivery.Reference);
@@ -234,6 +238,33 @@ public sealed class PlanTargetDeliveryTests
         delivery.Observe(RaceFrame(lap: 2));
 
         Assert.Equal(3.5, delivery.Targets.FuelPerLapLiters);
+        Assert.Equal(1, corpus.Reads);
+    }
+
+    [Fact]
+    public void The_reference_comes_from_what_a_resolve_found_never_from_the_corpus_at_the_line()
+    {
+        CountingStore corpus = new CountingStore(Corpus().LoadAll());
+        PlanTargetDelivery delivery = new PlanTargetDelivery(() => PlanWith(RaceTarget()), corpus);
+
+        // Out of the car the latch applies on every frame, and neither that nor a line reads the
+        // corpus: nothing has resolved the lap yet, so the tracker stays on its session best.
+        delivery.Observe(RaceFrame(lap: 1, inCar: false));
+        delivery.Observe(RaceFrame(lap: 1));
+        Assert.Equal(0, corpus.Reads);
+        Assert.Null(delivery.Reference);
+        Assert.Equal(100, delivery.Targets.LapTimeSeconds);
+
+        // The state poll resolves the curve mid-lap; the lap in progress keeps what it started with.
+        delivery.ResolveReferences();
+        Assert.Equal(1, corpus.Reads);
+        Assert.False(delivery.Observe(RaceFrame(lap: 1)));
+        Assert.Null(delivery.Reference);
+
+        // The next line picks it up, still without a read.
+        Assert.True(delivery.Observe(RaceFrame(lap: 2)));
+        DeltaReference reference = Assert.IsType<DeltaReference>(delivery.Reference);
+        Assert.Equal(50, reference.TimesSeconds[50], precision: 6);
         Assert.Equal(1, corpus.Reads);
     }
 

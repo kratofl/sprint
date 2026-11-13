@@ -19,8 +19,8 @@ public sealed class UserEntity
     public string? Email { get; set; }
 
     /// <summary>
-    /// What other drivers see. Attributing a shared lap to an email address is both wrong and
-    /// a disclosure nobody asked for, so sharing (#197) gave the user a name of their own.
+    /// What other people see — an engineer, or a driver an engineer works with. Showing an email
+    /// address instead is a disclosure nobody asked for, so the user has a name of their own.
     /// Empty until they set one; readers fall back to something neutral rather than the email.
     /// </summary>
     public string DisplayName { get; set; } = "";
@@ -49,41 +49,6 @@ public sealed class ServerSettingsEntity
     public string InstanceName { get; set; } = "Sprint";
     public bool AllowRegistration { get; set; } = true;
     public DateTimeOffset UpdatedAt { get; set; }
-}
-
-/// <summary>
-/// A lap somebody chose to share (#197).
-/// <para>
-/// The trace is an opaque immutable blob, fetched whole and never queried by field — which is
-/// why this is a Postgres row and not an InfluxDB series. Our x-axis is track position, not
-/// time, and Influx would have to fake a time axis for something that is neither streamed nor
-/// range-queried.
-/// </para>
-/// </summary>
-public sealed class LapTraceEntity
-{
-    [Key]
-    public string Id { get; set; } = "";
-    public string OwnerId { get; set; } = "";
-
-    /// <summary>The unguessable code. Whoever holds it can pull the lap.</summary>
-    public string ShareCode { get; set; } = "";
-    public string Game { get; set; } = "";
-    public string TrackCourse { get; set; } = "";
-    public string CarModel { get; set; } = "";
-    public int LapNumber { get; set; }
-    public double LapTimeSeconds { get; set; }
-    public DateTimeOffset? DrivenAt { get; set; }
-
-    /// <summary>The <c>.sprintlap</c> payload, byte for byte the same as the exported file.</summary>
-    public byte[] Payload { get; set; } = [];
-
-    /// <summary>
-    /// Revoked rather than deleted, so a fetch can say "revoked" instead of "unknown". Those
-    /// are different facts and the person holding the code deserves the true one.
-    /// </summary>
-    public bool Revoked { get; set; }
-    public DateTimeOffset CreatedAt { get; set; }
 }
 
 public sealed class SessionEntity

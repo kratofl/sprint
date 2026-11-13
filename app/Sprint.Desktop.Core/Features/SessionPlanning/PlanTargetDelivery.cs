@@ -23,16 +23,22 @@ namespace Sprint.Desktop.Features.SessionPlanning;
 /// </para>
 /// </summary>
 /// <remarks>
-/// Not thread-safe and not required to be: it is driven from the frame-ingest path, the same
-/// place the planner and the lap-history recorder are fed from. The resulting reference is
-/// marshalled onto the telemetry reader thread by
-/// <see cref="TelemetryEngine.RequestPlanReference"/>.
+/// <see cref="Observe"/> is not thread-safe and not required to be: it is driven from the
+/// frame-ingest path, the same place the planner and the lap-history recorder are fed from. The
+/// resulting reference is marshalled onto the telemetry reader thread by
+/// <see cref="TelemetryEngine.RequestPlanReference"/>. <see cref="ResolveReferences"/> is the one
+/// member for other threads.
 /// </remarks>
 /// <param name="activePlan">
 /// The plan holding the active slot, or null. A plan that is neither armed nor tracking is not
 /// aiming at anything, so the caller — not this service — decides what "active" means.
 /// </param>
-/// <param name="history">The corpus the chosen lap's curve is read back from.</param>
+/// <param name="history">
+/// The corpus the chosen lap's curve is read back from, by <see cref="ResolveReferences"/> only. A
+/// target lap no resolve has found yet (the host just started, or the target was just chosen) has
+/// no reference at the line: <see cref="DeltaTracker"/> stays on its own session best until the
+/// first line after a resolve has found it.
+/// </param>
 /// <param name="fuelHistory">
 /// Where a plan that leaves its fuel per lap to the driver's laps gets the figure from; without
 /// it such a plan has no fuel target. Read through <see cref="IFuelHistorySource.Cached"/> only,
@@ -50,6 +56,19 @@ public sealed class PlanTargetDelivery(Func<SessionPlan?> activePlan, ILapHistor
     private readonly ILapHistoryStore _history =
         history ?? throw new ArgumentNullException(nameof(history));
 
+    // The segment kinds a plan holds targets for (KindFor).
+    private static readonly SegmentKind[] TargetedKinds = [SegmentKind.Qualifying, SegmentKind.Race];
+
+    private static readonly IReadOnlyDictionary<(string SessionId, int LapNumber), LapReferenceCurve> NoCurves =
+        new Dictionary<(string SessionId, int LapNumber), LapReferenceCurve>();
+
+    // The reference curves of the active plan's target laps, as the last ResolveReferences found
+    // them. Replaced whole and never changed after, so the telemetry loop reads it without a lock.
+    private volatile IReadOnlyDictionary<(string SessionId, int LapNumber), LapReferenceCurve> _curves = NoCurves;
+
+    // One resolve at a time, so an older corpus read can never replace a newer one's curves.
+    private readonly Lock _resolveGate = new();
+
     // The lap the latch is waiting out. Absent means no lap is in progress, so the next
     // frame applies whatever is pending straight away.
     private int? _lap;
@@ -65,8 +84,9 @@ public sealed class PlanTargetDelivery(Func<SessionPlan?> activePlan, ILapHistor
     /// <summary>
     /// The reference lap in force, or null when the driver's target cannot honestly drive a
     /// position-relative delta — an imported lap, a manual time, or a lap whose curve is no
-    /// longer in the corpus. Null leaves <see cref="DeltaTracker"/> on its own session best
-    /// rather than inventing a pro-rata trace from a single number.
+    /// longer in the corpus — or when <see cref="ResolveReferences"/> has not found the lap's
+    /// curve yet. Null leaves <see cref="DeltaTracker"/> on its own session best rather than
+    /// inventing a pro-rata trace from a single number.
     /// </summary>
     public DeltaReference? Reference { get; private set; }
 
@@ -139,21 +159,60 @@ public sealed class PlanTargetDelivery(Func<SessionPlan?> activePlan, ILapHistor
         RaceFuelEstimate.TypedValue(plan.FuelPerLapLiters)
         ?? this._fuelHistory.Cached(new PlanContext(plan.Game, plan.Car, plan.Track))?.FuelPerLapLiters;
 
-    // The tier is read off the lap in the corpus, never off the flag stored on the target: the
-    // target records what was true when it was chosen, and the lap is what is actually there
-    // to be measured against now.
+    /// <summary>
+    /// Finds the reference curve of each lap the active plan targets (qualifying and race) in the
+    /// corpus, for the next line to use. Reads the whole corpus and may wait on the store's lock,
+    /// so never from the telemetry loop: the host calls it on every state poll, beside asking for
+    /// every plan's race fuel, which over the cached corpus costs a lookup. A changed target, or a
+    /// target lap that left the corpus, is picked up by the next call.
+    /// </summary>
+    public void ResolveReferences()
+    {
+        lock (this._resolveGate)
+        {
+            SessionPlan? plan = this._activePlan();
+            List<(string SessionId, int LapNumber)> wanted = [];
+            foreach (SegmentKind kind in TargetedKinds)
+            {
+                if (plan?.TargetsFor(kind)?.LapTime is { LapSessionId: { } sessionId, LapNumber: { } lapNumber })
+                {
+                    wanted.Add((sessionId, lapNumber));
+                }
+            }
+
+            if (wanted.Count == 0)
+            {
+                this._curves = NoCurves;
+                return;
+            }
+
+            IReadOnlyList<LapHistorySession> corpus = this._history.LoadAll();
+            Dictionary<(string SessionId, int LapNumber), LapReferenceCurve> curves = [];
+            foreach ((string sessionId, int lapNumber) in wanted)
+            {
+                // The tier is read off the lap in the corpus, never off the flag stored on the
+                // target: the target records what was true when it was chosen, and the lap is
+                // what is actually there to be measured against now.
+                LapHistoryRecord? lap = corpus
+                    .FirstOrDefault(session => string.Equals(session.Id, sessionId, StringComparison.Ordinal))
+                    ?.Laps.FirstOrDefault(record => record.LapNumber == lapNumber);
+
+                if (lap is { HasReferenceCurve: true, ReferenceCurve: { } curve })
+                {
+                    curves[(sessionId, lapNumber)] = curve;
+                }
+            }
+
+            this._curves = curves;
+        }
+    }
+
+    // Only a curve ResolveReferences already found: this runs on the telemetry loop, which must
+    // never read the corpus or wait on the store's lock.
     private DeltaReference? ReferenceFor(PlanTarget? target)
     {
-        if (target is not { LapSessionId: { } sessionId, LapNumber: { } lapNumber })
-        {
-            return null;
-        }
-
-        LapHistoryRecord? lap = this._history.LoadAll()
-            .FirstOrDefault(session => string.Equals(session.Id, sessionId, StringComparison.Ordinal))
-            ?.Laps.FirstOrDefault(record => record.LapNumber == lapNumber);
-
-        if (lap is not { HasReferenceCurve: true, ReferenceCurve: { } curve })
+        if (target is not { LapSessionId: { } sessionId, LapNumber: { } lapNumber }
+            || !this._curves.TryGetValue((sessionId, lapNumber), out LapReferenceCurve? curve))
         {
             return null;
         }

@@ -46,6 +46,9 @@ public sealed class LapHistoryRecorder
     // curve (#181) and the named-channel trace (#194).
     private readonly List<LapTraceSample> _samples = [];
 
+    // The tail of the default hand-off's write chain. Only the telemetry thread extends it.
+    private Task _writes = Task.CompletedTask;
+
     private LapHistorySession? _session;
     private int _lastSeenLap;
     private bool _lastSeenLapIsValid = true;
@@ -81,10 +84,10 @@ public sealed class LapHistoryRecorder
         this._traces = traces;
         this._clock = clock ?? (() => DateTimeOffset.UtcNow);
         this._idFactory = idFactory ?? (() => Guid.NewGuid().ToString("N"));
-        // Laps complete about once a minute, so the default hand-off is a plain thread-pool
-        // queue: the caller returns immediately and ordering per session is preserved by
-        // the lock around the session itself.
-        this._dispatch = dispatch ?? (work => ThreadPool.QueueUserWorkItem(_ => work()));
+        // The default hand-off runs the writes on the thread pool one after another, in the order
+        // they were asked for: each session write carries its own copy of the session (Persist),
+        // so an older copy landing after a newer one would drop the laps in between.
+        this._dispatch = dispatch ?? this.InOrder;
         this._log = log ?? NullLog.Instance;
     }
 
@@ -518,18 +521,30 @@ public sealed class LapHistoryRecorder
         }
     });
 
-    private void Persist(LapHistorySession session) => this._dispatch(() =>
+    private void Persist(LapHistorySession session)
     {
-        try
+        // Copied here, on the telemetry thread: the write runs later on the dispatch hand-off, and
+        // serialising the live session there would race the next lap's Laps.Add and the per-frame
+        // context and conditions updates.
+        LapHistorySession snapshot = session.Snapshot();
+        this._dispatch(() =>
         {
-            this._store.Save(session);
-        }
-        catch (Exception ex)
-        {
-            // Losing a lap must never take the telemetry pipeline with it.
-            this._log.Warn($"Failed to persist lap-history session '{session.Id}'", ex);
-        }
-    });
+            try
+            {
+                this._store.Save(snapshot);
+            }
+            catch (Exception ex)
+            {
+                // Losing a lap must never take the telemetry pipeline with it.
+                this._log.Warn($"Failed to persist lap-history session '{snapshot.Id}'", ex);
+            }
+        });
+    }
+
+    // Each write starts once the one before it has finished. The work catches its own failures, so
+    // a failed write never stops the ones after it.
+    private void InOrder(Action work) =>
+        this._writes = this._writes.ContinueWith(_ => work(), CancellationToken.None, TaskContinuationOptions.None, TaskScheduler.Default);
 
     /// <summary>A finished lap waiting for its time, with the samples it was driven through.</summary>
     private sealed record PendingLap(LapHistoryRecord Record, LapTraceSample[] Samples, DateTimeOffset CrossedAt);

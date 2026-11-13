@@ -8,18 +8,18 @@ using Xunit;
 namespace Sprint.Desktop.Tests;
 
 /// <summary>
-/// The desktop's cloud client (#197). The server's own rules are tested in Sprint.Api.Tests;
-/// what matters here is that a driver is told which of the failures happened, because the fix
+/// The desktop's cloud client. The server's own rules are tested in Sprint.Api.Tests; what
+/// matters here is that a driver is told which of the failures happened, because the fix
 /// differs for each.
 /// </summary>
-public sealed class CloudSharingTests
+public sealed class CloudClientTests
 {
     [Fact]
     public async Task AnUnreachableServerIsNotReportedAsARejection()
     {
         SprintCloudClient client = Client(_ => throw new HttpRequestException("No such host is known."));
 
-        CloudResult<SharedLapDto> result = await client.FetchLapAsync("ABC");
+        CloudResult<UserProfile> result = await client.MeAsync();
 
         Assert.Equal(CloudFailure.Unreachable, result.Failure);
         // The driver gets something actionable, not the socket layer's wording.
@@ -28,13 +28,12 @@ public sealed class CloudSharingTests
     }
 
     [Fact]
-    public async Task AnUnknownCodeAndARevokedCodeAreDifferentAnswers()
+    public async Task AServerErrorIsPassedOnInItsOwnWords()
     {
-        CloudResult<SharedLapDto> unknown = await Client(Errors("No lap exists for that code.")).FetchLapAsync("NOPE");
-        CloudResult<SharedLapDto> revoked = await Client(Errors("That share code has been revoked by its owner.")).FetchLapAsync("OLD");
+        CloudResult<UserProfile> result = await Client(Errors("A display name must be between 1 and 40 characters.")).SetDisplayNameAsync(" ");
 
-        Assert.Equal(CloudFailure.UnknownCode, unknown.Failure);
-        Assert.Equal(CloudFailure.Revoked, revoked.Failure);
+        Assert.Equal(CloudFailure.Rejected, result.Failure);
+        Assert.Equal("A display name must be between 1 and 40 characters.", result.Message);
     }
 
     [Fact]
@@ -45,26 +44,10 @@ public sealed class CloudSharingTests
             Content = new StringContent("{}"),
         });
 
-        CloudResult<SharedLapDto> result = await client.FetchLapAsync("ABC");
+        CloudResult<UserProfile> result = await client.MeAsync();
 
         Assert.Equal(CloudFailure.NotSignedIn, result.Failure);
         Assert.Contains("Sign in", result.Message, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public async Task AFetchedLapCarriesItsPayloadAndAttribution()
-    {
-        SprintCloudClient client = Client(Data("""
-            {"sharedLap":{"shareCode":"ABC","sharedBy":"Ada","game":"Le Mans Ultimate",
-            "trackCourse":"Spa-Francorchamps","carModel":"Porsche 963","lapNumber":4,
-            "lapTimeSeconds":101.5,"drivenAt":null,"payloadBase64":"AQID"}}
-            """));
-
-        CloudResult<SharedLapDto> result = await client.FetchLapAsync("ABC");
-
-        Assert.True(result.Ok);
-        Assert.Equal("Ada", result.Value!.SharedBy);
-        Assert.Equal([1, 2, 3], Convert.FromBase64String(result.Value.PayloadBase64));
     }
 
     [Fact]
@@ -81,8 +64,11 @@ public sealed class CloudSharingTests
 
         await client.MeAsync();
 
-        Assert.Equal("Bearer", seen!.Headers.Authorization!.Scheme);
-        Assert.Equal("tok123", seen.Headers.Authorization.Parameter);
+        Assert.NotNull(seen);
+        System.Net.Http.Headers.AuthenticationHeaderValue? authorization = seen.Headers.Authorization;
+        Assert.NotNull(authorization);
+        Assert.Equal("Bearer", authorization.Scheme);
+        Assert.Equal("tok123", authorization.Parameter);
     }
 
     [Fact]
@@ -99,7 +85,8 @@ public sealed class CloudSharingTests
 
         await client.SignInAsync("a@b.c", "pw");
 
-        Assert.Null(seen!.Headers.Authorization);
+        Assert.NotNull(seen);
+        Assert.Null(seen.Headers.Authorization);
     }
 
     [Fact]
@@ -170,7 +157,7 @@ public sealed class CloudSharingTests
         foreach (string field in SprintCloudClient.Operations.Keys)
         {
             // An argument-less field is declared as "me: UserProfile", one with arguments as
-            // "sharedLap(code: ...)".
+            // "setDisplayName(displayName: ...)".
             Assert.True(
                 schema.Contains($"  {field}(", StringComparison.Ordinal)
                 || schema.Contains($"  {field}:", StringComparison.Ordinal),
@@ -181,7 +168,7 @@ public sealed class CloudSharingTests
     [Fact]
     public void EveryVariableTypeIsOneTheCommittedSchemaDeclares()
     {
-        // This is the check that catches "ShareLapInputInput" — HotChocolate names the input
+        // This is the check that catches "SaveSessionInputInput" — HotChocolate names the input
         // type from the CLR type, and guessing that name wrong compiles and stubs fine.
         string schema = File.ReadAllText(Path.Combine(TestEnv.RepoRoot, "web", "schema.graphql"));
 

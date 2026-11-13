@@ -78,7 +78,6 @@ else
 builder.Services.AddSingleton<ServerSettingsService>();
 builder.Services.AddSingleton<UserService>();
 builder.Services.AddSingleton<CatalogService>();
-builder.Services.AddSingleton<LapShareService>();
 builder.Services.AddSingleton<EngineerService>();
 builder.Services.AddSingleton(services => new LiveHub(services.GetRequiredService<TimeProvider>(), LiveHub.DefaultReconnectGrace));
 

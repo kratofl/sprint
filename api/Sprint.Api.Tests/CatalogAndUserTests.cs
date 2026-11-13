@@ -49,6 +49,22 @@ public class UserServiceTests
         await Assert.ThrowsAsync<GraphQLException>(() =>
             users.LoginAsync(new AuthRequest { Email = "x@sprint.gg", Password = "wrong" }));
     }
+
+    [Fact]
+    public async Task Setting_a_display_name_round_trips_and_is_bounded()
+    {
+        UserService users = NewUsers(out JwtTokenService tokens);
+        AuthResponse registered = await users.RegisterAsync(new AuthRequest { Email = "a@b.c", Password = "pw123456" });
+        string id = tokens.ValidateAndGetUserId(registered.Token);
+
+        UserProfile profile = await users.SetDisplayNameAsync(id, "  Ada Lovelace  ");
+
+        Assert.Equal("Ada Lovelace", profile.DisplayName);
+        UserProfile? reloaded = await users.GetProfileAsync(id);
+        Assert.Equal("Ada Lovelace", reloaded?.DisplayName);
+        await Assert.ThrowsAsync<GraphQLException>(() => users.SetDisplayNameAsync(id, "   "));
+        await Assert.ThrowsAsync<GraphQLException>(() => users.SetDisplayNameAsync(id, new string('x', 41)));
+    }
 }
 
 public class CatalogServiceTests

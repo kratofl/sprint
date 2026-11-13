@@ -178,6 +178,9 @@ setting changes on the next poll.
   (`IFuelHistorySource.Cached`). The latch runs on the telemetry loop, which must never read the
   corpus or wait on its store's lock, so a figure no poll has worked out yet is no target until the
   line after one has.
+- The target lap's reference curve follows the same rule: the state poll finds it
+  (`PlanTargetDelivery.ResolveReferences`) and the latch only reads what was found, so until a poll has
+  found it the tracker stays on its own session best.
 - **Absent is not zero.** Unset `DashTargets` members resolve to absent and widgets show no-data.
   `fuel_target` binds to the planned value, not actual consumption — a target that follows the burn
   can never be missed.

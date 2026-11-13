@@ -41,7 +41,7 @@ public enum LapHistoryOrigin
     Imported,
 
     /// <summary>
-    /// Somebody else's lap, received as a file or by share code (#197, #198). Carries channels
+    /// Somebody else's lap, received as a lap file (#198). Carries channels
     /// but none of the driver's own context — no fuel, no setup, no conditions.
     /// </summary>
     Shared,
@@ -118,6 +118,9 @@ public sealed class LapHistoryContext
     /// </summary>
     [JsonPropertyName("fuelCapacityLiters")]
     public double? FuelCapacityLiters { get; set; }
+
+    /// <summary>A field-for-field copy, for <see cref="LapHistorySession.Snapshot"/>.</summary>
+    internal LapHistoryContext Copy() => (LapHistoryContext)this.MemberwiseClone();
 }
 
 /// <summary>
@@ -189,10 +192,6 @@ public sealed class LapHistorySession
     [JsonPropertyName("sharedAt")]
     public DateTimeOffset? SharedAt { get; set; }
 
-    /// <summary>The code this lap was pulled with, when it came from the cloud. Null for a file.</summary>
-    [JsonPropertyName("shareCode")]
-    public string? ShareCode { get; set; }
-
     /// <summary>
     /// Identity of the shared lap, so importing the same one twice is a no-op. Null for laps
     /// this machine recorded — those are already identified by their session and lap number.
@@ -202,6 +201,21 @@ public sealed class LapHistorySession
 
     [JsonExtensionData]
     public Dictionary<string, JsonElement>? ExtensionData { get; set; }
+
+    /// <summary>
+    /// A copy to hand to a write on another thread while the recorder keeps filling this session:
+    /// its own lap list and context, which the recorder changes as it goes. The lap records are
+    /// shared — a record is complete before it is added and never changed by the recorder after.
+    /// Field for field rather than property by property, so a field added later is not silently
+    /// left out of every save.
+    /// </summary>
+    public LapHistorySession Snapshot()
+    {
+        LapHistorySession copy = (LapHistorySession)this.MemberwiseClone();
+        copy.Context = this.Context.Copy();
+        copy.Laps = [.. this.Laps];
+        return copy;
+    }
 }
 
 /// <summary>

@@ -53,7 +53,8 @@ splits searches and confuses the next agent.
 - **Latch** — applying a changed target only at the start/finish line.
 - **Live Compare** — comparing the live lap against a target lap's trace; its **HUD** is the overlay
   windows above the game.
-- **Share code** — an unguessable, revocable code that pulls one shared lap.
+- **Lap file** — a `.sprintlap` file holding one lap's trace and its provenance; the only way a lap is
+  shared. A lap that arrived as one is a **shared lap**.
 
 ## Race engineer
 

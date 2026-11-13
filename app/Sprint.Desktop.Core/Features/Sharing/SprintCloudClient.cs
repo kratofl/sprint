@@ -18,12 +18,6 @@ public enum CloudFailure
     /// <summary>Not signed in, or the token is no longer accepted.</summary>
     NotSignedIn,
 
-    /// <summary>No lap exists for that code.</summary>
-    UnknownCode,
-
-    /// <summary>The code existed and its owner withdrew it.</summary>
-    Revoked,
-
     /// <summary>The server said no, for a reason it stated.</summary>
     Rejected,
 }
@@ -40,8 +34,7 @@ public sealed record CloudResult<T>(T? Value, CloudFailure Failure, string Messa
 }
 
 /// <summary>
-/// The desktop's first cloud client (#197). Before this, the only outbound HTTP in the app was
-/// the GitHub release check.
+/// The desktop's client for Sprint cloud: sign-in, the profile and sync.
 /// <para>
 /// A hand-rolled GraphQL POST rather than a client library: there are a handful of operations, the
 /// contracts are already shared through <c>Sprint.Contracts</c>, and a codegen pipeline for the
@@ -82,10 +75,6 @@ public sealed class SprintCloudClient
             ["serverSettings"] = "{serverSettings{instanceName allowRegistration discordSignIn}}",
             ["me"] = "{me{id email displayName createdAt}}",
             ["setDisplayName"] = "mutation($n:String!){setDisplayName(displayName:$n){id email displayName createdAt}}",
-            ["shareLap"] = "mutation($i:ShareLapInput!){shareLap(input:$i){id shareCode game trackCourse carModel lapNumber lapTimeSeconds revoked createdAt}}",
-            ["revokeSharedLap"] = "mutation($c:String!){revokeSharedLap(code:$c){id shareCode game trackCourse carModel lapNumber lapTimeSeconds revoked createdAt}}",
-            ["mySharedLaps"] = "{mySharedLaps{id shareCode game trackCourse carModel lapNumber lapTimeSeconds revoked createdAt}}",
-            ["sharedLap"] = "query($c:String!){sharedLap(code:$c){shareCode sharedBy game trackCourse carModel lapNumber lapTimeSeconds drivenAt payloadBase64}}",
             ["saveSession"] = "mutation($i:SaveSessionInput!){saveSession(input:$i){id}}",
             ["saveSetup"] = "mutation($i:SaveSetupInput!){saveSetup(input:$i){id}}",
             ["saveLayout"] = "mutation($i:SaveLayoutInput!){saveLayout(input:$i){id}}",
@@ -113,18 +102,6 @@ public sealed class SprintCloudClient
 
     public Task<CloudResult<UserProfile>> SetDisplayNameAsync(string name, CancellationToken ct = default) =>
         this.CallAsync<UserProfile>("setDisplayName", new { n = name }, ct);
-
-    public Task<CloudResult<SharedLapSummary>> ShareLapAsync(ShareLapInput input, CancellationToken ct = default) =>
-        this.CallAsync<SharedLapSummary>("shareLap", new { i = input }, ct);
-
-    public Task<CloudResult<SharedLapSummary>> RevokeAsync(string code, CancellationToken ct = default) =>
-        this.CallAsync<SharedLapSummary>("revokeSharedLap", new { c = code }, ct);
-
-    public Task<CloudResult<List<SharedLapSummary>>> MySharedLapsAsync(CancellationToken ct = default) =>
-        this.CallAsync<List<SharedLapSummary>>("mySharedLaps", null, ct);
-
-    public Task<CloudResult<SharedLapDto>> FetchLapAsync(string code, CancellationToken ct = default) =>
-        this.CallAsync<SharedLapDto>("sharedLap", new { c = code }, ct);
 
     public Task<CloudResult<SessionSummary>> SaveSessionAsync(SaveSessionInput input, CancellationToken ct = default) =>
         this.CallAsync<SessionSummary>("saveSession", new { i = input }, ct);
@@ -209,15 +186,12 @@ public sealed class SprintCloudClient
     }
 
     /// <summary>
-    /// Maps the server's message onto the three outcomes a driver can act on. Matching on text
-    /// is fragile in general; here the two messages are asserted by the API's own tests, and
-    /// the alternative — an error-code enum across the GraphQL boundary — is more machinery
-    /// than three cases justify.
+    /// Maps the server's message onto an outcome a driver can act on. Matching on text is
+    /// fragile in general; the alternative — an error-code enum across the GraphQL boundary — is
+    /// more machinery than one special case justifies.
     /// </summary>
     private static CloudFailure Classify(string message) => message switch
     {
-        _ when message.Contains("revoked", StringComparison.OrdinalIgnoreCase) => CloudFailure.Revoked,
-        _ when message.Contains("No lap exists", StringComparison.OrdinalIgnoreCase) => CloudFailure.UnknownCode,
         _ when message.Contains("authoriz", StringComparison.OrdinalIgnoreCase)
             || message.Contains("authenticat", StringComparison.OrdinalIgnoreCase) => CloudFailure.NotSignedIn,
         _ => CloudFailure.Rejected,

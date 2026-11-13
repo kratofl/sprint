@@ -38,11 +38,10 @@ public sealed record SharedLapReadResult(SharedLap? Lap, SharedLapReadError Erro
 }
 
 /// <summary>
-/// A lap as a single self-describing file (#198).
+/// A lap as a single self-describing file (#198), the one way a lap is shared.
 /// <para>
-/// Not a stopgap for the cloud path: trading files is how sim communities already work, it
-/// needs no account and no server, and the format falls out of the trace design almost free
-/// (spec §2.7). Both paths ship.
+/// Trading files is how sim communities already work, it needs no account and no server, and
+/// the format falls out of the trace design almost free (spec §2.7).
 /// </para>
 /// <para>
 /// Layout is magic, version, a length-prefixed JSON header, then

@@ -162,6 +162,6 @@ falling back to defaults, so its next save does not overwrite what a newer build
 ## Cloud
 
 `api/` is .NET 10 + HotChocolate GraphQL over Postgres (relational) and InfluxDB (live telemetry time
-series); shared DTOs live in `app/Sprint.Contracts`. The desktop's cloud traffic is sign-in, sync and lap
-sharing (`SprintCloudClient`), the live telemetry stream while syncing, plus GitHub release checks and
+series); shared DTOs live in `app/Sprint.Contracts`. The desktop's cloud traffic is sign-in and sync
+(`SprintCloudClient`), the live telemetry stream while syncing, plus GitHub release checks and
 update downloads. Sign-in, live and engineer access: [live-telemetry.md](live-telemetry.md). Deployment: [operations/deployment.md](../operations/deployment.md).
