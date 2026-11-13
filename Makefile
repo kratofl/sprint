@@ -2,7 +2,7 @@
 # Usage: make <target>
 # Run `make help` to list all available targets.
 
-.PHONY: help setup types dev-app record-app replay-app agent-app dev-host dev-db dev-api dev-web dev-cloud build-api build-web build-app build \
+.PHONY: help setup types dev-app record-app replay-app agent-app smoke-app dev-host dev-db dev-api dev-web dev-cloud build-api build-web build-app build \
         test test-api test-app lint lint-app lint-api fmt schema \
         docker-build docker-up docker-down docker-logs \
         clean reset-dev-data
@@ -67,6 +67,9 @@ record-app: types ## Run the desktop app and record every telemetry frame into a
 
 replay-app: types ## Run the desktop app on a recording instead of the game: make replay-app FILE=<recording>
 	$(TASKS) replay-app $(FILE)
+
+smoke-app: types ## Start the real desktop app hidden, open every page on a replayed race, fail on any error (CI runs it)
+	node app/desktop/scripts/smoke.mjs
 
 agent-app: types ## An agent's hidden run of the desktop app on fresh data, driven over CDP: make agent-app [DATA=<dir to copy>] [FILE=<recording>]
 	node app/desktop/scripts/agent-app.mjs $(if $(DATA),--data "$(DATA)") $(if $(FILE),--replay "$(FILE)")

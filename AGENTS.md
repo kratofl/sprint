@@ -146,6 +146,8 @@ short, current, and tool-agnostic. Deeper material lives in `docs/` (index:
 - An agent's own run of the app, hidden and on fresh data: `make agent-app` (`DATA=<dir>` copies
   data in, `FILE=<recording>` replays telemetry); drive it with `app/desktop/scripts/cdp.mjs`, stop
   it with `node app/desktop/scripts/agent-app.mjs stop <run folder>`
+- Smoke test the real app (CI runs it on Windows): `make smoke-app` — hidden run on a replayed
+  race, every sidebar page, fails on any uncaught exception or console error
 - Start the native host alone: `make dev-host` (no UI)
 - Dev runs keep their data in the checkout's `app/desktop/.dev/data`, never the
   installed app's; wipe it with `make reset-dev-data`

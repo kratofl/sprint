@@ -211,6 +211,9 @@ public sealed record LapNote(
 {
     /// <summary>The longest note, in characters: a thought about a corner, not a report.</summary>
     public const int MaxTextLength = 500;
+
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? ExtensionData { get; init; }
 }
 
 /// <summary>Per-corner tyre state at the end of a lap. Every value nullable.</summary>

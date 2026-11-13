@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using Sprint.Desktop.Features.SessionPlanning;
 
@@ -5,6 +6,16 @@ namespace Sprint.Desktop.Runtime;
 
 public sealed class AppSettings
 {
+    /// <summary>
+    /// The shape of this file. Adding a setting does not bump it (unknown fields are kept);
+    /// renaming one or changing what a value means does, with a migration on load.
+    /// </summary>
+    public const int CurrentVersion = 1;
+
+    /// <summary>What wrote this file. A file from before versioning reads as 1, the shape it had.</summary>
+    [JsonPropertyName("version")]
+    public int Version { get; set; } = CurrentVersion;
+
     [JsonPropertyName("sidebarCollapsed")]
     public bool SidebarCollapsed { get; set; }
 
@@ -96,6 +107,10 @@ public sealed class AppSettings
     /// <summary>The live link to an engineer's desktop.</summary>
     [JsonPropertyName("liveLink")]
     public LiveLinkSettings LiveLink { get; set; } = new();
+
+    /// <summary>Fields a newer Sprint wrote, kept so a rollback does not erase them.</summary>
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? ExtensionData { get; set; }
 }
 
 /// <summary>The live link's choices on the driver's side.</summary>
@@ -104,6 +119,9 @@ public sealed class LiveLinkSettings
     /// <summary>Whether the engineer's pit wall gets the active session plan and its target lap.</summary>
     [JsonPropertyName("sharePlan")]
     public bool SharePlan { get; set; } = true;
+
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? ExtensionData { get; set; }
 }
 
 /// <summary>
@@ -123,6 +141,9 @@ public sealed class CloudSettings
 
     [JsonPropertyName("storage")]
     public CloudStorageMode Storage { get; set; } = CloudStorageMode.Local;
+
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? ExtensionData { get; set; }
 }
 
 /// <summary>Which Sprint server the driver chose. Stored by name.</summary>
@@ -241,6 +262,9 @@ public sealed class SessionPlannerSettings
     /// <summary>Warn when the detected qualifying/race segment changes mid-plan.</summary>
     [JsonPropertyName("warnOnDetectedSegmentChange")]
     public bool WarnOnDetectedSegmentChange { get; set; } = true;
+
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? ExtensionData { get; set; }
 }
 
 /// <summary>Where one Live Compare overlay window sat on one (monitor, resolution).</summary>
@@ -265,6 +289,9 @@ public sealed class HudWindowLayout
 
     [JsonPropertyName("height")]
     public int Height { get; set; }
+
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? ExtensionData { get; set; }
 }
 
 /// <summary>
@@ -343,6 +370,9 @@ public sealed class LiveCompareSettings
         this.Layouts.Clear();
         return true;
     }
+
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? ExtensionData { get; set; }
 }
 
 public sealed class LastSeenContext
@@ -355,6 +385,9 @@ public sealed class LastSeenContext
 
     [JsonPropertyName("track")]
     public string Track { get; set; } = "";
+
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? ExtensionData { get; set; }
 }
 
 public sealed class DevicesUiSettings
@@ -366,6 +399,9 @@ public sealed class DevicesUiSettings
     /// <summary>Whether the device detail preview subscribes to live telemetry frames (animates) or shows a single frozen frame.</summary>
     [JsonPropertyName("livePreview")]
     public bool LivePreview { get; set; } = true;
+
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? ExtensionData { get; set; }
 }
 
 public sealed class DashesUiSettings
@@ -373,6 +409,9 @@ public sealed class DashesUiSettings
     /// <summary>How the Dashes overview lists dashes: "gallery" (tiles, default) or "list".</summary>
     [JsonPropertyName("viewMode")]
     public string ViewMode { get; set; } = "gallery";
+
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? ExtensionData { get; set; }
 }
 
 public sealed class NewDashDefaults
@@ -388,6 +427,9 @@ public sealed class NewDashDefaults
 
     [JsonPropertyName("tempUnit")]
     public string TempUnit { get; set; } = "c";
+
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? ExtensionData { get; set; }
 }
 
 public sealed class DashEditorUiSettings
@@ -397,6 +439,9 @@ public sealed class DashEditorUiSettings
 
     [JsonPropertyName("inspector")]
     public DockPanelState Inspector { get; set; } = new();
+
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? ExtensionData { get; set; }
 }
 
 public sealed class DockPanelState
@@ -406,4 +451,7 @@ public sealed class DockPanelState
 
     [JsonPropertyName("pinned")]
     public bool Pinned { get; set; } = true;
+
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? ExtensionData { get; set; }
 }

@@ -222,6 +222,9 @@ public sealed class DashTheme
 
         return changed;
     }
+
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? ExtensionData { get; set; }
 }
 
 public sealed class DashAlertConfig
@@ -257,6 +260,9 @@ public sealed class DashAlertConfig
         ColorToken = this.ColorToken,
         EnabledTypes = this.EnabledTypes.ToList(),
     };
+
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? ExtensionData { get; set; }
 }
 
 public sealed class DashPage
@@ -286,6 +292,9 @@ public sealed class DashPage
     [JsonPropertyName("widgetStacks")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public List<LegacyDashWidgetStack>? LegacyWidgetStacks { get; set; }
+
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? ExtensionData { get; set; }
 }
 
 /// <summary>
@@ -341,6 +350,9 @@ public sealed class DashWidgetGroup
     [JsonPropertyName("hidden")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public bool Hidden { get; set; }
+
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? ExtensionData { get; set; }
 }
 
 /// <summary>A pre-groups widget stack: a grid region whose layers lay widgets out in its own local grid.</summary>
@@ -440,6 +452,9 @@ public sealed class DashWidgetStyle
 
     [JsonIgnore]
     public bool IsEmpty => string.IsNullOrEmpty(this.TextColor) && string.IsNullOrEmpty(this.LabelColor);
+
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? ExtensionData { get; set; }
 }
 
 public sealed class DashAlert
@@ -480,4 +495,7 @@ public sealed class DashAlert
 
     [JsonIgnore]
     public bool UsesGlobalSettings => this.DisplayMode is null && this.ColorToken is null && this.DurationSeconds is null && this.InvertColors is null;
+
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? ExtensionData { get; set; }
 }

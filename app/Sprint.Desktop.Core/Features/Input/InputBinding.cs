@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using Sprint.Desktop.Features.Devices;
 
@@ -15,6 +16,9 @@ public sealed record InputBinding
 
     [JsonPropertyName("command")]
     public string Command { get; init; } = "";
+
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? ExtensionData { get; init; }
 }
 
 /// <summary>The persisted global controls config (controls.json).</summary>
@@ -22,6 +26,9 @@ public sealed class ControlsConfig
 {
     [JsonPropertyName("bindings")]
     public List<InputBinding> Bindings { get; set; } = [];
+
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? ExtensionData { get; set; }
 }
 
 /// <summary>

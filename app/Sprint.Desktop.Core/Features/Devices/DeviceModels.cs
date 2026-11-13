@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace Sprint.Desktop.Features.Devices;
@@ -140,6 +141,9 @@ public sealed class SavedDevice
     /// transparent background instead of black, for an overlay.
     /// </summary>
     public bool Transparent { get; set; }
+
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? ExtensionData { get; set; }
 }
 
 public sealed record ScreenCaptureRegion(int X, int Y, int Width, int Height)
@@ -154,6 +158,9 @@ public sealed class DeviceBinding
 
     [JsonPropertyName("command")]
     public string Command { get; set; } = "";
+
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? ExtensionData { get; set; }
 }
 
 public static class DeviceCapabilities

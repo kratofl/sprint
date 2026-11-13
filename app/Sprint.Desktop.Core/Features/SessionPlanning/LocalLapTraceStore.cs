@@ -84,7 +84,7 @@ public sealed class LocalLapTraceStore : ILapTraceStore
             LapChannelTrace? trace = LapTraceCodec.Read(deflate);
             if (trace is null)
             {
-                this._log.Warn($"Ignoring lap trace '{traceId}': not a Sprint trace payload");
+                this._log.Warn($"Ignoring lap trace '{traceId}': not a trace this build can read (corrupt, or written by a newer Sprint)");
             }
 
             return trace;

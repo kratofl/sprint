@@ -153,6 +153,12 @@ dashes, devices, setups, session plans, the lap-history corpus, lap traces, diag
 one file per record where a corrupt file must not cost the rest. Persisted enums use names. Data from
 the retired clients is not migrated.
 
+A newer Sprint's files meet an older one after a rollback or a shared lap. So every file Sprint writes
+either carries a version its reader checks (binary: lap traces, `.sprintlap`, recordings) or keeps
+the fields it does not know (`[JsonExtensionData]` on JSON models), and a breaking change bumps the
+version. A single-file store that cannot read its file sets it aside (`AtomicFile.SetAside`) before
+falling back to defaults, so its next save does not overwrite what a newer build wrote.
+
 ## Cloud
 
 `api/` is .NET 10 + HotChocolate GraphQL over Postgres (relational) and InfluxDB (live telemetry time

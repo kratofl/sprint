@@ -98,19 +98,28 @@ public sealed class PitWallLayoutStore
         if (!File.Exists(this._path))
             return PitWallLayouts.Default;
 
+        string error;
         try
         {
             using FileStream stream = File.OpenRead(this._path);
             using JsonDocument document = JsonDocument.Parse(stream);
-            if (PitWallLayouts.TryParse(document.RootElement, null, out PitWallLayout layout, out string error))
+            if (PitWallLayouts.TryParse(document.RootElement, null, out PitWallLayout layout, out error))
                 return layout;
-            this._log.Warn($"Ignoring the pit wall layout at {this._path}: {error}");
         }
-        catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             this._log.Warn($"Ignoring an unreadable pit wall layout at {this._path}", ex);
+            return PitWallLayouts.Default;
+        }
+        catch (JsonException ex)
+        {
+            error = ex.Message;
         }
 
+        // A layout this build cannot take (a tile kind from a newer Sprint, say) is set aside,
+        // or the next window move would overwrite it with the default for good.
+        string? keptAt = AtomicFile.SetAside(this._path);
+        this._log.Warn($"Ignoring the pit wall layout at {this._path}: {error}" + (keptAt is null ? "" : $"; kept at {keptAt}"));
         return PitWallLayouts.Default;
     }
 

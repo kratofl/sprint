@@ -334,6 +334,32 @@ public sealed class PitWallTests
     }
 
     [Fact]
+    public void ALayoutFromANewerSprintIsSetAsideNotOverwrittenByTheDefault()
+    {
+        // A tile kind this build has never heard of: the default stands in, and moving the
+        // window afterwards must not cost the newer build its layout.
+        string root = Path.Combine(Path.GetTempPath(), "Sprint.PitWallTests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            string path = Path.Combine(root, PitWallLayoutStore.FileName);
+            string newer = """{"pages":[{"id":"a","name":"A","tiles":[{"id":"t1","layers":["weatherRadar"],"x":0,"y":0,"w":2,"h":2}]}]}""";
+            File.WriteAllText(path, newer);
+
+            PitWallLayoutStore store = new(root);
+            Assert.Equal(PitWallLayouts.Default.Pages.Count, store.Layout.Pages.Count);
+            Assert.True(store.TryPlace(PitWallWindow.Main, null, new PitWallBounds(0, 0, 1920, 1080), out string error), error);
+
+            string keptAt = Assert.Single(Directory.GetFiles(root, PitWallLayoutStore.FileName + ".*.unreadable"));
+            Assert.Equal(newer, File.ReadAllText(keptAt));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
     public void ALayoutIsKeptAcrossARestartWithItsWindows()
     {
         string root = Path.Combine(Path.GetTempPath(), "Sprint.PitWallTests", Guid.NewGuid().ToString("N"));

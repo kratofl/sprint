@@ -1,3 +1,6 @@
+using System.Text.Json;
+using System.Text.Json.Serialization;
+
 namespace Sprint.Desktop.Features.Setup;
 
 public sealed class SetupParameter
@@ -17,6 +20,9 @@ public sealed class SetupProgram
     public string Name { get; set; } = "";
     public bool IsTemplate { get; set; }
     public Dictionary<string, double> Values { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? ExtensionData { get; set; }
 
     public override string ToString() => this.Name;
 }

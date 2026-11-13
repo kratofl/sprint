@@ -15,7 +15,11 @@ namespace Sprint.Desktop.Features.Setup;
 public sealed record RunSetup(
     [property: JsonPropertyName("snapshotId")] string SnapshotId,
     [property: JsonPropertyName("name")] string Name,
-    [property: JsonPropertyName("setupId")] string SetupId);
+    [property: JsonPropertyName("setupId")] string SetupId)
+{
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? ExtensionData { get; init; }
+}
 
 /// <summary>
 /// Which setup each run was driven with, per lap-history session and outing
@@ -116,8 +120,10 @@ public sealed class RunSetups
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
         {
-            // Unreadable picks cost the driver their picks, never the page.
-            this._log.Warn($"Could not read the run setups at {this._path}", ex);
+            // Unreadable picks cost the driver their picks, never the page. Set aside, not
+            // overwritten by the next pick: they may be from a newer Sprint.
+            string? keptAt = ex is JsonException ? AtomicFile.SetAside(this._path) : null;
+            this._log.Warn($"Could not read the run setups at {this._path}" + (keptAt is null ? "" : $"; kept at {keptAt}"), ex);
         }
 
         return this._sessions;

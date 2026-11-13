@@ -60,6 +60,34 @@ public static class AtomicFile
         }
     }
 
+    /// <summary>
+    /// Moves a file its store could not read out of the way, to
+    /// <c>name.ext.yyyyMMdd-HHmmss.unreadable</c> beside it, and returns where it went (null when
+    /// it could not be moved). The store falls back to defaults then, and its next save would
+    /// otherwise overwrite the file for good, though it may well be fine: written by a newer
+    /// Sprint before a rollback. The suffix keeps it out of every <c>*.json</c> directory scan.
+    /// </summary>
+    public static string? SetAside(string path)
+    {
+        ArgumentNullException.ThrowIfNull(path);
+
+        string fullPath = Path.GetFullPath(path);
+        string target = $"{fullPath}.{DateTime.Now:yyyyMMdd-HHmmss}.unreadable";
+        object gate = Gates.GetOrAdd(fullPath, static _ => new object());
+        lock (gate)
+        {
+            try
+            {
+                File.Move(fullPath, target, overwrite: false);
+                return target;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                return null;
+            }
+        }
+    }
+
     // ERROR_SHARING_VIOLATION as an HResult.
     private const int SharingViolation = unchecked((int)0x80070020);
     private const int ReadAttempts = 10;

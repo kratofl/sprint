@@ -213,6 +213,23 @@ public sealed class LapChannelTraceTests
         Assert.InRange(with - without, 1, 4_000);
     }
 
+    [Fact]
+    public void ATraceFromANewerSprintIsRefusedRatherThanMisread()
+    {
+        LapChannelTrace? trace = LapChannelTrace.FromSamples(FullLap(), 90.0, 13_626.0);
+        Assert.NotNull(trace);
+        using MemoryStream stream = new();
+        LapTraceCodec.Write(stream, trace);
+        byte[] bytes = stream.ToArray();
+
+        stream.Position = 0;
+        Assert.NotNull(LapTraceCodec.Read(stream));
+
+        // The version follows the four magic bytes.
+        BitConverter.GetBytes(LapChannelTrace.FormatVersion + 1).CopyTo(bytes, 4);
+        Assert.Null(LapTraceCodec.Read(new MemoryStream(bytes)));
+    }
+
     private static long Deflated(LapChannelTrace? trace)
     {
         Assert.NotNull(trace);

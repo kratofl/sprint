@@ -51,7 +51,8 @@ public static class LapTraceCodec
     }
 
     /// <summary>
-    /// Reads a trace, or null when the payload is not one. Throws nothing a caller has to
+    /// Reads a trace, or null when the payload is not one or uses a newer layout than this build
+    /// knows. Throws nothing a caller has to
     /// catch for malformed input — a corrupt trace is an expected outcome, not an exception.
     /// </summary>
     public static LapChannelTrace? Read(Stream stream)
@@ -67,7 +68,15 @@ public static class LapTraceCodec
                 return null;
             }
 
-            LapChannelTrace trace = new LapChannelTrace { Version = reader.ReadInt32() };
+            // A newer layout read as this one would be garbage that happens to parse. That is
+            // the case after a rollback, or when a newer Sprint shared the lap.
+            int version = reader.ReadInt32();
+            if (version > LapChannelTrace.FormatVersion)
+            {
+                return null;
+            }
+
+            LapChannelTrace trace = new LapChannelTrace { Version = version };
             trace.PositionStep = reader.ReadDouble();
             double length = reader.ReadDouble();
             trace.TrackLengthMeters = double.IsNaN(length) ? null : length;

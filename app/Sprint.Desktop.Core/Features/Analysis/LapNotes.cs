@@ -150,8 +150,10 @@ public sealed class LapNotes
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
         {
-            // Unreadable notes cost the driver their notes, never the page.
-            this._log.Warn($"Could not read the lap notes at {this._path}", ex);
+            // Unreadable notes cost the driver their notes, never the page. Set aside, not
+            // overwritten by the next note: they may be from a newer Sprint.
+            string? keptAt = ex is JsonException ? AtomicFile.SetAside(this._path) : null;
+            this._log.Warn($"Could not read the lap notes at {this._path}" + (keptAt is null ? "" : $"; kept at {keptAt}"), ex);
         }
 
         return this._sessions;

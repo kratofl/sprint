@@ -234,6 +234,62 @@ public sealed class RuntimePersistenceTests
     }
 
     [Fact]
+    public void SettingsFromANewerSprintKeepWhatThisBuildDoesNotKnow()
+    {
+        // After a rollback: the newer build's settings must still be there when it comes back.
+        string dataRoot = TestEnv.NewTempDataRoot();
+
+        try
+        {
+            string path = Path.Combine(dataRoot, "settings.json");
+            File.WriteAllText(path, """
+                { "version": 99, "sidebarCollapsed": true, "futureSetting": { "on": true },
+                  "liveLink": { "sharePlan": false, "futureChoice": 3 } }
+                """);
+
+            DesktopRuntime runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+            Assert.True(runtime.Settings.SidebarCollapsed);
+            Assert.False(runtime.Settings.LiveLink.SharePlan);
+
+            runtime.Settings.DriverNumber = "7";
+            runtime.SaveSettings();
+
+            using JsonDocument saved = JsonDocument.Parse(File.ReadAllText(path));
+            Assert.True(saved.RootElement.GetProperty("futureSetting").GetProperty("on").GetBoolean());
+            Assert.Equal(3, saved.RootElement.GetProperty("liveLink").GetProperty("futureChoice").GetInt32());
+            Assert.Equal("7", saved.RootElement.GetProperty("driverNumber").GetString());
+            Assert.Equal(AppSettings.CurrentVersion, saved.RootElement.GetProperty("version").GetInt32());
+        }
+        finally
+        {
+            Directory.Delete(dataRoot, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void AnUnreadableSettingsFileIsSetAsideRatherThanOverwritten()
+    {
+        string dataRoot = TestEnv.NewTempDataRoot();
+
+        try
+        {
+            string path = Path.Combine(dataRoot, "settings.json");
+            File.WriteAllText(path, """{ "sidebarCollapsed": "a shape this build cannot read" }""");
+
+            DesktopRuntime runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+            runtime.SaveSettings();
+
+            string keptAt = Assert.Single(Directory.GetFiles(dataRoot, "settings.json.*.unreadable"));
+            Assert.Contains("a shape this build cannot read", File.ReadAllText(keptAt));
+            Assert.DoesNotContain("a shape this build cannot read", File.ReadAllText(path));
+        }
+        finally
+        {
+            Directory.Delete(dataRoot, recursive: true);
+        }
+    }
+
+    [Fact]
     public void ResetSettingsToDefaultsRestoresAndPersistsTheBundledPreferences()
     {
         string dataRoot = TestEnv.NewTempDataRoot();
@@ -569,7 +625,7 @@ public sealed class RuntimePersistenceTests
     [InlineData("devices.json")]
     [InlineData("setup-programs.json")]
     [InlineData("controls.json")]
-    public void MalformedRuntimeJsonFallsBackToDefaultsWithoutDeletingFile(string fileName)
+    public void MalformedRuntimeJsonFallsBackToDefaultsAndSetsTheFileAside(string fileName)
     {
         string dataRoot = TestEnv.NewTempDataRoot();
 
@@ -585,7 +641,9 @@ public sealed class RuntimePersistenceTests
             Assert.NotEmpty(runtime.SetupTemplates);
             Assert.Empty(runtime.SetupPrograms);
             Assert.Empty(runtime.Controls.Bindings);
-            Assert.Equal("{ definitely not json", File.ReadAllText(path));
+            // Out of the way of the next save, which would otherwise overwrite it.
+            string keptAt = Assert.Single(Directory.GetFiles(dataRoot, fileName + ".*.unreadable"));
+            Assert.Equal("{ definitely not json", File.ReadAllText(keptAt));
         }
         finally
         {

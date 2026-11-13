@@ -727,7 +727,17 @@ public sealed class DesktopRuntime : IDesktopRuntime
     private AppSettings LoadSettings()
     {
         AppSettings fallback = this.LoadDefaultSettings();
-        AppSettings settings = this.LoadJson<AppSettings>(this._settingsPath) ?? fallback;
+        AppSettings settings = this.LoadJson<AppSettings>(this._settingsPath, setAsideWhenUnreadable: true) ?? fallback;
+        if (settings.Version > AppSettings.CurrentVersion)
+        {
+            // After a rollback. The settings this build knows still read; the rest is kept as is.
+            this._log.Warn(
+                $"settings.json was written by a newer Sprint (version {settings.Version}, " +
+                $"this build knows {AppSettings.CurrentVersion}); unknown settings are kept untouched.");
+        }
+
+        // Saved in this build's shape from now on, so a newer build migrates what this one wrote.
+        settings.Version = AppSettings.CurrentVersion;
         // Fold legacy three-channel values (beta/alpha) into the two-channel model.
         settings.UpdateChannel = AppSettings.NormalizeChannel(settings.UpdateChannel);
         settings.CustomDashCategories = NormalizeCustomDashCategories(settings.CustomDashCategories);
@@ -787,7 +797,7 @@ public sealed class DesktopRuntime : IDesktopRuntime
 
     private IEnumerable<SavedDevice> LoadDevices()
     {
-        List<SavedDevice> devices = this.LoadJson<List<SavedDevice>>(this._devicesPath) ?? [];
+        List<SavedDevice> devices = this.LoadJson<List<SavedDevice>>(this._devicesPath, setAsideWhenUnreadable: true) ?? [];
         foreach (SavedDevice device in devices)
         {
             // Devices saved before purposes existed (and any unknown value) resolve to
@@ -801,7 +811,7 @@ public sealed class DesktopRuntime : IDesktopRuntime
 
     private ControlsConfig LoadControls()
     {
-        return this.LoadJson<ControlsConfig>(this._controlsPath) ?? new ControlsConfig();
+        return this.LoadJson<ControlsConfig>(this._controlsPath, setAsideWhenUnreadable: true) ?? new ControlsConfig();
     }
 
     private IEnumerable<SetupProgram> LoadSetupTemplates()
@@ -833,7 +843,7 @@ public sealed class DesktopRuntime : IDesktopRuntime
 
     private IEnumerable<SetupProgram> LoadSetupPrograms()
     {
-        List<SetupProgram> programs = this.LoadJson<List<SetupProgram>>(this._setupProgramsPath) ?? [];
+        List<SetupProgram> programs = this.LoadJson<List<SetupProgram>>(this._setupProgramsPath, setAsideWhenUnreadable: true) ?? [];
         foreach (SetupProgram program in programs)
         {
             if (NormalizeSetupProgram(program, isTemplate: false) is { } normalized)
@@ -1152,7 +1162,12 @@ public sealed class DesktopRuntime : IDesktopRuntime
         return JsonSerializer.Deserialize<T>(json, JsonOptions)!;
     }
 
-    private T? LoadJson<T>(string path)
+    /// <summary>
+    /// Reads a JSON file, or default when it is missing or unreadable. A store that keeps all its
+    /// records in one file passes <paramref name="setAsideWhenUnreadable"/>: it saves over that
+    /// file later, which would erase what it could not read (maybe a newer Sprint's file).
+    /// </summary>
+    private T? LoadJson<T>(string path, bool setAsideWhenUnreadable = false)
     {
         if (!File.Exists(path))
         {
@@ -1162,10 +1177,14 @@ public sealed class DesktopRuntime : IDesktopRuntime
             return default;
         }
 
-        using FileStream stream = File.OpenRead(path);
         try
         {
-            T? value = JsonSerializer.Deserialize<T>(stream, JsonOptions);
+            T? value;
+            using (FileStream stream = File.OpenRead(path))
+            {
+                value = JsonSerializer.Deserialize<T>(stream, JsonOptions);
+            }
+
             this._log.Debug($"Configuration loaded: file={Path.GetFileName(path)} type={typeof(T).Name}.");
             return value;
         }
@@ -1173,7 +1192,10 @@ public sealed class DesktopRuntime : IDesktopRuntime
         {
             // A corrupt file falls back to defaults rather than crashing, but that
             // silent reset used to be invisible — record it so it can be diagnosed.
-            this._log.Warn($"Ignoring corrupt JSON at {path}; falling back to default", ex);
+            string? keptAt = setAsideWhenUnreadable ? AtomicFile.SetAside(path) : null;
+            this._log.Warn(
+                $"Ignoring unreadable JSON at {path}; falling back to default" +
+                (keptAt is null ? "" : $"; the file is kept at {keptAt}"), ex);
             return default;
         }
     }
