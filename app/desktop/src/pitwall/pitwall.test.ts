@@ -8,15 +8,15 @@ import type { LinkHealth, LinkPeer, LiveLink } from '../bridge'
 import { pickLayer, shownLayer, startStack, stepStack } from './stack'
 import { carNumber, gapCell, lapClock, placesGained, relativeRows, sectorMarks, sectorStarts, timingSummary } from './timing'
 import { fullStintLaps, planStints, range, stintRows, strategy } from './fuel'
-import type { SessionPlan } from '../views/SessionPlannerDomain'
+import type { RaceFuelEstimate } from '../bridge'
 import { damageRows, liveDelta, pressureRange, tyreHeat, worstZone } from './carDomain'
 import { feedLine, flagState, outCell, stoppedCars, stoppedSummary } from './raceControl'
 import { rejoin, trafficText } from './pitStop'
 
-const basePlan: SessionPlan = {
-  id: 'plan', name: 'Spa 6h', game: 'LMU', car: 'Porsche 963', track: 'Spa', status: 'Tracking', mode: 'Planned', qualifyingIncluded: true,
-  raceLengthFormat: 'LapBased', raceLengthValue: 172, fuelReserveLaps: 1, avgLapTimeSeconds: 125, fuelPerLapLiters: 3.5, setupReferences: [], notes: '',
-  createdAt: '', startedAt: null, endedAt: null, segments: [], targets: [], warnings: [],
+/** The planner's race fuel for a 172-lap race, +1 lap reserve: 25 laps a tank at 3.5 L, so six full stints and 23 laps. */
+const spaFuel: RaceFuelEstimate = {
+  laps: 172, lapTime: { source: 'History', value: 125, laps: 30 }, fuelPerLap: { source: 'History', value: 3.5, laps: 30 }, reserveLaps: 1,
+  totalLiters: 605.5, tankLiters: 88, stints: { lapsPerStint: 25, liters: [87.5, 87.5, 87.5, 87.5, 87.5, 87.5, 80.5] },
 }
 
 const tile = (id: string, x: number, y: number, w: number, h: number, layers: PitWallTile['layers'] = ['timing']): PitWallTile => ({
@@ -248,12 +248,17 @@ test('the fuel tile knows which runs out first, when to box and what is left at 
   assert.equal(strategy(pitCar({ fuelPerLapLiters: 0, virtualEnergyPerLap: null }), 33, 10), null)
 })
 
-test('stints come from the plan’s race length over a full tank', () => {
-  const stints = planStints(basePlan, pitCar({ fuelCapacityLiters: 88 }), 33)
+test('stints are the planner’s, laid over the race’s laps', () => {
+  const stints = planStints(spaFuel, 33)
   assert.equal(stints?.length, 7)
   assert.deepEqual(stints?.slice(0, 2).map((stint) => [stint.firstLap, stint.lastLap, stint.state]), [[1, 25, 'done'], [26, 50, 'current']])
-  assert.deepEqual(stintRows(stints ?? []).map((row) => row.label), ['1', '2', '3', '4', '5–7'])
-  assert.equal(planStints(basePlan, pitCar({ fuelCapacityLiters: null }), 33), null)
+  assert.deepEqual(stints?.at(-1), { number: 7, firstLap: 151, lastLap: 172, liters: 80.5, state: 'next' })
+  assert.deepEqual(stintRows(stints ?? []).map((row) => [row.label, row.count]), [['1', 1], ['2', 1], ['3', 1], ['4', 1], ['5–7', 3]])
+  assert.equal(planStints({ ...spaFuel, stints: null }, 33), null)
+  assert.equal(planStints({ ...spaFuel, laps: null }, 33), null)
+  // 40 laps, 20 a tank, +1 lap reserve: the reserve costs a third stop, so the second stint leaves the last one a lap.
+  const reserveStop = planStints({ ...spaFuel, laps: 40, stints: { lapsPerStint: 20, liters: [60, 60, 3] } }, 0)
+  assert.deepEqual(reserveStop?.map((stint) => [stint.firstLap, stint.lastLap]), [[1, 20], [21, 39], [40, 40]])
 })
 
 test('tyre heat, damage words and the pressure range', () => {
@@ -285,6 +290,9 @@ test('host payloads narrow once and drop what does not fit', () => {
   assert.deepEqual(wall?.field.map((entry) => entry.lastSectors), [[30, null, null]])
   assert.deepEqual(wall?.car.tyres.map((entry) => entry.position), ['FrontLeft', 'RearLeft'])
   assert.deepEqual(wall?.car.damage, null)
+  assert.equal(wall?.planFuel, null)
+  const shared = parsePitWall({ session: {}, field: [], car: {}, plan: { id: 'plan', raceFuel: { laps: 172, reserveLaps: 1, stints: { lapsPerStint: 25, liters: [87.5, 'x'] } } } })
+  assert.deepEqual(shared?.planFuel?.stints, { lapsPerStint: 25, liters: [87.5] })
   assert.equal(parsePitWallLayout({ pages: [] }), null)
   const layout = parsePitWallLayout({ pages: [{ id: 'p', name: 'Race', tiles: [{ id: 't', layers: ['radar', 'nope'], x: 0, y: 0, w: 3, h: 3 }, { id: 'u', layers: [] }] }] })
   assert.deepEqual(layout?.pages[0].tiles.map((entry) => entry.layers), [['radar']])

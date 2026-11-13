@@ -101,6 +101,31 @@ public sealed class RaceFuelEstimateTests
         Assert.Null(noLapTime.TotalLiters);
     }
 
+    [Fact]
+    public void AbsurdFiguresNeverBuildAHugeEstimate()
+    {
+        // A stored reserve of a billion laps is held to the planner's most: 30 + 10 laps at 3 L.
+        RaceFuelEstimate hugeReserve = RaceFuelEstimate.For(Plan(RaceLengthFormat.LapBased, 30, reserve: 1_000_000_000, fuelPerLap: 3), new FuelHistoryFigures(null, 0, null, 0, 90));
+        Assert.Equal(SessionPlannerSettings.MaxFuelReserveLaps, hugeReserve.ReserveLaps);
+        Assert.Equal(120, hugeReserve.TotalLiters!.Value, precision: 6);
+        Assert.Equal(2, hugeReserve.Stints!.Liters.Count);
+
+        // A glitched lap time of a millisecond over a 30-hour race: no lap count rather than an overflow.
+        RaceFuelEstimate glitchedLap = RaceFuelEstimate.For(Plan(RaceLengthFormat.TimeBased, 1800, reserve: 1), new FuelHistoryFigures(0.001, 3, 3, 3, 90));
+        Assert.Null(glitchedLap.Laps);
+        Assert.Null(glitchedLap.Stints);
+
+        // 2000 laps on a tank that holds one: more stops than any race, so no stint list at all.
+        RaceFuelEstimate tinyTank = RaceFuelEstimate.For(Plan(RaceLengthFormat.LapBased, 2000, reserve: 1, fuelPerLap: 3), new FuelHistoryFigures(null, 0, null, 0, 4));
+        Assert.Equal(2000, tinyTank.Laps);
+        Assert.NotNull(tinyTank.TotalLiters);
+        Assert.Null(tinyTank.Stints);
+
+        // A tank that holds the race many billion times over is one stint, not an overflow.
+        RaceFuelEstimate hugeTank = RaceFuelEstimate.For(Plan(RaceLengthFormat.LapBased, 30, reserve: 0, fuelPerLap: 1e-12), new FuelHistoryFigures(null, 0, null, 0, 90));
+        Assert.Single(hugeTank.Stints!.Liters);
+    }
+
     private static SessionPlan Plan(RaceLengthFormat format, double length, int reserve, double? avgLapTime = null, double? fuelPerLap = null) => new()
     {
         Id = "plan",

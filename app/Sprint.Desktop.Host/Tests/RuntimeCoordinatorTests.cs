@@ -1022,6 +1022,8 @@ public sealed class RuntimeCoordinatorTests
     [InlineData("""{"type":"planner.settings","fuelReserveLaps":11}""", "fuelReserveLaps")]
     [InlineData("""{"type":"planner.settings","fuelReserveLaps":1.5}""", "fuelReserveLaps")]
     [InlineData("""{"type":"planner.settings","fuelHistorySource":"1"}""", "fuelHistorySource")]
+    [InlineData("""{"type":"planner.settings","fuelHistorySource":"AllValidLaps, MatchingSessionType"}""", "fuelHistorySource")]
+    [InlineData("""{"type":"planner.settings","fuelHistorySource":"matchingsessiontype"}""", "fuelHistorySource")]
     [InlineData("""{"type":"planner.settings","fuelReserveLaps":2,"fuelHistorySource":"Sometimes"}""", "fuelHistorySource")]
     [InlineData("""{"type":"planner.settings","warnOnRaceFormatMismatch":"yes"}""", "warnOnRaceFormatMismatch")]
     public void PlannerSettings_RejectBadValuesAndWriteNothing(string json, string expected)
@@ -1035,6 +1037,60 @@ public sealed class RuntimeCoordinatorTests
             Assert.Equal(1, runtime.Settings.SessionPlanner.FuelReserveLaps);
             Assert.Equal(FuelHistorySource.AllValidLaps, runtime.Settings.SessionPlanner.FuelHistorySource);
             Assert.True(runtime.Settings.SessionPlanner.WarnOnRaceFormatMismatch);
+        }
+        finally
+        {
+            Cleanup(dataRoot);
+        }
+    }
+
+    [Theory]
+    [InlineData("""{"type":"plan.create","fuelReserveLaps":1000000000}""", "fuelReserveLaps")]
+    [InlineData("""{"type":"plan.create","fuelReserveLaps":-1}""", "fuelReserveLaps")]
+    [InlineData("""{"type":"plan.create","fuelReserveLaps":1.5}""", "fuelReserveLaps")]
+    [InlineData("""{"type":"plan.create","raceLengthFormat":"LapBased","raceLengthValue":2001}""", "at most 2000 laps")]
+    [InlineData("""{"type":"plan.create","raceLengthFormat":"TimeBased","raceLengthValue":1801}""", "at most 1800 minutes")]
+    [InlineData("""{"type":"plan.create","raceLengthFormat":"TimeBased","raceLengthValue":-5}""", "raceLengthValue")]
+    [InlineData("""{"type":"plan.create","avgLapTimeSeconds":0.001}""", "avgLapTimeSeconds")]
+    [InlineData("""{"type":"plan.create","avgLapTimeSeconds":100000}""", "avgLapTimeSeconds")]
+    [InlineData("""{"type":"plan.create","fuelPerLapLiters":0}""", "fuelPerLapLiters")]
+    [InlineData("""{"type":"plan.create","fuelPerLapLiters":5000}""", "fuelPerLapLiters")]
+    public void PlanCreate_RefusesFiguresNoRaceCouldHave(string json, string expected)
+    {
+        RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
+        try
+        {
+            Assert.False(coordinator.Execute(Command(json), out string error));
+            Assert.Contains(expected, error, StringComparison.Ordinal);
+            Assert.Empty(SessionPlanningProbe.For(runtime.DataRoot).Store.LoadAll());
+        }
+        finally
+        {
+            Cleanup(dataRoot);
+        }
+    }
+
+    [Theory]
+    [InlineData("""{"fuelReserveLaps":1000000000}""", "fuelReserveLaps")]
+    [InlineData("""{"raceLengthValue":100000}""", "at most 2000 laps")]
+    // 2000 laps was a fine race by laps; as minutes it is not, so the new format is checked against it.
+    [InlineData("""{"raceLengthFormat":"TimeBased","name":"Renamed"}""", "at most 1800 minutes")]
+    [InlineData("""{"avgLapTimeSeconds":1,"name":"Renamed"}""", "avgLapTimeSeconds")]
+    public void PlanUpdate_RefusesFiguresNoRaceCouldHaveAndChangesNothing(string patch, string expected)
+    {
+        RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
+        try
+        {
+            Assert.True(coordinator.Execute(Command("""{"type":"plan.create","track":"Spa","name":"Spa","raceLengthFormat":"LapBased","raceLengthValue":2000}"""), out string createError), createError);
+            SessionPlan created = Assert.Single(SessionPlanningProbe.For(runtime.DataRoot).Store.LoadAll());
+            string json = $$"""{"type":"plan.update","planId":"{{created.Id}}",{{patch[1..]}}""";
+
+            Assert.False(coordinator.Execute(Command(json), out string error));
+            Assert.Contains(expected, error, StringComparison.Ordinal);
+            // A later good patch saves the plan as it is in memory: nothing of the refused one rides along.
+            Assert.True(coordinator.Execute(Command($$"""{"type":"plan.update","planId":"{{created.Id}}","notes":"later"}"""), out string notesError), notesError);
+            SessionPlan stored = Assert.Single(SessionPlanningProbe.For(runtime.DataRoot).Store.LoadAll());
+            Assert.Equal(("Spa", RaceLengthFormat.LapBased, 2000d), (stored.Name, stored.RaceLengthFormat, stored.RaceLengthValue));
         }
         finally
         {
@@ -1450,6 +1506,32 @@ public sealed class RuntimeCoordinatorTests
             Assert.False(coordinator.Execute(Command("""{"type":"compare.range","metersAhead":600}"""), out string missing));
             Assert.Equal("metersBehind and metersAhead are required", missing);
             Assert.Equal(1000d, liveCompare.Controller.MetersAhead);
+        }
+        finally
+        {
+            Cleanup(dataRoot);
+        }
+    }
+
+    [Fact]
+    public void CompareRange_AHandEditedRangeIsHeldToBoundsSoThePickersStillWork()
+    {
+        string dataRoot = NewTempDataRoot();
+        DesktopRuntime runtime = new DesktopRuntime(dataRoot, PresetRoot);
+        LiveCompareService liveCompare = new LiveCompareService(
+            new LapCorpusBrowser(new LocalLapHistoryStore(Path.Combine(dataRoot, "lap-history")), new LocalLapTraceStore(Path.Combine(dataRoot, "lap-traces"))),
+            () => null);
+        RuntimeCoordinator coordinator = new RuntimeCoordinator(runtime, liveCompare: liveCompare);
+        try
+        {
+            runtime.Settings.LiveCompare.MetersBehind = 10;
+            runtime.Settings.LiveCompare.MetersAhead = 3000;
+            liveCompare.Configure(runtime.Settings.LiveCompare);
+
+            Assert.Equal((50d, 2000d), (liveCompare.Controller.MetersBehind, liveCompare.Controller.MetersAhead));
+            // The page sends back what it shows, changing one side: accepted.
+            Assert.True(coordinator.Execute(Command("""{"type":"compare.range","metersBehind":200,"metersAhead":2000}"""), out string error), error);
+            Assert.Equal((200d, 2000d), (runtime.Settings.LiveCompare.MetersBehind, runtime.Settings.LiveCompare.MetersAhead));
         }
         finally
         {

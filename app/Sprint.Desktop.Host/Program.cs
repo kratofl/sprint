@@ -136,10 +136,13 @@ lock (runtime.SettingsGate)
 
     liveCompare.Configure(runtime.Settings.LiveCompare);
 }
+// A plan's race figures from the lap history (#50), narrowed by the driver's planner setting.
+LapHistoryFuelSource fuelHistory = new(lapHistoryStore, () => runtime.Settings.SessionPlanner.FuelHistorySource);
+
 // The live link: this PC's telemetry straight to an engineer's desktop, no server in between.
 // The link.* commands drive it, the telemetry loop below feeds it, its own worker owns the socket.
-// The driver's side shares the planner's active plan and its target lap with the engineer's pit wall.
-PitWallPlanShare pitWallShare = new(plannerService, lapTraceStore);
+// The driver's side shares the planner's active plan, its race fuel and its target lap with the engineer's pit wall.
+PitWallPlanShare pitWallShare = new(plannerService, lapTraceStore, fuelHistory);
 PeerLink peerLink = new(UdpPeerSocket.Open, PeerNetwork.ResolveStunAsync, PeerNetwork.LocalAddresses, log, pitWallShare.Snapshot);
 peerLink.SetSharePlan(runtime.Settings.LiveLink.SharePlan);
 CancellationTokenSource peerLinkCts = new();
@@ -150,9 +153,6 @@ PitWallLayoutStore pitWallLayouts = new(runtime.DataRoot, log);
 // in Settings (#194); the coordinator runs it the moment they do.
 LapTraceRetention lapTraceRetention = new(lapTraceStore, lapHistoryStore, log);
 coordinator = new RuntimeCoordinator(runtime, plannerService, analysisController, liveLog, dashPageCycle, peerLink, liveCompare, gameFolder, lapHistoryStore, pitWallLayouts, lapTraceRetention);
-
-// A plan's race figures from the lap history (#50), narrowed by the driver's planner setting.
-LapHistoryFuelSource fuelHistory = new(lapHistoryStore, () => runtime.Settings.SessionPlanner.FuelHistorySource);
 
 // The plan dialogs' prefill, recorded game/car/track choices and Quick plan detection
 // (GET /api/planner/context). Only Prefill(), ContextOptions() and Detect() are used: those rules

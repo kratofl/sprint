@@ -12,9 +12,9 @@ import {
   planLapStats,
   practiceSummary,
   quickPlanInput,
-  raceLaps,
   readPlannerSettings,
   recentLapTimes,
+  reserveNote,
   sessionState,
   startingRaceSkipsQualifying,
   stintsLabel,
@@ -102,13 +102,6 @@ test('the timeline sits on the next session, on the live one while tracking, and
   assert.equal(sessionState(plan({ qualifyingIncluded: true }), 'Race'), 'later')
 })
 
-test('race laps come from minutes over the average lap', () => {
-  const sixHours = plan({ raceLengthFormat: 'TimeBased', raceLengthValue: 360, avgLapTimeSeconds: 125.6, fuelPerLapLiters: 3.5, fuelReserveLaps: 1 })
-  assert.equal(raceLaps(sixHours), 172)
-  assert.equal(raceLaps(plan({ raceLengthFormat: 'TimeBased', raceLengthValue: 360 })), null)
-  assert.equal(raceLaps(plan({ raceLengthFormat: 'LapBased', raceLengthValue: 30 })), 30)
-})
-
 const option = (statistic: PlanTargetOption['statistic'], lapTimeSeconds: number, startedAt: string, lapNumber: number): PlanTargetOption => ({
   scope: 'Practice',
   programType: null,
@@ -194,6 +187,7 @@ test('stints read as runs of whole litres', () => {
   assert.equal(stintsLabel([72.5]), '73 L')
   assert.equal(figureSource({ source: 'History', value: 3.4, laps: 1 }), 'median of 1 lap')
   assert.equal(figureSource({ source: 'Plan', value: 3.4 }), 'from the plan')
+  assert.deepEqual([0, 1, 2].map(reserveNote), ['no reserve', '+1 lap reserve', '+2 laps reserve'])
 })
 
 test('the race format the game reported comes from the race segment', () => {

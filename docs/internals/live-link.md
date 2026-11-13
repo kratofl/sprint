@@ -61,8 +61,10 @@ twice a second, radar ten times a second, and the shared plan and its target lap
   exchange itself.
 - **Unknown message types read as null.** That is how an older build ignores `blob` and `radar`; keep
   `PeerMessage.Deserialize` that way when adding types.
-- **The plan travels as `state.plans` writes it** and the engineer passes the JSON through unparsed,
-  so the pit wall reads the same shape the planner does, whatever build the driver runs.
+- **The plan travels as `state.plans` writes it**, with its `state.planFuel` entry as `raceFuel`, and
+  the engineer passes the JSON through unparsed, so the pit wall reads the same shape the planner
+  does, whatever build the driver runs. The stint tile cuts the race from `raceFuel`, never from the
+  plan's own figures: the engineer has neither the driver's lap history nor their tank.
 - **Race control, stopped cars and the pit loss are the engineer's own work**
   (`PitWallAccumulator`), from the changes between boards on the game's clock (`Elapsed`): the game
   says none of them. So an engineer who links mid-race sees only what changed since, a stop counts

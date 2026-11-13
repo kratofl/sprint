@@ -40,6 +40,8 @@ import {
   planLapStats,
   practiceSummary,
   formatRaceLength,
+  maxRaceLength,
+  PLAN_LIMITS,
   quickPlanInput,
   RESERVE_CHOICES,
   raceLengthShort,
@@ -47,6 +49,7 @@ import {
   readPlannerSettings,
   recentLapTimes,
   reserveLabel,
+  reserveNote,
   sessionState,
   startingRaceSkipsQualifying,
   stintsLabel,
@@ -57,6 +60,7 @@ import {
   weekendTimeline,
 } from './SessionPlannerDomain'
 import type { CreatePlanInput, FuelHistoryChoice, PlanSegment, PlanStatus, PlanTarget, PlannerSettings, PracticeSummary, QuickPlanAnswers, RaceLengthFormat, SegmentKind, SessionPlan } from './SessionPlannerDomain'
+import { presetChoices } from './choices'
 import './SessionPlannerView.css'
 
 /**
@@ -764,7 +768,7 @@ function RaceFacts({ plan, fuel }: { plan: SessionPlan; fuel: RaceFuelEstimate |
       <Fact label="Fuel for the race">
         {fuel?.totalLiters != null ? (
           <>
-            ≈{Math.ceil(fuel.totalLiters)} L<span className="planner-sub">{reserveLabel(fuel.reserveLaps).toLowerCase()} reserve</span>
+            ≈{Math.ceil(fuel.totalLiters)} L<span className="planner-sub">{reserveNote(fuel.reserveLaps)}</span>
           </>
         ) : (
           '—'
@@ -1152,6 +1156,7 @@ function QuickPlanDialog({
               <input
                 type="number"
                 min={0}
+                max={maxRaceLength(answers.raceLengthFormat)}
                 value={answers.raceLength}
                 onChange={(event) => set({ raceLength: event.target.value })}
                 aria-label={`Race length in ${raceLengthUnit(answers.raceLengthFormat)}`}
@@ -1368,6 +1373,7 @@ function PlanFormDialog({
                   <input
                     type="number"
                     min={0}
+                    max={maxRaceLength(raceLengthFormat)}
                     value={raceLengthValue}
                     onChange={(event) => setRaceLengthValue(event.target.value)}
                     aria-label={`Race length in ${raceLengthUnit(raceLengthFormat)}`}
@@ -1384,16 +1390,16 @@ function PlanFormDialog({
         <div className="planner-form-grid">
           <label className="field">
             <span>Fuel reserve (laps)</span>
-            <input type="number" min={0} value={fuelReserveLaps} onChange={(event) => setFuelReserveLaps(event.target.value)} autoFocus />
+            <input type="number" min={0} max={PLAN_LIMITS.maxFuelReserveLaps} value={fuelReserveLaps} onChange={(event) => setFuelReserveLaps(event.target.value)} autoFocus />
           </label>
           <span />
           <label className="field">
             <span>Avg lap time (s)</span>
-            <input type="number" min={0} step={0.1} value={avgLapTimeSeconds} onChange={(event) => setAvgLapTimeSeconds(event.target.value)} placeholder="Optional" />
+            <input type="number" min={PLAN_LIMITS.minLapTimeSeconds} max={PLAN_LIMITS.maxLapTimeSeconds} step={0.1} value={avgLapTimeSeconds} onChange={(event) => setAvgLapTimeSeconds(event.target.value)} placeholder="Optional" />
           </label>
           <label className="field">
             <span>Fuel per lap (L)</span>
-            <input type="number" min={0} step={0.1} value={fuelPerLapLiters} onChange={(event) => setFuelPerLapLiters(event.target.value)} placeholder="Optional" />
+            <input type="number" min={0} max={PLAN_LIMITS.maxFuelPerLapLiters} step={0.1} value={fuelPerLapLiters} onChange={(event) => setFuelPerLapLiters(event.target.value)} placeholder="Optional" />
           </label>
           <label className="field planner-form-wide">
             <span>Notes</span>
@@ -1414,7 +1420,7 @@ const fuelHistoryChoice = (value: string): FuelHistoryChoice => (value === 'Matc
  * new plans; a plan's own reserve stays its own.
  */
 function PlannerSettingsDialog({ settings, onChange, onClose }: { settings: PlannerSettings; onChange: (patch: Partial<PlannerSettings>) => void; onClose: () => void }) {
-  const reserves = RESERVE_CHOICES.includes(settings.fuelReserveLaps) ? RESERVE_CHOICES : [...RESERVE_CHOICES, settings.fuelReserveLaps]
+  const reserves = presetChoices(RESERVE_CHOICES, settings.fuelReserveLaps)
   return (
     <ContentDialog
       title="Planner settings"

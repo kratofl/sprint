@@ -610,7 +610,7 @@ public sealed class SessionPlannerPageTests
     {
         // The best case in the issue: in the car, lap-based session, history present.
         PlanDetection detection = Detect(
-            new SessionInfo { Game = "Le Mans Ultimate", Track = "Spa", Car = "Porsche 963", MaxLaps = 31, InCar = true },
+            new SessionInfo { Game = "Le Mans Ultimate", Track = "Spa", Car = "Porsche 963", SessionType = SessionType.Race, MaxLaps = 31, InCar = true },
             hasFuelHistory: true);
 
         Assert.True(detection.ContextComplete);
@@ -631,6 +631,7 @@ public sealed class SessionPlannerPageTests
                 Game = "Le Mans Ultimate",
                 Track = "Spa",
                 Car = "Porsche 963",
+                SessionType = SessionType.Race,
                 TotalSessionTime = 5400,
                 InCar = true,
             },
@@ -641,13 +642,30 @@ public sealed class SessionPlannerPageTests
         Assert.Empty(detection.MissingFields);
     }
 
+    [Theory]
+    [InlineData(SessionType.Practice, 0)]
+    [InlineData(SessionType.Qualify, 0)]
+    [InlineData(SessionType.Unknown, 0)]
+    // A raw LMU lap limit (int.MaxValue) that reached the host unmapped, as a replayed recording carries it.
+    [InlineData(SessionType.Race, int.MaxValue)]
+    public void OnlyARaceSaysHowLongTheRaceIs(SessionType sessionType, int maxLaps)
+    {
+        // A 90-minute practice is not a 90-minute race: the modal asks instead.
+        PlanDetection detection = Detect(
+            new SessionInfo { Game = "Le Mans Ultimate", Track = "Spa", Car = "Porsche 963", SessionType = sessionType, MaxLaps = maxLaps, TotalSessionTime = sessionType == SessionType.Race ? null : 5400, InCar = true },
+            hasFuelHistory: true);
+
+        Assert.Equal(RaceLengthFormat.Unknown, detection.RaceLengthFormat);
+        Assert.Equal([QuickPlanField.RaceLength], detection.MissingFields);
+    }
+
     [Fact]
     public void AnUndetectableRaceLengthIsAskedForRatherThanGuessed()
     {
         // No lap count and no plausible total: the sim has not said how long this is, and a
         // garbage number here becomes a garbage fuel estimate.
         PlanDetection detection = Detect(
-            new SessionInfo { Game = "Le Mans Ultimate", Track = "Spa", Car = "Porsche 963", InCar = true },
+            new SessionInfo { Game = "Le Mans Ultimate", Track = "Spa", Car = "Porsche 963", SessionType = SessionType.Race, InCar = true },
             hasFuelHistory: true);
 
         Assert.Equal(RaceLengthFormat.Unknown, detection.RaceLengthFormat);
@@ -659,7 +677,7 @@ public sealed class SessionPlannerPageTests
     public void QuickModeAsksForTheFuelValuesOnlyWhenThereIsNoHistory()
     {
         PlanDetection detection = Detect(
-            new SessionInfo { Game = "Le Mans Ultimate", Track = "Spa", Car = "Porsche 963", MaxLaps = 31, InCar = true },
+            new SessionInfo { Game = "Le Mans Ultimate", Track = "Spa", Car = "Porsche 963", SessionType = SessionType.Race, MaxLaps = 31, InCar = true },
             hasFuelHistory: false);
 
         Assert.Equal([QuickPlanField.Fuel], detection.MissingFields);
@@ -683,7 +701,7 @@ public sealed class SessionPlannerPageTests
         // The sim knows the track but not yet the car; the remembered context fills the gap
         // so the form shrinks instead of asking again.
         PlanDetection detection = Detect(
-            new SessionInfo { Game = "Le Mans Ultimate", Track = "Spa", MaxLaps = 31 },
+            new SessionInfo { Game = "Le Mans Ultimate", Track = "Spa", SessionType = SessionType.Race, MaxLaps = 31 },
             hasFuelHistory: true,
             remembered: new PlanContext("Le Mans Ultimate", "Porsche 963", "Spa"));
 

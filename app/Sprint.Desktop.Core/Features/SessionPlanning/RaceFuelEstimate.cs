@@ -1,3 +1,5 @@
+using Sprint.Desktop.Runtime;
+
 namespace Sprint.Desktop.Features.SessionPlanning;
 
 /// <summary>
@@ -105,9 +107,24 @@ public sealed record RaceFuelEstimate(
     RaceStints? Stints)
 {
     /// <summary>
+    /// The most laps an estimate is worked out for. Past it the figures it rests on are junk (a
+    /// glitched median lap of a second, a plan stored before <see cref="PlanLimits"/>), and the
+    /// count would overflow an int before it meant anything.
+    /// </summary>
+    public const int MaxLaps = 100_000;
+
+    /// <summary>
+    /// The most stints an estimate cuts a race into. A real race stops a few dozen times at most; a
+    /// longer list only comes from absurd figures, and the estimate is built on every state poll.
+    /// </summary>
+    public const int MaxStints = 100;
+
+    /// <summary>
     /// History wins where it has a figure; the plan's typed value fills in where it has none. A
     /// time-based race is its minutes over the lap time, with the lap that is running when time is
     /// up driven to the end. Stints need the tank, which only a recorded drive in the car supplies.
+    /// A lap count past <see cref="MaxLaps"/> or a cut past <see cref="MaxStints"/> is left out and
+    /// the reserve is held to what the planner accepts, so no stored plan makes this expensive.
     /// </summary>
     public static RaceFuelEstimate For(SessionPlan plan, FuelHistoryFigures history)
     {
@@ -116,17 +133,18 @@ public sealed record RaceFuelEstimate(
 
         EstimateFigure? lapTime = Figure(history.LapTimeSeconds, history.LapTimeLaps, plan.AvgLapTimeSeconds);
         EstimateFigure? fuelPerLap = Figure(history.FuelPerLapLiters, history.FuelLaps, plan.FuelPerLapLiters);
-        int reserve = Math.Max(0, plan.FuelReserveLaps);
+        int reserve = Math.Clamp(plan.FuelReserveLaps, 0, SessionPlannerSettings.MaxFuelReserveLaps);
 
-        int? laps = plan switch
+        double? raceLaps = plan switch
         {
-            { RaceLengthFormat: RaceLengthFormat.LapBased, RaceLengthValue: > 0 } => (int)Math.Round(plan.RaceLengthValue),
+            { RaceLengthFormat: RaceLengthFormat.LapBased, RaceLengthValue: > 0 } => Math.Round(plan.RaceLengthValue),
             { RaceLengthFormat: RaceLengthFormat.TimeBased, RaceLengthValue: > 0 } when lapTime is not null =>
-                (int)Math.Ceiling(plan.RaceLengthValue * 60 / lapTime.Value),
+                Math.Ceiling(plan.RaceLengthValue * 60 / lapTime.Value),
             _ => null,
         };
+        int? laps = raceLaps is { } count && count <= MaxLaps ? (int)count : null;
 
-        double? total = laps is { } raceLaps && fuelPerLap is not null ? (raceLaps + reserve) * fuelPerLap.Value : null;
+        double? total = laps is { } totalLaps && fuelPerLap is not null ? (totalLaps + reserve) * fuelPerLap.Value : null;
         RaceStints? stints = laps is { } stintRaceLaps && fuelPerLap is not null && history.TankLiters is { } tank
             ? CutIntoStints(stintRaceLaps + reserve, fuelPerLap.Value, tank)
             : null;
@@ -141,10 +159,16 @@ public sealed record RaceFuelEstimate(
                 ? new EstimateFigure(typed, EstimateSource.Plan, 0)
                 : null;
 
-    private static RaceStints CutIntoStints(int fuelLaps, double perLap, double tank)
+    /// <summary>Null past <see cref="MaxStints"/>: a list that long only describes figures that are wrong.</summary>
+    private static RaceStints? CutIntoStints(int fuelLaps, double perLap, double tank)
     {
         // A tank that cannot hold a whole lap still runs a lap per stop rather than none.
-        int perStint = Math.Max(1, (int)Math.Floor(tank / perLap));
+        int perStint = (int)Math.Clamp(Math.Floor(tank / perLap), 1, int.MaxValue);
+        if (Math.Ceiling(fuelLaps / (double)perStint) > MaxStints)
+        {
+            return null;
+        }
+
         List<double> liters = [];
         for (int left = fuelLaps; left > 0; left -= perStint)
         {

@@ -311,10 +311,11 @@ public sealed class SessionPlannerController
     /// the remembered context for anything the sim has not reported yet (the car is commonly
     /// unknown until the driver has a vehicle).
     /// <para>
-    /// Race length is taken from the lap count when there is one, else from a plausible total
-    /// session time converted to minutes. An implausible or absent length is reported as
-    /// <see cref="RaceLengthFormat.Unknown"/> so the modal asks: committing a garbage number
-    /// here would quietly become a garbage fuel estimate.
+    /// Race length is taken only from a race: the lap count when there is one, else the total
+    /// session time converted to minutes, each inside <see cref="PlanLimits"/>. A practice's 90
+    /// minutes say nothing about the race, so outside a race, or with an implausible or absent
+    /// length, it is reported as <see cref="RaceLengthFormat.Unknown"/> and the modal asks:
+    /// committing a garbage number here would quietly become a garbage fuel estimate.
     /// </para>
     /// </summary>
     public PlanDetection Detect(SessionInfo session)
@@ -330,8 +331,9 @@ public sealed class SessionPlannerController
 
         (RaceLengthFormat format, double value) = session switch
         {
-            { MaxLaps: > 0 } => (RaceLengthFormat.LapBased, (double)session.MaxLaps),
-            { TotalSessionTime: > 0 } => (RaceLengthFormat.TimeBased, session.TotalSessionTime.Value / 60),
+            { SessionType: not SessionType.Race } => (RaceLengthFormat.Unknown, 0d),
+            { MaxLaps: > 0 and <= PlanLimits.MaxRaceLaps } => (RaceLengthFormat.LapBased, (double)session.MaxLaps),
+            { TotalSessionTime: > 0 and <= PlanLimits.MaxRaceMinutes * 60 } => (RaceLengthFormat.TimeBased, session.TotalSessionTime.Value / 60),
             _ => (RaceLengthFormat.Unknown, 0d),
         };
 

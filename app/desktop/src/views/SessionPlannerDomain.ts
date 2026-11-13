@@ -1,4 +1,4 @@
-import type { EstimateFigure, PlanContextChoices, PlanDetection, PlanTargetOption, PlanTargetScope, PlanTargetScopeGroup, PlanTargetStatistic, SprintCommand } from '../bridge'
+import type { EstimateFigure, PlanContextChoices, PlanDetection, PlanTargetOption, PlanTargetScope, PlanTargetScopeGroup, PlanTargetStatistic, RaceFuelEstimate, SprintCommand } from '../bridge'
 import type { StatusTone } from '../shell/Status'
 
 /**
@@ -378,6 +378,22 @@ export type PlannerSettings = { fuelReserveLaps: number; fuelHistorySource: Fuel
 /** The most reserve the gear offers; `planner.settings` accepts up to `SessionPlannerSettings.MaxFuelReserveLaps`. */
 export const RESERVE_CHOICES: readonly number[] = [0, 1, 2, 3]
 
+/**
+ * What `plan.create` / `plan.update` accept (host: `PlanLimits`, the reserve's `SessionPlannerSettings.MaxFuelReserveLaps`),
+ * as the New plan dialog's `min`/`max`. The host refuses anything outside them either way.
+ */
+export const PLAN_LIMITS = {
+  maxRaceLaps: 2000,
+  maxRaceMinutes: 30 * 60,
+  maxFuelReserveLaps: 10,
+  minLapTimeSeconds: 10,
+  maxLapTimeSeconds: 30 * 60,
+  maxFuelPerLapLiters: 100,
+} as const
+
+/** The longest race a length input takes in `format`'s unit. */
+export const maxRaceLength = (format: RaceLengthFormat): number => (format === 'LapBased' ? PLAN_LIMITS.maxRaceLaps : PLAN_LIMITS.maxRaceMinutes)
+
 /** Reads `settings.sessionPlanner`, falling back to the host's own defaults for anything missing. */
 export function readPlannerSettings(settings: Record<string, unknown>): PlannerSettings {
   const planner = isRecord(settings.sessionPlanner) ? settings.sessionPlanner : {}
@@ -393,7 +409,37 @@ export const buildPlannerSettings = (patch: Partial<PlannerSettings>): SprintCom
 /** "+1 lap", "+2 laps", "None": a reserve as the gear and the plan say it. */
 export const reserveLabel = (laps: number): string => (laps === 0 ? 'None' : `+${laps} ${laps === 1 ? 'lap' : 'laps'}`)
 
+/** "+1 lap reserve", "no reserve": the reserve under a fuel figure. */
+export const reserveNote = (laps: number): string => (laps === 0 ? 'no reserve' : `${reserveLabel(laps)} reserve`)
+
 // ── Race fuel (state.planFuel, RaceFuelEstimate on the host) ────────────────
+
+const finiteOrNull = (value: unknown): number | null => (typeof value === 'number' && Number.isFinite(value) ? value : null)
+
+const parseEstimateFigure = (value: unknown): EstimateFigure | null => {
+  if (!isRecord(value)) return null
+  const figure = finiteOrNull(value.value)
+  if (figure === null) return null
+  if (value.source === 'History') return { source: 'History', value: figure, laps: finiteOrNull(value.laps) ?? 0 }
+  return value.source === 'Plan' ? { source: 'Plan', value: figure } : null
+}
+
+/** Narrows one plan's race fuel: a `state.planFuel` entry, or the `raceFuel` of a plan shared with the pit wall. */
+export const parseRaceFuelEstimate = (value: unknown): RaceFuelEstimate | null => {
+  if (!isRecord(value)) return null
+  const stints = isRecord(value.stints) ? value.stints : null
+  const lapsPerStint = stints ? finiteOrNull(stints.lapsPerStint) : null
+  const liters = stints && Array.isArray(stints.liters) ? stints.liters.filter((item): item is number => typeof item === 'number' && Number.isFinite(item)) : []
+  return {
+    laps: finiteOrNull(value.laps),
+    lapTime: parseEstimateFigure(value.lapTime),
+    fuelPerLap: parseEstimateFigure(value.fuelPerLap),
+    reserveLaps: finiteOrNull(value.reserveLaps) ?? 0,
+    totalLiters: finiteOrNull(value.totalLiters),
+    tankLiters: finiteOrNull(value.tankLiters),
+    stints: lapsPerStint !== null && liters.length > 0 ? { lapsPerStint, liters } : null,
+  }
+}
 
 /** Where an estimate's figure came from, in words: "median of 46 laps", "from the plan". */
 export const figureSource = (figure: EstimateFigure): string =>
@@ -499,19 +545,6 @@ export function sessionState(plan: SessionPlan, kind: SegmentKind): SessionState
   if (plan.segments.some((segment) => segment.kind === kind)) return 'done'
   if (plan.status === 'Completed' || plan.status === 'Abandoned') return 'skipped'
   return open === null && nextSegment(plan) === kind ? 'next' : 'later'
-}
-
-/**
- * The race in laps from the plan's own values: its count, or its minutes over the average lap (a
- * started lap is driven to the end). The pit wall's stint tile uses it; the planner shows the
- * host's `RaceFuelEstimate`, which also draws on the lap history.
- */
-export function raceLaps(plan: SessionPlan): number | null {
-  if (plan.raceLengthFormat === 'LapBased' && plan.raceLengthValue > 0) return Math.round(plan.raceLengthValue)
-  if (plan.raceLengthFormat === 'TimeBased' && plan.raceLengthValue > 0 && plan.avgLapTimeSeconds !== null && plan.avgLapTimeSeconds > 0) {
-    return Math.ceil((plan.raceLengthValue * 60) / plan.avgLapTimeSeconds)
-  }
-  return null
 }
 
 /** "6 h", "45 min", "30 laps": a race length as a driver says it. */

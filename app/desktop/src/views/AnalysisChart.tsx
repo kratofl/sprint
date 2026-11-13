@@ -28,7 +28,7 @@ import type { LapWindow } from './AnalysisPlot'
  * (`chartStackReadoutAt`).
  * <p>
  * The lap page zooms the stack: `view` is the stretch of the lap every panel shows
- * (`AnalysisPlot.ts`), and with `onView` the wheel zooms around the pointer, a drag pans,
+ * (`AnalysisPlot.ts`), and with `onView` Ctrl+wheel or a pinch zooms around the pointer, a drag pans,
  * a double-click returns to the whole lap, and +/− and ←/→ do the same at the keyboard.
  * <p>
  * The SVGs are drawn in real pixels: the stack measures its own width (ResizeObserver, only on
@@ -52,8 +52,8 @@ const MARK_HEIGHT = 18
 export const plotWidth = (width: number): number => width - MARGIN.left - MARGIN.right
 export const scaleXFor = (width: number, view: LapWindow = WHOLE_LAP) => (x: number) => MARGIN.left + acrossWindow(view, x) * plotWidth(width)
 
-/** A double-click's second click comes within this; a zoomed chart waits it out before a click leaves a note. */
-const DOUBLE_CLICK_MS = 300
+/** A double-click's second click comes within this (Windows' default double-click time); a zoomed chart waits it out before a click leaves a note. */
+const DOUBLE_CLICK_MS = 500
 /** How far a press moves before it is a drag rather than a click. */
 const DRAG_THRESHOLD_PX = 3
 
@@ -412,7 +412,7 @@ export function LapTraceChartStack({
   onPick?: (position: number) => void
   /** The stretch of the lap every panel shows; the whole lap by default. */
   view?: LapWindow
-  /** With it, the stack zooms and pans: the wheel, a drag once zoomed, a double-click, +/− and ←/→. */
+  /** With it, the stack zooms and pans: Ctrl+wheel or a pinch, a drag once zoomed, a double-click, +/− and ←/→. */
   onView?: (view: LapWindow) => void
 }) {
   const [cursor, setCursorState] = useState<ChartCursorState>(CHART_CURSOR_NONE)
@@ -445,8 +445,9 @@ export function LapTraceChartStack({
   }
   const positionFromPointer = (event: ReactPointerEvent<HTMLDivElement> | ReactMouseEvent<HTMLDivElement>): number => positionAt(event.clientX)
 
-  // The wheel zooms around the pointer (a sideways scroll pans). A native listener, because
-  // React's wheel listener is passive and could not stop the page scrolling under the charts.
+  // Ctrl+wheel zooms around the pointer; Chromium sends a trackpad pinch as a Ctrl wheel, so a
+  // pinch zooms too. A plain wheel scrolls the page, except a sideways scroll pans a zoomed stack.
+  // A native listener, because React's is passive and could not stop the page scrolling or zooming.
   useEffect(() => {
     const element = width.element
     if (!element || !onView) return
@@ -455,14 +456,15 @@ export function LapTraceChartStack({
       const pixels = (delta: number): number => (event.deltaMode === 1 ? delta * 16 : event.deltaMode === 2 ? delta * element.clientHeight : delta)
       const sideways = pixels(event.deltaX)
       const down = pixels(event.deltaY)
-      if (Math.abs(sideways) > Math.abs(down)) {
-        if (!isZoomed(view)) return
+      if (event.ctrlKey) {
         event.preventDefault()
-        onView(panWindow(view, dragDelta(view, -sideways, plotWidth(width.value))))
+        onView(zoomWindow(view, wheelZoomFactor(down), positionAt(event.clientX)))
         return
       }
-      event.preventDefault()
-      onView(zoomWindow(view, wheelZoomFactor(down), positionAt(event.clientX)))
+      if (Math.abs(sideways) > Math.abs(down) && isZoomed(view)) {
+        event.preventDefault()
+        onView(panWindow(view, dragDelta(view, -sideways, plotWidth(width.value))))
+      }
     }
     element.addEventListener('wheel', onWheel, { passive: false })
     return () => element.removeEventListener('wheel', onWheel)
@@ -482,7 +484,7 @@ export function LapTraceChartStack({
       role="group"
       aria-label={
         onView
-          ? 'Lap chart. Hover, or use the arrow keys while focused, to read values at a track position. Scroll or press plus and minus to zoom, drag to move along the lap, double-click for the whole lap.'
+          ? 'Lap chart. Hover, or use the arrow keys while focused, to read values at a track position. Ctrl+scroll, pinch or press plus and minus to zoom, drag to move along the lap, double-click for the whole lap.'
           : 'Lap chart. Hover, or use the arrow keys while focused, to read values at a track position.'
       }
       onPointerDown={(event) => {

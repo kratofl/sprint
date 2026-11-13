@@ -53,6 +53,10 @@ against a real server.
 - The lap page zooms and pans the stack as one window over the lap (`AnalysisPlot.ts`), and the map
   marks that stretch. The value axis stays the whole lap's while zoomed, so panning never rescales a
   line under the eye.
+- Zoom is Ctrl+wheel (Chromium sends a trackpad pinch as one) or +/−; a plain wheel scrolls the
+  page, which is a tall stack of charts, and a sideways scroll pans only once zoomed. A zoomed click
+  waits out the double-click time (Windows' default, 500 ms) before it opens a note, since a
+  double-click returns to the whole lap.
 - A series reports `null` where it has nothing, including out of range — never a held edge value.
   Continuous telemetry interpolates linearly; per-lap figures are stepped.
 - Empty and insufficient-data panels say so; an axis drawn around nothing reads as zero.

@@ -24,9 +24,9 @@ import {
   listedLaps,
   ownLapCount,
   parseCompareState,
-  rangeChoices,
 } from './OnTrackDomain'
 import type { CompareCourse, CompareState } from './OnTrackDomain'
+import { presetChoices } from './choices'
 import { LIST_PAGE, comparePair, drawableLaps, findLap, lapKeyOf, resolvePage } from './OnTrackLaps'
 import type { LapKey, OnTrackPage } from './OnTrackLaps'
 import { ComparePage, FriendBadge, LapPage, lapWhen, shortDay } from './OnTrackPages'
@@ -361,7 +361,7 @@ function HudRange({ compare, onRange }: { compare: CompareState; onRange: (meter
       <ListRow id="ontrack-hud-ahead" label="Track ahead of the car" detail="How early the target’s next braking zone slides into view.">
         {(labels) => (
           <select {...labels} value={compare.metersAhead} onChange={(event) => onRange(compare.metersBehind, Number(event.target.value))}>
-            {rangeChoices(HUD_METERS_AHEAD, compare.metersAhead).map((meters) => (
+            {presetChoices(HUD_METERS_AHEAD, compare.metersAhead).map((meters) => (
               <option key={meters} value={meters}>
                 {formatRange(meters)}
               </option>
@@ -372,7 +372,7 @@ function HudRange({ compare, onRange }: { compare: CompareState; onRange: (meter
       <ListRow id="ontrack-hud-behind" label="Track behind the car" detail="How much of the stretch you just drove stays in view.">
         {(labels) => (
           <select {...labels} value={compare.metersBehind} onChange={(event) => onRange(Number(event.target.value), compare.metersAhead)}>
-            {rangeChoices(HUD_METERS_BEHIND, compare.metersBehind).map((meters) => (
+            {presetChoices(HUD_METERS_BEHIND, compare.metersBehind).map((meters) => (
               <option key={meters} value={meters}>
                 {formatRange(meters)}
               </option>

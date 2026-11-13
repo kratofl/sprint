@@ -193,7 +193,8 @@
       outline: Array.from({ length: 160 }, (_, index) => alongLoop(index / 160)),
       pressures: [[163, 164, 162, 163], [166, 168, 165, 166], [168, 170, 167, 168], [169, 171, 168, 169], [170, 172, 169, 170],
         [171, 173, 170, 171], [171, 173, 170, 171], [171, 173, 170, 171], [171, 173, 170, 171]].map(([fl, fr, rl, rr], index) => ({ lap: 26 + index, fl, fr, rl, rr })),
-      plan: withPlan && plan ? { ...plan, status: 'Tracking' } : null,
+      // As the driver's host shares it: the plan with its state.planFuel entry as raceFuel.
+      plan: withPlan && plan ? { ...plan, status: 'Tracking', raceFuel: state.planFuel?.[plan.id] ?? null } : null,
       raceControl,
       pitLoss: quiet
         ? { lane: null, laneStops: 0, standing: null, standingStops: 0, standingFromOwn: false }

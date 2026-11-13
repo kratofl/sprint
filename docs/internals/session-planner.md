@@ -32,8 +32,11 @@ capture. Code: `app/Sprint.Desktop.Core/Features/SessionPlanning/` and `Features
   Practice programs are not offered as a quick plan's targets.
 - Name is optional; the derived name (`Track – Car`, `SessionPlannerService.DerivedName`) is shown as
   the placeholder and is exactly what a plan created with a blank name gets.
-- Race length comes from the lap count, else a plausible total session time, else the user is asked.
-  A garbage duration would quietly become a garbage fuel estimate.
+- Race length is detected only while the game is in a race: the lap count, else the total session
+  time, each inside `PlanLimits`; otherwise the user is asked. A practice's 90 minutes are not the
+  race's, and a garbage duration would quietly become a garbage fuel estimate. `plan.create` and
+  `plan.update` refuse figures outside `PlanLimits` for the same reason, and the estimate itself
+  stops at `RaceFuelEstimate.MaxLaps` / `MaxStints`, since it is rebuilt on every state poll.
 - Context fields offer what Sprint has recorded (`PlanContextOptions`) but stay free text. The corpus
   is keyed on exact strings, so a typed "Spa Francorchamps" next to a recorded "Spa-Francorchamps"
   splits the data; a closed list would make planning for an undriven car impossible.

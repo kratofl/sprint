@@ -1,4 +1,5 @@
-import { parsePlan, type SessionPlan } from '../views/SessionPlannerDomain'
+import type { RaceFuelEstimate } from '../bridge'
+import { parsePlan, parseRaceFuelEstimate, type SessionPlan } from '../views/SessionPlannerDomain'
 
 // The pit wall's data as the host sends it (`state.link.pitWall`, `state.pitWallLayout`,
 // `GET /api/pitwall/trace`), typed and narrowed once here; bridge.ts calls these parsers and
@@ -163,6 +164,8 @@ export type PitWall = {
   pressures: TyrePressures[]
   /** The driver's session plan while they share it. */
   plan: SessionPlan | null
+  /** That plan's race fuel as the driver's planner works it out (the plan's `raceFuel`), from their lap history and tank. */
+  planFuel: RaceFuelEstimate | null
   /** Race control's feed this session, oldest first. */
   raceControl: RaceEvent[]
   pitLoss: PitLoss
@@ -382,6 +385,7 @@ export const parsePitWall = (value: unknown): PitWall | null => {
         )
       : [],
     plan: isRecord(value.plan) ? parsePlan(value.plan) : null,
+    planFuel: isRecord(value.plan) ? parseRaceFuelEstimate(value.plan.raceFuel) : null,
     raceControl: Array.isArray(value.raceControl) ? value.raceControl.flatMap(parseRaceEvent) : [],
     pitLoss: parsePitLoss(value.pitLoss),
     receivedAt: finite(value.receivedAt),

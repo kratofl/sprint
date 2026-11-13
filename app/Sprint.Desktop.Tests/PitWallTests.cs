@@ -481,6 +481,47 @@ public sealed class PitWallTests
     }
 
     [Fact]
+    public void TheSharedPlanCarriesTheRaceFuelThePlannerShows()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "Sprint.PitWallTests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            SessionPlannerService planner = new(new LocalSessionPlanStore(root));
+            SessionPlan plan = planner.CreatePlan(new CreatePlanRequest
+            {
+                Name = "Spa 6 Hours",
+                Game = "LeMansUltimate",
+                Car = "Porsche 963",
+                Track = "Spa",
+                RaceLengthFormat = RaceLengthFormat.LapBased,
+                RaceLengthValue = 40,
+                FuelReserveLaps = 1,
+            });
+            planner.Arm(plan.Id);
+            FixedFuelHistory history = new(new FuelHistoryFigures(125, 20, 3.0, 20, 60));
+            PitWallPlanShare share = new(planner, new OneTraceStore(), history);
+
+            PitWallShare? shared = share.Snapshot(SessionType.Race);
+
+            Assert.NotNull(shared);
+            using JsonDocument json = JsonDocument.Parse(shared.PlanJson);
+            Assert.Equal(plan.Id, json.RootElement.GetProperty("id").GetString());
+            JsonElement fuel = json.RootElement.GetProperty("raceFuel");
+            RaceFuelEstimate expected = RaceFuelEstimate.For(plan, history.Figures);
+            Assert.Equal(expected.Laps, fuel.GetProperty("laps").GetInt32());
+            Assert.Equal(expected.Stints!.LapsPerStint, fuel.GetProperty("stints").GetProperty("lapsPerStint").GetInt32());
+            Assert.Equal(expected.Stints.Liters.Count, fuel.GetProperty("stints").GetProperty("liters").GetArrayLength());
+            Assert.Equal("History", fuel.GetProperty("fuelPerLap").GetProperty("source").GetString());
+            Assert.Equal(new PlanContext("LeMansUltimate", "Porsche 963", "Spa"), history.AskedFor);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
     public void AMissingTargetTraceIsReadAgainAfterTheRetry()
     {
         string root = Path.Combine(Path.GetTempPath(), "Sprint.PitWallTests", Guid.NewGuid().ToString("N"));
@@ -494,7 +535,7 @@ public sealed class PitWallTests
             planner.Arm(plan.Id);
             OneTraceStore store = new();
             DateTimeOffset now = T0;
-            PitWallPlanShare share = new(planner, store, () => now);
+            PitWallPlanShare share = new(planner, store, NoFuelHistorySource.Instance, () => now);
 
             Assert.Null(share.Snapshot(SessionType.Race)?.Target);
             store.Trace = new LapChannelTraceFixture(800).Trace;
@@ -617,5 +658,19 @@ public sealed class PitWallTests
         public void Delete(string traceId) => this.Trace = null;
 
         public IReadOnlyList<LapTraceInfo> List() => [];
+    }
+
+    /// <summary>The same figures for every context, remembering which one was asked about.</summary>
+    private sealed class FixedFuelHistory(FuelHistoryFigures figures) : IFuelHistorySource
+    {
+        public FuelHistoryFigures Figures { get; } = figures;
+
+        public PlanContext? AskedFor { get; private set; }
+
+        public FuelHistoryFigures ForRace(PlanContext context)
+        {
+            this.AskedFor = context;
+            return this.Figures;
+        }
     }
 }

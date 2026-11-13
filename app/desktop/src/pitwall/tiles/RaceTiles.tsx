@@ -108,10 +108,9 @@ export function RelativeTile({ data, frame }: { data: TileData; frame: FrameProp
 export function StintTile({ data, frame }: { data: TileData; frame: FrameProps }) {
   const wall = data.pitWall
   const player = wall ? playerOf(wall.field) : null
-  const stints = wall?.plan && player ? planStints(wall.plan, wall.car, player.lapsCompleted) : null
+  const stints = wall?.planFuel && player ? planStints(wall.planFuel, player.lapsCompleted) : null
   const box = wall && player ? strategy(wall.car, player.lapsCompleted, null)?.boxLap ?? null : null
   const compound = wall?.car.tyres[0]?.compound
-  const capacity = wall?.car.fuelCapacityLiters ?? null
   return (
     <TileFrame frame={frame} title={wall?.plan ? 'Stint plan · from the session plan' : 'Stint plan'}>
       {!wall ? (
@@ -119,7 +118,7 @@ export function StintTile({ data, frame }: { data: TileData; frame: FrameProps }
       ) : !wall.plan ? (
         <TileEmpty title="No session plan shared" text="The driver shares one from the Session planner; then the stints, targets and practice laps show here." />
       ) : !stints ? (
-        <TileEmpty title="The plan has no race length or fuel" text="Set the race length and fuel per lap in the Session planner to cut the race into stints." />
+        <TileEmpty title="No stints in the plan yet" text="The Session planner cuts the race into stints once it has the race length, the fuel per lap and the tank, from laps in this car." />
       ) : (
         <>
           <div className="pw-stint-bar" aria-hidden="true">
@@ -141,9 +140,7 @@ export function StintTile({ data, frame }: { data: TileData; frame: FrameProps }
                       ? `Lap ${(player?.lapsCompleted ?? 0) + 1}${box !== null ? ` · box lap ${Math.min(box, row.lastLap)}` : ''}${compound ? ` · ${compound}` : ''}`
                       : row.count > 1
                         ? `${row.count} stops`
-                        : capacity !== null
-                          ? `fill ${Math.round(capacity)} L`
-                          : ''}
+                        : `fill ${Math.ceil(row.liters)} L`}
                 </span>
               </li>
             ))}

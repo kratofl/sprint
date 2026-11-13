@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Sprint.Desktop.Api.Telemetry;
 using Sprint.Desktop.Features.SessionPlanning;
 
@@ -6,12 +7,15 @@ namespace Sprint.Desktop.Features.PitWall;
 
 /// <summary>
 /// What the driver's desktop offers its engineer from the session planner: the active (armed or
-/// tracking) plan, as <c>state.plans</c> writes it, and the trace of the lap it targets for the
-/// session being driven (its race target outside qualifying and the race, then the other one).
-/// The live link asks about once a second; the trace is read from disk only when the target changes.
+/// tracking) plan, as <c>state.plans</c> writes it, with its race fuel under <c>raceFuel</c> as
+/// <c>state.planFuel</c> has it (so the pit wall's stints are the planner's), and the trace of the
+/// lap it targets for the session being driven (its race target outside qualifying and the race,
+/// then the other one). The live link asks about once a second; the trace is read from disk only
+/// when the target changes.
 /// </summary>
+/// <param name="fuelHistory">The lap history the race fuel rests on, as the planner reads it.</param>
 /// <param name="clock">The time, for retrying a trace that was missing; the system clock when omitted.</param>
-public sealed class PitWallPlanShare(SessionPlannerService planner, ILapTraceStore traces, Func<DateTimeOffset>? clock = null)
+public sealed class PitWallPlanShare(SessionPlannerService planner, ILapTraceStore traces, IFuelHistorySource fuelHistory, Func<DateTimeOffset>? clock = null)
 {
     /// <summary>How long a target whose trace was missing waits before the disk is read again (the link repeats a target this often).</summary>
     public static readonly TimeSpan MissingRetry = TimeSpan.FromSeconds(10);
@@ -24,15 +28,29 @@ public sealed class PitWallPlanShare(SessionPlannerService planner, ILapTraceSto
 
     public PitWallShare? Snapshot(SessionType sessionType)
     {
+        // The history is read outside the planner's lock (it can reach the disk), for the context
+        // the active plan has now; a plan swapped in between goes out without its fuel until the next ask.
+        if (planner.ReadActive(plan => new PlanContext(plan.Game, plan.Car, plan.Track)) is not { } context)
+        {
+            return null;
+        }
+
+        FuelHistoryFigures history = fuelHistory.ForRace(context);
         Read? read = planner.ReadActive(plan =>
         {
             SegmentKind first = sessionType == SessionType.Qualify ? SegmentKind.Qualifying : SegmentKind.Race;
             SegmentKind second = first == SegmentKind.Race ? SegmentKind.Qualifying : SegmentKind.Race;
             PlanTarget? target = plan.TargetsFor(first)?.LapTime ?? plan.TargetsFor(second)?.LapTime;
+            JsonObject json = JsonSerializer.SerializeToNode(plan, PitWallWire.Json)?.AsObject() ?? new JsonObject();
+            if (new PlanContext(plan.Game, plan.Car, plan.Track) == context)
+            {
+                json["raceFuel"] = JsonSerializer.SerializeToNode(RaceFuelEstimate.For(plan, history), PitWallWire.Json);
+            }
+
             return new Read(
                 plan.Id,
                 plan.Name,
-                JsonSerializer.Serialize(plan, PitWallWire.Json),
+                json.ToJsonString(PitWallWire.Json),
                 target is { LapSessionId: { } sessionId, LapNumber: { } lapNumber } ? new TargetLap(sessionId, lapNumber, target.LapTimeSeconds) : null);
         });
 

@@ -87,10 +87,6 @@ export function parseCompareState(sprint: SprintState): CompareState {
 export const HUD_METERS_BEHIND = [100, 200, 300, 500] as const
 export const HUD_METERS_AHEAD = [300, 400, 600, 800, 1000, 1500] as const
 
-/** A range picker's choices: the presets, plus the value in force when settings.json holds another one, in order. */
-export const rangeChoices = (presets: readonly number[], current: number): number[] =>
-  presets.includes(current) ? [...presets] : [...presets, current].sort((a, b) => a - b)
-
 /** "600 m", "1.5 km": a range choice as the picker says it. */
 export const formatRange = (meters: number): string => (meters >= 1000 ? `${Number((meters / 1000).toFixed(2))} km` : `${Math.round(meters)} m`)
 

@@ -1,4 +1,4 @@
-import { raceLaps, type SessionPlan } from '../views/SessionPlannerDomain'
+import type { RaceFuelEstimate } from '../bridge'
 import type { PitWallCar } from './pitWallData'
 
 // Fuel, energy and the stints, worked out for the fuel and stint tiles. Pure.
@@ -61,28 +61,34 @@ export type Stint = {
   number: number
   firstLap: number
   lastLap: number
+  /** The litres the planner puts in for it. */
+  liters: number
   state: 'done' | 'current' | 'next'
 }
 
 /**
- * The race cut into stints from the plan: its race length (in laps) over a full stint at the
- * plan's fuel per lap and the car's tank. Null without either.
+ * The race's stints as the driver's planner cut them (`RaceFuelEstimate`: the race's laps, a full
+ * tank's laps and the litres per stint), laid over the race's laps. The reserve rides in the last
+ * stint, so when it costs a stop of its own the stint before ends early enough to leave that one a
+ * lap. Null until the planner has stints.
  */
-export function planStints(plan: SessionPlan, car: PitWallCar, lapsCompleted: number): Stint[] | null {
-  const laps = raceLaps(plan)
-  const perLap = plan.fuelPerLapLiters
-  if (laps === null || perLap === null || perLap <= 0 || car.fuelCapacityLiters === null) return null
-  const stintLaps = Math.max(1, Math.floor(car.fuelCapacityLiters / perLap))
+export function planStints(fuel: RaceFuelEstimate, lapsCompleted: number): Stint[] | null {
+  const laps = fuel.laps
+  if (laps === null || laps <= 0 || fuel.stints === null) return null
+  const { lapsPerStint, liters } = fuel.stints
+  const count = Math.min(liters.length, laps)
   const current = lapsCompleted + 1
   const stints: Stint[] = []
-  for (let first = 1, number = 1; first <= laps; first += stintLaps, number++) {
-    const last = Math.min(laps, first + stintLaps - 1)
-    stints.push({ number, firstLap: first, lastLap: last, state: last < current ? 'done' : first <= current ? 'current' : 'next' })
+  for (let number = 1, first = 1; number <= count; number++) {
+    const last = number === count ? laps : Math.min(first + lapsPerStint - 1, laps - (count - number))
+    stints.push({ number, firstLap: first, lastLap: last, liters: liters[number - 1], state: last < current ? 'done' : first <= current ? 'current' : 'next' })
+    first = last + 1
   }
   return stints
 }
 
-export type StintRow = { label: string; firstLap: number; lastLap: number; state: Stint['state']; count: number }
+/** A row of the stint tile: one stint, or the later ones folded together (`count`, their litres summed). */
+export type StintRow = { label: string; firstLap: number; lastLap: number; liters: number; state: Stint['state']; count: number }
 
 /**
  * What the stint tile lists: the stint before the current one, the current one and the next two
@@ -95,12 +101,13 @@ export function stintRows(stints: readonly Stint[]): StintRow[] {
   const from = Math.max(0, at - 1)
   const shown = stints.slice(from, at + 3)
   const rest = stints.slice(at + 3)
-  const rows: StintRow[] = shown.map((stint) => ({ label: String(stint.number), firstLap: stint.firstLap, lastLap: stint.lastLap, state: stint.state, count: 1 }))
-  if (rest.length === 1) rows.push({ label: String(rest[0].number), firstLap: rest[0].firstLap, lastLap: rest[0].lastLap, state: 'next', count: 1 })
+  const rows: StintRow[] = shown.map((stint) => ({ label: String(stint.number), firstLap: stint.firstLap, lastLap: stint.lastLap, liters: stint.liters, state: stint.state, count: 1 }))
+  if (rest.length === 1) rows.push({ label: String(rest[0].number), firstLap: rest[0].firstLap, lastLap: rest[0].lastLap, liters: rest[0].liters, state: 'next', count: 1 })
   if (rest.length > 1) {
     const first = rest[0]
     const last = rest[rest.length - 1]
-    rows.push({ label: `${first.number}–${last.number}`, firstLap: first.firstLap, lastLap: last.lastLap, state: 'next', count: rest.length })
+    const liters = rest.reduce((sum, stint) => sum + stint.liters, 0)
+    rows.push({ label: `${first.number}–${last.number}`, firstLap: first.firstLap, lastLap: last.lastLap, liters, state: 'next', count: rest.length })
   }
   return rows
 }

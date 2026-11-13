@@ -7,6 +7,7 @@ import { parseSetupDriven, parseSetupLibrary, parseSetupSheet } from './views/Se
 import type { SetupDriven, SetupLibrary, SetupSheet } from './views/SetupsDomain'
 import { EMPTY_TRACE, parsePitWall, parsePitWallLayout, parsePitWallTrace } from './pitwall/pitWallData'
 import type { PitWall, PitWallLayout, PitWallTrace, TraceLap } from './pitwall/pitWallData'
+import { parseRaceFuelEstimate } from './views/SessionPlannerDomain'
 
 export type AppView = 'Home' | 'SessionPlanner' | 'OnTrack' | 'Analysis' | 'Dashes' | 'Devices' | 'Setups' | 'RaceEngineer' | 'LiveLink' | 'Settings' | 'Help'
 /** Mirrors `TelemetryConnectionState` in Sprint.Desktop.Api; the host sends enum names. */
@@ -717,30 +718,6 @@ const parsePlanDetection = (value: unknown): PlanDetection => {
 }
 
 const finiteOrNull = (value: unknown): number | null => (typeof value === 'number' && Number.isFinite(value) ? value : null)
-
-const parseEstimateFigure = (value: unknown): EstimateFigure | null => {
-  if (!isRecord(value)) return null
-  const figure = finiteOrNull(value.value)
-  if (figure === null) return null
-  if (value.source === 'History') return { source: 'History', value: figure, laps: finiteOrNull(value.laps) ?? 0 }
-  return value.source === 'Plan' ? { source: 'Plan', value: figure } : null
-}
-
-const parseRaceFuelEstimate = (value: unknown): RaceFuelEstimate | null => {
-  if (!isRecord(value)) return null
-  const stints = isRecord(value.stints) ? value.stints : null
-  const lapsPerStint = stints ? finiteOrNull(stints.lapsPerStint) : null
-  const liters = stints && Array.isArray(stints.liters) ? stints.liters.filter((item): item is number => typeof item === 'number' && Number.isFinite(item)) : []
-  return {
-    laps: finiteOrNull(value.laps),
-    lapTime: parseEstimateFigure(value.lapTime),
-    fuelPerLap: parseEstimateFigure(value.fuelPerLap),
-    reserveLaps: finiteOrNull(value.reserveLaps) ?? 0,
-    totalLiters: finiteOrNull(value.totalLiters),
-    tankLiters: finiteOrNull(value.tankLiters),
-    stints: lapsPerStint !== null && liters.length > 0 ? { lapsPerStint, liters } : null,
-  }
-}
 
 /** Narrows `state.planFuel`, dropping any entry it cannot read rather than inventing one. */
 const parsePlanFuel = (value: unknown): Record<string, RaceFuelEstimate> => {

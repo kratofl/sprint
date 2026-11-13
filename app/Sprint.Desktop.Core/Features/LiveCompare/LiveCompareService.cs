@@ -70,13 +70,18 @@ public sealed class LiveCompareService
         get { lock (this._gate) { return this._arranging; } }
     }
 
-    /// <summary>Applies the driver's HUD preferences: which charts a snapshot carries, and the window around the car.</summary>
+    /// <summary>
+    /// Applies the driver's HUD preferences: which charts a snapshot carries, and the window around
+    /// the car. A range outside <see cref="LiveCompareSettings.IsRange"/> (a hand-edited settings
+    /// file) is held to it: the On track page sends back the range it shows, and <c>compare.range</c>
+    /// refuses one side out of bounds, so an unclamped value would lock both pickers.
+    /// </summary>
     public void Configure(LiveCompareSettings settings)
     {
         ArgumentNullException.ThrowIfNull(settings);
         this.Controller.Panels = HudWindowPlan.Panels(HudWindowPlan.Build(settings));
-        this.Controller.MetersBehind = settings.MetersBehind;
-        this.Controller.MetersAhead = settings.MetersAhead;
+        this.Controller.MetersBehind = Math.Clamp(settings.MetersBehind, LiveCompareSettings.MinMetersBehind, LiveCompareSettings.MaxMetersBehind);
+        this.Controller.MetersAhead = Math.Clamp(settings.MetersAhead, LiveCompareSettings.MinMetersAhead, LiveCompareSettings.MaxMetersAhead);
     }
 
     public LiveCompareState State()

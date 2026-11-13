@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import type { CorpusLap } from './AnalysisDomain'
-import { EMPTY_COMPARE_STATE, HUD_METERS_AHEAD, HUD_METERS_BEHIND, buildHudRange, buildToggleReading, chasingFacts, formatRange, listedLaps, ownLapCount, rangeChoices } from './OnTrackDomain'
+import { EMPTY_COMPARE_STATE, buildHudRange, buildToggleReading, chasingFacts, formatRange, listedLaps, ownLapCount } from './OnTrackDomain'
 import type { CompareState } from './OnTrackDomain'
 
 test('a reading turned on takes its place in the column, not the end of it', () => {
@@ -49,9 +49,7 @@ test('Chasing names a friend’s lap by them and says how it compares with your 
   assert.equal(chasingFacts({ ...compare, target: null }, when), null)
 })
 
-test('the HUD range offers its presets and keeps a value set by hand, in order', () => {
-  assert.deepEqual(rangeChoices(HUD_METERS_AHEAD, 600), [300, 400, 600, 800, 1000, 1500])
-  assert.deepEqual(rangeChoices(HUD_METERS_BEHIND, 250), [100, 200, 250, 300, 500])
+test('the HUD range reads as metres or kilometres and goes out as compare.range', () => {
   assert.deepEqual([formatRange(600), formatRange(1000), formatRange(1500)], ['600 m', '1 km', '1.5 km'])
   assert.deepEqual(buildHudRange(100, 800), { type: 'compare.range', metersBehind: 100, metersAhead: 800 })
 })

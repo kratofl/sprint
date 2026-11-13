@@ -37,6 +37,8 @@ pub struct LapSummary {
 const LAP_TIME_WAIT_MS: f64 = 3000.0;
 
 /// What Le Mans Ultimate reports as the lap limit of a session that has none (`int.MaxValue`).
+/// The host's LMU mapper turns it into 0, but a replayed recording (`app/recordings`) plays back
+/// frames as they were recorded, without the mapper, and recordings made before it carry this.
 const NO_LAP_LIMIT: f64 = 2_147_483_647.0;
 
 /// The session's lap limit, or `None` for a session run to time (reported as 0 or `int.MaxValue`).

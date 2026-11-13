@@ -1225,6 +1225,7 @@ public sealed class RuntimeCoordinator
         if (!TryOptionalDouble(command, "avgLapTimeSeconds", out double? avgLapTimeSeconds, out error)) return false;
         if (!TryOptionalDouble(command, "fuelPerLapLiters", out double? fuelPerLapLiters, out error)) return false;
         if (!TryStringArray(command, "setupReferences", out List<string> setupReferences, out error)) return false;
+        if (!TryPlanFigures(raceLengthFormat, raceLengthValue ?? 0, fuelReserveLaps, avgLapTimeSeconds, fuelPerLapLiters, out error)) return false;
 
         CreatePlanRequest request = new()
         {
@@ -1237,7 +1238,7 @@ public sealed class RuntimeCoordinator
             RaceLengthFormat = raceLengthFormat,
             RaceLengthValue = raceLengthValue ?? 0,
             // A plan that does not say takes the driver's default (#103): defaults seed, never lock.
-            FuelReserveLaps = Math.Max(0, (int)(fuelReserveLaps ?? this._runtime.Settings.SessionPlanner.FuelReserveLaps)),
+            FuelReserveLaps = fuelReserveLaps is { } reserve ? (int)reserve : this._runtime.Settings.SessionPlanner.FuelReserveLaps,
             AvgLapTimeSeconds = avgLapTimeSeconds,
             FuelPerLapLiters = fuelPerLapLiters,
             Notes = notes,
@@ -1246,6 +1247,21 @@ public sealed class RuntimeCoordinator
 
         this._planner.CreatePlan(request);
         return true;
+    }
+
+    /// <summary>
+    /// A plan's race length and typed fuel figures inside <see cref="PlanLimits"/>; a figure not sent
+    /// (null) is not checked. The estimate is built from them on every state poll, so an absurd value
+    /// is refused here rather than stored.
+    /// </summary>
+    private static bool TryPlanFigures(RaceLengthFormat format, double raceLengthValue, double? fuelReserveLaps, double? avgLapTimeSeconds, double? fuelPerLapLiters, out string error)
+    {
+        error = PlanLimits.RaceLengthError(format, raceLengthValue)
+            ?? (fuelReserveLaps is { } reserve ? PlanLimits.FuelReserveError(reserve) : null)
+            ?? (avgLapTimeSeconds is { } lapTime ? PlanLimits.LapTimeError(lapTime) : null)
+            ?? (fuelPerLapLiters is { } perLap ? PlanLimits.FuelPerLapError(perLap) : null)
+            ?? "";
+        return error.Length == 0;
     }
 
     /// <summary>
@@ -1271,17 +1287,15 @@ public sealed class RuntimeCoordinator
         FuelHistorySource? source = null;
         if (command.TryGetProperty("fuelHistorySource", out _))
         {
-            // By name only: a number would parse as any ordinal, defined or not.
+            // One member's exact name: Enum.TryParse would also take a number or "A, B" flag syntax.
             if (!TryStringField(command, "fuelHistorySource", out string sourceText)
-                || !Enum.TryParse(sourceText, ignoreCase: true, out FuelHistorySource parsed)
-                || !Enum.IsDefined(parsed)
-                || int.TryParse(sourceText, out _))
+                || !Enum.GetNames<FuelHistorySource>().Contains(sourceText, StringComparer.Ordinal))
             {
                 error = "fuelHistorySource must be AllValidLaps or MatchingSessionType";
                 return false;
             }
 
-            source = parsed;
+            source = Enum.Parse<FuelHistorySource>(sourceText);
         }
 
         bool? warn = null;
@@ -1326,6 +1340,34 @@ public sealed class RuntimeCoordinator
         if (!this.TryPlan(command, out SessionPlan plan, out error)) return false;
         bool applied = false;
 
+        // Every field is read and checked before any is written: a refused patch leaves the plan as it was.
+        RaceLengthFormat? format = null;
+        if (TryStringField(command, "raceLengthFormat", out string formatText) && !string.IsNullOrWhiteSpace(formatText))
+        {
+            if (!Enum.TryParse(formatText, ignoreCase: true, out RaceLengthFormat parsedFormat)) { error = $"unknown race length format: {formatText}"; return false; }
+            format = parsedFormat;
+        }
+
+        bool qualifyingSent = command.TryGetProperty("qualifyingIncluded", out _);
+        bool qualifyingIncluded = false;
+        if (qualifyingSent && !TryBool(command, "qualifyingIncluded", out qualifyingIncluded)) { error = "qualifyingIncluded must be a boolean"; return false; }
+
+        bool avgLapTimeSent = command.TryGetProperty("avgLapTimeSeconds", out _);
+        bool fuelPerLapSent = command.TryGetProperty("fuelPerLapLiters", out _);
+        bool setupReferencesSent = command.TryGetProperty("setupReferences", out _);
+        if (!TryOptionalDouble(command, "raceLengthValue", out double? raceLengthValue, out error)) return false;
+        if (!TryOptionalDouble(command, "fuelReserveLaps", out double? fuelReserveLaps, out error)) return false;
+        if (!TryOptionalDouble(command, "avgLapTimeSeconds", out double? avgLapTimeSeconds, out error)) return false;
+        if (!TryOptionalDouble(command, "fuelPerLapLiters", out double? fuelPerLapLiters, out error)) return false;
+        if (!TryStringArray(command, "setupReferences", out List<string> setupReferences, out error)) return false;
+
+        // The race length is checked as it will stand, and only when the patch touches it: a new
+        // format can make the stored length implausible.
+        bool lengthSent = format is not null || raceLengthValue is not null;
+        RaceLengthFormat checkedFormat = lengthSent ? format ?? plan.RaceLengthFormat : RaceLengthFormat.Unknown;
+        double checkedLength = lengthSent ? raceLengthValue ?? plan.RaceLengthValue : 0;
+        if (!TryPlanFigures(checkedFormat, checkedLength, fuelReserveLaps, avgLapTimeSeconds, fuelPerLapLiters, out error)) return false;
+
         if (TryStringField(command, "name", out string name) && !string.IsNullOrWhiteSpace(name))
         {
             plan.Name = name.Trim();
@@ -1338,43 +1380,30 @@ public sealed class RuntimeCoordinator
             applied = true;
         }
 
-        if (command.TryGetProperty("qualifyingIncluded", out _))
+        if (qualifyingSent)
         {
-            if (!TryBool(command, "qualifyingIncluded", out bool qualifyingIncluded)) { error = "qualifyingIncluded must be a boolean"; return false; }
             plan.QualifyingIncluded = qualifyingIncluded;
             applied = true;
         }
 
-        if (TryStringField(command, "raceLengthFormat", out string formatText) && !string.IsNullOrWhiteSpace(formatText))
+        if (format is { } setFormat) { plan.RaceLengthFormat = setFormat; applied = true; }
+        if (raceLengthValue is { } setRaceLengthValue) { plan.RaceLengthValue = setRaceLengthValue; applied = true; }
+        if (fuelReserveLaps is { } setFuelReserveLaps) { plan.FuelReserveLaps = (int)setFuelReserveLaps; applied = true; }
+
+        if (avgLapTimeSent)
         {
-            if (!Enum.TryParse(formatText, ignoreCase: true, out RaceLengthFormat format)) { error = $"unknown race length format: {formatText}"; return false; }
-            plan.RaceLengthFormat = format;
-            applied = true;
-        }
-
-        if (!TryOptionalDouble(command, "raceLengthValue", out double? raceLengthValue, out error)) return false;
-        if (raceLengthValue is { } newRaceLengthValue) { plan.RaceLengthValue = newRaceLengthValue; applied = true; }
-
-        if (!TryOptionalDouble(command, "fuelReserveLaps", out double? fuelReserveLaps, out error)) return false;
-        if (fuelReserveLaps is { } newFuelReserveLaps) { plan.FuelReserveLaps = Math.Max(0, (int)newFuelReserveLaps); applied = true; }
-
-        if (command.TryGetProperty("avgLapTimeSeconds", out _))
-        {
-            if (!TryOptionalDouble(command, "avgLapTimeSeconds", out double? avgLapTimeSeconds, out error)) return false;
             plan.AvgLapTimeSeconds = avgLapTimeSeconds;
             applied = true;
         }
 
-        if (command.TryGetProperty("fuelPerLapLiters", out _))
+        if (fuelPerLapSent)
         {
-            if (!TryOptionalDouble(command, "fuelPerLapLiters", out double? fuelPerLapLiters, out error)) return false;
             plan.FuelPerLapLiters = fuelPerLapLiters;
             applied = true;
         }
 
-        if (command.TryGetProperty("setupReferences", out _))
+        if (setupReferencesSent)
         {
-            if (!TryStringArray(command, "setupReferences", out List<string> setupReferences, out error)) return false;
             plan.SetupReferences = setupReferences;
             applied = true;
         }
