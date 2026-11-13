@@ -339,7 +339,8 @@ export type QuickPlanAnswers = {
   raceLength: string
 }
 
-const positiveOrNull = (text: string): number | null => {
+/** A typed figure, or null for "not typed": empty, 0 and anything that is not a positive number alike. */
+export const positiveOrNull = (text: string): number | null => {
   const value = Number(text)
   return text.trim().length > 0 && Number.isFinite(value) && value > 0 ? value : null
 }

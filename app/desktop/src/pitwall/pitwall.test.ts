@@ -292,7 +292,12 @@ test('host payloads narrow once and drop what does not fit', () => {
   assert.deepEqual(wall?.car.damage, null)
   assert.equal(wall?.planFuel, null)
   const shared = parsePitWall({ session: {}, field: [], car: {}, plan: { id: 'plan', raceFuel: { laps: 172, reserveLaps: 1, stints: { lapsPerStint: 25, liters: [87.5, 'x'] } } } })
-  assert.deepEqual(shared?.planFuel?.stints, { lapsPerStint: 25, liters: [87.5] })
+  const sharedFuel = shared?.planFuel
+  assert.ok(sharedFuel && sharedFuel !== 'notSent')
+  assert.deepEqual(sharedFuel.stints, { lapsPerStint: 25, liters: [87.5] })
+  // A plan without raceFuel comes from a driver's Sprint older than it; a null one is not ready yet.
+  assert.equal(parsePitWall({ session: {}, field: [], car: {}, plan: { id: 'plan' } })?.planFuel, 'notSent')
+  assert.equal(parsePitWall({ session: {}, field: [], car: {}, plan: { id: 'plan', raceFuel: null } })?.planFuel, null)
   assert.equal(parsePitWallLayout({ pages: [] }), null)
   const layout = parsePitWallLayout({ pages: [{ id: 'p', name: 'Race', tiles: [{ id: 't', layers: ['radar', 'nope'], x: 0, y: 0, w: 3, h: 3 }, { id: 'u', layers: [] }] }] })
   assert.deepEqual(layout?.pages[0].tiles.map((entry) => entry.layers), [['radar']])

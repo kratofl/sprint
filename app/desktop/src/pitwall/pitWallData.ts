@@ -164,8 +164,12 @@ export type PitWall = {
   pressures: TyrePressures[]
   /** The driver's session plan while they share it. */
   plan: SessionPlan | null
-  /** That plan's race fuel as the driver's planner works it out (the plan's `raceFuel`), from their lap history and tank. */
-  planFuel: RaceFuelEstimate | null
+  /**
+   * That plan's race fuel as the driver's planner works it out (the plan's `raceFuel`), from their
+   * lap history and tank; `'notSent'` when the plan carries no `raceFuel` at all, as from a driver's
+   * Sprint older than it; null without a plan or while the driver's planner has none ready.
+   */
+  planFuel: RaceFuelEstimate | 'notSent' | null
   /** Race control's feed this session, oldest first. */
   raceControl: RaceEvent[]
   pitLoss: PitLoss
@@ -385,7 +389,7 @@ export const parsePitWall = (value: unknown): PitWall | null => {
         )
       : [],
     plan: isRecord(value.plan) ? parsePlan(value.plan) : null,
-    planFuel: isRecord(value.plan) ? parseRaceFuelEstimate(value.plan.raceFuel) : null,
+    planFuel: isRecord(value.plan) ? ('raceFuel' in value.plan ? parseRaceFuelEstimate(value.plan.raceFuel) : 'notSent') : null,
     raceControl: Array.isArray(value.raceControl) ? value.raceControl.flatMap(parseRaceEvent) : [],
     pitLoss: parsePitLoss(value.pitLoss),
     receivedAt: finite(value.receivedAt),

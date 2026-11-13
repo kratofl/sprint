@@ -137,8 +137,9 @@ setting changes on the next poll.
   times but never fuel, so one figure can come from each.
 - A timed race is its minutes over the lap time, the running lap driven out (ceiling). No lap time,
   no lap count — never a guess.
-- Litres per stint need the tank, the largest the recorder saw on the car. Without one the card says
-  so rather than inventing a tank. The reserve rides in the last stint.
+- Litres per stint need the tank, the largest the recorder saw on the car, else the tank of the car in
+  the game, for the active plan only (another plan's car may hold a different tank). Without either
+  the card says so rather than inventing one. The reserve rides in the last stint.
 - Not modelled yet: virtual energy (a hypercar stint is energy-limited too) and the server's fuel
   multiplier — laps from a ×2 session count as they were driven.
 - The race segment always records the format the game reports (`DetectedRaceFormat`), shown on the

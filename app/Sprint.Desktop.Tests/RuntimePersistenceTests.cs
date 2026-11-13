@@ -266,6 +266,29 @@ public sealed class RuntimePersistenceTests
         }
     }
 
+    [Theory]
+    [InlineData(99, SessionPlannerSettings.MaxFuelReserveLaps)]
+    [InlineData(-3, 0)]
+    [InlineData(4, 4)]
+    public void AHandEditedPlannerReserveIsHeldToWhatThePlannerAccepts(int stored, int loaded)
+    {
+        // Quick plan seeds a plan with this reserve as is, and plan.create refuses one out of range.
+        string dataRoot = TestEnv.NewTempDataRoot();
+
+        try
+        {
+            File.WriteAllText(Path.Combine(dataRoot, "settings.json"), $$"""{ "sessionPlanner": { "fuelReserveLaps": {{stored}} } }""");
+
+            DesktopRuntime runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+
+            Assert.Equal(loaded, runtime.Settings.SessionPlanner.FuelReserveLaps);
+        }
+        finally
+        {
+            Directory.Delete(dataRoot, recursive: true);
+        }
+    }
+
     [Fact]
     public void AnUnreadableSettingsFileIsSetAsideRatherThanOverwritten()
     {

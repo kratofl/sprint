@@ -64,7 +64,9 @@ twice a second, radar ten times a second, and the shared plan and its target lap
 - **The plan travels as `state.plans` writes it**, with its `state.planFuel` entry as `raceFuel`, and
   the engineer passes the JSON through unparsed, so the pit wall reads the same shape the planner
   does, whatever build the driver runs. The stint tile cuts the race from `raceFuel`, never from the
-  plan's own figures: the engineer has neither the driver's lap history nor their tank.
+  plan's own figures: the engineer has neither the driver's lap history nor their tank. A plan with no
+  `raceFuel` key comes from a driver build before it (the tile says so); a plan swapped in mid-read
+  goes out with `raceFuel: null`, so keep the key present whenever the plan is shared.
 - **Race control, stopped cars and the pit loss are the engineer's own work**
   (`PitWallAccumulator`), from the changes between boards on the game's clock (`Elapsed`): the game
   says none of them. So an engineer who links mid-race sees only what changed since, a stop counts

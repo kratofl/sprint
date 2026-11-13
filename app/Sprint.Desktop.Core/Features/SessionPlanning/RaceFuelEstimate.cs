@@ -120,13 +120,36 @@ public sealed record RaceFuelEstimate(
     public const int MaxStints = 100;
 
     /// <summary>
+    /// Every plan's race fuel, keyed by plan id (<c>state.planFuel</c>). The live car's tank
+    /// stands in for a missing recorded one only on the active (armed or tracking) plan: that plan
+    /// is the one being driven in the car the game reports, while another plan's car may hold a
+    /// different tank. Indexed rather than ToDictionary: a hand-copied plan file sharing an id must
+    /// not fail every state poll.
+    /// </summary>
+    public static Dictionary<string, RaceFuelEstimate> ForPlans(IEnumerable<SessionPlan> plans, IFuelHistorySource history, double? liveTankLiters)
+    {
+        ArgumentNullException.ThrowIfNull(plans);
+        ArgumentNullException.ThrowIfNull(history);
+        Dictionary<string, RaceFuelEstimate> fuel = new(StringComparer.Ordinal);
+        foreach (SessionPlan plan in plans)
+        {
+            bool active = plan.Status is PlanStatus.Armed or PlanStatus.Tracking;
+            fuel[plan.Id] = For(plan, history.ForRace(new PlanContext(plan.Game, plan.Car, plan.Track)), active ? liveTankLiters : null);
+        }
+
+        return fuel;
+    }
+
+    /// <summary>
     /// History wins where it has a figure; the plan's typed value fills in where it has none. A
     /// time-based race is its minutes over the lap time, with the lap that is running when time is
-    /// up driven to the end. Stints need the tank, which only a recorded drive in the car supplies.
-    /// A lap count past <see cref="MaxLaps"/> or a cut past <see cref="MaxStints"/> is left out and
-    /// the reserve is held to what the planner accepts, so no stored plan makes this expensive.
+    /// up driven to the end. Stints need the tank: the largest a recorded drive in the car saw, else
+    /// <paramref name="liveTankLiters"/>, the tank of the car being driven now (a plan whose car or
+    /// track is spelled unlike the history, or a race-laps-only setting with no race yet, still gets
+    /// its stints). A lap count past <see cref="MaxLaps"/> or a cut past <see cref="MaxStints"/> is
+    /// left out and the reserve is held to what the planner accepts, so no stored plan makes this expensive.
     /// </summary>
-    public static RaceFuelEstimate For(SessionPlan plan, FuelHistoryFigures history)
+    public static RaceFuelEstimate For(SessionPlan plan, FuelHistoryFigures history, double? liveTankLiters = null)
     {
         ArgumentNullException.ThrowIfNull(plan);
         ArgumentNullException.ThrowIfNull(history);
@@ -134,6 +157,7 @@ public sealed record RaceFuelEstimate(
         EstimateFigure? lapTime = Figure(history.LapTimeSeconds, history.LapTimeLaps, plan.AvgLapTimeSeconds);
         EstimateFigure? fuelPerLap = Figure(history.FuelPerLapLiters, history.FuelLaps, plan.FuelPerLapLiters);
         int reserve = Math.Clamp(plan.FuelReserveLaps, 0, SessionPlannerSettings.MaxFuelReserveLaps);
+        double? tankLiters = history.TankLiters ?? (liveTankLiters is { } live && double.IsFinite(live) && live > 0 ? live : null);
 
         double? raceLaps = plan switch
         {
@@ -145,11 +169,11 @@ public sealed record RaceFuelEstimate(
         int? laps = raceLaps is { } count && count <= MaxLaps ? (int)count : null;
 
         double? total = laps is { } totalLaps && fuelPerLap is not null ? (totalLaps + reserve) * fuelPerLap.Value : null;
-        RaceStints? stints = laps is { } stintRaceLaps && fuelPerLap is not null && history.TankLiters is { } tank
+        RaceStints? stints = laps is { } stintRaceLaps && fuelPerLap is not null && tankLiters is { } tank
             ? CutIntoStints(stintRaceLaps + reserve, fuelPerLap.Value, tank)
             : null;
 
-        return new RaceFuelEstimate(laps, lapTime, fuelPerLap, reserve, total, history.TankLiters, stints);
+        return new RaceFuelEstimate(laps, lapTime, fuelPerLap, reserve, total, tankLiters, stints);
     }
 
     private static EstimateFigure? Figure(double? fromHistory, int historyLaps, double? fromPlan) =>

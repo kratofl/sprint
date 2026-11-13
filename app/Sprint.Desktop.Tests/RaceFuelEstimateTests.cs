@@ -55,6 +55,60 @@ public sealed class RaceFuelEstimateTests
     }
 
     [Fact]
+    public void ARepeatAskIsAnsweredFromMemoryUntilALapIsSaved()
+    {
+        CountingStore inner = new([Session(HistorySessionKind.Race, tank: 90, Lap(126, fuel: 3.2))]);
+        CachingLapHistoryStore store = new(inner);
+        LapHistoryFuelSource source = new(store, () => FuelHistorySource.AllValidLaps);
+
+        FuelHistoryFigures first = source.ForRace(Spa);
+
+        Assert.Same(first, source.ForRace(Spa));
+        Assert.Equal(1, inner.FullReads);
+
+        // The recorder's write drops the corpus: the next ask reads it again and counts the new lap.
+        store.Save(Session(HistorySessionKind.Race, tank: 90, Lap(127, fuel: 3.4)));
+        FuelHistoryFigures afterLap = source.ForRace(Spa);
+
+        Assert.Equal(2, afterLap.FuelLaps);
+        Assert.Equal(2, inner.FullReads);
+        Assert.Same(afterLap, source.ForRace(Spa));
+    }
+
+    [Fact]
+    public void WithoutARecordedTankTheLiveCarsCutsTheStints()
+    {
+        SessionPlan plan = Plan(RaceLengthFormat.LapBased, 40, reserve: 1, fuelPerLap: 3.0);
+
+        // 41 laps of fuel at 3 L on a 90 L tank: 30 laps a stint.
+        RaceFuelEstimate live = RaceFuelEstimate.For(plan, FuelHistoryFigures.None, liveTankLiters: 90);
+        Assert.Equal(90, live.TankLiters);
+        Assert.Equal(30, live.Stints!.LapsPerStint);
+
+        // A recorded tank wins over the live one; a live one that is not a tank is none.
+        Assert.Equal(60, RaceFuelEstimate.For(plan, new FuelHistoryFigures(null, 0, null, 0, 60), liveTankLiters: 90).TankLiters);
+        Assert.Null(RaceFuelEstimate.For(plan, FuelHistoryFigures.None, liveTankLiters: double.NaN).Stints);
+        Assert.Null(RaceFuelEstimate.For(plan, FuelHistoryFigures.None, liveTankLiters: 0).Stints);
+    }
+
+    [Fact]
+    public void OnlyTheActivePlanTakesTheLiveCarsTank()
+    {
+        SessionPlan armed = Plan(RaceLengthFormat.LapBased, 40, reserve: 1, fuelPerLap: 3.0);
+        armed.Id = "armed";
+        armed.Status = PlanStatus.Armed;
+        SessionPlan draft = Plan(RaceLengthFormat.LapBased, 40, reserve: 1, fuelPerLap: 3.0);
+        draft.Id = "draft";
+
+        Dictionary<string, RaceFuelEstimate> fuel = RaceFuelEstimate.ForPlans([armed, draft], NoFuelHistorySource.Instance, liveTankLiters: 90);
+
+        Assert.Equal(90, fuel["armed"].TankLiters);
+        Assert.NotNull(fuel["armed"].Stints);
+        Assert.Null(fuel["draft"].TankLiters);
+        Assert.Null(fuel["draft"].Stints);
+    }
+
+    [Fact]
     public void ImportedLapsGiveATimeButTheFuelComesFromThePlan()
     {
         // Imports carry lap times but never fuel: history supplies what it has, the plan the rest.
@@ -164,6 +218,28 @@ public sealed class RaceFuelEstimateTests
     {
         session.Context.CarModel = car;
         return session;
+    }
+
+    /// <summary>An in-memory corpus that counts full reads, each a fresh list as a disk read would be.</summary>
+    private sealed class CountingStore(IEnumerable<LapHistorySession> sessions) : ILapHistoryStore
+    {
+        private readonly List<LapHistorySession> _sessions = [.. sessions];
+
+        public int FullReads { get; private set; }
+
+        public IReadOnlyList<LapHistorySession> LoadAll()
+        {
+            this.FullReads++;
+            return [.. this._sessions];
+        }
+
+        public void Save(LapHistorySession session)
+        {
+            this._sessions.RemoveAll(stored => stored.Id == session.Id);
+            this._sessions.Add(session);
+        }
+
+        public void Delete(string sessionId) => this._sessions.RemoveAll(stored => stored.Id == sessionId);
     }
 
     private sealed class FuelSettingStore : ILapHistoryStore

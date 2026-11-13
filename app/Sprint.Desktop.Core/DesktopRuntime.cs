@@ -741,6 +741,9 @@ public sealed class DesktopRuntime : IDesktopRuntime
         // Fold legacy three-channel values (beta/alpha) into the two-channel model.
         settings.UpdateChannel = AppSettings.NormalizeChannel(settings.UpdateChannel);
         settings.CustomDashCategories = NormalizeCustomDashCategories(settings.CustomDashCategories);
+        // A hand-edited reserve outside what planner.settings accepts would make every plan seeded
+        // from it (Quick plan sends it as is) fail plan.create's check.
+        settings.SessionPlanner.FuelReserveLaps = Math.Clamp(settings.SessionPlanner.FuelReserveLaps, 0, SessionPlannerSettings.MaxFuelReserveLaps);
         return settings;
     }
 

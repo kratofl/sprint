@@ -4,7 +4,8 @@ namespace Sprint.Desktop.Features.SessionPlanning;
 
 /// <summary>
 /// What Sprint's lap history says about racing a plan's car at its track (#50): the figures a
-/// race fuel estimate leans on, and what tells Quick mode it need not ask for them.
+/// race fuel estimate leans on, and what tells Quick mode it need not ask for them. Asked often
+/// and from several threads, so an implementation answers a repeat ask cheaply.
 /// </summary>
 public interface IFuelHistorySource
 {
@@ -24,11 +25,23 @@ public sealed class NoFuelHistorySource : IFuelHistorySource
 /// The shipped source: the lap-history corpus, narrowed by the driver's
 /// <see cref="SessionPlannerSettings.FuelHistorySource"/> — every valid lap of the context, or
 /// only its race laps. The setting is read on each call, so a change applies at once.
+/// <para>
+/// Asked on every state poll for every plan and about once a second by the live link's worker,
+/// so the figures are kept per context and narrowing until the corpus changes. "Changes" means
+/// <see cref="ILapHistoryStore.LoadAll"/> hands back a different list: over the host's
+/// <see cref="CachingLapHistoryStore"/> that is exactly a write or an import, and a repeat ask
+/// costs a dictionary lookup. Over an uncached store every ask is a new list, so nothing goes stale.
+/// Safe from any thread: the cache is only touched under its lock, and the figures are worked out
+/// outside it from the one list they are filed against.
+/// </para>
 /// </summary>
 public sealed class LapHistoryFuelSource : IFuelHistorySource
 {
     private readonly ILapHistoryStore _store;
     private readonly Func<FuelHistorySource> _setting;
+    private readonly Lock _gate = new();
+    private readonly Dictionary<(PlanContext Context, HistorySessionKind? OnlyKind), FuelHistoryFigures> _figures = [];
+    private IReadOnlyList<LapHistorySession>? _corpus;
 
     public LapHistoryFuelSource(ILapHistoryStore store, Func<FuelHistorySource> setting)
     {
@@ -42,6 +55,31 @@ public sealed class LapHistoryFuelSource : IFuelHistorySource
         HistorySessionKind? onlyKind = this._setting() == FuelHistorySource.MatchingSessionType
             ? HistorySessionKind.Race
             : null;
-        return FuelHistoryFigures.From(this._store.LoadAll(), context, onlyKind);
+        IReadOnlyList<LapHistorySession> corpus = this._store.LoadAll();
+        (PlanContext, HistorySessionKind?) key = (context, onlyKind);
+        lock (this._gate)
+        {
+            if (!ReferenceEquals(corpus, this._corpus))
+            {
+                this._corpus = corpus;
+                this._figures.Clear();
+            }
+            else if (this._figures.TryGetValue(key, out FuelHistoryFigures? cached))
+            {
+                return cached;
+            }
+        }
+
+        FuelHistoryFigures figures = FuelHistoryFigures.From(corpus, context, onlyKind);
+        lock (this._gate)
+        {
+            // Filed only against the list they came from: a write meanwhile has moved the cache on.
+            if (ReferenceEquals(corpus, this._corpus))
+            {
+                this._figures[key] = figures;
+            }
+        }
+
+        return figures;
     }
 }

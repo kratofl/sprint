@@ -10,6 +10,7 @@ import {
   nextSegment,
   parsePlan,
   planLapStats,
+  positiveOrNull,
   practiceSummary,
   quickPlanInput,
   readPlannerSettings,
@@ -32,6 +33,14 @@ function plan(overrides: Record<string, unknown> = {}): SessionPlan {
 
 const lap = (lapNumber: number, lapTimeSeconds: number, isValid = true) => ({ lapNumber, lapTimeSeconds, isValid })
 const segment = (kind: 'Qualifying' | 'Race', laps: ReturnType<typeof lap>[] = []) => ({ id: `${kind}-seg`, kind, actualStart: '2026-10-01T18:00:00Z', laps })
+
+test('a typed figure of 0 or nothing is no figure, and any decimals stand', () => {
+  // Plans stored 0 for "not typed"; the host refuses 0, so the dialog never sends it.
+  assert.equal(positiveOrNull(''), null)
+  assert.equal(positiveOrNull('0'), null)
+  assert.equal(positiveOrNull('-1'), null)
+  assert.equal(positiveOrNull('3.52'), 3.52)
+})
 
 test('the next step is qualifying until one has run, when the plan includes it', () => {
   const fresh = plan({ qualifyingIncluded: true })

@@ -108,7 +108,8 @@ export function RelativeTile({ data, frame }: { data: TileData; frame: FrameProp
 export function StintTile({ data, frame }: { data: TileData; frame: FrameProps }) {
   const wall = data.pitWall
   const player = wall ? playerOf(wall.field) : null
-  const stints = wall?.planFuel && player ? planStints(wall.planFuel, player.lapsCompleted) : null
+  const fuel = wall?.planFuel ?? null
+  const stints = fuel && fuel !== 'notSent' && player ? planStints(fuel, player.lapsCompleted) : null
   const box = wall && player ? strategy(wall.car, player.lapsCompleted, null)?.boxLap ?? null : null
   const compound = wall?.car.tyres[0]?.compound
   return (
@@ -117,6 +118,8 @@ export function StintTile({ data, frame }: { data: TileData; frame: FrameProps }
         null
       ) : !wall.plan ? (
         <TileEmpty title="No session plan shared" text="The driver shares one from the Session planner; then the stints, targets and practice laps show here." />
+      ) : fuel === 'notSent' ? (
+        <TileEmpty title="The driver’s Sprint sends no stints" text="Their Sprint is older than yours and shares the plan without its fuel. Once they update, the stints show here." />
       ) : !stints ? (
         <TileEmpty title="No stints in the plan yet" text="The Session planner cuts the race into stints once it has the race length, the fuel per lap and the tank, from laps in this car." />
       ) : (

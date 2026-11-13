@@ -26,11 +26,16 @@ public sealed class PeerLinkTests
     private readonly PeerLink _engineer;
     private DateTimeOffset _now = T0;
     private PitWallShare? _offer;
+    private readonly List<bool> _asks = [];
 
     public PeerLinkTests()
     {
         this._net = new FakeNet(() => this._now);
-        this._driver = new PeerLink(() => this._net.Open(DriverPublic), this._net.ResolveStun, () => [], share: _ => this._offer);
+        this._driver = new PeerLink(() => this._net.Open(DriverPublic), this._net.ResolveStun, () => [], share: (_, sharing) =>
+        {
+            this._asks.Add(sharing);
+            return this._offer;
+        });
         this._engineer = new PeerLink(() => this._net.Open(EngineerPublic), this._net.ResolveStun, () => []);
     }
 
@@ -139,6 +144,25 @@ public sealed class PeerLinkTests
         Assert.Null(this._engineer.State.PitWall?.Plan);
         Assert.False(this._driver.State.SharingPlan);
         Assert.Equal(PitWallTrace.Empty, this._engineer.Trace(PitWallTraceLap.Target));
+    }
+
+    [Fact]
+    public void SwitchingSharingOnAsksForTheFullOfferAtOnce()
+    {
+        this._offer = new PitWallShare("p1", "Spa 6 Hours", """{"id":"p1"}""", null);
+        this._driver.SetSharePlan(false);
+        this.Connect();
+        this.Run(TimeSpan.FromSeconds(2));
+        // Off, the plan is still asked for (the Live link page names it), but never for sharing.
+        Assert.NotEmpty(this._asks);
+        Assert.DoesNotContain(true, this._asks);
+        Assert.Equal(new PeerSharedPlan("p1", "Spa 6 Hours"), this._driver.State.SharedPlan);
+
+        this._asks.Clear();
+        this._driver.SetSharePlan(true);
+        this.Run(TimeSpan.FromMilliseconds(50));
+
+        Assert.Equal(new[] { true }, this._asks);
     }
 
     [Fact]

@@ -38,6 +38,7 @@ import {
   openSegment,
   parsePlans,
   planLapStats,
+  positiveOrNull,
   practiceSummary,
   formatRaceLength,
   maxRaceLength,
@@ -61,6 +62,7 @@ import {
 } from './SessionPlannerDomain'
 import type { CreatePlanInput, FuelHistoryChoice, PlanSegment, PlanStatus, PlanTarget, PlannerSettings, PracticeSummary, QuickPlanAnswers, RaceLengthFormat, SegmentKind, SessionPlan } from './SessionPlannerDomain'
 import { presetChoices } from './choices'
+import { commandErrorMessage } from './DevicesDomain'
 import './SessionPlannerView.css'
 
 /**
@@ -243,9 +245,9 @@ export function SessionPlannerView({
           kind={form.kind}
           reserve={settings.fuelReserveLaps}
           onClose={() => setForm(null)}
-          onSubmit={(input) => {
+          onSubmit={async (input) => {
+            await send(buildPlanCreate(input))
             setForm(null)
-            void runAction(buildPlanCreate(input))
           }}
         />
       )}
@@ -255,9 +257,8 @@ export function SessionPlannerView({
           initial={editing}
           choices={NO_CHOICES}
           onClose={() => setForm(null)}
-          onSubmit={(input) => {
-            setForm(null)
-            void runAction(
+          onSubmit={async (input) => {
+            await send(
               buildPlanUpdate(editing.id, {
                 name: input.name,
                 qualifyingIncluded: input.qualifyingIncluded,
@@ -269,6 +270,7 @@ export function SessionPlannerView({
                 notes: input.notes,
               }),
             )
+            setForm(null)
           }}
         />
       )}
@@ -1012,7 +1014,8 @@ function NewPlanDialog({
   /** The planner's default reserve, which a new plan starts with. */
   reserve: number
   onClose: () => void
-  onSubmit: (input: CreatePlanInput) => void
+  /** Creates the plan; rejects with the host's reason, and the dialog stays open showing it. */
+  onSubmit: (input: CreatePlanInput) => Promise<void>
 }) {
   const [choices, setChoices] = useState<PlanContextChoices | null>(null)
   const [slow, setSlow] = useState(false)
@@ -1079,9 +1082,10 @@ function QuickPlanDialog({
   choices: PlanContextChoices
   reserve: number
   onClose: () => void
-  onSubmit: (input: CreatePlanInput) => void
+  onSubmit: (input: CreatePlanInput) => Promise<void>
 }) {
   const { detection } = choices
+  const { saving, error, save } = usePlanSave(onSubmit)
   const asks = (field: PlanDetection['missing'][number]) => detection.missing.includes(field)
   const [answers, setAnswers] = useState<QuickPlanAnswers>({
     ...detection.context,
@@ -1095,7 +1099,7 @@ function QuickPlanDialog({
 
   const submit = (event: FormEvent) => {
     event.preventDefault()
-    onSubmit(plan)
+    void save(plan)
   }
 
   return (
@@ -1106,7 +1110,7 @@ function QuickPlanDialog({
       closeOnSmokeClick
       footer={
         <>
-          <button type="submit" className="button primary" autoFocus={!asking}>
+          <button type="submit" className="button primary" autoFocus={!asking} disabled={saving}>
             Create plan
           </button>
           <button type="button" className="button" onClick={onClose}>
@@ -1115,6 +1119,8 @@ function QuickPlanDialog({
         </>
       }
     >
+      {error && <PlanSaveError title="Plan not created" message={error} />}
+
       {asks('Context') && <p className="content-dialog-text muted">The game has not said where you are driving yet.</p>}
 
       {asks('Context') && (
@@ -1210,9 +1216,11 @@ function PlanFormDialog({
   /** The reserve a new plan starts with (the planner's default); an edited plan keeps its own. */
   reserve?: number
   onClose: () => void
-  onSubmit: (input: CreatePlanInput) => void
+  /** Saves the plan; rejects with the host's reason, and the dialog stays open showing it. */
+  onSubmit: (input: CreatePlanInput) => Promise<void>
 }) {
   const isEdit = initial !== undefined
+  const { saving, error, save } = usePlanSave(onSubmit)
   const [step, setStep] = useState(0)
   const [discarding, setDiscarding] = useState(false)
   const [name, setName] = useState(initial?.name ?? '')
@@ -1223,8 +1231,9 @@ function PlanFormDialog({
   const [raceLengthFormat, setRaceLengthFormat] = useState<RaceLengthFormat>(initial?.raceLengthFormat ?? 'Unknown')
   const [raceLengthValue, setRaceLengthValue] = useState(String(initial?.raceLengthValue ?? ''))
   const [fuelReserveLaps, setFuelReserveLaps] = useState(String(initial?.fuelReserveLaps ?? reserve))
-  const [avgLapTimeSeconds, setAvgLapTimeSeconds] = useState(initial?.avgLapTimeSeconds != null ? String(initial.avgLapTimeSeconds) : '')
-  const [fuelPerLapLiters, setFuelPerLapLiters] = useState(initial?.fuelPerLapLiters != null ? String(initial.fuelPerLapLiters) : '')
+  // Plans stored before the host refused 0 kept it for "not typed": it shows, and saves, as empty.
+  const [avgLapTimeSeconds, setAvgLapTimeSeconds] = useState(initial?.avgLapTimeSeconds ? String(initial.avgLapTimeSeconds) : '')
+  const [fuelPerLapLiters, setFuelPerLapLiters] = useState(initial?.fuelPerLapLiters ? String(initial.fuelPerLapLiters) : '')
   const [notes, setNotes] = useState(initial?.notes ?? '')
 
   const snapshot = JSON.stringify([name, game, car, track, qualifyingIncluded, raceLengthFormat, raceLengthValue, fuelReserveLaps, avgLapTimeSeconds, fuelPerLapLiters, notes])
@@ -1240,10 +1249,8 @@ function PlanFormDialog({
   const submit = () => {
     const parsedRaceLengthValue = Number(raceLengthValue)
     const parsedFuelReserveLaps = Number(fuelReserveLaps)
-    const parsedAvgLapTime = avgLapTimeSeconds.trim().length > 0 ? Number(avgLapTimeSeconds) : null
-    const parsedFuelPerLap = fuelPerLapLiters.trim().length > 0 ? Number(fuelPerLapLiters) : null
 
-    onSubmit({
+    void save({
       name: name.trim(),
       game: game.trim(),
       car: car.trim(),
@@ -1253,8 +1260,8 @@ function PlanFormDialog({
       raceLengthFormat,
       raceLengthValue: Number.isFinite(parsedRaceLengthValue) ? parsedRaceLengthValue : 0,
       fuelReserveLaps: Number.isFinite(parsedFuelReserveLaps) ? Math.max(0, parsedFuelReserveLaps) : reserve,
-      avgLapTimeSeconds: parsedAvgLapTime !== null && Number.isFinite(parsedAvgLapTime) ? parsedAvgLapTime : null,
-      fuelPerLapLiters: parsedFuelPerLap !== null && Number.isFinite(parsedFuelPerLap) ? parsedFuelPerLap : null,
+      avgLapTimeSeconds: positiveOrNull(avgLapTimeSeconds),
+      fuelPerLapLiters: positiveOrNull(fuelPerLapLiters),
       notes,
     })
   }
@@ -1299,7 +1306,7 @@ function PlanFormDialog({
       closeOnSmokeClick
       footer={
         <>
-          <button type="submit" className="button primary">
+          <button type="submit" className="button primary" disabled={lastStep && saving}>
             {lastStep ? (isEdit ? 'Save changes' : 'Create plan') : 'Next'}
           </button>
           {step > 0 && (
@@ -1323,6 +1330,8 @@ function PlanFormDialog({
           </li>
         ))}
       </ol>
+
+      {error && <PlanSaveError title={isEdit ? 'Changes not saved' : 'Plan not created'} message={error} />}
 
       {step === 0 && (
         <div className="planner-form-grid">
@@ -1395,11 +1404,11 @@ function PlanFormDialog({
           <span />
           <label className="field">
             <span>Avg lap time (s)</span>
-            <input type="number" min={PLAN_LIMITS.minLapTimeSeconds} max={PLAN_LIMITS.maxLapTimeSeconds} step={0.1} value={avgLapTimeSeconds} onChange={(event) => setAvgLapTimeSeconds(event.target.value)} placeholder="Optional" />
+            <input type="number" min={PLAN_LIMITS.minLapTimeSeconds} max={PLAN_LIMITS.maxLapTimeSeconds} step="any" value={avgLapTimeSeconds} onChange={(event) => setAvgLapTimeSeconds(event.target.value)} placeholder="Optional" />
           </label>
           <label className="field">
             <span>Fuel per lap (L)</span>
-            <input type="number" min={0} max={PLAN_LIMITS.maxFuelPerLapLiters} step={0.1} value={fuelPerLapLiters} onChange={(event) => setFuelPerLapLiters(event.target.value)} placeholder="Optional" />
+            <input type="number" min={0} max={PLAN_LIMITS.maxFuelPerLapLiters} step="any" value={fuelPerLapLiters} onChange={(event) => setFuelPerLapLiters(event.target.value)} placeholder="Optional" />
           </label>
           <label className="field planner-form-wide">
             <span>Notes</span>
@@ -1408,6 +1417,38 @@ function PlanFormDialog({
         </div>
       )}
     </ContentDialog>
+  )
+}
+
+/**
+ * A plan dialog's save: the dialog stays open until the host accepts the plan (the parent closes
+ * it then) and shows the host's reason when it refuses, so nothing typed is lost.
+ */
+function usePlanSave(onSubmit: (input: CreatePlanInput) => Promise<void>) {
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const save = async (input: CreatePlanInput) => {
+    if (saving) return
+    setSaving(true)
+    setError(null)
+    try {
+      await onSubmit(input)
+    } catch (failure) {
+      setError(commandErrorMessage(failure, 'The plan could not be saved.'))
+      setSaving(false)
+    }
+  }
+  return { saving, error, save }
+}
+
+/** Why the host refused a plan dialog's save, above its fields. */
+function PlanSaveError({ title, message }: { title: string; message: string }) {
+  return (
+    <div className="infobar error" role="alert">
+      <span className="infobar-icon">!</span>
+      <strong className="infobar-title">{title}</strong>
+      <span className="infobar-message">{message}</span>
+    </div>
   )
 }
 

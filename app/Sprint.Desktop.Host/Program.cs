@@ -925,18 +925,10 @@ object CompareState()
     };
 }
 
-// Every plan's race fuel over the one shared corpus, keyed by plan id. Indexed rather than
-// ToDictionary: a hand-copied plan file sharing an id must not fail every state poll.
-Dictionary<string, RaceFuelEstimate> PlanFuel(IReadOnlyList<SessionPlan> plans)
-{
-    Dictionary<string, RaceFuelEstimate> fuel = new(StringComparer.Ordinal);
-    foreach (SessionPlan plan in plans)
-    {
-        fuel[plan.Id] = RaceFuelEstimate.For(plan, fuelHistory.ForRace(new PlanContext(plan.Game, plan.Car, plan.Track)));
-    }
-
-    return fuel;
-}
+// Every plan's race fuel over the one shared corpus, keyed by plan id, with the tank of the car
+// being driven for the active plan when its history has none (RaceFuelEstimate.ForPlans).
+Dictionary<string, RaceFuelEstimate> PlanFuel(IReadOnlyList<SessionPlan> plans) =>
+    RaceFuelEstimate.ForPlans(plans, fuelHistory, state.Telemetry.Frame.Car.FuelCapacityLiters);
 
 PlanContext LastSeenContext()
 {

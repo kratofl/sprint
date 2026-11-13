@@ -502,7 +502,7 @@ public sealed class PitWallTests
             FixedFuelHistory history = new(new FuelHistoryFigures(125, 20, 3.0, 20, 60));
             PitWallPlanShare share = new(planner, new OneTraceStore(), history);
 
-            PitWallShare? shared = share.Snapshot(SessionType.Race);
+            PitWallShare? shared = share.Snapshot(InRace(), sharing: true);
 
             Assert.NotNull(shared);
             using JsonDocument json = JsonDocument.Parse(shared.PlanJson);
@@ -514,6 +514,70 @@ public sealed class PitWallTests
             Assert.Equal(expected.Stints.Liters.Count, fuel.GetProperty("stints").GetProperty("liters").GetArrayLength());
             Assert.Equal("History", fuel.GetProperty("fuelPerLap").GetProperty("source").GetString());
             Assert.Equal(new PlanContext("LeMansUltimate", "Porsche 963", "Spa"), history.AskedFor);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void WithoutATankInTheHistoryTheSharedStintsUseTheLiveCars()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "Sprint.PitWallTests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            SessionPlannerService planner = new(new LocalSessionPlanStore(root));
+            SessionPlan plan = planner.CreatePlan(new CreatePlanRequest
+            {
+                Name = "Spa 6 Hours",
+                Game = "LeMansUltimate",
+                Car = "Porsche 963",
+                Track = "Spa",
+                RaceLengthFormat = RaceLengthFormat.LapBased,
+                RaceLengthValue = 40,
+                FuelReserveLaps = 1,
+            });
+            planner.Arm(plan.Id);
+            // The plan's car is spelled unlike any recorded drive: lap time and fuel, but no tank.
+            FixedFuelHistory history = new(new FuelHistoryFigures(125, 20, 3.0, 20, null));
+            PitWallPlanShare share = new(planner, new OneTraceStore(), history);
+
+            using JsonDocument withoutTank = JsonDocument.Parse(share.Snapshot(InRace(), sharing: true)!.PlanJson);
+            Assert.Equal(JsonValueKind.Null, withoutTank.RootElement.GetProperty("raceFuel").GetProperty("stints").ValueKind);
+
+            using JsonDocument live = JsonDocument.Parse(share.Snapshot(InRace(tank: 90), sharing: true)!.PlanJson);
+            JsonElement fuel = live.RootElement.GetProperty("raceFuel");
+            // 41 laps at 3 L on a 90 L tank: 30 laps a stint.
+            Assert.Equal(90, fuel.GetProperty("tankLiters").GetDouble());
+            Assert.Equal(30, fuel.GetProperty("stints").GetProperty("lapsPerStint").GetInt32());
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void APlanThatIsNotSharedIsNamedWithoutWorkingOutItsFuel()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "Sprint.PitWallTests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            SessionPlannerService planner = new(new LocalSessionPlanStore(root));
+            SessionPlan plan = planner.CreatePlan(new CreatePlanRequest { Name = "Spa 6 Hours", Game = "LeMansUltimate", Car = "Porsche 963", Track = "Spa" });
+            planner.Arm(plan.Id);
+            FixedFuelHistory history = new(new FuelHistoryFigures(125, 20, 3.0, 20, 60));
+            PitWallPlanShare share = new(planner, new OneTraceStore(), history);
+
+            PitWallShare? offer = share.Snapshot(InRace(), sharing: false);
+
+            Assert.Equal("Spa 6 Hours", offer?.PlanName);
+            Assert.Null(history.AskedFor);
+            using JsonDocument json = JsonDocument.Parse(offer!.PlanJson);
+            Assert.False(json.RootElement.TryGetProperty("raceFuel", out _));
         }
         finally
         {
@@ -537,13 +601,13 @@ public sealed class PitWallTests
             DateTimeOffset now = T0;
             PitWallPlanShare share = new(planner, store, NoFuelHistorySource.Instance, () => now);
 
-            Assert.Null(share.Snapshot(SessionType.Race)?.Target);
+            Assert.Null(share.Snapshot(InRace(), sharing: true)?.Target);
             store.Trace = new LapChannelTraceFixture(800).Trace;
             now += TimeSpan.FromSeconds(5);
-            Assert.Null(share.Snapshot(SessionType.Race)?.Target);
+            Assert.Null(share.Snapshot(InRace(), sharing: true)?.Target);
             now += PitWallPlanShare.MissingRetry;
 
-            Assert.Equal(4, share.Snapshot(SessionType.Race)?.Target?.Lap);
+            Assert.Equal(4, share.Snapshot(InRace(), sharing: true)?.Target?.Lap);
         }
         finally
         {
@@ -585,6 +649,13 @@ public sealed class PitWallTests
         Timestamp = at,
         Session = new SessionInfo { Track = "Spa", SessionType = SessionType.Race, TrackLengthMeters = 7004, SessionTime = sessionTime, InCar = true },
         Field = field,
+    };
+
+    /// <summary>The driver's newest frame for the plan share: a race, in a car with <paramref name="tank"/>.</summary>
+    private static TelemetryFrame InRace(float? tank = null) => new()
+    {
+        Session = new SessionInfo { SessionType = SessionType.Race },
+        Car = new CarState { FuelCapacityLiters = tank },
     };
 
     private static IReadOnlyList<FieldCar> Grid(int cars, int lapsCompleted, string? name = null) =>

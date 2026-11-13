@@ -259,13 +259,16 @@ public static class PeerLinkRules
 /// offers and its target lap. Those exceed a datagram, so they travel as <see cref="PeerBlobs"/>.
 /// </para>
 /// </summary>
-/// <param name="share">What the session planner offers to share for a session type; null shares no plan.</param>
+/// <param name="share">
+/// What the session planner offers for the newest frame, and whether the driver shares it (the
+/// offer is still asked for while not, to name the plan on the Live link page); null shares no plan.
+/// </param>
 public sealed class PeerLink(
     OpenPeerSocket open,
     ResolveStunServers resolveStun,
     LocalAddresses localAddresses,
     ILog? log = null,
-    Func<SessionType, PitWallShare?>? share = null)
+    Func<TelemetryFrame?, bool, PitWallShare?>? share = null)
 {
     private const int MaxBufferedSamples = 40;
 
@@ -759,7 +762,8 @@ public sealed class PeerLink(
             }
         }
 
-        PitWallShare? offer = this._sharePlan ? link.Offer : null;
+        // Only an offer made for sharing goes out: one made while off lacks its race fuel.
+        PitWallShare? offer = this._sharePlan && link.OfferSharing ? link.Offer : null;
         string plan = offer?.PlanJson ?? "null";
         if (plan != link.PlanJson)
         {
@@ -796,15 +800,20 @@ public sealed class PeerLink(
             this.Send(link, part, remote);
     }
 
-    /// <summary>Driver, about once a second in any phase: what the planner offers, for the Live link page and the next send.</summary>
+    /// <summary>
+    /// Driver, about once a second in any phase, and at once when sharing is switched: what the
+    /// planner offers, for the Live link page and the next send.
+    /// </summary>
     private void LookAtPlan(Link link, DateTimeOffset now)
     {
-        if (share is null || now - link.LastPlanLook < PeerLinkRules.Ping)
+        bool sharing = this._sharePlan;
+        if (share is null || (now - link.LastPlanLook < PeerLinkRules.Ping && sharing == link.OfferSharing))
             return;
         link.LastPlanLook = now;
+        link.OfferSharing = sharing;
         try
         {
-            link.Offer = share(this._frame?.Session.SessionType ?? SessionType.Unknown);
+            link.Offer = share(this._frame, sharing);
         }
         catch (Exception ex)
         {
@@ -980,6 +989,9 @@ public sealed class PeerLink(
 
         /// <summary>Driver: what the planner offered at the last look.</summary>
         public PitWallShare? Offer { get; set; }
+
+        /// <summary>Driver: whether <see cref="Offer"/> was made for sharing, so it carries the race fuel.</summary>
+        public bool OfferSharing { get; set; }
 
         public DateTimeOffset LastPlanLook { get; set; } = DateTimeOffset.MinValue;
 

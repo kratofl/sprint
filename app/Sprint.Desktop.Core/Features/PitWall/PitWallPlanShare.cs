@@ -11,7 +11,8 @@ namespace Sprint.Desktop.Features.PitWall;
 /// <c>state.planFuel</c> has it (so the pit wall's stints are the planner's), and the trace of the
 /// lap it targets for the session being driven (its race target outside qualifying and the race,
 /// then the other one). The live link asks about once a second; the trace is read from disk only
-/// when the target changes.
+/// when the target changes, and the race fuel is only worked out while the plan is shared (the
+/// Live link page still names the plan while it is not).
 /// </summary>
 /// <param name="fuelHistory">The lap history the race fuel rests on, as the planner reads it.</param>
 /// <param name="clock">The time, for retrying a trace that was missing; the system clock when omitted.</param>
@@ -26,25 +27,36 @@ public sealed class PitWallPlanShare(SessionPlannerService planner, ILapTraceSto
     private PitWallTrace? _trace;
     private DateTimeOffset _traceReadAt;
 
-    public PitWallShare? Snapshot(SessionType sessionType)
+    /// <summary>
+    /// What to offer for the driver's <paramref name="frame"/> (its session type picks the target,
+    /// its car's tank stands in for one the history lacks); null without an active plan. Only with
+    /// <paramref name="sharing"/> does the offer carry <c>raceFuel</c>: off, it is never sent.
+    /// </summary>
+    public PitWallShare? Snapshot(TelemetryFrame? frame, bool sharing)
     {
         // The history is read outside the planner's lock (it can reach the disk), for the context
-        // the active plan has now; a plan swapped in between goes out without its fuel until the next ask.
+        // the active plan has now.
         if (planner.ReadActive(plan => new PlanContext(plan.Game, plan.Car, plan.Track)) is not { } context)
         {
             return null;
         }
 
-        FuelHistoryFigures history = fuelHistory.ForRace(context);
+        SessionType sessionType = frame?.Session.SessionType ?? SessionType.Unknown;
+        double? liveTank = frame?.Car.FuelCapacityLiters;
+        FuelHistoryFigures? history = sharing ? fuelHistory.ForRace(context) : null;
         Read? read = planner.ReadActive(plan =>
         {
             SegmentKind first = sessionType == SessionType.Qualify ? SegmentKind.Qualifying : SegmentKind.Race;
             SegmentKind second = first == SegmentKind.Race ? SegmentKind.Qualifying : SegmentKind.Race;
             PlanTarget? target = plan.TargetsFor(first)?.LapTime ?? plan.TargetsFor(second)?.LapTime;
             JsonObject json = JsonSerializer.SerializeToNode(plan, PitWallWire.Json)?.AsObject() ?? new JsonObject();
-            if (new PlanContext(plan.Game, plan.Car, plan.Track) == context)
+            if (history is not null)
             {
-                json["raceFuel"] = JsonSerializer.SerializeToNode(RaceFuelEstimate.For(plan, history), PitWallWire.Json);
+                // A plan swapped in since the history was read goes out with a null raceFuel until
+                // the next ask: present, so the pit wall does not take it for an older Sprint.
+                json["raceFuel"] = new PlanContext(plan.Game, plan.Car, plan.Track) == context
+                    ? JsonSerializer.SerializeToNode(RaceFuelEstimate.For(plan, history, liveTank), PitWallWire.Json)
+                    : null;
             }
 
             return new Read(
