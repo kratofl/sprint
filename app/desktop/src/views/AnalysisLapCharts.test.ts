@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import type { LapChannelTrace } from './AnalysisDomain'
-import { buildLapCharts, chartRecorded, lapCorners, verdict } from './AnalysisLapCharts'
+import { buildLapCharts, chartRecorded, cornerGapLabel, lapCorners, lapMapComparison, shadeAt, verdict } from './AnalysisLapCharts'
 import { DEFAULT_LAP_LAYOUT } from './AnalysisLapLayout'
 import type { LapLayout } from './AnalysisLapLayout'
 
@@ -146,4 +146,58 @@ test('what a lap did not record: its chart stays, empty, and Add chart can tell'
   assert.equal(chartRecorded('speed', trace(false)), true)
   assert.equal(chartRecorded('brakeTemp', withCar(trace(false))), true)
   assert.equal(chartRecorded('wheelLoad', withCar(trace(false))), false)
+})
+
+/** The test lap (60 s, corners at 30 % and 70 %) with `extra(x)` seconds added to its clock by each place. */
+function timed(extra: (x: number) => number): LapChannelTrace {
+  const lap = trace(false)
+  return { ...lap, channels: { ...lap.channels, elapsedSeconds: lap.channels.elapsedSeconds.map((seconds, index) => seconds + extra(index * lap.positionStep)) } }
+}
+
+/** `seconds` spread evenly between `from` and `to` along the lap. */
+const spread = (seconds: number, from: number, to: number) => (x: number) => seconds * Math.min(1, Math.max(0, (x - from) / (to - from)))
+
+test('the map: green where this lap gains, red where it loses, stronger the faster, even elsewhere', () => {
+  // Over 0.25–0.35 (6 s), 0.6 s lost: 10 % of the time it took, the strongest red. Over 0.65–0.75, 0.06 s gained: 1 %, the faintest green.
+  const lap = timed((x) => spread(0.6, 0.25, 0.35)(x) - spread(0.06, 0.65, 0.75)(x))
+  const comparison = lapMapComparison(lap, trace(false), lapCorners(lap))
+  assert.ok(comparison)
+  assert.equal(shadeAt(comparison.shades, 0.1), 0)
+  assert.equal(shadeAt(comparison.shades, 0.3), -3)
+  assert.equal(shadeAt(comparison.shades, 0.5), 0)
+  assert.equal(shadeAt(comparison.shades, 0.7), 1)
+  assert.equal(shadeAt(comparison.shades, 0.9), 0)
+})
+
+test('the map: a lap a little slower all the way round is faintly red everywhere, a hair slower is even', () => {
+  const slower = lapMapComparison(timed((x) => x * 0.6), trace(false), [])
+  assert.ok(slower)
+  assert.ok(slower.shades.every((shade) => shade === -1))
+  const hair = lapMapComparison(timed((x) => x * 0.12), trace(false), [])
+  assert.ok(hair)
+  assert.ok(hair.shades.every((shade) => shade === 0))
+})
+
+test('each corner carries what the lap lost (+) or gained (−) over its stretch, and they add up to the lap', () => {
+  const lap = timed((x) => spread(0.2, 0.25, 0.35)(x) - spread(0.1, 0.65, 0.75)(x) + spread(0.05, 0, 0.1)(x))
+  const comparison = lapMapComparison(lap, trace(false), lapCorners(lap))
+  assert.ok(comparison)
+  // C1's stretch runs from the line to halfway to C2, so it takes the start's 0.05 s too.
+  assert.deepEqual(comparison.corners.map((corner) => [corner.label, Math.round(corner.seconds * 1000) / 1000]), [
+    ['C1', 0.25],
+    ['C2', -0.1],
+  ])
+  assert.ok(Math.abs(comparison.corners.reduce((sum, corner) => sum + corner.seconds, 0) - 0.15) < 1e-9)
+})
+
+test('without elapsed time there is nothing to colour the map by', () => {
+  const lap = trace(false)
+  const { elapsedSeconds: _, ...channels } = lap.channels
+  assert.equal(lapMapComparison({ ...lap, channels }, trace(false), lapCorners(lap)), null)
+})
+
+test('a corner gap reads to the hundredth, red when lost, green when gained', () => {
+  assert.deepEqual(cornerGapLabel(0.312), { text: '+0.31', tone: 'loss' })
+  assert.deepEqual(cornerGapLabel(-0.078), { text: '−0.08', tone: 'gain' })
+  assert.deepEqual(cornerGapLabel(0.004), { text: '±0.00', tone: null })
 })

@@ -723,6 +723,23 @@
   stroke: var(--label-tertiary);
 }
 
+/* Comparing: green where this lap gains on the other, red where it loses, stronger the faster. */
+.analysis-map-line.gain {
+  stroke: var(--green-500);
+}
+
+.analysis-map-line.loss {
+  stroke: var(--red-500);
+}
+
+.analysis-map-line.strength-1 {
+  stroke-opacity: 0.4;
+}
+
+.analysis-map-line.strength-2 {
+  stroke-opacity: 0.7;
+}
+
 /* The stretch of the lap the charts are zoomed to: a quiet band under the line. */
 .analysis-map-window {
   fill: none;
@@ -743,6 +760,15 @@
   font-weight: 600;
 }
 
+/* A corner's gap while comparing: what this lap gained there, or lost. */
+.analysis-map-label .gain {
+  fill: var(--success-text);
+}
+
+.analysis-map-label .loss {
+  fill: var(--danger-text);
+}
+
 /* The dot that follows the charts' cursor. */
 .analysis-map-dot {
   fill: var(--surface);
@@ -759,6 +785,14 @@
 
 .analysis-map-coast-key {
   color: var(--label-tertiary);
+}
+
+.analysis-map-gain-key {
+  color: var(--green-500);
+}
+
+.analysis-map-loss-key {
+  color: var(--red-500);
 }
 
 .analysis-chart-more {

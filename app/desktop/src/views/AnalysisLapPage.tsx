@@ -9,8 +9,8 @@ import { buildAddLapNote, buildDeleteLapNote, buildUpdateLapNote, carLine, forma
 import type { CorpusLap, CorpusRun, CorpusSession, LapChannelTrace, LapNote, TraceGrid } from './AnalysisDomain'
 import { LapTraceChartStack, LineKey } from './AnalysisChart'
 import type { ChartMark } from './AnalysisChart'
-import { buildLapCharts, chartRecorded, lapCorners, verdict } from './AnalysisLapCharts'
-import type { LapPanelOf } from './AnalysisLapCharts'
+import { buildLapCharts, chartRecorded, cornerGapLabel, lapCorners, lapMapComparison, shadeAt, verdict } from './AnalysisLapCharts'
+import type { GainShade, LapMapComparison, LapPanelOf } from './AnalysisLapCharts'
 import { LAP_CHART_GROUPS, LAP_CHART_TITLES, TYRE_BANDS, moveChart, removeChart, storedLapLayout, toggleChart } from './AnalysisLapLayout'
 import type { LapChartId, LapLayout } from './AnalysisLapLayout'
 import { lapMeters, lapPins, placeLabel, settingChanges } from './AnalysisLapMarks'
@@ -315,7 +315,9 @@ function LapBody({
   // The car card keeps showing the last place the cursor was once the pointer leaves the charts.
   const [here, setHere] = useState(0)
   const [view, setView] = useState<LapWindow>(WHOLE_LAP)
-  const marks = lapCorners(trace)
+  const marks = useMemo(() => lapCorners(trace), [trace])
+  // While comparing, the map shows where this lap gains and loses on the other.
+  const comparison = useMemo(() => (otherTrace ? lapMapComparison(trace, otherTrace, marks) : null), [trace, otherTrace, marks])
   const hasMap = 'worldX' in trace.channels && 'worldZ' in trace.channels
   const showMap = layout.map && hasMap
   const carAt = cursor ?? here
@@ -323,7 +325,16 @@ function LapBody({
     <div className={showMap || layout.car ? 'analysis-lap-body with-side' : 'analysis-lap-body'}>
       {(showMap || layout.car) && (
         <div className="analysis-lap-side">
-          {showMap && <TrackMapCard trace={trace} marks={marks} cursor={cursor} view={view} onRemove={() => onLayout({ ...layout, map: false })} />}
+          {showMap && (
+            <TrackMapCard
+              trace={trace}
+              marks={marks}
+              compared={comparison && otherLabel ? { comparison, lapLabel, otherLabel } : null}
+              cursor={cursor}
+              view={view}
+              onRemove={() => onLayout({ ...layout, map: false })}
+            />
+          )}
           {layout.car && <CarCard car={trace.car} position={carAt} place={placeLabel(carAt, lapMeters(trace, lap), marks)} layout={layout} onLayout={onLayout} />}
         </div>
       )}
@@ -354,20 +365,35 @@ const MAP_WIDTH = 360
 // Room round the line for the corner labels, which sit outside it.
 const MAP_PAD = 28
 
+/** While comparing: where this lap gains and loses on the other, and what to call the two. */
+type MapCompared = { comparison: LapMapComparison; lapLabel: string; otherLabel: string }
+
+type MapStroke = 'brake' | 'throttle' | 'coast' | (typeof GAIN_STROKES)[number] | (typeof LOSS_STROKES)[number]
+
+const GAIN_STROKES = ['gain strength-1', 'gain strength-2', 'gain strength-3'] as const
+const LOSS_STROKES = ['loss strength-1', 'loss strength-2', 'loss strength-3'] as const
+
+// A corner label's width on the map, near enough: 11px semibold.
+const LABEL_CHAR = 6.5
+
 /**
  * The lap drawn on the track from the car's recorded position, seen from above: green where the
- * throttle was flat, red under braking, grey in between. The dot follows the charts' cursor; while
- * the charts are zoomed, a quiet band under the line marks the stretch they show.
+ * throttle was flat, red under braking, grey in between. While comparing it is coloured instead
+ * by where this lap gains (green) or loses (red) on the other, stronger the faster, grey where
+ * even, and each corner's label carries its gap. The dot follows the charts' cursor; while the
+ * charts are zoomed, a quiet band under the line marks the stretch they show.
  */
 function TrackMapCard({
   trace,
   marks,
+  compared,
   cursor,
   view,
   onRemove,
 }: {
   trace: LapChannelTrace
   marks: readonly ChartMark[]
+  compared: MapCompared | null
   cursor: number | null
   view: LapWindow
   onRemove: () => void
@@ -390,18 +416,25 @@ function TrackMapCard({
   const point = (index: number): [number, number] => [offsetX + (xs[index] - minX) * scale, offsetY + (zs[index] - minZ) * scale]
   const at = (position: number): number => Math.min(xs.length - 1, Math.max(0, Math.round(position / trace.positionStep)))
 
-  // Runs of one state as one path each, so the map is a handful of paths, not thousands of lines.
+  // Runs of one stroke as one path each, so the map is a handful of paths, not thousands of lines.
   const step = Math.max(1, Math.floor(xs.length / 1500))
-  const state = (index: number): 'brake' | 'throttle' | 'coast' => ((brake[index] ?? 0) > 0.05 ? 'brake' : (throttle[index] ?? 0) > 0.9 ? 'throttle' : 'coast')
-  const runs: { state: 'brake' | 'throttle' | 'coast'; d: string }[] = []
+  const pedals = (index: number): MapStroke => ((brake[index] ?? 0) > 0.05 ? 'brake' : (throttle[index] ?? 0) > 0.9 ? 'throttle' : 'coast')
+  const gains =
+    (shades: readonly GainShade[]) =>
+    (index: number): MapStroke => {
+      const shade = shadeAt(shades, index * trace.positionStep)
+      return shade === 0 ? 'coast' : shade > 0 ? GAIN_STROKES[shade - 1] : LOSS_STROKES[-shade - 1]
+    }
+  const stroke = compared ? gains(compared.comparison.shades) : pedals
+  const runs: { stroke: MapStroke; d: string }[] = []
   for (let index = 0; index < xs.length; index += step) {
     const [x, y] = point(index)
-    const current = state(index)
+    const current = stroke(index)
     const last = runs[runs.length - 1]
-    if (last && last.state === current) last.d += ` L${x.toFixed(1)},${y.toFixed(1)}`
+    if (last && last.stroke === current) last.d += ` L${x.toFixed(1)},${y.toFixed(1)}`
     else {
       const [px, py] = last ? point(Math.max(0, index - step)) : [x, y]
-      runs.push({ state: current, d: `M${px.toFixed(1)},${py.toFixed(1)} L${x.toFixed(1)},${y.toFixed(1)}` })
+      runs.push({ stroke: current, d: `M${px.toFixed(1)},${py.toFixed(1)} L${x.toFixed(1)},${y.toFixed(1)}` })
     }
   }
   const [startX, startY] = point(0)
@@ -416,43 +449,78 @@ function TrackMapCard({
     }
   }
 
+  // Compared, each corner's label carries its gap: "C4 +0.31", red where this lap lost time there.
+  const labels = compared
+    ? compared.comparison.corners.map((corner) => ({ label: corner.label, position: corner.position, gap: cornerGapLabel(corner.seconds) }))
+    : marks.map((mark) => ({ label: mark.label, position: mark.position, gap: null }))
+  const lineLabel = compared ? `The lap’s line on the track, coloured by where it gains or loses on ${compared.otherLabel}` : 'The lap’s line on the track'
+
   return (
     <section className="card analysis-map-card" aria-label="On the track">
       <div className="card-header">
         <h2 className="card-title">On the track</h2>
         <WidgetMenu label="Track map" onRemove={onRemove} removeLabel="Remove map" />
       </div>
-      <svg viewBox={`0 0 ${MAP_WIDTH} ${height}`} className="analysis-map-svg" role="img" aria-label={shown ? 'The lap’s line on the track, the stretch the charts show marked' : 'The lap’s line on the track'}>
+      <svg viewBox={`0 0 ${MAP_WIDTH} ${height}`} className="analysis-map-svg" role="img" aria-label={shown ? `${lineLabel}, the stretch the charts show marked` : lineLabel}>
         {shown && <path d={shown} className="analysis-map-window" />}
         {runs.map((run, index) => (
-          <path key={index} d={run.d} className={`analysis-map-line ${run.state}`} />
+          <path key={index} d={run.d} className={`analysis-map-line ${run.stroke}`} />
         ))}
         <circle cx={startX} cy={startY} r={4} className="analysis-map-start" />
-        {marks.map((mark) => {
-          // Each label sits just outside the line, away from the track's middle.
-          const [x, y] = point(at(mark.position))
+        {labels.map((label) => {
+          // Each label sits just outside the line, away from the track's middle. One with its gap is
+          // wide: above or below the line it stands further off, and one that would run off the card
+          // sits inside the line instead.
+          const [x, y] = point(at(label.position))
           const dx = x - centre[0]
           const dy = y - centre[1]
           const length = Math.hypot(dx, dy) || 1
-          const anchor = dx / length > 0.35 ? 'start' : dx / length < -0.35 ? 'end' : 'middle'
+          const outward = dx / length > 0.35 ? 'start' : dx / length < -0.35 ? 'end' : 'middle'
+          const push = label.gap === null ? 12 : outward === 'middle' ? 20 : 14
+          const wide = (label.label.length + (label.gap === null ? 0 : label.gap.text.length + 1)) * LABEL_CHAR
+          const outX = x + (dx / length) * push
+          const inside = (outward === 'start' && outX + wide > MAP_WIDTH - 2) || (outward === 'end' && outX - wide < 2)
+          const side = inside ? -1 : 1
+          const anchor = inside ? (outward === 'start' ? 'end' : 'start') : outward
           return (
-            <text key={mark.label} x={x + (dx / length) * 12} y={y + (dy / length) * 12 + 4} textAnchor={anchor} className="analysis-map-label">
-              {mark.label}
+            <text key={label.label} x={x + side * (dx / length) * push} y={y + side * (dy / length) * push + 4} textAnchor={anchor} className="analysis-map-label">
+              {label.label}
+              {label.gap !== null && (
+                <tspan dx={4} className={label.gap.tone ? `tabular ${label.gap.tone}` : 'tabular'}>
+                  {label.gap.text}
+                </tspan>
+              )}
             </text>
           )
         })}
         {dot && <circle cx={dot[0]} cy={dot[1]} r={7} className="analysis-map-dot" />}
       </svg>
       <div className="analysis-map-keys">
-        <span className="analysis-chart-legend-item">
-          <LineKey tone="throttle" stroke="solid" /> Full throttle
-        </span>
-        <span className="analysis-chart-legend-item">
-          <LineKey tone="brake" stroke="solid" /> Braking
-        </span>
-        <span className="analysis-chart-legend-item">
-          <span className="analysis-line-key solid analysis-map-coast-key" aria-hidden="true" /> Coasting
-        </span>
+        {compared ? (
+          <>
+            <span className="analysis-chart-legend-item">
+              <span className="analysis-line-key solid analysis-map-gain-key" aria-hidden="true" /> {compared.lapLabel} faster
+            </span>
+            <span className="analysis-chart-legend-item">
+              <span className="analysis-line-key solid analysis-map-loss-key" aria-hidden="true" /> {compared.otherLabel} faster
+            </span>
+            <span className="analysis-chart-legend-item">
+              <span className="analysis-line-key solid analysis-map-coast-key" aria-hidden="true" /> Even
+            </span>
+          </>
+        ) : (
+          <>
+            <span className="analysis-chart-legend-item">
+              <LineKey tone="throttle" stroke="solid" /> Full throttle
+            </span>
+            <span className="analysis-chart-legend-item">
+              <LineKey tone="brake" stroke="solid" /> Braking
+            </span>
+            <span className="analysis-chart-legend-item">
+              <span className="analysis-line-key solid analysis-map-coast-key" aria-hidden="true" /> Coasting
+            </span>
+          </>
+        )}
       </div>
     </section>
   )

@@ -283,6 +283,82 @@ export function lapCorners(trace: LapChannelTrace, samples: number = 600): Chart
   return marks
 }
 
+/**
+ * How fast this lap gains (+) or loses (−) time on the other at a place, in strengths: 0 is even,
+ * 3 the fastest. The map colours its line by it while comparing.
+ */
+export type GainShade = -3 | -2 | -1 | 0 | 1 | 2 | 3
+
+/** Seconds gained (or lost) per second driven at which a place turns one strength stronger; under the first it is even. */
+export const GAIN_SHADE_RATES = [0.005, 0.02, 0.05] as const
+
+/** How far either side of a place its rate is read over, as a share of the lap: enough to steady it, short of a corner. */
+const GAIN_REACH = 0.01
+
+const GAINING = [0, 1, 2, 3] as const
+const LOSING = [0, -1, -2, -3] as const
+
+/** A corner's share of the gap between two laps: + where this lap lost time there, − where it gained, as a lap time's gap reads. */
+export type CornerGap = { label: string; position: number; seconds: number }
+
+/** The map's comparison: a shade every evenly spaced place along the lap (`shadeAt` reads it), and each corner's gap. */
+export type LapMapComparison = { shades: GainShade[]; corners: CornerGap[] }
+
+/**
+ * The shade at each sample of the time-gained line (`timeGained`, evenly spaced along `lap`): the
+ * line's slope over the time `lap` took for the same stretch, so a tenth lost in a slow hairpin
+ * and a tenth lost on a fast straight each weigh by how long they took.
+ */
+export function gainShades(lap: LapChannelTrace, gained: readonly ChartSample[]): GainShade[] {
+  const reach = Math.max(1, Math.round(GAIN_REACH * (gained.length - 1)))
+  return gained.map((_, index) => {
+    const from = gained[Math.max(0, index - reach)]
+    const to = gained[Math.min(gained.length - 1, index + reach)]
+    const driven = (traceValueAt(lap, 'elapsedSeconds', to.x) ?? 0) - (traceValueAt(lap, 'elapsedSeconds', from.x) ?? 0)
+    if (!(driven > 0)) return 0
+    const rate = (to.y - from.y) / driven
+    const size = Math.abs(rate)
+    const strength = size >= GAIN_SHADE_RATES[2] ? 3 : size >= GAIN_SHADE_RATES[1] ? 2 : size >= GAIN_SHADE_RATES[0] ? 1 : 0
+    return (rate > 0 ? GAINING : LOSING)[strength]
+  })
+}
+
+/**
+ * Each corner's gap: what the time-gained line did over the corner's stretch, which runs from
+ * halfway after the previous corner to halfway before the next (the first from the line, the last
+ * to it), so the stretches cover the lap and their gaps add up to the lap's.
+ */
+export function cornerGaps(gained: readonly ChartSample[], marks: readonly ChartMark[]): CornerGap[] {
+  if (gained.length < 2) return []
+  const at = (position: number): number => {
+    const exact = Math.min(1, Math.max(0, position)) * (gained.length - 1)
+    const index = Math.min(gained.length - 2, Math.floor(exact))
+    return gained[index].y + (gained[index + 1].y - gained[index].y) * (exact - index)
+  }
+  const bounds = [0, ...marks.slice(1).map((mark, index) => (marks[index].position + mark.position) / 2), 1]
+  return marks.map((mark, index) => ({ label: mark.label, position: mark.position, seconds: at(bounds[index]) - at(bounds[index + 1]) }))
+}
+
+/** Where `lap` gains and loses on `other` along the lap, for the map. Null when either lap has no elapsed time. */
+export function lapMapComparison(lap: LapChannelTrace, other: LapChannelTrace, marks: readonly ChartMark[]): LapMapComparison | null {
+  const gained = timeGained(lap, other)
+  if (gained === null || gained.length < 2) return null
+  return { shades: gainShades(lap, gained), corners: cornerGaps(gained, marks) }
+}
+
+/** The shade at a place along the lap (0..1): the nearest of the evenly spaced shades. */
+export const shadeAt = (shades: readonly GainShade[], position: number): GainShade =>
+  shades.length === 0 ? 0 : shades[Math.min(shades.length - 1, Math.max(0, Math.round(position * (shades.length - 1))))]
+
+/** A corner's gap on the map, to the hundredth ("+0.31", "−0.08", "±0.00"), and whether this lap lost or gained there. */
+export function cornerGapLabel(seconds: number): { text: string; tone: 'gain' | 'loss' | null } {
+  const hundredths = Math.round(seconds * 100)
+  const size = (Math.abs(hundredths) / 100).toFixed(2)
+  if (hundredths > 0) return { text: `+${size}`, tone: 'loss' }
+  if (hundredths < 0) return { text: `−${size}`, tone: 'gain' }
+  return { text: `±${size}`, tone: null }
+}
+
 /** Which of two laps is faster, and by how much: "Quali lap 3 is faster by 0.762 s". */
 export function verdict(lapLabel: string, lapSeconds: number, otherLabel: string, otherSeconds: number): { faster: string; gap: number } | null {
   const gap = Math.abs(lapSeconds - otherSeconds)
