@@ -190,9 +190,6 @@ public enum AutoDetectMode
 /// </summary>
 public sealed class SessionPlannerSettings
 {
-    /// <summary>The offered trace storage ceilings in megabytes, ascending.</summary>
-    public static readonly int[] TraceStorageBudgets = [1024, 2048, 4096, 8192, 16384];
-
     /// <summary>Default fuel reserve on top of the estimate, in whole laps.</summary>
     [JsonPropertyName("fuelReserveLaps")]
     public int FuelReserveLaps { get; set; } = 1;
@@ -203,27 +200,32 @@ public sealed class SessionPlannerSettings
     [JsonPropertyName("autoDetect")]
     public AutoDetectMode AutoDetect { get; set; } = AutoDetectMode.DraftSuggestion;
 
-    /// <summary>How long traces are kept, or 0 for no age limit. Protection outranks it.</summary>
-    [JsonPropertyName("traceRetentionDays")]
-    public int TraceRetentionDays { get; set; } = 90;
+    /// <summary>
+    /// After how many days a lap's trace is deleted, or 0 to keep every trace (the default: the
+    /// driver opts into deleting, in Settings). Protection outranks it.
+    /// <para>
+    /// Not the earlier <c>traceRetentionDays</c>, which defaulted to 90 without anyone choosing
+    /// it: a settings file that still holds that key must not read as having opted in.
+    /// </para>
+    /// </summary>
+    [JsonPropertyName("traceExpiryDays")]
+    public int TraceExpiryDays { get; set; }
 
-    /// <summary>A hard ceiling on trace storage, so a long stint cannot fill the disk.</summary>
-    [JsonPropertyName("traceMaxTotalMegabytes")]
-    public int TraceMaxTotalMegabytes { get; set; } = 4096;
+    /// <summary>The longest age limit a driver can set.</summary>
+    public const int MaxTraceExpiryDays = 3650;
 
     /// <summary>
-    /// How many of the fastest valid laps per (game, track, car) are exempt from pruning. This
-    /// is what makes recording a trace for every lap safe: a reference lap gets old, so an
-    /// unqualified oldest-first policy would delete exactly the laps worth chasing.
+    /// How many of the fastest valid laps per (game, track, car) keep their trace whatever the
+    /// age limit: a reference lap gets old, so deleting by age alone would delete exactly the
+    /// laps worth chasing.
     /// </summary>
     [JsonPropertyName("traceProtectedLapsPerContext")]
     public int TraceProtectedLapsPerContext { get; set; } = 5;
 
     /// <summary>These settings as the retention service's budget (#194).</summary>
     public LapTraceBudget TraceBudget() => new(
-        Math.Max(1, this.TraceMaxTotalMegabytes) * 1024L * 1024L,
         Math.Max(0, this.TraceProtectedLapsPerContext),
-        this.TraceRetentionDays > 0 ? this.TraceRetentionDays : null);
+        this.TraceExpiryDays > 0 ? this.TraceExpiryDays : null);
 
     /// <summary>Warn when live telemetry disagrees with the planned race-length format.</summary>
     [JsonPropertyName("warnOnRaceFormatMismatch")]

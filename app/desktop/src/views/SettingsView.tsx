@@ -11,6 +11,8 @@ import { Status, type StatusTone } from '../shell/Status'
 import type { RuntimeState } from '../shell/runtime'
 import { CHANNELS, parseSettings } from './SettingsDomain'
 import type { AppSettings, UpdateChannel } from './SettingsDomain'
+import { TRACE_EXPIRY_DAYS, lapsText, parseStorageInfo, sizeText } from './SettingsStorage'
+import type { StorageInfo } from './SettingsStorage'
 import { parseUpdatesInfo, useUpdateCheck, useUpdateInstall } from './SettingsUpdates'
 import type { UpdateCheckState } from './SettingsUpdates'
 import { ListRow, SettingsList, Switch } from './SettingsLayout'
@@ -19,9 +21,9 @@ type Send = (command: SprintCommand) => Promise<void>
 
 /**
  * Settings: you first, as a driver card (name and race number, renamed in place with the pen),
- * then grouped lists — Sprint web (only with the feature on), Updates, and Reset on its own at the
- * bottom. Everything saves on commit; risky changes (pre-release builds, installing an update,
- * web-only storage, resetting preferences) confirm first. The page has no primary button until an
+ * then grouped lists — Sprint web (only with the feature on), Updates, Storage, and Reset on its own
+ * at the bottom. Everything saves on commit; risky changes (pre-release builds, installing an
+ * update, web-only storage, deleting old laps' telemetry, resetting preferences) confirm first. The page has no primary button until an
  * update is ready to install.
  */
 export function SettingsView({ runtime, send, onSetUpCloud }: { runtime: RuntimeState; send: Send; onSetUpCloud: () => void }) {
@@ -38,6 +40,7 @@ export function SettingsView({ runtime, send, onSetUpCloud }: { runtime: Runtime
 
   const settings = parseSettings(runtime.sprint.settings)
   const updatesInfo = parseUpdatesInfo(runtime.sprint)
+  const storageInfo = parseStorageInfo(runtime.sprint)
 
   return (
     <div className="settings">
@@ -45,6 +48,7 @@ export function SettingsView({ runtime, send, onSetUpCloud }: { runtime: Runtime
       <DriverCard settings={settings} send={send} />
       {runtime.sprint.features.sprintWeb && <CloudGroup account={runtime.sprint.account} cloud={runtime.sprint.cloud} send={send} onSetUp={onSetUpCloud} />}
       <UpdatesGroup channel={settings.updateChannel} version={updatesInfo?.version ?? null} send={send} />
+      {storageInfo && <StorageGroup info={storageInfo} send={send} />}
       <ResetGroup send={send} />
     </div>
   )
@@ -433,6 +437,49 @@ function UpdatesGroup({ channel, version, send }: { channel: UpdateChannel; vers
         />
       )}
     </>
+  )
+}
+
+// ── Storage ──────────────────────────────────────────────────────────────
+
+/**
+ * What the laps' telemetry takes on this PC, as a number to read and nothing to manage: every lap
+ * is kept. Deleting old laps' telemetry is the driver's choice, off until turned on, and turning
+ * it on confirms first because the old laps lose theirs at once.
+ */
+function StorageGroup({ info, send }: { info: StorageInfo; send: Send }) {
+  const [confirming, setConfirming] = useState(false)
+
+  const setExpiry = (days: number) => void send({ type: 'settings.update', traceExpiryDays: days })
+
+  return (
+    <SettingsList title="Storage" footer="Every lap is saved with its telemetry: your inputs, the engine, tyres, brakes, suspension, fuel and damage.">
+      <ListRow id="settings-storage-laps" label="Lap telemetry" detail={lapsText(info.traceLaps)}>
+        {() => <span className="tabular">{sizeText(info.traceBytes)}</span>}
+      </ListRow>
+
+      <ListRow
+        id="settings-storage-expiry"
+        label={`Delete lap telemetry after ${TRACE_EXPIRY_DAYS} days`}
+        detail="Lap times stay. Your five fastest laps per car and track keep their telemetry."
+      >
+        {(labels) => <Switch {...labels} checked={info.expiryDays > 0} onChange={(next) => (next ? setConfirming(true) : setExpiry(0))} />}
+      </ListRow>
+
+      {confirming && (
+        <ConfirmDialog
+          title={`Delete lap telemetry after ${TRACE_EXPIRY_DAYS} days?`}
+          message={`Laps older than ${TRACE_EXPIRY_DAYS} days lose their telemetry now, and newer laps when they reach that age. Lap times, sectors and fuel use stay, and your five fastest laps per car and track keep everything. This can’t be undone.`}
+          confirmLabel="Delete old telemetry"
+          destructive
+          onConfirm={() => {
+            setExpiry(TRACE_EXPIRY_DAYS)
+            setConfirming(false)
+          }}
+          onCancel={() => setConfirming(false)}
+        />
+      )}
+    </SettingsList>
   )
 }
 

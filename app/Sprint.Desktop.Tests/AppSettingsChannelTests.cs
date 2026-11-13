@@ -20,41 +20,13 @@ public sealed class AppSettingsChannelTests
         Assert.Equal(expected, AppSettings.NormalizeChannel(input));
 
     [Fact]
-    public void ThePlannerSettingsDescribeATraceDiskBudgetRatherThanACaptureRate()
+    public void LapTelemetryIsKeptForGoodUntilTheDriverSetsAnAgeLimit()
     {
-        // #101's 60 Hz time grid was rejected: the corpus is position-gridded, and two laps
-        // sampled by time never share an x-axis. What is configurable is how much disk the
-        // trace tier may use, not how fast it samples.
-        LapTraceBudget budget = new SessionPlannerSettings().TraceBudget();
+        LapTraceBudget kept = new SessionPlannerSettings().TraceBudget();
+        LapTraceBudget limited = new SessionPlannerSettings { TraceExpiryDays = 90 }.TraceBudget();
 
-        Assert.True(budget.MaxTotalBytes > 0);
-        Assert.True(budget.ProtectedPerContext > 0);
-        Assert.Equal(90, budget.MaxAgeDays);
-    }
-
-    [Fact]
-    public void TheTraceBudgetIsExpressedInBytesFromTheStoredMegabytes()
-    {
-        SessionPlannerSettings settings = new SessionPlannerSettings { TraceMaxTotalMegabytes = 2 };
-
-        Assert.Equal(2L * 1024 * 1024, settings.TraceBudget().MaxTotalBytes);
-    }
-
-    [Fact]
-    public void TurningRetentionDaysOffLeavesOnlyTheSizeCeiling()
-    {
-        SessionPlannerSettings settings = new SessionPlannerSettings { TraceRetentionDays = 0 };
-
-        Assert.Null(settings.TraceBudget().MaxAgeDays);
-    }
-
-    [Fact]
-    public void EveryOfferedStorageBudgetIsSelectable()
-    {
-        // The settings combo picks by index, so a stored value outside the offered list would
-        // leave the control showing nothing.
-        Assert.Contains(
-            new SessionPlannerSettings().TraceMaxTotalMegabytes,
-            SessionPlannerSettings.TraceStorageBudgets);
+        Assert.Null(kept.MaxAgeDays);
+        Assert.True(kept.ProtectedPerContext > 0);
+        Assert.Equal(90, limited.MaxAgeDays);
     }
 }

@@ -144,7 +144,10 @@ CancellationTokenSource peerLinkCts = new();
 Task peerLinkLoop = peerLink.RunAsync(peerLinkCts.Token);
 // The engineer's pit wall arrangement on this PC (pitwall.* commands, state.pitWallLayout).
 PitWallLayoutStore pitWallLayouts = new(runtime.DataRoot, log);
-coordinator = new RuntimeCoordinator(runtime, plannerService, analysisController, liveLog, dashPageCycle, peerLink, liveCompare, gameFolder, lapHistoryStore, pitWallLayouts);
+// Deletes the traces no lap points at, and old ones only once the driver opts into an age limit
+// in Settings (#194); the coordinator runs it the moment they do.
+LapTraceRetention lapTraceRetention = new(lapTraceStore, lapHistoryStore, log);
+coordinator = new RuntimeCoordinator(runtime, plannerService, analysisController, liveLog, dashPageCycle, peerLink, liveCompare, gameFolder, lapHistoryStore, pitWallLayouts, lapTraceRetention);
 
 // The New plan dialog's prefill and recorded game/car/track choices (GET /api/planner/context).
 // Only Prefill() and ContextOptions() are used: those rules live on the planner controller, so
@@ -228,11 +231,9 @@ TelemetryIngestionPipeline ingestion = new(
 // Shared with the shared-lap import, which names a friend's lap from an older Sprint the same way.
 StoredCarNames storedCarNames = new(() => GameProviders.Default.Results?.ListCars() ?? []);
 
-// Bounds the trace tier's disk use (#194 parity). Off the request/ingest path, once at
-// startup rather than per lap -- mirrors the deleted client's ThreadPool.QueueUserWorkItem
-// call, just as a fire-and-forget Task instead. The renaming goes first, in the same task: both
-// rewrite sessions, and retention protects the fastest laps per car, so it should see the names.
-LapTraceRetention lapTraceRetention = new(lapTraceStore, lapHistoryStore, log);
+// Trace retention, off the request/ingest path, once at startup rather than per lap. The
+// renaming goes first, in the same task: both rewrite sessions, and retention protects the
+// fastest laps per car, so it should see the names.
 _ = Task.Run(() =>
 {
     try
@@ -411,6 +412,7 @@ app.Use(async (context, next) =>
 app.MapGet("/api/state", () =>
 {
     AnalysisState analysis = analysisController.State();
+    LapTraceUsage traceUsage = lapTraceStore.Usage();
     return Results.Json(new
     {
         telemetry = state.Telemetry,
@@ -510,6 +512,13 @@ app.MapGet("/api/state", () =>
             version = BuildInfo.Version,
             channel = runtime.Settings.UpdateChannel,
         },
+        // What the stored laps' telemetry takes on disk, for Settings. Nothing caps it.
+        storage = new
+        {
+            traceBytes = traceUsage.Bytes,
+            traceLaps = traceUsage.Laps,
+            traceExpiryDays = runtime.Settings.SessionPlanner.TraceExpiryDays,
+        },
         screens = ScreenOutputs.Describe(runtime.Devices, runtime.DashLayouts, frames, state.Telemetry.Status.IsLive, screenOutputs.HardwareFor, dashPageCycle)
     }, json);
 });
@@ -541,11 +550,12 @@ app.MapPost("/api/commands", async (HttpRequest request) =>
 });
 
 // Focused endpoint (WEB_DESKTOP_CUTOVER item 2): a lap's channel trace can be a few hundred KB,
-// so it stays out of the frequently-polled /api/state and is fetched on demand instead.
+// so it stays out of the frequently-polled /api/state and is fetched on demand instead. Without
+// the car's readings, which no page draws yet and which would be megabytes as JSON.
 app.MapGet("/api/analysis/trace/{sessionId}/{lapNumber:int}", (string sessionId, int lapNumber) =>
 {
     LapChannelTrace? trace = lapTraceStore.Load(LapTraceId.For(sessionId, lapNumber));
-    return trace is null ? Results.NotFound() : Results.Json(trace, json);
+    return trace is null ? Results.NotFound() : Results.Json(LapTraceCar.Without(trace), json);
 });
 
 // Focused endpoints for the Setups pages: the game's setup folder is read on request (only the

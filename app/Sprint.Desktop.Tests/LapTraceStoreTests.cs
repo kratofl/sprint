@@ -119,18 +119,22 @@ public sealed class LapTraceStoreTests
     }
 
     [Fact]
-    public void DeletingATraceRemovesItFromTheListingAndTheTotal()
+    public void WhatSettingsShowsFollowsEveryWriteAndDelete()
     {
         WithStore((store, _) =>
         {
+            Assert.Equal(new LapTraceUsage(0, 0), store.Usage());
+
             store.Save("a", Sample());
             store.Save("b", Sample());
-            long before = store.TotalBytes();
+            LapTraceUsage both = store.Usage();
 
             store.Delete("a");
 
+            Assert.Equal(2, both.Laps);
+            Assert.Equal(store.List().Sum(info => info.SizeBytes) * 2, both.Bytes);
             Assert.Single(store.List());
-            Assert.True(store.TotalBytes() < before);
+            Assert.Equal(new LapTraceUsage(both.Bytes / 2, 1), store.Usage());
 
             // A second delete is a no-op, not a failure.
             store.Delete("a");

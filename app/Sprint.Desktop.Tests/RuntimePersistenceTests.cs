@@ -1059,10 +1059,9 @@ public sealed class RuntimePersistenceTests
             Assert.Equal(AutoDetectMode.DraftSuggestion, planner.AutoDetect);
             Assert.True(planner.WarnOnRaceFormatMismatch);
             Assert.True(planner.WarnOnDetectedSegmentChange);
-            Assert.True(planner.TraceRetentionDays > 0, "retention must bound local disk use");
-            Assert.True(planner.TraceMaxTotalMegabytes > 0, "a storage ceiling must exist");
-            // #194 replaced #103's capture rate: the grid is fixed at ~2 m of track, so what
-            // is configurable is the disk budget and how many reference laps it protects.
+            // Lap telemetry is kept for good unless the driver opts into an age limit, and even
+            // then the reference laps keep theirs.
+            Assert.Equal(0, planner.TraceExpiryDays);
             Assert.True(planner.TraceProtectedLapsPerContext > 0, "reference laps must be protected");
         }
         finally
@@ -1081,7 +1080,7 @@ public sealed class RuntimePersistenceTests
             runtime.Settings.SessionPlanner.FuelReserveLaps = 2;
             runtime.Settings.SessionPlanner.FuelHistorySource = FuelHistorySource.MatchingSessionType;
             runtime.Settings.SessionPlanner.AutoDetect = AutoDetectMode.CreateAndArm;
-            runtime.Settings.SessionPlanner.TraceMaxTotalMegabytes = 8192;
+            runtime.Settings.SessionPlanner.TraceExpiryDays = 90;
             runtime.Settings.SessionPlanner.WarnOnRaceFormatMismatch = false;
             runtime.SaveSettings();
 
@@ -1090,18 +1089,23 @@ public sealed class RuntimePersistenceTests
             Assert.Equal(2, reloaded.FuelReserveLaps);
             Assert.Equal(FuelHistorySource.MatchingSessionType, reloaded.FuelHistorySource);
             Assert.Equal(AutoDetectMode.CreateAndArm, reloaded.AutoDetect);
-            Assert.Equal(8192, reloaded.TraceMaxTotalMegabytes);
+            Assert.Equal(90, reloaded.TraceExpiryDays);
             Assert.False(reloaded.WarnOnRaceFormatMismatch);
 
             // A settings file written before this section existed keeps the documented defaults.
             string older = TestEnv.NewTempDataRoot();
             try
             {
-                File.WriteAllText(Path.Combine(older, "settings.json"), """{"driverName":"Ada"}""");
+                // The 90 days an older Sprint wrote were its default, never a choice: they must
+                // not read as the driver having asked for old laps to be deleted.
+                File.WriteAllText(
+                    Path.Combine(older, "settings.json"),
+                    """{"driverName":"Ada","sessionPlanner":{"traceRetentionDays":90,"traceMaxTotalMegabytes":4096}}""");
                 SessionPlannerSettings upgraded = new DesktopRuntime(older, TestEnv.PresetRoot).Settings.SessionPlanner;
 
                 Assert.Equal(1, upgraded.FuelReserveLaps);
                 Assert.Equal(AutoDetectMode.DraftSuggestion, upgraded.AutoDetect);
+                Assert.Null(upgraded.TraceBudget().MaxAgeDays);
             }
             finally
             {
@@ -1112,19 +1116,6 @@ public sealed class RuntimePersistenceTests
         {
             Directory.Delete(root, recursive: true);
         }
-    }
-
-    [Fact]
-    public void SeveralTraceStorageBudgetsAreOfferedAndTheDefaultIsOneOfThem()
-    {
-        // #103 offered a capture rate; #194 rejected the 60 Hz time grid that setting served
-        // (docs/internals/live-compare.md "Traces"). What a driver chooses now is a disk budget.
-        int[] budgets = SessionPlannerSettings.TraceStorageBudgets;
-
-        Assert.True(budgets.Length > 1, "a single option is not a choice");
-        Assert.Equal(budgets.OrderBy(megabytes => megabytes), budgets);
-        // The settings combo selects by index, so a default outside the list would show blank.
-        Assert.Contains(new SessionPlannerSettings().TraceMaxTotalMegabytes, budgets);
     }
 
     [Fact]

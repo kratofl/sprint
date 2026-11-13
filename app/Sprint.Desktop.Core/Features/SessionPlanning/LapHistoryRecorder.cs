@@ -462,7 +462,8 @@ public sealed class LapHistoryRecorder
                     : null,
                 frame.Car.ThrottleApplied,
                 frame.Car.BrakeApplied,
-                LapTraceSettings.From(frame.Electronics, frame.Car.BrakeBiasRear)));
+                LapTraceSettings.From(frame.Electronics, frame.Car.BrakeBiasRear),
+                LapTraceCar.Read(frame)));
         }
     }
 

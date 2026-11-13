@@ -8,6 +8,7 @@ namespace Sprint.Desktop.Features.SessionPlanning;
 /// <param name="ThrottleApplied">The throttle that reached the car after traction control, 0–1. Null when the game did not say.</param>
 /// <param name="BrakeApplied">The brake that reached the car after ABS, 0–1. Null when the game did not say.</param>
 /// <param name="Settings">The car's in-car settings (TC, ABS, brake bias, …). Null when the game did not say.</param>
+/// <param name="Car">The car's own readings, as <see cref="LapTraceCar.Read"/> lays them out. Null where only the driving matters (the live lap).</param>
 public readonly record struct LapTraceSample(
     double Position,
     float SpeedKph,
@@ -19,7 +20,8 @@ public readonly record struct LapTraceSample(
     LapTraceWorld? World = null,
     float? ThrottleApplied = null,
     float? BrakeApplied = null,
-    LapTraceSettings? Settings = null);
+    LapTraceSettings? Settings = null,
+    float[]? Car = null);
 
 /// <summary>
 /// The settings a driver changes from the wheel, at one instant: each null when the car lacks it
@@ -119,7 +121,10 @@ public static class LapTraceChannels
     public const string RearAntiRollBar = "arbRear";
     public const string BrakeBiasRear = "brakeBiasRear";
 
-    /// <summary>What the recorder always writes. The world, applied-pedal and setting channels come on top when the game reports them.</summary>
+    /// <summary>
+    /// What the recorder always writes. The world, applied-pedal and setting channels come on top
+    /// when the game reports them, and so do the car's own readings (<see cref="LapTraceCar"/>).
+    /// </summary>
     public static IReadOnlyList<string> Default { get; } =
         [SpeedKph, Throttle, Brake, Steering, Gear, ElapsedSeconds];
 }
@@ -137,10 +142,15 @@ public static class LapTraceChannels
 /// <para>
 /// Values are <see cref="float"/>: 24 bytes per sample across the six default channels, and 44
 /// with the three world and two applied-pedal channels LMU adds — about 300 KB for a lap of
-/// Le Mans, the longest layout, which is what the storage budget was sized on. Milliseconds
+/// Le Mans, the longest layout. Milliseconds
 /// and 0.1 km/h are both far inside a float's precision at these magnitudes. Each setting
 /// channel adds 4 bytes a sample before compression, but a value held for most of a lap
 /// deflates to almost nothing, so on disk the settings cost a few hundred bytes a lap.
+/// </para>
+/// <para>
+/// The car's own readings (<see cref="LapTraceCar"/>) are about a hundred channels more, which
+/// makes a lap of Le Mans roughly 3 MB before compression. Nothing caps what is kept: the driver
+/// sees the total in Settings and decides.
 /// </para>
 /// </summary>
 public sealed class LapChannelTrace
@@ -307,6 +317,13 @@ public sealed class LapChannelTrace
                 .Where(setting => samples.All(sample => sample.Settings is { } held && setting.Read(held) is not null))
                 .Select(setting => (setting.Channel, setting.Read, new float[count])),
         ];
+        List<(LapTraceCar.Channel Channel, int Index, float[] Values)> car =
+        [
+            .. LapTraceCar.Channels
+                .Select((channel, at) => (Channel: channel, Index: at))
+                .Where(entry => Reported(samples, entry.Channel, entry.Index))
+                .Select(entry => (entry.Channel, entry.Index, new float[count])),
+        ];
 
         int index = 0;
         for (int i = 0; i < count; i++)
@@ -367,6 +384,13 @@ public sealed class LapChannelTrace
 
             // A setting is a selection, like gear: hold the one in force.
             WriteSettings(i, start);
+            foreach ((LapTraceCar.Channel channel, int at, float[] values) in car)
+            {
+                if (start.Car is { } carFrom && end.Car is { } carTo)
+                {
+                    values[i] = channel.Stepped ? carFrom[at] : Lerp(carFrom[at], carTo[at], t);
+                }
+            }
         }
 
         Dictionary<string, float[]> channels = new(StringComparer.Ordinal)
@@ -398,6 +422,11 @@ public sealed class LapChannelTrace
         foreach ((string channel, Func<LapTraceSettings, float?> _, float[] values) in settings)
         {
             channels[channel] = values;
+        }
+
+        foreach ((LapTraceCar.Channel channel, int _, float[] values) in car)
+        {
+            channels[channel.Name] = values;
         }
 
         return new LapChannelTrace
@@ -434,6 +463,13 @@ public sealed class LapChannelTrace
             }
 
             WriteSettings(i, sample);
+            foreach ((LapTraceCar.Channel _, int at, float[] values) in car)
+            {
+                if (sample.Car is { } held)
+                {
+                    values[i] = held[at];
+                }
+            }
         }
 
         void WriteSettings(int i, LapTraceSample sample)
@@ -446,6 +482,26 @@ public sealed class LapChannelTrace
                 }
             }
         }
+    }
+
+    /// <summary>
+    /// Whether a lap's samples carry one of the car's readings: said on every sample, like the
+    /// other optional channels, and not a lap of zeros where zero means the game was silent.
+    /// </summary>
+    private static bool Reported(IReadOnlyList<LapTraceSample> samples, LapTraceCar.Channel channel, int index)
+    {
+        bool nonZero = false;
+        foreach (LapTraceSample sample in samples)
+        {
+            if (sample.Car is not { } car || index >= car.Length || !float.IsFinite(car[index]))
+            {
+                return false;
+            }
+
+            nonZero |= car[index] != 0;
+        }
+
+        return nonZero || !channel.SilentAtZero;
     }
 
     private static float Lerp(float start, float end, double t) =>

@@ -2,16 +2,13 @@ using Sprint.Desktop.Features.Diagnostics;
 
 namespace Sprint.Desktop.Features.SessionPlanning;
 
-/// <summary>How much disk the trace tier may occupy, and what it must never delete.</summary>
-/// <param name="MaxTotalBytes">Hard ceiling on the trace directory.</param>
+/// <summary>Which traces may go, and which never do. Nothing here limits how much is kept.</summary>
 /// <param name="ProtectedPerContext">
-/// How many of the fastest valid laps per (game, track, car) are exempt. This is what makes
-/// "write a trace for every lap" safe: a reference lap gets old, so an unqualified oldest-first
-/// policy would delete exactly the laps worth chasing.
+/// How many of the fastest valid laps per (game, track, car) are exempt. A reference lap gets
+/// old, so deleting by age alone would delete exactly the laps worth chasing.
 /// </param>
-/// <param name="MaxAgeDays">Age ceiling, or null for none. Protection outranks it.</param>
+/// <param name="MaxAgeDays">Age ceiling the driver opted into, or null to keep every trace. Protection outranks it.</param>
 public readonly record struct LapTraceBudget(
-    long MaxTotalBytes,
     int ProtectedPerContext,
     int? MaxAgeDays);
 
@@ -19,9 +16,9 @@ public readonly record struct LapTraceBudget(
 public readonly record struct LapTracePruneResult(int Deleted, long BytesFreed);
 
 /// <summary>
-/// Bounds the trace tier's disk use (#194). Traces are written for every valid lap because
-/// skipping one is unrecoverable, so the corpus is bounded here instead — by deleting the laps
-/// least likely to be wanted, never by refusing to record.
+/// Deletes the traces nothing can reach, and, only when the driver opted into an age limit, the
+/// old ones (#194). Traces are written for every lap because skipping one is unrecoverable, and
+/// they are kept for good by default: how much disk that takes is shown in Settings, not capped.
 /// <para>
 /// Deleting a trace also clears the owning lap's pointer. A record that still claimed a trace
 /// the store no longer has would make the driver's target list offer a tier it cannot deliver,
@@ -41,7 +38,7 @@ public sealed class LapTraceRetention
         this._log = log ?? NullLog.Instance;
     }
 
-    /// <summary>Brings the trace directory inside <paramref name="budget"/>.</summary>
+    /// <summary>Deletes orphaned traces, and those past <paramref name="budget"/>'s age limit when it has one.</summary>
     public LapTracePruneResult Prune(LapTraceBudget budget, DateTimeOffset now)
     {
         IReadOnlyList<LapTraceInfo> stored = this._traces.List();
@@ -63,34 +60,23 @@ public sealed class LapTraceRetention
         HashSet<string> protectedIds = ProtectedIds(sessions, budget.ProtectedPerContext);
         DateTimeOffset? cutoff = budget.MaxAgeDays is { } days ? now.AddDays(-days) : (DateTimeOffset?)null;
 
-        // Orphans first: a trace no lap points at is unreachable by every reader, so it is pure
-        // cost. Then oldest-first by the session that produced it — file timestamps move when a
-        // corpus is copied between machines, but a session's start does not.
-        List<LapTraceInfo> candidates = stored
-            .Where(info => !protectedIds.Contains(info.TraceId))
-            .OrderBy(info => owners.ContainsKey(info.TraceId))
-            .ThenBy(info => StartedAt(owners, info))
-            .ThenBy(info => owners.TryGetValue(info.TraceId, out TraceOwner owner) ? owner.Lap.LapNumber : 0)
-            .ToList();
-
-        long total = stored.Sum(info => info.SizeBytes);
         int deleted = 0;
         long freed = 0L;
         Dictionary<string, LapHistorySession> touched = new Dictionary<string, LapHistorySession>(StringComparer.Ordinal);
 
-        foreach (LapTraceInfo info in candidates)
+        foreach (LapTraceInfo info in stored.Where(info => !protectedIds.Contains(info.TraceId)))
         {
+            // A trace no lap points at is unreachable by every reader, so it is pure cost. Age is
+            // the session's start: file timestamps move when a corpus is copied between machines.
             bool orphaned = !owners.ContainsKey(info.TraceId);
-            bool overBudget = total > budget.MaxTotalBytes;
             bool tooOld = cutoff is { } limit && StartedAt(owners, info) < limit;
 
-            if (!orphaned && !overBudget && !tooOld)
+            if (!orphaned && !tooOld)
             {
                 continue;
             }
 
             this._traces.Delete(info.TraceId);
-            total -= info.SizeBytes;
             freed += info.SizeBytes;
             deleted++;
 

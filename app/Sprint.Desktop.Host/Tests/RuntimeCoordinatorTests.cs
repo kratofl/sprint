@@ -155,6 +155,52 @@ public sealed class RuntimeCoordinatorTests
     }
 
     [Fact]
+    public void SettingsUpdate_TraceExpiry_IsOffUntilSetAndThenDeletesOldLapsTelemetryAtOnce()
+    {
+        string dataRoot = NewTempDataRoot();
+        try
+        {
+            DesktopRuntime runtime = new(dataRoot, PresetRoot);
+            LocalLapHistoryStore history = new(Path.Combine(dataRoot, "lap-history"));
+            LocalLapTraceStore traces = new(Path.Combine(dataRoot, "lap-traces"));
+            RuntimeCoordinator coordinator = new(runtime, traceRetention: new LapTraceRetention(traces, history));
+            LapHistorySession old = new()
+            {
+                Id = "old",
+                StartedAt = DateTimeOffset.UtcNow.AddDays(-200),
+                Context = new LapHistoryContext { Game = "LMU", TrackCourse = "Spa", CarModel = "963" },
+            };
+            for (int lap = 1; lap <= 7; lap++)
+            {
+                string traceId = LapTraceId.For(old.Id, lap);
+                traces.Save(traceId, new LapChannelTrace { PositionStep = 0.5, Channels = { [LapTraceChannels.SpeedKph] = [1, 2, 3] } });
+                old.Laps.Add(new LapHistoryRecord { LapNumber = lap, IsValid = true, LapTimeSeconds = 120 + lap, TraceId = traceId });
+            }
+
+            history.Save(old);
+            Assert.Equal(0, runtime.Settings.SessionPlanner.TraceExpiryDays);
+
+            Assert.False(coordinator.Execute(Command("""{"type":"settings.update","traceExpiryDays":-1}"""), out string rejected));
+            Assert.Contains("traceExpiryDays", rejected);
+            Assert.False(coordinator.Execute(Command("""{"type":"settings.update","traceExpiryDays":"90"}"""), out _));
+            Assert.Equal(7, traces.Usage().Laps);
+
+            Assert.True(coordinator.Execute(Command("""{"type":"settings.update","traceExpiryDays":90}"""), out string error), error);
+
+            // The five fastest laps of the car and track keep theirs, however old.
+            Assert.Equal(5, traces.Usage().Laps);
+            Assert.Equal(90, new DesktopRuntime(dataRoot, PresetRoot).Settings.SessionPlanner.TraceExpiryDays);
+
+            Assert.True(coordinator.Execute(Command("""{"type":"settings.update","traceExpiryDays":0}"""), out error), error);
+            Assert.Equal(0, new DesktopRuntime(dataRoot, PresetRoot).Settings.SessionPlanner.TraceExpiryDays);
+        }
+        finally
+        {
+            Cleanup(dataRoot);
+        }
+    }
+
+    [Fact]
     public void ControlsUpdate_RejectsBindingMissingCommand()
     {
         RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);

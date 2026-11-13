@@ -180,10 +180,11 @@ public sealed class LapCorpusBrowser
     /// <summary>
     /// The lap's channels, or null when there is no lap, it has none, or they could not be
     /// read. Null in, null out: "nothing is selected" is a normal state on this page, not a
-    /// caller error.
+    /// caller error. Without the car's readings (<see cref="LapTraceCar"/>): nothing compares
+    /// or draws those yet, and a hundred of them would drown the channels that are.
     /// </summary>
     public LapChannelTrace? Trace(CorpusLap? lap) =>
-        lap is { HasChannels: true } ? this._traces.Load(lap.TraceId) : null;
+        lap is { HasChannels: true } && this._traces.Load(lap.TraceId) is { } trace ? LapTraceCar.Without(trace) : null;
 
     /// <summary>
     /// The channels both laps carry. A comparison can only honestly draw a channel that exists

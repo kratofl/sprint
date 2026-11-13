@@ -3,6 +3,9 @@ namespace Sprint.Desktop.Features.SessionPlanning;
 /// <summary>What retention needs to know about a stored trace without reading it.</summary>
 public readonly record struct LapTraceInfo(string TraceId, long SizeBytes, DateTimeOffset WrittenAt);
 
+/// <summary>How much the stored traces take: what Settings shows the driver.</summary>
+public readonly record struct LapTraceUsage(long Bytes, int Laps);
+
 /// <summary>The id under which a lap's trace is filed.</summary>
 public static class LapTraceId
 {
@@ -39,6 +42,10 @@ public interface ILapTraceStore
     /// <summary>Every stored trace's id, size and write time, without reading any of them.</summary>
     IReadOnlyList<LapTraceInfo> List();
 
-    /// <summary>Total bytes on disk, for the retention budget.</summary>
-    long TotalBytes() => this.List().Sum(info => info.SizeBytes);
+    /// <summary>What is stored right now. Cheap enough to ask on every state poll.</summary>
+    LapTraceUsage Usage()
+    {
+        IReadOnlyList<LapTraceInfo> stored = this.List();
+        return new LapTraceUsage(stored.Sum(info => info.SizeBytes), stored.Count);
+    }
 }

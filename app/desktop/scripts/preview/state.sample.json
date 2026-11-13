@@ -188,8 +188,7 @@
       "fuelReserveLaps": 1,
       "fuelHistorySource": "AllValidLaps",
       "autoDetect": "DraftSuggestion",
-      "traceRetentionDays": 365,
-      "traceMaxTotalMegabytes": 4096,
+      "traceExpiryDays": 0,
       "traceProtectedLapsPerContext": 5,
       "warnOnRaceFormatMismatch": true,
       "warnOnDetectedSegmentChange": true
@@ -4664,6 +4663,11 @@
   "updates": {
     "version": "0.1.0",
     "channel": "stable"
+  },
+  "storage": {
+    "traceBytes": 2619731968,
+    "traceLaps": 1284,
+    "traceExpiryDays": 0
   },
   "screens": [
     {

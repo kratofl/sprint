@@ -27,6 +27,8 @@
 //                         Connected/Interrupted/Failed/Ended (default: Driver). Default: Off.
 //                         linkPeer=older|newer: the other side runs an older (on the engineer's side:
 //                         no pit wall arrives) or newer Sprint 0.4.2
+//   laps=expiring|none    Settings' Storage: old laps' telemetry is deleted after 90 days (expiring), or
+//                         no lap is stored yet (none); default: 1,284 laps, all kept
 //   found=<id,id>         the USB scan finds these catalog ids plugged in and not added yet (Add device's
 //                         "Plugged in now"); default: nothing new
 //   discord=1|fail        the server offers Discord sign-in; "Continue with Discord" then waits until
@@ -249,6 +251,8 @@
         ? { at: '2026-10-06T09:30:00Z', direction: 'upload', report: { uploaded: 14, downloaded: 0, conflicts: 0, removedLocally: 0 } }
         : null,
   }
+  if (params.get('laps') === 'expiring') state.storage = { ...state.storage, traceExpiryDays: 90 }
+  if (params.get('laps') === 'none') state.storage = { traceBytes: 0, traceLaps: 0, traceExpiryDays: 0 }
   const liveDefault = state.account.signedIn && state.cloud.storage !== 'Local' ? 'WaitingForGame' : 'Off'
   const live = params.get('live') ?? liveDefault
   state.cloud.live = {

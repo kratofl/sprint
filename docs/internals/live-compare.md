@@ -33,9 +33,14 @@ against a real server.
   embedded trace of up to ~300 KB would make each crossing O(n²).
 - A trace is written for every valid lap that passes the curve's completeness guards. Skipping is
   unrecoverable; writing is cheap.
-- `LapTraceRetention` prunes oldest-first against a disk budget while protecting the best N per
-  (game, track, car), so a reference lap is never what gets deleted. Pruning clears the `TraceId`, so
-  the stored tier never lies; a pruned lap degrades to `reference curve`.
+- A trace also carries the car's own readings (`LapTraceCar`: engine, fuel and energy, each wheel
+  corner, damage), about a hundred channels, which makes a lap megabytes instead of ~300 KB. Nothing
+  draws them yet, so every reader of the stored trace gets it through `LapTraceCar.Without`; a page
+  that wants them asks for the ones it draws, never for the whole trace as JSON.
+- Traces are kept for good and nothing caps their size: Settings shows the total. Deleting by age is
+  the driver's choice (`traceExpiryDays`, 0 by default). `LapTraceRetention` then protects the best N
+  per (game, track, car), so a reference lap is never what gets deleted. Pruning clears the
+  `TraceId`, so the stored tier never lies; a pruned lap degrades to `reference curve`.
 - This replaced #101's time-gridded 60 Hz capture: two laps sampled by time never share an x-grid.
   `CaptureManifest.CaptureRateHz` is stale under this design.
 - Nothing may block the telemetry read; trace writes go through the recorder's dispatcher.

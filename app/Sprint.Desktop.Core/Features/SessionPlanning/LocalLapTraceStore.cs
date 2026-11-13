@@ -9,9 +9,9 @@ namespace Sprint.Desktop.Features.SessionPlanning;
 /// <c>%AppData%/Sprint/lap-traces/</c>.
 /// <para>
 /// Binary rather than JSON because this is the largest thing Sprint stores. A Le Mans lap is
-/// ~6,800 samples across six channels; as indented JSON that is megabytes of decimal text for
-/// numbers that occupy 24 bytes in their natural form. Deflate is in-box, so this costs no
-/// dependency.
+/// ~6,800 samples across more than a hundred channels; as indented JSON that is tens of megabytes
+/// of decimal text for numbers that occupy four bytes each in their natural form. Deflate is
+/// in-box, so this costs no dependency.
 /// </para>
 /// <para>
 /// The payload itself is <see cref="LapTraceCodec"/>'s, shared with the shareable lap file and
@@ -24,6 +24,11 @@ public sealed class LocalLapTraceStore : ILapTraceStore
 
     private readonly string _root;
     private readonly ILog _log;
+    private readonly object _usageGate = new();
+
+    // Measured when first asked and forgotten on every write, so the state poll does not walk a
+    // directory of thousands of files several times a second.
+    private LapTraceUsage? _usage;
 
     public LocalLapTraceStore(string? dataRoot = null, ILog? log = null)
     {
@@ -55,6 +60,7 @@ public sealed class LocalLapTraceStore : ILapTraceStore
                 using DeflateStream deflate = new(stream, CompressionLevel.Fastest, leaveOpen: true);
                 LapTraceCodec.Write(deflate, trace);
             });
+            this.ForgetUsage();
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -104,6 +110,7 @@ public sealed class LocalLapTraceStore : ILapTraceStore
             if (File.Exists(path))
             {
                 File.Delete(path);
+                this.ForgetUsage();
             }
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
@@ -127,12 +134,29 @@ public sealed class LocalLapTraceStore : ILapTraceStore
         return traces;
     }
 
-    /// <summary>
-    /// Declared rather than inherited from the interface default: a default interface member is
-    /// only reachable through the interface, so a caller holding a concrete store could not
-    /// call it at all.
-    /// </summary>
-    public long TotalBytes() => this.List().Sum(info => info.SizeBytes);
+    public LapTraceUsage Usage()
+    {
+        lock (this._usageGate)
+        {
+            if (this._usage is { } known)
+            {
+                return known;
+            }
+
+            IReadOnlyList<LapTraceInfo> stored = this.List();
+            LapTraceUsage measured = new(stored.Sum(info => info.SizeBytes), stored.Count);
+            this._usage = measured;
+            return measured;
+        }
+    }
+
+    private void ForgetUsage()
+    {
+        lock (this._usageGate)
+        {
+            this._usage = null;
+        }
+    }
 
     private string TracePath(string traceId) =>
         Path.Combine(this._root, SafeFileName(traceId) + Extension);

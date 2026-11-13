@@ -42,6 +42,7 @@ public sealed class RuntimeCoordinator
     private readonly GameFolder _gameFolder;
     private readonly ILapHistoryStore _lapHistory;
     private readonly PitWallLayoutStore _pitWall;
+    private readonly LapTraceRetention? _traceRetention;
 
     /// <summary>
     /// <paramref name="planner"/>/<paramref name="analysis"/>/<paramref name="diagnosticsLog"/> default
@@ -57,7 +58,9 @@ public sealed class RuntimeCoordinator
     /// through; without it <c>game.setFolder</c> points a private provider nobody reads.
     /// <paramref name="lapHistory"/> is the corpus <c>plan.setTarget</c> resolves a pick against;
     /// the host passes its one shared store. <paramref name="pitWall"/> must be the store
-    /// <c>/api/state</c> reads <c>pitWallLayout</c> from.
+    /// <c>/api/state</c> reads <c>pitWallLayout</c> from. With <paramref name="traceRetention"/>,
+    /// opting into a trace age limit deletes what is already past it at once rather than at the
+    /// next start.
     /// </summary>
     public RuntimeCoordinator(
         IDesktopRuntime runtime,
@@ -69,7 +72,8 @@ public sealed class RuntimeCoordinator
         LiveCompareService? liveCompare = null,
         GameFolder? gameFolder = null,
         ILapHistoryStore? lapHistory = null,
-        PitWallLayoutStore? pitWall = null)
+        PitWallLayoutStore? pitWall = null,
+        LapTraceRetention? traceRetention = null)
     {
         this._runtime = runtime ?? throw new ArgumentNullException(nameof(runtime));
         this._planner = planner ?? new SessionPlannerService(new LocalSessionPlanStore(Path.Combine(runtime.DataRoot, "session-plans")));
@@ -88,6 +92,7 @@ public sealed class RuntimeCoordinator
         this._gameFolder = gameFolder ?? new GameFolder(new LeMansUltimateGameProvider());
         this._lapHistory = lapHistory ?? new LocalLapHistoryStore(Path.Combine(runtime.DataRoot, "lap-history"));
         this._pitWall = pitWall ?? new PitWallLayoutStore(runtime.DataRoot);
+        this._traceRetention = traceRetention;
     }
 
     public bool Execute(JsonElement command, out string error)
@@ -368,6 +373,7 @@ public sealed class RuntimeCoordinator
     {
         error = "";
         bool applied = false;
+        LapTraceBudget? prune = null;
 
         // Mutation and save happen under the same lock the background telemetry-ingest loop's
         // last-seen-context capture also takes (DesktopRuntime.SettingsGate), so a Kestrel
@@ -422,9 +428,30 @@ public sealed class RuntimeCoordinator
                 applied = true;
             }
 
+            if (command.TryGetProperty("traceExpiryDays", out _))
+            {
+                if (!TryInt(command, "traceExpiryDays", out int traceExpiryDays) ||
+                    traceExpiryDays < 0 || traceExpiryDays > SessionPlannerSettings.MaxTraceExpiryDays)
+                {
+                    error = $"traceExpiryDays must be 0 (keep) to {SessionPlannerSettings.MaxTraceExpiryDays}";
+                    return false;
+                }
+
+                this._runtime.Settings.SessionPlanner.TraceExpiryDays = traceExpiryDays;
+                prune = this._runtime.Settings.SessionPlanner.TraceBudget();
+                applied = true;
+            }
+
             if (!applied) { error = "no recognized settings fields were provided"; return false; }
 
             this._runtime.SaveSettings();
+        }
+
+        // Outside the settings lock: it reads every stored session. The driver was told the old
+        // laps go now, so they go now and Settings shows the smaller total on its next poll.
+        if (prune is { MaxAgeDays: not null } budget)
+        {
+            this._traceRetention?.Prune(budget, DateTimeOffset.UtcNow);
         }
 
         return true;
