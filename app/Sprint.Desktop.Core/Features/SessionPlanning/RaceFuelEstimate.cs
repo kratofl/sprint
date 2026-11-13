@@ -78,7 +78,7 @@ public enum EstimateSource
     /// <summary>The median of the driver's own laps here.</summary>
     History,
 
-    /// <summary>The value typed into the plan, used when there is no history.</summary>
+    /// <summary>The value the driver typed into the plan, which wins over the history.</summary>
     Plan,
 }
 
@@ -94,7 +94,8 @@ public sealed record RaceStints(int LapsPerStint, IReadOnlyList<double> Liters);
 /// <summary>
 /// What the plan dialogs' fuel calculator works from (<c>POST /api/planner/fuel-estimate</c>): the
 /// plan's car and track, its race length and reserve, and the lap time and fuel per lap as typed.
-/// Null means the field is empty, and the lap history stands in (<see cref="RaceFuelEstimate.ForInputs"/>).
+/// Null means nothing was typed (empty, or still the pre-fill), and the lap history stands in
+/// (<see cref="RaceFuelEstimate.ForInputs"/>).
 /// The host builds it inside <see cref="PlanLimits"/>.
 /// </summary>
 public sealed record PlanFuelInputs(
@@ -161,8 +162,9 @@ public sealed record RaceFuelEstimate(
     }
 
     /// <summary>
-    /// History wins where it has a figure; the plan's typed value fills in where it has none. A
-    /// time-based race is its minutes over the lap time, with the lap that is running when time is
+    /// A figure the driver typed into the plan wins; the history fills in where the plan has none
+    /// (the dialogs save a figure left at its pre-fill from the laps as null, so it keeps following
+    /// new laps). A time-based race is its minutes over the lap time, with the lap that is running when time is
     /// up driven to the end. Stints need the tank: the largest a recorded drive in the car saw, else
     /// <paramref name="liveTankLiters"/>, the tank of the car being driven now (a plan whose car or
     /// track is spelled unlike the history, or a race-laps-only setting with no race yet, still gets
@@ -177,17 +179,16 @@ public sealed record RaceFuelEstimate(
         return Build(
             plan.RaceLengthFormat,
             plan.RaceLengthValue,
-            FromHistory(history.LapTimeSeconds, history.LapTimeLaps) ?? Typed(plan.AvgLapTimeSeconds),
-            FromHistory(history.FuelPerLapLiters, history.FuelLaps) ?? Typed(plan.FuelPerLapLiters),
+            Typed(plan.AvgLapTimeSeconds) ?? FromHistory(history.LapTimeSeconds, history.LapTimeLaps),
+            Typed(plan.FuelPerLapLiters) ?? FromHistory(history.FuelPerLapLiters, history.FuelLaps),
             plan.FuelReserveLaps,
             history.TankLiters ?? liveTankLiters);
     }
 
     /// <summary>
-    /// The plan dialogs' calculator (<c>POST /api/planner/fuel-estimate</c>): the other way round
-    /// from <see cref="For"/>, a typed figure wins — the dialogs pre-fill it from the history, so a
-    /// different value is one the driver changed — and the history fills only a field left empty.
-    /// Tank, limits and rounding are the plan's.
+    /// The plan dialogs' calculator (<c>POST /api/planner/fuel-estimate</c>), by the same rule as
+    /// <see cref="For"/>: a typed figure wins and the history fills a field left empty or at its
+    /// pre-fill. Tank, limits and rounding are the plan's.
     /// </summary>
     public static RaceFuelEstimate ForInputs(PlanFuelInputs inputs, FuelHistoryFigures history, double? liveTankLiters = null)
     {

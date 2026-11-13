@@ -848,6 +848,61 @@
       return null
     },
     pitWallTrace: async (lap) => samplePitWallTrace(lap),
+    openDebugWindow: async () => {
+      console.info('[preview] open debug window')
+      return null
+    },
+    // The debug window (debug=1): one message, as Electron sends one per state poll.
+    subscribeDebug: (listener) => {
+      const timer = setTimeout(() => listener(sampleDebugMessage()), 0)
+      return () => clearTimeout(timer)
+    },
+    setDebugOnTop: (onTop) => console.info('[preview] debug window on top', onTop),
+  }
+
+  // What /api/debug says mid-race at Spa: a wheel screen sending, a browser display nobody
+  // watches, an armed plan and its targets. `debugHost=none` is a Release host without the
+  // endpoint, `fullscreen=1` a game in exclusive fullscreen, `onTop=1` the toggle on.
+  function sampleDebugMessage() {
+    const onTop = params.get('onTop') === '1'
+    if (params.get('debugHost') === 'none') return { snapshot: null, error: 'Runtime 404: ', statePollMs: 9, onTop }
+    const corner = (position, temps, brake, wear) => ({
+      position, tempInner: temps[0], tempMiddle: temps[1], tempOuter: temps[2], tempCore: temps[1] + 6,
+      pressureKPa: 172.4, wearPercent: wear, brakeTemp: brake, compound: 'Medium',
+    })
+    return {
+      statePollMs: 9,
+      onTop,
+      error: null,
+      snapshot: {
+        telemetry: { source: 'Le Mans Ultimate', state: 'Connected', detail: null, hz: 49.8, frameAgeMs: 23, lastFrameValid: true, invalidReason: null },
+        session: {
+          game: 'Le Mans Ultimate', track: 'Circuit de Spa-Francorchamps', trackLengthMeters: 7004, car: 'Porsche 963', carClass: 'Hypercar',
+          type: 'Race', phase: 'Green', inCar: true, lap: 12, maxLaps: 0, sessionTimeSeconds: 1563.2, timeRemainingSeconds: 4236.8,
+          position: 3, totalPositions: 24, currentLapTime: 71.284, lastLapTime: 128.912, bestLapTime: 128.403, targetLapTime: 128.403,
+          delta: -0.214, sector: 2, lapValid: true, inPitLane: false, inGarage: false, pitState: 'None',
+        },
+        car: {
+          speedKph: 251.4, gear: 6, rpm: 7820, maxRpm: 8500, throttle: 1, throttleApplied: 0.86, brake: 0, brakeApplied: 0, clutch: 0, steering: -0.04,
+          fuelLiters: 54.3, fuelCapacityLiters: 90, fuelPerLapLiters: 3.21, brakeBiasRear: 0.44, pitLimiter: false,
+          electronics: { tc: 3, tcMax: 11, tcCut: 2, tcCutMax: 5, tcSlip: 0, tcSlipMax: 0, tcActive: false, abs: 0, absMax: 0, motorMap: 2, motorMapMax: 4, migration: 3, migrationMax: 6 },
+          virtualEnergy: 812, stateOfCharge: 0.62,
+          corners: [corner('FrontLeft', [88, 91, 86], 612, 96.4), corner('FrontRight', [90, 92, 87], 598, 96.1), corner('RearLeft', [84, 86, 83], 455, 97.2), corner('RearRight', [85, 87, 84], 449, 97)],
+        },
+        screens: [
+          { deviceId: 'sample-vocore', name: 'Wheel screen', driver: 'vocore', width: 800, height: 480, refreshHz: 60, state: 'Connected', detail: null, fps: 29.8, renderMs: 3.1, usbMs: 8.7, totalMs: 11.8, framesSent: 41_286, framesUnchanged: 512, framesFailed: 0, viewers: null },
+          { deviceId: 'sample-browser', name: 'Tablet', driver: 'browser', width: 1280, height: 800, refreshHz: 30, state: 'WaitingForViewer', detail: null, fps: 0, renderMs: null, usbMs: null, totalMs: null, framesSent: 0, framesUnchanged: 0, framesFailed: 0, viewers: 0 },
+        ],
+        sprint: {
+          targets: { lapTimeSeconds: 128.403, fuelPerLapLiters: 3.1, referenceLapSeconds: 128.403 },
+          plan: { id: 'plan-spa-6h', name: 'Spa 6h', status: 'Tracking', mode: 'Planned', avgLapTimeSeconds: null, fuelPerLapLiters: 3.1 },
+          hud: { open: false, arranging: false, exclusiveFullscreen: params.get('fullscreen') === '1' },
+          link: { phase: 'Connected', role: 'Driver', path: 'LocalNetwork', roundTripMs: 4, sampleRate: 20, lossPercent: 0, peerApp: '0.4.2', peerMatch: 'Same', detail: null },
+          recorder: { sessionId: 'sample-race', kind: 'Race', track: 'Circuit de Spa-Francorchamps', car: 'Porsche 963', startedAt: '2026-11-13T19:30:00+00:00', laps: 11, lastLapFuelLiters: 3.24 },
+          timings: { stateBuildMs: 3.4, publishTickMs: 0.21 },
+        },
+      },
+    }
   }
 
   // Pages are reached through the app's own input paths, so the preview adds
@@ -884,8 +939,8 @@
 
   const whenShellReady = (run) => {
     const timer = setInterval(() => {
-      // The app shell, a designer window (designer=<dashId>), a pit wall window or the first-run setup, once its state has loaded.
-      if (!document.querySelector('.app.ready, .designer.ready, .first-run, .pw-bar')) return
+      // The app shell, a designer window (designer=<dashId>), a pit wall window, the debug window or the first-run setup, once its state has loaded.
+      if (!document.querySelector('.app.ready, .designer.ready, .first-run, .pw-bar, .debug-bar')) return
       clearInterval(timer)
       run()
     }, 20)

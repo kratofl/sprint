@@ -133,17 +133,18 @@ setting changes on the next poll.
 
 - Lap time and fuel per lap are the **medians** of the context's valid laps (`FuelHistoryFigures`),
   each with its sample size. `FuelHistorySource` chooses every valid lap or only race laps.
-- History wins per figure; the plan's typed values fill in only where history has none. Imports carry
-  times but never fuel, so one figure can come from each.
+- One rule per figure, for stored plans and the dialogs alike: a value the driver **typed** wins;
+  history fills in where nothing was typed. Imports carry times but never fuel, so one figure can come
+  from each.
 - The plan dialogs keep typed lap time and fuel per lap (a car not driven yet, a number known by
-  heart) but fill them from the history of their car and track, asked again when either changes, say
-  "From your N laps" under the field, and never overwrite what the driver typed. A plan stores the
-  figures as confirmed.
+  heart) but pre-fill them from the history of their car and track, asked again when either changes,
+  say "From your N laps" under the field, and never overwrite what the driver typed
+  (`FigureField`). A field left at its pre-fill is saved as null (`savedFigure`), not as the number it
+  showed, so the plan keeps following new laps; only a typed value is stored and pins the figure.
 - Quick plan's calculator is `POST /api/planner/fuel-estimate` (`RaceFuelEstimate.ForInputs`), asked
-  as its inputs change; the renderer never works a figure out. There the typed figure wins and history
-  fills only an empty field — the reverse of a stored plan, whose history follows every new lap.
-  Inputs are held to `PlanLimits` and a refused one answers with the reason. The live car's tank stands
-  in only when the inputs name the car and track the game reports.
+  as its inputs change; the renderer never works a figure out. It sends what the plan would save, so
+  it shows what the Race card will. Inputs are held to `PlanLimits` and a refused one answers with the
+  reason. The live car's tank stands in only when the inputs name the car and track the game reports.
 - A timed race is its minutes over the lap time, the running lap driven out (ceiling). No lap time,
   no lap count — never a guess.
 - Litres per stint need the tank, the largest the recorder saw on the car, else the tank of the car in

@@ -17,6 +17,7 @@ import {
   figureNote,
   figureText,
   figureValue,
+  savedFigure,
   prefillFigure,
   storedFigure,
   readPlannerSettings,
@@ -177,11 +178,12 @@ const answers: QuickPlanAnswers = {
   fuelReserveLaps: 2,
 }
 
-test('a quick plan takes what was detected, the answers it asked for and the figures as confirmed', () => {
+test('a quick plan takes what was detected, the answers it asked for and the figures the driver typed', () => {
+  // The lap time is still the pre-fill from the laps: saved as null, so the plan follows new laps.
   const everything = quickPlanInput(detection(), answers)
   assert.deepEqual(
     [everything.name, everything.mode, everything.game, everything.car, everything.track, everything.raceLengthFormat, everything.raceLengthValue, everything.fuelReserveLaps, everything.avgLapTimeSeconds, everything.fuelPerLapLiters],
-    ['', 'Quick', 'Le Mans Ultimate', 'Hypercar Porsche', 'Spa', 'TimeBased', 60, 2, 125.4, 3.2],
+    ['', 'Quick', 'Le Mans Ultimate', 'Hypercar Porsche', 'Spa', 'TimeBased', 60, 2, null, 3.2],
   )
 
   // Nothing detected and nothing typed: the typed context, the typed length, no figures.
@@ -202,6 +204,8 @@ test('laps fill a figure until the driver types into it', () => {
   assert.deepEqual(filled, { source: 'history', value: 125.432, laps: 11 })
   assert.equal(figureText(filled), '125.432')
   assert.equal(figureValue(filled), 125.432)
+  // Shown, but not the driver's: it saves as null.
+  assert.equal(savedFigure(filled), null)
   assert.equal(figureNote(filled), 'From your 11 laps')
   // The same answer again changes nothing; another car's laps replace it, a car without laps empties it.
   assert.equal(prefillFigure(filled, 125.43219, 11, 3), filled)
@@ -213,6 +217,8 @@ test('laps fill a figure until the driver types into it', () => {
   assert.equal(prefillFigure(typed, 125.4, 11, 3), typed)
   assert.equal(figureNote(typed), null)
   assert.equal(figureValue(typed), null)
+  assert.equal(savedFigure(typed), null)
+  assert.equal(savedFigure({ source: 'typed', text: '125.4' }), 125.4)
   assert.deepEqual(storedFigure(3.1), { source: 'typed', text: '3.1' })
   assert.equal(storedFigure(null), EMPTY_FIGURE)
 })

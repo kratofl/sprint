@@ -1,7 +1,7 @@
 import { app, BrowserWindow, dialog, ipcMain, type BrowserWindowConstructorOptions, Menu, nativeTheme, screen, shell, type IpcMainInvokeEvent, type IpcMainEvent, type WebContents } from 'electron'
 import { spawnSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { readFile, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -10,6 +10,7 @@ import { NativeHost } from './native-host.js'
 import { hudRouteFor, TrainingHud } from './hud.js'
 import { HUD_CLOSED, readHudWanted } from './hudFeed.js'
 import { macMenuTemplate } from './appMenu.js'
+import { DEFAULT_DEBUG_PREFS, DebugWindow, readDebugWindowPrefs, type DebugWindowPrefs } from './debugWindow.js'
 import { TRANSPARENT, windowChrome, windowLook, type WindowChrome } from './windowChrome.js'
 import { DashDesigners } from './designerWindows.js'
 import { readDashIds, readDesignerDashId } from './designerRoute.js'
@@ -95,7 +96,10 @@ function scheduleNextPoll(): void {
 async function pollTick(): Promise<void> {
   if (!polling) { pollTimer = undefined; return }
   try {
+    const started = performance.now()
     const state = await nativeHost.state()
+    // The dev debug window shows how long this poll took, next to the host's own timings.
+    if (debugWindow?.isOpen) void debugWindow.feed(performance.now() - started)
     for (const contents of subscribers) {
       if (!contents.isDestroyed()) contents.send('sprint:state', state)
     }
@@ -387,6 +391,11 @@ function isToggleLookKey(input: Electron.Input): boolean {
   return input.type === 'keyDown' && input.key.toLowerCase() === 'l' && input.alt && input.shift && (isMac ? input.meta : input.control)
 }
 
+/** ⌘⌥⇧D on macOS, Ctrl+Alt+Shift+D elsewhere: `OPEN_DEBUG_ACCELERATOR` in appMenu.ts. */
+function isOpenDebugKey(input: Electron.Input): boolean {
+  return input.type === 'keyDown' && input.key.toLowerCase() === 'd' && input.alt && input.shift && (isMac ? input.meta : input.control)
+}
+
 /** Height of the renderer's toolbar (styles.css `.titlebar`), the window title bar, including its 1px bottom edge. */
 const TITLE_BAR_HEIGHT = 48
 
@@ -540,12 +549,17 @@ function createWindow(): BrowserWindow {
     // The designers belong to the app, not to a window of their own: Sprint is done with them too.
     void designers.closeAll()
     pitWall.closeAll()
+    debugWindow?.close()
   })
   if (!app.isPackaged) {
     window.webContents.on('before-input-event', (event, input) => {
-      if (!isToggleLookKey(input)) return
-      event.preventDefault()
-      toggleLook()
+      if (isToggleLookKey(input)) {
+        event.preventDefault()
+        toggleLook()
+      } else if (isOpenDebugKey(input)) {
+        event.preventDefault()
+        debugWindow?.open()
+      }
     })
   }
   return window
@@ -589,6 +603,49 @@ app.setName('Sprint')
 // away from the installed app's. The host reads the same variable.
 const dataRoot = process.env.SPRINT_DESKTOP_DATA_ROOT
 if (dataRoot) app.setPath('userData', dataRoot)
+
+/**
+ * The debug window (`?debug=1`): dev runs only, so a packaged build has no window, IPC, menu item
+ * or shortcut for it. It remembers its place and toggle only in a dev run's own data folder, never
+ * in the installed app's.
+ */
+const debugPrefsFile = dataRoot ? path.join(dataRoot, 'debug-window.json') : null
+const debugWindow = app.isPackaged
+  ? undefined
+  : new DebugWindow({
+      create: (bounds) => {
+        const window = createAppWindow({
+          size: { width: 460, height: 880, minWidth: 360, minHeight: 360 },
+          title: 'Sprint debug',
+          query: { debug: '1', platform: look },
+        })
+        if (bounds) window.setBounds(bounds)
+        return window
+      },
+      displays: () => screen.getAllDisplays().map((display) => display.workArea),
+      snapshot: () => nativeHost.debug(),
+      load: (): DebugWindowPrefs => {
+        if (!debugPrefsFile) return DEFAULT_DEBUG_PREFS
+        try {
+          return readDebugWindowPrefs(JSON.parse(readFileSync(debugPrefsFile, 'utf8')))
+        } catch {
+          return DEFAULT_DEBUG_PREFS
+        }
+      },
+      save: (prefs) => {
+        if (!debugPrefsFile) return
+        writeFile(debugPrefsFile, JSON.stringify(prefs)).catch((error: unknown) => console.error('[sprint] saving the debug window failed:', error))
+      },
+    })
+
+if (debugWindow) {
+  /** The command palette's "Open debug window" (dev builds list it). */
+  ipcMain.handle('sprint:open-debug', () => debugWindow.open())
+  /** The window's own Keep on top switch. */
+  ipcMain.on('sprint:debug-on-top', (_event: IpcMainEvent, onTop: unknown) => {
+    if (typeof onTop === 'boolean') debugWindow.setOnTop(onTop)
+  })
+}
 // An agent run (scripts/agent-app.mjs), dev builds only: every window stays hidden and Chromium
 // opens a DevTools port of its own choosing, written to <userData>/DevToolsActivePort.
 if (agentRun) app.commandLine.appendSwitch('remote-debugging-port', '0')
@@ -600,7 +657,7 @@ async function bootstrap(): Promise<void> {
   await app.whenReady()
   // No OS menu bar on Windows: every command this app has lives in its own UI.
   // macOS needs the standard menu for Quit, Hide, window keys and text editing.
-  Menu.setApplicationMenu(isMac ? Menu.buildFromTemplate(macMenuTemplate({ packaged: app.isPackaged, onToggleLook: toggleLook })) : null)
+  Menu.setApplicationMenu(isMac ? Menu.buildFromTemplate(macMenuTemplate({ packaged: app.isPackaged, onToggleLook: toggleLook, onOpenDebug: () => debugWindow?.open() })) : null)
   // A packaged build gets its icon from the bundle. A dev run may be Electron's own
   // bundle (`pnpm start`), so set it here; the Dock shows this image unmasked, hence
   // the version already shaped and inset to Apple's icon grid.
@@ -631,6 +688,7 @@ app.on('window-all-closed', () => { void shutdown().finally(() => app.quit()) })
 app.on('before-quit', (event) => {
   // Destroyed rather than closed: a page window would otherwise put itself back on the wall.
   pitWall.closeAll()
+  debugWindow?.close()
   // An open designer may still be saving its last edit, and the host must outlive that save:
   // close the designers first, then quit for real.
   if (designers.count > 0) {

@@ -169,6 +169,9 @@ export class NativeHost {
     return this.json(`/api/pitwall/trace?lap=${lap}`)
   }
 
+  /** `GET /api/debug`, the dev debug window's snapshot; a Debug host only (a Release one answers 404). */
+  async debug(): Promise<unknown> { return this.json('/api/debug', undefined, 2000) }
+
   /** The training HUD's newest snapshot, or null when there is no lap to train against. */
   async compareFrame(): Promise<unknown> { return this.json('/api/compare/frame', undefined, 2000) }
 

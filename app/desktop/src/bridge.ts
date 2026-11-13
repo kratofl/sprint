@@ -1,6 +1,8 @@
 import type { TelemetryFrame } from '@sprint/types'
 import { parseHostFrame } from '@sprint/dashboard'
 import { parseHudMessage } from './hud/hudModel'
+import { parseDebugMessage } from './debug/debugModel'
+import type { DebugMessage } from './debug/debugModel'
 import type { HudMessage } from './hud/hudModel'
 import { parseUpdateStatus } from './shell/updates'
 import { parseSetupDriven, parseSetupLibrary, parseSetupSheet } from './views/SetupsDomain'
@@ -445,6 +447,12 @@ export type SprintBridge = {
   openPitWall(target?: { kind: 'page' | 'tile'; id: string }): Promise<void>
   /** A lap of the linked driver's, for the pit wall's traces; an empty trace when there is none. */
   pitWallTrace(lap: TraceLap): Promise<PitWallTrace>
+  /** Dev runs only: opens the debug window, or brings it forward (electron/debugWindow.ts). */
+  openDebugWindow(): Promise<void>
+  /** The debug window's feed, a message per state poll, narrowed here. */
+  subscribeDebug(listener: (message: DebugMessage) => void): () => void
+  /** The debug window's Keep on top switch. */
+  setDebugOnTop(onTop: boolean): void
 }
 
 type RawBridge = {
@@ -490,6 +498,10 @@ type RawBridge = {
   /** Both absent in an older preview stub. */
   openPitWall?(target?: { kind: 'page' | 'tile'; id: string }): Promise<unknown>
   pitWallTrace?(lap: string): Promise<unknown>
+  /** All three absent in the preview harness's stub before the debug window, and in a packaged build's main process. */
+  openDebugWindow?(): Promise<unknown>
+  subscribeDebug?(listener: (message: unknown) => void): () => void
+  setDebugOnTop?(onTop: boolean): void
 }
 declare global { interface Window { sprint?: RawBridge } }
 const emptyState = (): SprintState => ({ telemetry: { frame: null, link: noLink(), hz: 0 }, targets: null, settings: {}, controls: {}, catalog: {}, devices: [], dashLayouts: [], setupTemplates: [], setupPrograms: [], engineerControls: [], radioLog: [], engineerPushState: {}, plans: [], planFuel: {}, sessionCount: 0, recentSessions: null, resultsImport: { available: false }, firstRun: { done: true, game: null }, account: { signedIn: false, serverUrl: '' }, cloud: emptyCloud(), link: { phase: 'Off' }, pitWallLayout: null, features: { sprintWeb: false }, foundDevices: [], multiDials: [], dashCategories: { builtIn: [], custom: [] }, dashRefitLosses: {}, screens: [] })
@@ -1014,6 +1026,15 @@ export const bridge: SprintBridge = raw
       openDashDesigner: async (dashId) => { await raw.openDashDesigner?.(dashId) },
       openPitWall: async (target) => { await raw.openPitWall?.(target) },
       pitWallTrace: async (lap) => (raw.pitWallTrace ? parsePitWallTrace(await raw.pitWallTrace(lap).catch(() => null)) : EMPTY_TRACE),
+      openDebugWindow: async () => { await raw.openDebugWindow?.() },
+      subscribeDebug: (listener) =>
+        raw.subscribeDebug
+          ? raw.subscribeDebug((message) => {
+              const parsed = parseDebugMessage(message)
+              if (parsed) listener(parsed)
+            })
+          : () => undefined,
+      setDebugOnTop: (onTop) => raw.setDebugOnTop?.(onTop),
     }
   : {
       // Outside Electron (plain `vite dev` in a browser) there is no host to talk to.
@@ -1056,4 +1077,7 @@ export const bridge: SprintBridge = raw
       openDashDesigner: async () => undefined,
       openPitWall: async () => undefined,
       pitWallTrace: async () => EMPTY_TRACE,
+      openDebugWindow: async () => undefined,
+      subscribeDebug: () => () => undefined,
+      setDebugOnTop: () => undefined,
     }

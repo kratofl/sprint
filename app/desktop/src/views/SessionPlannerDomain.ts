@@ -347,8 +347,14 @@ export const EMPTY_FIGURE: FigureField = { source: 'empty' }
 /** What the field shows. */
 export const figureText = (field: FigureField): string => (field.source === 'typed' ? field.text : field.source === 'history' ? String(field.value) : '')
 
-/** What the field sends and saves: exactly what it shows, or null when it is empty. */
+/** What the field shows, as a number (its hint), or null when it shows none. */
 export const figureValue = (field: FigureField): number | null => positiveOrNull(figureText(field))
+
+/**
+ * What the field sends and saves: only a value the driver typed. A field still at its pre-fill saves
+ * null ("from your laps"), so the plan's race fuel keeps following new laps (`RaceFuelEstimate.For`).
+ */
+export const savedFigure = (field: FigureField): number | null => (field.source === 'typed' ? positiveOrNull(field.text) : null)
 
 /** A stored plan's own value is the driver's; a plan without one starts empty, ready for its history. */
 export const storedFigure = (value: number | null): FigureField => (value ? { source: 'typed', text: String(value) } : EMPTY_FIGURE)
@@ -434,8 +440,9 @@ export type QuickPlanAnswers = {
 
 /**
  * The plan Quick plan creates: what was detected, and the driver's answers only where it was not.
- * Named by the host (blank name), qualifying included as in every new plan, and the lap time, fuel
- * per lap and reserve the driver confirmed (an empty figure leaves the estimate to the lap history).
+ * Named by the host (blank name), qualifying included as in every new plan, the reserve, and the lap
+ * time and fuel per lap only where the driver typed them (`savedFigure`): an empty or pre-filled
+ * figure leaves the estimate to the lap history.
  */
 export function quickPlanInput(detection: PlanDetection, answers: QuickPlanAnswers): CreatePlanInput {
   const asked = (field: PlanDetection['missing'][number]) => detection.missing.includes(field)
@@ -450,8 +457,8 @@ export function quickPlanInput(detection: PlanDetection, answers: QuickPlanAnswe
     raceLengthFormat: length?.format ?? 'Unknown',
     raceLengthValue: length?.value ?? 0,
     fuelReserveLaps: answers.fuelReserveLaps,
-    avgLapTimeSeconds: figureValue(answers.lapTime),
-    fuelPerLapLiters: figureValue(answers.fuelPerLap),
+    avgLapTimeSeconds: savedFigure(answers.lapTime),
+    fuelPerLapLiters: savedFigure(answers.fuelPerLap),
     notes: '',
   }
 }

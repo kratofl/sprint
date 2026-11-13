@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Net;
 using System.Security.Cryptography;
 using System.Text.Json;
@@ -215,7 +216,7 @@ telemetryEngine.Start();
 // target onto the delta tracker. Built over the SAME lapHistoryStore/lapTraceStore/plannerService
 // instances above -- not fresh ones -- so a recorded lap or a plan write is visible on the very
 // next /api/state poll and a plan.* command sees exactly what the ingest loop just did.
-PlanTargetDelivery planTargets = new(() => plannerService.ActivePlan, lapHistoryStore);
+PlanTargetDelivery planTargets = new(() => plannerService.ActivePlan, lapHistoryStore, fuelHistory);
 TelemetryIngestionPipeline ingestion = new(
     runtime,
     plannerService,
@@ -281,6 +282,9 @@ _ = Task.Run(() =>
     }
 });
 
+// How long the state request and the telemetry tick take, for the dev debug window (/api/debug).
+DebugTimings debugTimings = new();
+
 CancellationTokenSource telemetryPublishCts = new();
 Task telemetryPublishLoop = Task.Run(async () =>
 {
@@ -289,6 +293,7 @@ Task telemetryPublishLoop = Task.Run(async () =>
     {
         while (await timer.WaitForNextTickAsync(telemetryPublishCts.Token))
         {
+            long tickStarted = Stopwatch.GetTimestamp();
             EngineSnapshot snapshot = telemetryEngine.Snapshot;
             // Exactly-once per genuinely new frame regardless of this loop's poll cadence --
             // see TelemetryIngestionPipeline. Kept off the HTTP request path: this loop is the
@@ -304,6 +309,7 @@ Task telemetryPublishLoop = Task.Run(async () =>
                 ? snapshot.Status
                 : snapshot.Status with { State = effective };
             state.Publish(new DesktopTelemetryState(snapshot.Frame, status, snapshot.Hz));
+            debugTimings.PublishTicked(Stopwatch.GetElapsedTime(tickStarted));
         }
     }
     catch (OperationCanceledException)
@@ -441,12 +447,13 @@ app.Use(async (context, next) =>
 
 app.MapGet("/api/state", () =>
 {
+    long started = Stopwatch.GetTimestamp();
     AnalysisState analysis = analysisController.State();
     LapTraceUsage traceUsage = lapTraceStore.Usage();
     // From disk, not the planner's live objects: the telemetry loop mutates those under the
     // planner's lock, and serializing them here would race it.
     IReadOnlyList<SessionPlan> plans = planStore.LoadAll();
-    return Results.Json(new
+    IResult result = Results.Json(new
     {
         telemetry = state.Telemetry,
         // What the active plan is aiming at (#189 parity), for the target.* dash bindings
@@ -563,7 +570,33 @@ app.MapGet("/api/state", () =>
         },
         screens = ScreenOutputs.Describe(runtime.Devices, runtime.DashLayouts, state.Telemetry.Status.IsLive, screenOutputs.HardwareFor, dashPageCycle)
     }, json);
+    debugTimings.StateBuilt(Stopwatch.GetElapsedTime(started));
+    return result;
 });
+
+#if DEBUG
+// The dev debug window (app/desktop/src/debug): everything worth knowing while driving and
+// testing, polled at the state's cadence only while that window is open. Debug builds only: an
+// installed (Release) host has no such route, as the installed app has no such window.
+app.MapGet("/api/debug", () =>
+{
+    LiveCompareState compare = liveCompare.State();
+    List<SavedDevice> devices;
+    lock (runtime.DevicesGate)
+    {
+        devices = [.. runtime.Devices];
+    }
+
+    DebugSprint sprint = new(
+        DebugTargets.From(planTargets.Targets, planTargets.Reference?.LapTimeSeconds),
+        DebugPlan.Active(planStore.LoadAll()),
+        new DebugHud(compare.HudOpen, compare.Arranging, HudInterop.IsExclusiveFullscreenActive()),
+        DebugLink.From(peerLink.State),
+        DebugRecorder.From(lapHistoryRecorder.OpenSession),
+        debugTimings.Snapshot);
+    return Results.Json(DebugSnapshot.Build(state.Telemetry, DateTimeOffset.UtcNow, devices, screenOutputs.HardwareFor, sprint), json);
+});
+#endif
 
 app.MapGet("/api/telemetry", () => Results.Json(state.Telemetry, json));
 

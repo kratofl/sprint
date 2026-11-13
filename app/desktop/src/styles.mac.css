@@ -507,3 +507,12 @@
 :where([data-platform="mac"]) .designer-pill {
   left: 88px;
 }
+
+/* ── Debug window (debug/DebugWindow.tsx, dev runs only) ─────────────────────
+   Its bar is the window's title bar: the toolbar's height, and the traffic lights keep their band.
+   Two classes deep, because the window's own CSS lands after this file. */
+
+:where([data-platform="mac"]) .debug-root > .debug-bar {
+  height: 52px;
+  padding-left: 88px;
+}

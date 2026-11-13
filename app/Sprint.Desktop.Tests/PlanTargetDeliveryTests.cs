@@ -163,6 +163,37 @@ public sealed class PlanTargetDeliveryTests
         Assert.Equal(3.4, delivery.Targets.FuelPerLapLiters);
     }
 
+    [Fact]
+    public void A_plan_that_leaves_fuel_to_the_laps_gets_the_laps_figure_as_its_target()
+    {
+        PlanTargetDelivery delivery = new PlanTargetDelivery(
+            () => PlanWith(null),
+            Corpus(),
+            new FixedFuelHistory(new FuelHistoryFigures(null, 0, 3.6, 9, null)));
+
+        delivery.Observe(RaceFrame(lap: 1));
+
+        Assert.Equal(3.6, delivery.Targets.FuelPerLapLiters);
+    }
+
+    [Fact]
+    public void A_typed_fuel_per_lap_wins_over_the_laps()
+    {
+        PlanTargetDelivery delivery = new PlanTargetDelivery(
+            () => PlanWith(null, fuelPerLapLiters: 3.4),
+            Corpus(),
+            new FixedFuelHistory(new FuelHistoryFigures(null, 0, 3.6, 9, null)));
+
+        delivery.Observe(RaceFrame(lap: 1));
+
+        Assert.Equal(3.4, delivery.Targets.FuelPerLapLiters);
+    }
+
+    private sealed class FixedFuelHistory(FuelHistoryFigures figures) : IFuelHistorySource
+    {
+        public FuelHistoryFigures ForRace(PlanContext context) => figures;
+    }
+
     // ---- fixtures ----
 
     private static TelemetryFrame RaceFrame(

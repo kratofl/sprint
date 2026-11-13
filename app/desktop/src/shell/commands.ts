@@ -23,6 +23,8 @@ export type ShellCommandContext = {
   newDash: () => void
   /** Opens the results import dialog; absent when the game has no results archive. */
   importResults?: () => void
+  /** Opens the debug window; dev builds only, absent everywhere else. */
+  openDebugWindow?: () => void
 }
 
 /**
@@ -36,7 +38,8 @@ export type ShellCommandContext = {
  * `compare.hud` starts or stops training; with no lap picked yet it opens On track instead.
  * `nav.engineer` is new: the Race Engineer view didn't exist when the old palette
  * was written. `results.import` is the palette's copy of the planner/analysis
- * "Import results" action, listed only when the game has a results archive.
+ * "Import results" action, listed only when the game has a results archive. `dev.debug` opens the
+ * debug window and exists only in a dev build, with its Electron-handled shortcut shown.
  */
 export function buildShellCommands(context: ShellCommandContext): ShellCommand[] {
   const navCommands: ShellCommand[] = primaryNav.map((item, index) => ({
@@ -94,6 +97,17 @@ export function buildShellCommands(context: ShellCommandContext): ShellCommand[]
             label: 'Import race results',
             keywords: 'archive sessions laps history le mans ultimate',
             run: context.importResults,
+          },
+        ]
+      : []),
+    ...(context.openDebugWindow
+      ? [
+          {
+            id: 'dev.debug',
+            label: 'Open debug window',
+            keywords: 'developer telemetry screens fps diagnostics always on top',
+            shortcut: context.platform === 'mac' ? '⌥⇧⌘D' : 'Ctrl+Alt+Shift+D',
+            run: context.openDebugWindow,
           },
         ]
       : []),

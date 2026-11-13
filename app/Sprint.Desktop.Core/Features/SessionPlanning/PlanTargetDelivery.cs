@@ -33,8 +33,14 @@ namespace Sprint.Desktop.Features.SessionPlanning;
 /// aiming at anything, so the caller — not this service — decides what "active" means.
 /// </param>
 /// <param name="history">The corpus the chosen lap's curve is read back from.</param>
-public sealed class PlanTargetDelivery(Func<SessionPlan?> activePlan, ILapHistoryStore history)
+/// <param name="fuelHistory">
+/// Where a plan that leaves its fuel per lap to the driver's laps gets the figure from; without
+/// it such a plan has no fuel target.
+/// </param>
+public sealed class PlanTargetDelivery(Func<SessionPlan?> activePlan, ILapHistoryStore history, IFuelHistorySource? fuelHistory = null)
 {
+    private readonly IFuelHistorySource _fuelHistory = fuelHistory ?? NoFuelHistorySource.Instance;
+
     private readonly Func<SessionPlan?> _activePlan =
         activePlan ?? throw new ArgumentNullException(nameof(activePlan));
 
@@ -118,10 +124,16 @@ public sealed class PlanTargetDelivery(Func<SessionPlan?> activePlan, ILapHistor
         this.Targets = new DashTargets
         {
             LapTimeSeconds = target?.LapTimeSeconds,
-            FuelPerLapLiters = plan?.FuelPerLapLiters,
+            FuelPerLapLiters = plan is null ? null : this.FuelPerLapFor(plan),
         };
         this.Reference = this.ReferenceFor(target);
     }
+
+    // A typed figure wins; a plan that left it to the driver's laps gets the same median the
+    // planner's Race card shows (RaceFuelEstimate's rule).
+    private double? FuelPerLapFor(SessionPlan plan) =>
+        plan.FuelPerLapLiters
+        ?? this._fuelHistory.ForRace(new PlanContext(plan.Game, plan.Car, plan.Track)).FuelPerLapLiters;
 
     // The tier is read off the lap in the corpus, never off the flag stored on the target: the
     // target records what was true when it was chosen, and the lap is what is actually there

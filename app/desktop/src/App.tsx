@@ -274,6 +274,8 @@ export function App({ mockup }: { mockup?: { view: AppView; content: ReactNode }
     checkForUpdates,
     newDash: () => openItem({ view: 'Dashes', newDash: true }),
     importResults,
+    // A build-time constant: every build but a dev run drops the command.
+    openDebugWindow: import.meta.env.DEV ? () => void bridge.openDebugWindow() : undefined,
   })
 
   // The toolbar slot the page's actions render into, and the room it has for them. Null until

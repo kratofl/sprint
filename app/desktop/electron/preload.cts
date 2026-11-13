@@ -48,6 +48,16 @@ contextBridge.exposeInMainWorld('sprint', {
   openDashDesigner: (dashId: string): Promise<unknown> => ipcRenderer.invoke('sprint:open-dash-designer', dashId),
   /** Opens the pit wall, or brings it (or a page's or tile's own window) forward (electron/pitWallWindows.ts). */
   openPitWall: (target?: { kind: 'page' | 'tile'; id: string }): Promise<unknown> => ipcRenderer.invoke('sprint:open-pit-wall', target),
+  /** Dev runs only (electron/debugWindow.ts): opens the debug window, or brings it forward. */
+  openDebugWindow: (): Promise<unknown> => ipcRenderer.invoke('sprint:open-debug'),
+  /** The debug window's feed: the host's debug snapshot on every state poll. */
+  subscribeDebug: (listener: (message: unknown) => void): (() => void) => {
+    const onMessage = (_event: Electron.IpcRendererEvent, message: unknown): void => listener(message)
+    ipcRenderer.on('sprint:debug', onMessage)
+    return () => { ipcRenderer.removeListener('sprint:debug', onMessage) }
+  },
+  /** The debug window's Keep on top switch. */
+  setDebugOnTop: (onTop: boolean): void => ipcRenderer.send('sprint:debug-on-top', onTop),
   /** A lap of the linked driver's for the pit wall's traces: current, last, best or target. */
   pitWallTrace: (lap: string): Promise<unknown> => ipcRenderer.invoke('sprint:pitwall-trace', lap),
   /** A training HUD window's feed (electron/hud.ts): its own part of each frame. */

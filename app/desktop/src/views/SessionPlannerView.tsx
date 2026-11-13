@@ -35,6 +35,7 @@ import {
   historyRequest,
   planFuelRequest,
   prefillFigures,
+  savedFigure,
   sameContext,
   storedFigure,
   detectedRaceFormat,
@@ -1356,7 +1357,8 @@ function usePrefillFigures<T extends PlanFigures>(
  *
  * Average lap time and fuel per lap stay typeable (a car not driven yet, a number known by heart) but
  * fill from the driver's laps with the car at the track, asked again whenever those change, and say
- * so under the field. A value the driver typed is never overwritten (`FigureField`).
+ * so under the field. A value the driver typed is never overwritten (`FigureField`) and is the only
+ * one saved: a field left at its pre-fill saves null, so the plan keeps following new laps.
  */
 function PlanFormDialog({
   initial,
@@ -1421,8 +1423,8 @@ function PlanFormDialog({
       raceLengthFormat,
       raceLengthValue: Number.isFinite(parsedRaceLengthValue) ? parsedRaceLengthValue : 0,
       fuelReserveLaps: Number.isFinite(parsedFuelReserveLaps) ? Math.max(0, parsedFuelReserveLaps) : reserve,
-      avgLapTimeSeconds: figureValue(figures.lapTime),
-      fuelPerLapLiters: figureValue(figures.fuelPerLap),
+      avgLapTimeSeconds: savedFigure(figures.lapTime),
+      fuelPerLapLiters: savedFigure(figures.fuelPerLap),
       notes,
     })
   }

@@ -6,7 +6,7 @@ namespace Sprint.Desktop.Tests;
 
 /// <summary>
 /// The race fuel estimate (#50, #9): what the lap history says about a car at a track, and the
-/// race's laps, litres and stints worked out from it, falling back to the plan's own values.
+/// race's laps, litres and stints worked out from it; a figure typed into the plan wins over it.
 /// </summary>
 public sealed class RaceFuelEstimateTests
 {
@@ -111,10 +111,10 @@ public sealed class RaceFuelEstimateTests
     [Fact]
     public void ImportedLapsGiveATimeButTheFuelComesFromThePlan()
     {
-        // Imports carry lap times but never fuel: history supplies what it has, the plan the rest.
+        // Imports carry lap times but never fuel: the plan types only the fuel, history the time.
         FuelHistoryFigures history = FuelHistoryFigures.From(
             [Session(HistorySessionKind.Race, tank: null, Lap(120, fuel: null), Lap(120, fuel: null))], Spa, onlyKind: null);
-        SessionPlan plan = Plan(RaceLengthFormat.LapBased, 20, reserve: 1, avgLapTime: 999, fuelPerLap: 3.0);
+        SessionPlan plan = Plan(RaceLengthFormat.LapBased, 20, reserve: 1, fuelPerLap: 3.0);
 
         RaceFuelEstimate estimate = RaceFuelEstimate.For(plan, history);
 
@@ -126,7 +126,24 @@ public sealed class RaceFuelEstimateTests
     }
 
     [Fact]
-    public void TheDialogsCalculatorTakesWhatIsTypedAndTheHistoryOnlyForAnEmptyField()
+    public void AStoredPlansTypedFigureWinsAndAnUntypedOneFollowsTheLaps()
+    {
+        FuelHistoryFigures history = new(128, 20, 3.4, 18, 90);
+
+        // The driver typed a 2:00 lap: it wins over the 2:08 median. The fuel was left to the laps.
+        RaceFuelEstimate typed = RaceFuelEstimate.For(Plan(RaceLengthFormat.TimeBased, 60, reserve: 1, avgLapTime: 120), history);
+        Assert.Equal(new EstimateFigure(120, EstimateSource.Plan, 0), typed.LapTime);
+        Assert.Equal(new EstimateFigure(3.4, EstimateSource.History, 18), typed.FuelPerLap);
+        Assert.Equal(30, typed.Laps);
+
+        // Nothing typed: both follow the laps, and a new median moves the estimate with it.
+        SessionPlan untyped = Plan(RaceLengthFormat.TimeBased, 60, reserve: 1);
+        Assert.Equal(new EstimateFigure(128, EstimateSource.History, 20), RaceFuelEstimate.For(untyped, history).LapTime);
+        Assert.Equal(125, RaceFuelEstimate.For(untyped, history with { LapTimeSeconds = 125, LapTimeLaps = 21 }).LapTime!.Value);
+    }
+
+    [Fact]
+    public void TheDialogsCalculatorTakesWhatIsTypedAndTheHistoryOnlyForAnUntypedField()
     {
         FuelHistoryFigures history = new(128, 20, 3.4, 18, 90);
         PlanFuelInputs inputs = new(Spa, RaceLengthFormat.TimeBased, 60, FuelReserveLaps: 1, AvgLapTimeSeconds: 120, FuelPerLapLiters: null);
@@ -141,8 +158,8 @@ public sealed class RaceFuelEstimateTests
         Assert.Equal(31 * 3.4, estimate.TotalLiters!.Value, precision: 6);
         Assert.Equal(26, estimate.Stints!.LapsPerStint);
         Assert.Equal(2, estimate.Stints.Liters.Count);
-        // A stored plan's estimate goes the other way: its history follows every new lap.
-        Assert.Equal(128, RaceFuelEstimate.For(Plan(RaceLengthFormat.TimeBased, 60, reserve: 1, avgLapTime: 120), history).LapTime!.Value);
+        // A stored plan with the same figures gets the same answer: one rule for both.
+        Assert.Equal(estimate.LapTime, RaceFuelEstimate.For(Plan(RaceLengthFormat.TimeBased, 60, reserve: 1, avgLapTime: 120), history).LapTime);
     }
 
     [Fact]
