@@ -26,14 +26,11 @@ public sealed class ScreenOutputServiceTests
         service.Reconcile([device]);
         await WaitUntilAsync(() => driver!.Status.IsConnected, TimeSpan.FromSeconds(3));
 
-        // The publisher may already have sent one all-black frame before this post lands, so
-        // compare against the count at post time rather than "> 0".
-        int beforeFramesSent = driver!.FramesSent;
         byte[] red = SolidBgra(2, 4, b: 0x00, g: 0x00, r: 0xF8);
         ScreenFramePublishResult result = await service.PublishFrameAsync("d1", 2, 4, red, CancellationToken.None);
 
         Assert.Equal(ScreenFramePublishResult.Routed, result);
-        await WaitUntilAsync(() => driver!.FramesSent > beforeFramesSent, TimeSpan.FromSeconds(3));
+        await WaitForPostedFrameAsync(driver!);
 
         byte[] sent = driver!.LastFrame!;
         Assert.Equal(2 * 4 * 2, sent.Length);
@@ -55,13 +52,12 @@ public sealed class ScreenOutputServiceTests
         service.Reconcile([device]);
         await WaitUntilAsync(() => driver!.Status.IsConnected, TimeSpan.FromSeconds(3));
 
-        int beforeFramesSent = driver!.FramesSent;
         byte[] logical = new byte[4 * 2 * 4];
         SetBgraPixel(logical, logicalWidth: 4, x: 0, y: 1, b: 0x00, g: 0x00, r: 0xF8); // bottom-left logical pixel
 
         ScreenFramePublishResult result = await service.PublishFrameAsync("d1", 4, 2, logical, CancellationToken.None);
         Assert.Equal(ScreenFramePublishResult.Routed, result);
-        await WaitUntilAsync(() => driver!.FramesSent > beforeFramesSent, TimeSpan.FromSeconds(3));
+        await WaitForPostedFrameAsync(driver!);
 
         byte[] native = driver!.LastFrame!;
         Assert.Equal(2 * 4 * 2, native.Length);
@@ -317,6 +313,14 @@ public sealed class ScreenOutputServiceTests
 
         Assert.Equal(ScreenFramePublishResult.DimensionMismatch, result);
     }
+
+    /// <summary>
+    /// Until the driver shows something other than the black idle picture the publisher resends on
+    /// every tick: only a posted frame puts colour on it. Waiting for "a newer frame" instead races
+    /// that tick, which on a slow runner lands between counting frames and posting.
+    /// </summary>
+    private static Task WaitForPostedFrameAsync(FakeScreenDriver driver) =>
+        WaitUntilAsync(() => driver.LastFrame is { } frame && frame.Any(value => value != 0), TimeSpan.FromSeconds(3));
 
     private static async Task WaitUntilAsync(Func<bool> condition, TimeSpan timeout)
     {
