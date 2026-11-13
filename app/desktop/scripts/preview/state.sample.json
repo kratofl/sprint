@@ -4669,6 +4669,28 @@
     "traceLaps": 1284,
     "traceExpiryDays": 0
   },
+  "multiDials": [
+    {
+      "deviceId": "sample-omega",
+      "label": "MULTI",
+      "x": 0.4992,
+      "y": 0.63,
+      "radius": 0.0518,
+      "positions": [
+        { "label": "DASH", "color": "#1F7FE6" },
+        { "label": "TC2", "color": "#E0A30C" },
+        { "label": "MAP", "color": "#16B566" },
+        { "label": "FUEL", "color": "#FF6A00" },
+        { "label": "BRGT", "color": "#F5F5F7" },
+        { "label": "VOL", "color": "#A06BFF" },
+        { "label": "BOX", "color": "#F02744" },
+        { "label": "DIFF", "color": "#16B566" }
+      ],
+      "invertPopup": false,
+      "position": 0,
+      "changes": 0
+    }
+  ],
   "screens": [
     {
       "deviceId": "sample-omega",

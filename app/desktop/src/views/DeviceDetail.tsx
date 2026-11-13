@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Activity, ChevronLeft, LayoutDashboard, Monitor, Move, Power, RotateCw, ScanLine, Square, Trash2 } from 'lucide-react'
-import type { SprintCommand } from '../bridge'
+import type { MultiDial, SprintCommand } from '../bridge'
 import { ConfirmDialog } from '../shell/ContentDialog'
 import { PageHeader } from '../shell/PageHeader'
 import { InlineName } from '../shell/InlineName'
@@ -23,19 +23,22 @@ import {
   resolvePurpose,
 } from './DevicesDomain'
 import type { Device, DashOption, DeviceImageKey, ScreenOutput } from './DevicesDomain'
+import { DeviceControls } from './DeviceControls'
 import { DeviceImage } from './DeviceImage'
 import { DeviceStatusInfoBar, DeviceStatusLabel } from './DevicesStatus'
 
-type DetailTab = 'screen' | 'output'
+type DetailTab = 'screen' | 'output' | 'controls'
 
 const TABS: ReadonlyArray<{ id: DetailTab; label: string }> = [
   { id: 'screen', label: 'Screen' },
   { id: 'output', label: 'Output' },
+  { id: 'controls', label: 'Controls' },
 ]
 
 /**
  * One device, a level below the overview: its picture and status, Turn off / Remove in the
- * toolbar, then the Screen (how the panel is driven and mounted) and Output (what it shows) tabs.
+ * toolbar, then the Screen (how the panel is driven and mounted) and Output (what it shows) tabs,
+ * and Controls (its picture with the controls Sprint knows) for a wheel whose preset has a dial.
  * The name is the heading itself, renamed in place (InlineName). A device without a screen has
  * no tabs.
  */
@@ -44,6 +47,7 @@ export function DeviceDetail({
   image,
   dashOptions,
   screen,
+  dial,
   send,
   onBack,
 }: {
@@ -51,6 +55,8 @@ export function DeviceDetail({
   image: DeviceImageKey | null
   dashOptions: DashOption[]
   screen: ScreenOutput | undefined
+  /** The wheel's multi-dial, when its preset has one; it brings the Controls tab. */
+  dial: MultiDial | null
   send: (command: SprintCommand) => Promise<void>
   onBack: () => void
 }) {
@@ -94,7 +100,7 @@ export function DeviceDetail({
       {hasScreen && (
         <>
           <div className="tabs device-tabs" role="tablist" aria-label="Device settings">
-            {TABS.map((option) => (
+            {TABS.filter((option) => option.id !== 'controls' || dial !== null).map((option) => (
               <button
                 key={option.id}
                 type="button"
@@ -107,9 +113,11 @@ export function DeviceDetail({
               </button>
             ))}
           </div>
-          <div className="device-tab" role="tabpanel">
+          <div className={tab === 'controls' ? 'device-tab wide' : 'device-tab'} role="tabpanel">
             {tab === 'screen' ? (
               <ScreenTab key={device.id} device={device} screen={screen} send={send} />
+            ) : tab === 'controls' && dial ? (
+              <DeviceControls dial={dial} image={image} screenSize={logicalSize(device)} send={send} />
             ) : (
               <OutputTab key={device.id} device={device} dashOptions={dashOptions} send={send} />
             )}

@@ -10,6 +10,7 @@ import { canonicalAlertColorToken, dashSettingColors, findPresetByAlertColorToke
 import { formatFrontBrakeBias } from './format'
 import type { DashTargets } from './bindings'
 import { LapSummaryWatcher, type LapSummary } from './lapSummary'
+import type { DashMultiDialPopup } from './multiDial'
 
 export type DashCondition =
   | 'neutral'
@@ -60,8 +61,8 @@ export interface DashLapSummaryPopup extends LapSummary {
   kind: 'lapSummary'
 }
 
-/** What DashAlertTracker.evaluate asks the renderer to draw over the dash. */
-export type DashAlertBanner = DashSettingPopup | DashLapSummaryPopup
+/** What the renderer draws over the dash: a telemetry alert from DashAlertTracker.evaluate, or the multi-dial popup. */
+export type DashAlertBanner = DashSettingPopup | DashLapSummaryPopup | DashMultiDialPopup
 
 /** How long the lap summary stays up unless its alert sets its own duration: longer than a setting popup, there are two numbers to read. */
 export const LAP_SUMMARY_SECONDS = 5

@@ -2,14 +2,19 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   DashAlertTracker,
   DashRenderer,
+  MULTI_DIAL_POPUP_SECONDS,
+  MultiDialPopupWatcher,
   narrowDashTargets,
   parseDashRenderInput,
   resolveDashPalette,
   type DashAlertBanner,
+  type DashLayout,
+  type DashMultiDialPopup,
   type DashRenderInput,
+  type MultiDialReading,
 } from '@sprint/dashboard'
 import '@sprint/dashboard/styles.css'
-import { bridge, type SprintState } from './bridge'
+import { bridge, type MultiDial, type SprintState } from './bridge'
 
 /**
  * The dashboard half of the app. Electron opens one offscreen window per
@@ -39,6 +44,24 @@ export function DashOutput({ deviceId }: { deviceId: string }) {
   // tracker should react to.
   const inputRef = useRef(input)
   inputRef.current = input
+
+  // The wheel's multi-dial popup: shown for a moment on every real turn, with or without a
+  // game running. Keyed on the turn count, so an unrelated state push never re-runs it; the one
+  // timer takes the popup down when it runs out.
+  const [dialPopup, setDialPopup] = useState<DashMultiDialPopup | null>(null)
+  const dialWatcherRef = useRef(new MultiDialPopupWatcher())
+  const dial = state?.multiDials.find((candidate) => candidate.deviceId === deviceId) ?? null
+  const dialRef = useRef(dial)
+  dialRef.current = dial
+  useEffect(() => {
+    const watcher = dialWatcherRef.current
+    const now = Date.now()
+    setDialPopup(watcher.observe(readDial(dialRef.current), now, popupSeconds(inputRef.current?.layout)))
+    const remaining = watcher.remaining(now)
+    if (remaining === null) return
+    const timer = setTimeout(() => setDialPopup(watcher.current(Date.now())), remaining)
+    return () => clearTimeout(timer)
+  }, [dial?.changes, dial === null])
 
   // Feeds the tracker exactly once per pushed telemetry frame: this effect's dependency is
   // the frame reference itself, so an unrelated state push (e.g. a settings edit) that leaves
@@ -76,9 +99,20 @@ export function DashOutput({ deviceId }: { deviceId: string }) {
       idle={input.idle}
       settings={state?.settings}
       targets={input.targets}
-      alertBanner={alertBanner}
+      alertBanner={dialPopup ?? alertBanner}
     />
   )
+}
+
+/** The dial as the popup watcher reads it; null when this screen's device has none. */
+function readDial(dial: MultiDial | null): MultiDialReading | null {
+  return dial ? { caption: dial.label, position: dial.position, changes: dial.changes, positions: dial.positions, invertPopup: dial.invertPopup } : null
+}
+
+/** The layout's own alert duration, which every popup on this dash shares. */
+function popupSeconds(layout: DashLayout | undefined): number {
+  const seconds = layout?.alertConfig?.durationSeconds
+  return typeof seconds === 'number' && seconds > 0 ? seconds : MULTI_DIAL_POPUP_SECONDS
 }
 
 /** Narrows the host's screen description once, at this boundary. */

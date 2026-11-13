@@ -123,6 +123,7 @@ public sealed class RuntimeCoordinator
             case "devices.captureRegion": return this.UpdateDeviceCaptureRegion(command, out error);
             case "devices.refreshHz": return this.UpdateDeviceRefreshHz(command, out error);
             case "devices.save": return this.SaveDevice(command, out error);
+            case "devices.multiDial": return this.UpdateMultiDial(command, out error);
             case "dash.create": return this.CreateDash(command, out error);
             case "dash.save": return this.SaveDash(command, out error);
             case "dash.reset": return this.ResetDash(command, out error);
@@ -742,6 +743,48 @@ public sealed class RuntimeCoordinator
 
         return true;
     }
+
+    /// <summary>
+    /// Renames and recolours one dial position (<c>position</c> with <c>label</c> and <c>color</c>),
+    /// and/or turns the inverted dash popup on or off (<c>invertPopup</c>). The colours only colour
+    /// the dash popup; nothing is sent to the wheel.
+    /// </summary>
+    private bool UpdateMultiDial(JsonElement command, out string error)
+    {
+        if (!this.FindDevice(command, out SavedDevice device, out error)) return false;
+        if (MultiDials.LayoutOf(device, this._runtime.Catalog) is not { } layout) { error = "device has no multi-dial"; return false; }
+
+        bool hasPosition = command.TryGetProperty("position", out _);
+        bool hasInvert = command.TryGetProperty("invertPopup", out _);
+        if (!hasPosition && !hasInvert) { error = "position or invertPopup is required"; return false; }
+
+        MultiDialLabel? label = null;
+        int index = 0;
+        if (hasPosition)
+        {
+            if (!TryInt(command, "position", out index) || index < 0 || index >= layout.Positions.Count) { error = "position is out of range"; return false; }
+            if (!TryString(command, "label", out string name)) { error = "label is required"; return false; }
+            name = name.Trim();
+            if (name.Length > MultiDials.MaxLabelLength) { error = $"label is longer than {MultiDials.MaxLabelLength} characters"; return false; }
+            if (!TryString(command, "color", out string color) || !IsHexColor(color)) { error = "color must be #RRGGBB"; return false; }
+            label = new MultiDialLabel(name, color.ToUpperInvariant());
+        }
+
+        bool invert = false;
+        if (hasInvert && !TryBool(command, "invertPopup", out invert)) { error = "invertPopup must be true or false"; return false; }
+
+        lock (this._runtime.DevicesGate)
+        {
+            MultiDialSettings settings = label is null ? device.MultiDial ?? new MultiDialSettings() : MultiDials.WithPosition(layout, device.MultiDial, index, label);
+            device.MultiDial = hasInvert ? settings with { InvertPopup = invert } : settings;
+            this._runtime.SaveDevices();
+        }
+
+        return true;
+    }
+
+    private static bool IsHexColor(string value) =>
+        value.Length == 7 && value[0] == '#' && value.Skip(1).All(Uri.IsHexDigit);
 
     private bool FindDevice(JsonElement command, out SavedDevice device, out string error)
     {

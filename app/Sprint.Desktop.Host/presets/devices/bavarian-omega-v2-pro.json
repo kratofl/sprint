@@ -14,5 +14,21 @@
   "offset_y": 0,
   "margin": 5,
   "driver": "vocore",
-  "bindings": []
+  "bindings": [],
+  "multiDial": {
+    "label": "MULTI",
+    "x": 0.4992,
+    "y": 0.63,
+    "radius": 0.0518,
+    "positions": [
+      { "input": "button:102", "label": "DASH", "color": "#1F7FE6" },
+      { "input": "button:103", "label": "TC2", "color": "#E0A30C" },
+      { "input": "button:104", "label": "MAP", "color": "#16B566" },
+      { "input": "button:105", "label": "FUEL", "color": "#FF6A00" },
+      { "input": "button:106", "label": "BRGT", "color": "#F5F5F7" },
+      { "input": "button:107", "label": "VOL", "color": "#A06BFF" },
+      { "input": "button:108", "label": "BOX", "color": "#F02744" },
+      { "input": "button:109", "label": "DIFF", "color": "#16B566" }
+    ]
+  }
 }

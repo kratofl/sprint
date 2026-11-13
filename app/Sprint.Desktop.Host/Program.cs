@@ -11,6 +11,7 @@ using Sprint.Desktop.Features.Dashes;
 using Sprint.Desktop.Features.FirstRun;
 using Sprint.Desktop.Features.Devices;
 using Sprint.Desktop.Features.Diagnostics;
+using Sprint.Desktop.Features.Input;
 using DiagnosticsLogLevel = Sprint.Desktop.Features.Diagnostics.LogLevel;
 using Sprint.Desktop.Features.Live;
 using Sprint.Desktop.Features.LiveCompare;
@@ -312,6 +313,19 @@ Task telemetryPublishLoop = Task.Run(async () =>
     }
 });
 
+// Wheel buttons, encoders and dials (Raw Input; no-op off Windows). For now only the
+// multi-position dials are followed: the tracker turns a wheel's held position button into the
+// dial position /api/state reports, which the desktop shows and the dash pops up on a turn. Its
+// dials are re-read from the saved devices on every reconcile tick below.
+MultiDialTracker multiDials = new();
+lock (runtime.DevicesGate)
+{
+    multiDials.Configure(MultiDials.Sources(runtime.Devices, runtime.Catalog));
+}
+
+IHardwareInputSource hardwareInput = HardwareInputSourceFactory.Create(log);
+hardwareInput.InputPressed += (_, input) => multiDials.Observe(input);
+
 // Reconciles hardware screen outputs against the saved devices: starts/stops/rebuilds a
 // ScreenPublisher per enabled dashboard device as they are added, removed, disabled, or
 // reconfigured (WEB_DESKTOP_CUTOVER gate 3). Runs on its own short interval, independent of
@@ -339,6 +353,7 @@ Task screenReconcileLoop = Task.Run(async () =>
                 }
 
                 screenOutputs.Reconcile(devices);
+                multiDials.Configure(MultiDials.Sources(devices, runtime.Catalog));
             }
         }
     }
@@ -390,6 +405,7 @@ app.Lifetime.ApplicationStopping.Register(() =>
     peerLinkCts.Cancel();
     discordSignIn.Cancel();
     screenOutputs.Dispose();
+    hardwareInput.Dispose();
 });
 
 app.Use(async (context, next) =>
@@ -426,6 +442,7 @@ app.MapGet("/api/state", () =>
         controls = runtime.Controls,
         catalog = runtime.Catalog,
         devices = runtime.Devices,
+        multiDials = MultiDials.Describe(runtime.Devices, runtime.Catalog, multiDials),
         // Catalog ids plugged in but not added yet, one per device (the Add device dialog).
         foundDevices = DeviceDetection.FindNew(runtime.Catalog, runtime.Devices, usbPresent),
         dashLayouts = runtime.DashLayouts,

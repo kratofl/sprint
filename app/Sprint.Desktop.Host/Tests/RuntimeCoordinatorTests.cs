@@ -398,6 +398,62 @@ public sealed class RuntimeCoordinatorTests
     }
 
     [Fact]
+    public void DevicesMultiDial_RenamesAPositionAndInvertsThePopupAndPersists()
+    {
+        RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
+        try
+        {
+            Assert.True(coordinator.Execute(Command("""{"type":"devices.add","catalogId":"bavarian-omega-v2-pro"}"""), out _));
+            SavedDevice device = Assert.Single(runtime.Devices);
+
+            Assert.True(coordinator.Execute(
+                Command($$"""{"type":"devices.multiDial","deviceId":"{{device.Id}}","position":0,"label":" STRAT ","color":"#4a6cdc"}"""),
+                out string error), error);
+            Assert.True(coordinator.Execute(
+                Command($$"""{"type":"devices.multiDial","deviceId":"{{device.Id}}","invertPopup":true}"""),
+                out error), error);
+
+            DesktopRuntime reloaded = new(dataRoot, PresetRoot);
+            MultiDialSettings? saved = reloaded.Devices.Single().MultiDial;
+            Assert.NotNull(saved);
+            Assert.Equal(new MultiDialLabel("STRAT", "#4A6CDC"), saved.Positions[0]);
+            Assert.Equal("TC2", saved.Positions[1].Label);
+            Assert.True(saved.InvertPopup);
+        }
+        finally
+        {
+            Cleanup(dataRoot);
+        }
+    }
+
+    [Fact]
+    public void DevicesMultiDial_RejectsABadColourAndADeviceWithoutADial()
+    {
+        RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
+        try
+        {
+            Assert.True(coordinator.Execute(Command("""{"type":"devices.add","catalogId":"bavarian-omega-v2-pro"}"""), out _));
+            Assert.True(coordinator.Execute(Command("""{"type":"devices.add","catalogId":"generic-vocore"}"""), out _));
+            SavedDevice omega = runtime.Devices.First(device => device.PresetId == "bavarian-omega-v2-pro");
+            SavedDevice screen = runtime.Devices.First(device => device.PresetId == "generic-vocore");
+
+            Assert.False(coordinator.Execute(
+                Command($$"""{"type":"devices.multiDial","deviceId":"{{omega.Id}}","position":0,"label":"STRAT","color":"blue"}"""),
+                out string error));
+            Assert.Equal("color must be #RRGGBB", error);
+            Assert.False(coordinator.Execute(
+                Command($$"""{"type":"devices.multiDial","deviceId":"{{screen.Id}}","invertPopup":true}"""),
+                out error));
+            Assert.Equal("device has no multi-dial", error);
+            Assert.Null(omega.MultiDial);
+        }
+        finally
+        {
+            Cleanup(dataRoot);
+        }
+    }
+
+    [Fact]
     public void DashCreate_UnknownProfile_ReturnsError()
     {
         RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);

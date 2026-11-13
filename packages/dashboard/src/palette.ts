@@ -41,7 +41,7 @@ export interface DashPaletteColors {
 }
 
 /** The raw on-wheel colors every palette slot and theme preset is built from. */
-const dashColor = {
+export const dashColor = {
   background: '#08080A',
   surface: '#1B1B1E',
   // A solid mid-grey, not a translucent white: USB wheel panels wash out near-black, and a

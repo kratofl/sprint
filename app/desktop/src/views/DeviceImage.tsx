@@ -14,6 +14,9 @@ const DEVICE_IMAGES: Record<DeviceImageKey, string> = {
   'generic-wheel': genericWheel,
 }
 
+/** The picture's URL, for a view that draws on top of it (the Controls tab). */
+export const deviceImageSrc = (image: DeviceImageKey): string => DEVICE_IMAGES[image]
+
 /**
  * A device's picture on its stage (tile, list thumbnail, device header, Add device cards). `dim`
  * greys it out for a device that is off or not answering; no picture falls back to a chip glyph.

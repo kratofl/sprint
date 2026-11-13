@@ -46,6 +46,7 @@ export {
 } from './palette'
 export { DashAlertTracker, isAttentionInverted, dashAlertTypes, previewAlertBanner, alertColorSwatch, LAP_SUMMARY_SECONDS, type DashCondition, type DashAlertBanner, type DashAlertType, type DashSettingPopup, type DashLapSummaryPopup } from './alerts'
 export { narrowDashTargets, type DashTargets } from './bindings'
+export { MultiDialPopup, MultiDialPopupWatcher, multiDialInk, multiDialSwatches, MULTI_DIAL_POPUP_SECONDS, type DashMultiDialPopup, type MultiDialReading } from './multiDial'
 // Grid pixel math is part of the public contract too: the desktop editor's direct-manipulation
 // overlay (drag/resize handles) positions itself with the exact same math `DashRenderer` uses to
 // place widgets, so the overlay can never drift a pixel out of alignment with what's rendered.
