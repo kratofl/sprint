@@ -62,7 +62,7 @@ types: ## Build the shared TypeScript contracts (@sprint/types)
 dev-app: types ## Run the desktop app in dev mode (Vite + Electron + native host)
 	pnpm --filter @sprint/desktop dev
 
-record-app: types ## Run the desktop app and record every telemetry frame into app/desktop/.dev/recordings
+record-app: types ## Run the desktop app and record every telemetry frame into app/recordings
 	$(TASKS) record-app
 
 replay-app: types ## Run the desktop app on a recording instead of the game: make replay-app FILE=<recording>

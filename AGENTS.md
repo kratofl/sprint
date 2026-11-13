@@ -150,7 +150,7 @@ short, current, and tool-agnostic. Deeper material lives in `docs/` (index:
 - Dev runs keep their data in the checkout's `app/desktop/.dev/data`, never the
   installed app's; wipe it with `make reset-dev-data`
 - Record a driven session: `make record-app` (every telemetry frame, one file per
-  session, into `app/desktop/.dev/recordings`, which `reset-dev-data` keeps). Run
+  session, into `app/recordings`, committed through Git LFS, no real names). Run
   the app on one instead of the game, looping: `make replay-app FILE=<recording>`
   (Debug builds only)
 - Build API: `make build-api`

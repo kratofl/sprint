@@ -8,3 +8,8 @@ import { fileURLToPath } from 'node:url'
 const desktopRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
 
 export const devDataRoot = path.join(desktopRoot, '.dev', 'data')
+
+// Recorded telemetry sessions (`make record-app`, replayed by `make replay-app` and
+// `make agent-app FILE=`). Committed, through Git LFS, so every worktree and clone has them;
+// the recorder writes no real names (app/recordings/README.md).
+export const recordingsRoot = path.join(desktopRoot, '..', 'recordings')

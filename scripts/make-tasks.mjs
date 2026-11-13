@@ -14,7 +14,7 @@ import { execFileSync, spawnSync } from 'node:child_process'
 import { existsSync, readdirSync, readFileSync, rmSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { devDataRoot } from '../app/desktop/scripts/dev-data.mjs'
+import { devDataRoot, recordingsRoot } from '../app/desktop/scripts/dev-data.mjs'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
@@ -112,10 +112,6 @@ function devHost() {
   const result = spawnSync('dotnet', ['watch', '--project', project], { cwd: repoRoot, env, stdio: 'inherit' })
   process.exit(result.status ?? 1)
 }
-
-// Telemetry recordings of this checkout. Beside the dev data, not in it, so `make reset-dev-data`
-// never deletes hours of driving; gitignored with the rest of app/desktop/.dev.
-const recordingsRoot = path.join(repoRoot, 'app', 'desktop', '.dev', 'recordings')
 
 // `make dev-app` with extra environment for the native host Electron starts.
 function devApp(extraEnv) {

@@ -16,11 +16,11 @@ import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, write
 import path from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import { fileURLToPath } from 'node:url'
+import { recordingsRoot } from './dev-data.mjs'
 import { stopTree, treeSpawnOptions } from './process-tree.mjs'
 
 const desktopRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
 const runsRoot = path.join(desktopRoot, '.dev', 'agent-runs')
-const recordingsRoot = path.join(desktopRoot, '.dev', 'recordings')
 const STARTUP_TIMEOUT_MS = 180_000
 
 /** The value after `--name`, or null. */
