@@ -12,7 +12,10 @@ export class NativeHost {
   async start(command: string, args: string[], cwd: string): Promise<void> {
     const child = spawn(command, args, {
       cwd, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'],
-      env: { ...process.env, SPRINT_DESKTOP_TOKEN: this.token },
+      // The host stops by itself once this process is gone, however it went: in dev `child` is
+      // `dotnet run`, and killing it, or Electron dying, would otherwise leave the host holding
+      // the wheel screen.
+      env: { ...process.env, SPRINT_DESKTOP_TOKEN: this.token, SPRINT_DESKTOP_PARENT_PID: String(process.pid) },
     })
     this.child = child
     child.stderr.on('data', (data: Buffer) => process.stderr.write(data))

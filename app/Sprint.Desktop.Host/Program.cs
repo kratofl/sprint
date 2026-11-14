@@ -965,6 +965,35 @@ app.Lifetime.ApplicationStarted.Register(() =>
     Console.WriteLine(JsonSerializer.Serialize(new { type = "ready", port }, json));
 });
 
+// The desktop app passes its PID. Once it is gone without having asked the host to stop (a crash,
+// a kill, or in dev the kill of `dotnet run`, which leaves its child running), nobody else would
+// stop the host, and it would keep the wheel screen and go on drawing to it.
+if (int.TryParse(Environment.GetEnvironmentVariable("SPRINT_DESKTOP_PARENT_PID"), out int parentPid))
+{
+    _ = StopWithDesktopAppAsync(parentPid);
+}
+
+async Task StopWithDesktopAppAsync(int pid)
+{
+    try
+    {
+        using Process desktopApp = Process.GetProcessById(pid);
+        await desktopApp.WaitForExitAsync(app.Lifetime.ApplicationStopping);
+    }
+    catch (OperationCanceledException)
+    {
+        // Stopping already, the normal way.
+        return;
+    }
+    catch (ArgumentException)
+    {
+        // The desktop app was already gone.
+    }
+
+    AppDiagnostics.Log.Warn("The desktop app exited without stopping the host; stopping now");
+    app.Lifetime.StopApplication();
+}
+
 // The remembered game/car/track (TelemetryIngestionPipeline keeps it current from every frame),
 // as the planner controller's prefill and its "live" context option.
 // Training against an older lap, for the On track page. `fullscreen` warns that a game in

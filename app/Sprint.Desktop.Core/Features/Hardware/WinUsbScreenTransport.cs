@@ -14,6 +14,10 @@ namespace Sprint.Desktop.Features.Hardware;
 internal sealed class WinUsbScreenTransport : IDisposable
 {
     private const uint AutoSuspendPolicy = 0x81;
+    private const uint PipeTransferTimeoutPolicy = 0x03;
+
+    // A full 800x480 frame takes about 30 ms; a write still pending after this is a stuck panel.
+    private const uint BulkTransferTimeoutMs = 1_000;
     private const int ErrorIoPending = 997;
     private const uint WaitObject0 = 0;
     private const uint WaitTimeout = 258;
@@ -135,6 +139,22 @@ internal sealed class WinUsbScreenTransport : IDisposable
             $"control IN 0x{request:X2}",
             requireExactLength: false,
             out transferred);
+    }
+
+    /// <summary>
+    /// Bounds every <see cref="BulkWrite"/> on <paramref name="endpoint"/>. WinUSB waits forever by
+    /// default, so a panel that stops taking data would hold the publisher, and the device handle,
+    /// until the process is killed: the screen stays frozen and no other app can open it.
+    /// </summary>
+    public bool LimitBulkWrites(byte endpoint)
+    {
+        bool succeeded = WinUsbInterop.WinUsb_SetPipePolicy(
+            this._winusb,
+            endpoint,
+            PipeTransferTimeoutPolicy,
+            valueLength: sizeof(uint),
+            BitConverter.GetBytes(BulkTransferTimeoutMs));
+        return this.RecordResult(succeeded, $"set bulk 0x{endpoint:X2} timeout");
     }
 
     public bool ResetPipe(byte endpoint)

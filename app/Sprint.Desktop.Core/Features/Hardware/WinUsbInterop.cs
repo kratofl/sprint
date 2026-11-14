@@ -90,6 +90,9 @@ internal static class WinUsbInterop
     [DllImport("winusb.dll", SetLastError = true)]
     internal static extern bool WinUsb_SetPowerPolicy(nint interfaceHandle, uint policyType, uint valueLength, byte[] value);
 
+    [DllImport("winusb.dll", SetLastError = true)]
+    internal static extern bool WinUsb_SetPipePolicy(nint interfaceHandle, byte pipeId, uint policyType, uint valueLength, byte[] value);
+
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     internal struct WinUsbSetupPacket
     {

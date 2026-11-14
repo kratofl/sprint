@@ -85,8 +85,14 @@ Runtime behavior:
 - Sprint reuses the compatible Windows USB binding already configured for the
   screen (including a working SimHub setup); it does not require a separate
   per-use driver installation step.
-- On shutdown VoCore releases its handles so firmware resumes ownership;
-  USBD480 sets brightness to zero before releasing its handles.
+- On a clean disconnect (Sprint quits, the screen is disabled) both drivers set
+  the backlight to zero before releasing their handles; closing the handle alone
+  leaves the last dash frame lit. A panel that has stopped answering is released
+  without it, so it cannot hold up the host's exit.
+- Bulk frame writes time out after 1 second (`PIPE_TRANSFER_TIMEOUT`). WinUSB
+  waits forever by default, and a write stuck on a panel that stopped taking
+  data would keep the device handle open: the screen freezes and no other app,
+  Sprint's next launch included, can open it.
 
 The render loop defaults are driver-specific:
 
@@ -196,8 +202,8 @@ Open sequence:
 8. Build draw command `00 2C <size24le> 00`, where `0x2C` is Memory
    Write and `size = width * height * 2`.
 
-Control transfers use a 2-second overlapped timeout; failures are surfaced and
-retried by reopening the device.
+Control transfers use a 2-second overlapped timeout, bulk writes a 1-second
+pipe timeout; failures are surfaced and retried by reopening the device.
 
 Hardware-verified 2026-07-23 (BavarianSimTec Omega PRO V2, `0xC872:0x1004`,
 `bcdDevice 0x01A0`): the firmware can enter a wedged state in which enumeration,

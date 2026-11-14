@@ -94,7 +94,7 @@ internal abstract class WinUsbScreenDriverBase : IScreenDriver
         {
             this._status = new ScreenStatus { State = ScreenConnectionState.Faulted, Detail = ex.Message };
             this._log.Error($"{this.Name} connection failed.", ex);
-            this.DisposeTransport();
+            this.DisposeTransport(releasePanel: false);
             return false;
         }
     }
@@ -119,21 +119,25 @@ internal abstract class WinUsbScreenDriverBase : IScreenDriver
                 Detail = this._transport.LastFailure ?? "The screen rejected the frame transfer.",
             };
             this._log.Warn($"{this.Name} frame transfer failed: {this._status.Detail}");
-            this.DisposeTransport();
+            this.DisposeTransport(releasePanel: false);
             return false;
         }
         catch (Exception ex)
         {
             this._status = new ScreenStatus { State = ScreenConnectionState.Faulted, Detail = ex.Message };
             this._log.Error($"{this.Name} frame transfer threw.", ex);
-            this.DisposeTransport();
+            this.DisposeTransport(releasePanel: false);
             return false;
         }
     }
 
+    /// <summary>
+    /// Releases the screen. A panel that is still answering is switched off first
+    /// (<see cref="Shutdown"/>) so it does not keep showing the last frame once Sprint is gone.
+    /// </summary>
     public void Disconnect()
     {
-        this.DisposeTransport();
+        this.DisposeTransport(releasePanel: this._status.IsConnected);
         this._status = ScreenStatus.Disconnected();
     }
 
@@ -159,6 +163,10 @@ internal abstract class WinUsbScreenDriverBase : IScreenDriver
         this._nativeSize = size;
     }
 
+    /// <summary>
+    /// Switches the panel off before its handle closes. Only called while the panel is still taking
+    /// frames: one that has stopped answering would hold up the host's exit for the transfer timeout.
+    /// </summary>
     protected virtual void Shutdown(WinUsbScreenTransport transport)
     {
     }
@@ -172,17 +180,20 @@ internal abstract class WinUsbScreenDriverBase : IScreenDriver
         }
     }
 
-    private void DisposeTransport()
+    private void DisposeTransport(bool releasePanel)
     {
         if (this._transport is { } transport)
         {
-            try
+            if (releasePanel)
             {
-                this.Shutdown(transport);
-            }
-            catch (Exception ex)
-            {
-                this._log.Warn($"{this.Name} shutdown transfer failed.", ex);
+                try
+                {
+                    this.Shutdown(transport);
+                }
+                catch (Exception ex)
+                {
+                    this._log.Warn($"{this.Name} shutdown transfer failed.", ex);
+                }
             }
 
             transport.Dispose();
@@ -215,6 +226,11 @@ internal sealed class VoCoreScreenDriver : WinUsbScreenDriverBase
         if (!transport.ResetPipe(VoCoreProtocol.BulkEndpoint))
         {
             this.Log.Warn($"VoCore bulk pipe reset failed (non-fatal): {transport.LastFailure}");
+        }
+
+        if (!transport.LimitBulkWrites(VoCoreProtocol.BulkEndpoint))
+        {
+            this.Log.Warn($"VoCore bulk timeout could not be set (non-fatal): {transport.LastFailure}");
         }
 
         ScreenNativeSize native = this.ResolveNativeSize(transport, config);
@@ -316,11 +332,18 @@ internal sealed class VoCoreScreenDriver : WinUsbScreenDriverBase
 
     protected override void Shutdown(WinUsbScreenTransport transport)
     {
-        // Closing the handle returns the display to firmware ownership. Avoid a
-        // separate brightness control transfer here: firmware variants that do
-        // not acknowledge that command can otherwise stall application shutdown.
+        // Backlight off, like other screen apps do when they let go; the next owner turns it back on
+        // (Initialize above does). Closing the handle alone leaves the last dash frame lit.
+        if (!transport.ControlOut(
+                VoCoreProtocol.RequestTypeOut,
+                VoCoreProtocol.VendorRequest,
+                value: 0,
+                index: 0,
+                VoCoreProtocol.BrightnessOffCommand))
+        {
+            this.Log.Warn($"VoCore backlight off failed at disconnect: {transport.LastFailure}");
+        }
     }
-
 }
 
 /// <summary>USBD480 NX WinUSB driver (control SET_ADDRESS then bulk pixel write). Runtime-unverified.</summary>
@@ -341,6 +364,10 @@ internal sealed class Usbd480ScreenDriver : WinUsbScreenDriverBase
     {
         this.Log.Debug("USBD480 initialization: disabling WinUSB AUTO_SUSPEND.");
         Require(transport.DisableAutoSuspend(), transport, "USBD480 wake");
+        if (!transport.LimitBulkWrites(Usbd480Protocol.BulkEndpoint))
+        {
+            this.Log.Warn($"USBD480 bulk timeout could not be set (non-fatal): {transport.LastFailure}");
+        }
 
         this.Log.Debug("USBD480 initialization: querying device details with request 0x80.");
         byte[] details = new byte[Usbd480Protocol.DetailsBlockSize];
@@ -373,7 +400,7 @@ internal sealed class Usbd480ScreenDriver : WinUsbScreenDriverBase
         ScreenNativeSize native = Usbd480Protocol.ResolveNativeSize(reported, config.Width, config.Height);
         this.SetNativeSize(native.Width, native.Height);
         this.Log.Info(
-            $"USBD480 identified: name={(string.IsNullOrWhiteSpace(reported?.Name) ? "unknown" : reported!.Name)} " +
+            $"USBD480 identified: name={(reported?.Name is { } name && !string.IsNullOrWhiteSpace(name) ? name : "unknown")} " +
             $"native={native.Width}x{native.Height} configured={config.Width}x{config.Height}.");
 
         this.Log.Debug("USBD480 initialization: restoring brightness with request 0x81.");
