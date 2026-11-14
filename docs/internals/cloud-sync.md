@@ -33,8 +33,8 @@ setup flow is `app/desktop/src/onboarding/flow.ts`. The sync is
 - Upload sends only items whose hash changed since the last sync. Download takes items missing
   here, or changed only remotely. If both sides changed an item, this PC wins and the item is
   counted as a conflict. There is no merge.
-- A dash's "default" flag belongs to the PC: it is stripped on upload and kept as it was on
-  download.
+- A dash travels whole, its category included. The list of custom categories is per PC, so a
+  downloaded dash whose category this PC lacks adds it as a custom category.
 - "Web only" (`Remote`) deletes a session here only after the server confirmed that exact
   content, and only once the session has ended. Setups and dashes always stay local, because
   driving needs them. A downloaded session is removed again by the next upload. That is what

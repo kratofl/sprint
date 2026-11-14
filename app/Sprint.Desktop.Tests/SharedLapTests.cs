@@ -1,4 +1,5 @@
-using Sprint.Desktop.Features.DrivingGuide;
+using System.IO.Compression;
+using Sprint.Desktop.Features.Analysis;
 using Sprint.Desktop.Features.SessionPlanning;
 using Sprint.Desktop.Features.Sharing;
 using Xunit;
@@ -6,9 +7,8 @@ using Xunit;
 namespace Sprint.Desktop.Tests;
 
 /// <summary>
-/// Lap files and the one path a lap from somebody else takes into the corpus (#198, shared with
-/// #197). Trading files is how sim communities already work, so this is not a stopgap for the
-/// cloud — both ship, through the same format and the same importer.
+/// Lap files and the one path a lap from somebody else takes into the corpus (#198). Laps are
+/// shared only as files: trading files is how sim communities already work.
 /// </summary>
 public sealed class SharedLapTests
 {
@@ -18,12 +18,12 @@ public sealed class SharedLapTests
     [Fact]
     public void ALapRoundTripsThroughAFileWithItsProvenance()
     {
-        var lap = Lap();
+        SharedLap lap = Lap();
 
-        var result = SharedLapFile.Read(Written(lap));
+        SharedLapReadResult result = SharedLapFile.Read(Written(lap));
 
         Assert.True(result.Ok);
-        var read = result.Lap!;
+        SharedLap read = result.Lap!;
         Assert.Equal("Ada", read.Provenance.SharedBy);
         Assert.Equal(SharedLapSources.File, read.Provenance.SourceKind);
         Assert.Equal("Spa-Francorchamps", read.Context.TrackCourse);
@@ -36,21 +36,21 @@ public sealed class SharedLapTests
     public void AChannelThisBuildDoesNotKnowSurvivesTheRoundTrip()
     {
         // The point of naming channels: a file written by a later Sprint must still read whole.
-        var lap = Lap();
+        SharedLap lap = Lap();
         lap.Trace.Channels["tyreTempFl"] = Enumerable.Repeat(82f, lap.Trace.SampleCount).ToArray();
 
-        var read = SharedLapFile.Read(Written(lap)).Lap!;
+        SharedLap read = SharedLapFile.Read(Written(lap)).Lap!;
 
-        Assert.True(read.Trace.TryGetChannel("tyreTempFl", out var values));
+        Assert.True(read.Trace.TryGetChannel("tyreTempFl", out float[]? values));
         Assert.Equal(82f, values[0]);
     }
 
     [Fact]
     public void AFileThatIsNotALapFileIsNamedAsSuch()
     {
-        using var stream = new MemoryStream("hello"u8.ToArray());
+        using MemoryStream stream = new MemoryStream("hello"u8.ToArray());
 
-        var result = SharedLapFile.Read(stream);
+        SharedLapReadResult result = SharedLapFile.Read(stream);
 
         Assert.False(result.Ok);
         Assert.Equal(SharedLapReadError.Damaged, result.Error);
@@ -60,8 +60,8 @@ public sealed class SharedLapTests
     [Fact]
     public void AWellFormedFileWithTheWrongMagicIsRejectedAsNotALapFile()
     {
-        using var stream = new MemoryStream();
-        using (var deflate = new System.IO.Compression.DeflateStream(
+        using MemoryStream stream = new MemoryStream();
+        using (DeflateStream deflate = new System.IO.Compression.DeflateStream(
             stream, System.IO.Compression.CompressionLevel.Fastest, leaveOpen: true))
         {
             deflate.Write("NOPE!nonsense payload here"u8);
@@ -74,10 +74,10 @@ public sealed class SharedLapTests
     [Fact]
     public void ATruncatedFileIsReportedAsDamagedRatherThanThrowing()
     {
-        var full = Written(Lap()).ToArray();
-        using var truncated = new MemoryStream(full[..(full.Length / 2)]);
+        byte[] full = Written(Lap()).ToArray();
+        using MemoryStream truncated = new MemoryStream(full[..(full.Length / 2)]);
 
-        var result = SharedLapFile.Read(truncated);
+        SharedLapReadResult result = SharedLapFile.Read(truncated);
 
         Assert.False(result.Ok);
         Assert.Equal(SharedLapReadError.Damaged, result.Error);
@@ -86,7 +86,7 @@ public sealed class SharedLapTests
     [Fact]
     public void TheSuggestedNameSaysWhichLapItIs()
     {
-        var name = SharedLapFile.SuggestedFileName(Lap());
+        string name = SharedLapFile.SuggestedFileName(Lap());
 
         Assert.EndsWith(SharedLapFile.Extension, name, StringComparison.Ordinal);
         Assert.Contains("Spa-Francorchamps", name, StringComparison.Ordinal);
@@ -97,15 +97,15 @@ public sealed class SharedLapTests
     [Fact]
     public void ImportingFilesTheLapAsAThirdPartySessionWithItsTrace()
     {
-        var (history, traces, importer) = Corpus();
+        (FakeHistory? history, FakeTraces? traces, SharedLapImporter? importer) = Corpus();
 
-        var result = importer.Import(Lap());
+        SharedLapImportResult result = importer.Import(Lap());
 
         Assert.True(result.Added);
-        var session = Assert.Single(history.Saved);
+        LapHistorySession session = Assert.Single(history.Saved);
         Assert.Equal(LapHistoryOrigin.Shared, session.Origin);
         Assert.Equal("Ada", session.SharedFrom);
-        var lap = Assert.Single(session.Laps);
+        LapHistoryRecord lap = Assert.Single(session.Laps);
         Assert.True(lap.HasChannelTrace);
         Assert.NotNull(traces.Load(lap.TraceId!));
     }
@@ -115,23 +115,38 @@ public sealed class SharedLapTests
     {
         // The reference curve is regenerated from the trace's elapsed-time channel, which is
         // exactly why that channel is stored.
-        var (history, _, importer) = Corpus();
+        (FakeHistory? history, FakeTraces _, SharedLapImporter? importer) = Corpus();
 
         importer.Import(Lap());
 
-        var lap = history.Saved[0].Laps[0];
+        LapHistoryRecord lap = history.Saved[0].Laps[0];
         Assert.True(lap.HasReferenceCurve);
         Assert.Equal(101.5, lap.ReferenceCurve!.TimesSeconds[^1], 1);
+    }
+
+    [Fact]
+    public void A_lap_sent_by_an_older_and_a_newer_Sprint_is_filed_once()
+    {
+        // An older Sprint sent the livery as the car; a newer one sends the class name and the livery beside it.
+        (FakeHistory history, _, SharedLapImporter importer) = Corpus();
+        SharedLap older = Lap() with { Context = new LapHistoryContext { Game = "LeMansUltimate", TrackCourse = "Spa-Francorchamps", CarModel = "Porsche 963:#6 Penske" } };
+        SharedLap newer = Lap() with { Context = new LapHistoryContext { Game = "LeMansUltimate", TrackCourse = "Spa-Francorchamps", CarModel = "Hypercar Porsche", Livery = "Porsche 963:#6 Penske" } };
+        importer.Import(older);
+
+        SharedLapImportResult second = importer.Import(newer);
+
+        Assert.True(second.AlreadyPresent);
+        Assert.Single(history.Saved);
     }
 
     [Fact]
     public void ImportingTheSameLapTwiceDoesNotDuplicateIt()
     {
         // The same lap legitimately arrives as a file from one friend and by code from another.
-        var (history, _, importer) = Corpus();
+        (FakeHistory? history, FakeTraces _, SharedLapImporter? importer) = Corpus();
         importer.Import(Lap());
 
-        var second = importer.Import(Lap());
+        SharedLapImportResult second = importer.Import(Lap());
 
         Assert.False(second.Added);
         Assert.True(second.AlreadyPresent);
@@ -139,9 +154,24 @@ public sealed class SharedLapTests
     }
 
     [Fact]
+    public void ALapCanBeCheckedForBeingAlreadyHereWithoutFilingIt()
+    {
+        // The import dialog says "already in your laps" before the driver confirms anything.
+        (FakeHistory history, FakeTraces _, SharedLapImporter importer) = Corpus();
+
+        Assert.False(importer.IsPresent(Lap()));
+        Assert.Empty(history.Saved);
+
+        importer.Import(Lap());
+
+        Assert.True(importer.IsPresent(Lap()));
+        Assert.False(importer.IsPresent(Lap() with { LapNumber = 7, LapTimeSeconds = 99.2 }));
+    }
+
+    [Fact]
     public void TwoDifferentLapsFromTheSameDriverAreBothKept()
     {
-        var (history, _, importer) = Corpus();
+        (FakeHistory? history, FakeTraces _, SharedLapImporter? importer) = Corpus();
 
         importer.Import(Lap());
         importer.Import(Lap() with { LapNumber = 7, LapTimeSeconds = 99.2 });
@@ -152,7 +182,7 @@ public sealed class SharedLapTests
     [Fact]
     public void TheSameLapFromADifferentDriverIsADifferentLap()
     {
-        var (history, _, importer) = Corpus();
+        (FakeHistory? history, FakeTraces _, SharedLapImporter? importer) = Corpus();
 
         importer.Import(Lap());
         importer.Import(Lap() with { Provenance = Provenance() with { SharedBy = "Grace" } });
@@ -163,7 +193,7 @@ public sealed class SharedLapTests
     [Fact]
     public void ALapSharedWithoutANameIsStillAttributedHonestly()
     {
-        var (history, _, importer) = Corpus();
+        (FakeHistory? history, FakeTraces _, SharedLapImporter? importer) = Corpus();
 
         importer.Import(Lap() with { Provenance = Provenance() with { SharedBy = null } });
 
@@ -171,27 +201,14 @@ public sealed class SharedLapTests
     }
 
     [Fact]
-    public void ACloudLapRecordsTheCodeItWasPulledWith()
-    {
-        var (history, _, importer) = Corpus();
-
-        importer.Import(Lap() with
-        {
-            Provenance = Provenance() with { SourceKind = SharedLapSources.Cloud, ShareCode = "ABC123" },
-        });
-
-        Assert.Equal("ABC123", history.Saved[0].ShareCode);
-    }
-
-    [Fact]
     public void AnImportedLapShowsUpInTheCorpusBrowserAsSelectable()
     {
-        var (history, traces, importer) = Corpus();
+        (FakeHistory? history, FakeTraces? traces, SharedLapImporter? importer) = Corpus();
         importer.Import(Lap());
 
-        var browser = new Sprint.Desktop.Features.Analysis.LapCorpusBrowser(history, traces);
-        var session = Assert.Single(browser.Sessions());
-        var lap = Assert.Single(browser.Laps(session));
+        LapCorpusBrowser browser = new Sprint.Desktop.Features.Analysis.LapCorpusBrowser(history, traces);
+        CorpusSession session = Assert.Single(browser.Sessions());
+        CorpusLap lap = Assert.Single(browser.Laps(session));
 
         Assert.True(lap.HasChannels);
         Assert.Equal(LapTargetTier.FullTrace, lap.Tier);
@@ -199,7 +216,7 @@ public sealed class SharedLapTests
     }
 
     [Fact]
-    public void AnExportedLapWithPositionsBecomesTheFriendsDrivingGuide()
+    public void AnExportedLapCarriesItsPositionsIntoTheFriendsCorpus()
     {
         (FakeHistory mine, FakeTraces myTraces, SharedLapImporter _) = Corpus();
         LapChannelTrace driven = Trace();
@@ -207,7 +224,7 @@ public sealed class SharedLapTests
         myTraces.Save("trace-4", driven);
         mine.Save(Recorded("mine", lapNumber: 4, traceId: "trace-4"));
 
-        SharedLapExportResult export = SharedLapExport.Build(mine, myTraces, "mine", 4, " Alex Morgan ", Now);
+        SharedLapExportResult export = SharedLapExport.Build(mine, myTraces, "mine", 4, " Alex Morgan ", Now, []);
 
         Assert.True(export.HasPositions);
         Assert.NotNull(export.Lap);
@@ -217,11 +234,11 @@ public sealed class SharedLapTests
         (FakeHistory friend, FakeTraces friendTraces, SharedLapImporter friendImporter) = Corpus();
         Assert.True(friendImporter.Import(read.Lap).Added);
 
-        (DrivingGuideLap Lap, DrivingGuideGeometry Geometry)? guide =
-            new DrivingGuideLapPicker(friend, friendTraces).Pick("Le Mans Ultimate", "Spa-Francorchamps", "Porsche 963");
-
-        Assert.NotNull(guide);
-        Assert.Equal(101.5, guide.Value.Lap.LapTimeSeconds);
+        LapTraceInfo imported = Assert.Single(friendTraces.List());
+        LapChannelTrace? trace = friendTraces.Load(imported.TraceId);
+        Assert.NotNull(trace);
+        Assert.True(trace.TryGetChannel(LapTraceChannels.WorldX, out float[] _));
+        Assert.Equal(101.5, Assert.Single(Assert.Single(friend.Saved).Laps).LapTimeSeconds);
     }
 
     [Fact]
@@ -230,8 +247,8 @@ public sealed class SharedLapTests
         (FakeHistory history, FakeTraces traces, SharedLapImporter _) = Corpus();
         history.Save(Recorded("mine", lapNumber: 4, traceId: null));
 
-        SharedLapExportResult timeOnly = SharedLapExport.Build(history, traces, "mine", 4, "Alex Morgan", Now);
-        SharedLapExportResult gone = SharedLapExport.Build(history, traces, "mine", 9, "Alex Morgan", Now);
+        SharedLapExportResult timeOnly = SharedLapExport.Build(history, traces, "mine", 4, "Alex Morgan", Now, []);
+        SharedLapExportResult gone = SharedLapExport.Build(history, traces, "mine", 9, "Alex Morgan", Now, []);
 
         Assert.Null(timeOnly.Lap);
         Assert.Contains("only a time", timeOnly.Error);
@@ -246,7 +263,7 @@ public sealed class SharedLapTests
         SharedLapImportResult imported = importer.Import(Lap());
         int lapNumber = Assert.Single(Assert.Single(history.Saved).Laps).LapNumber;
 
-        SharedLapExportResult export = SharedLapExport.Build(history, traces, imported.SessionId, lapNumber, "Alex Morgan", Now);
+        SharedLapExportResult export = SharedLapExport.Build(history, traces, imported.SessionId, lapNumber, "Alex Morgan", Now, []);
 
         Assert.Equal("Ada", export.Lap?.Provenance.SharedBy);
         Assert.False(export.HasPositions);
@@ -260,7 +277,7 @@ public sealed class SharedLapTests
         Laps = [new LapHistoryRecord { LapNumber = lapNumber, LapTimeSeconds = 101.5, TraceId = traceId }],
     };
 
-    /// <summary>A circular track with the pedals a guide needs: one braking zone, throttle elsewhere.</summary>
+    /// <summary>A circular track with one braking zone and throttle elsewhere.</summary>
     private static void AddWorldChannels(LapChannelTrace trace)
     {
         int count = trace.SampleCount;
@@ -289,14 +306,14 @@ public sealed class SharedLapTests
 
     private static (FakeHistory History, FakeTraces Traces, SharedLapImporter Importer) Corpus()
     {
-        var history = new FakeHistory();
-        var traces = new FakeTraces();
+        FakeHistory history = new FakeHistory();
+        FakeTraces traces = new FakeTraces();
         return (history, traces, new SharedLapImporter(history, traces, () => Now));
     }
 
     private static MemoryStream Written(SharedLap lap)
     {
-        var stream = new MemoryStream();
+        MemoryStream stream = new MemoryStream();
         SharedLapFile.Write(stream, lap);
         stream.Position = 0;
         return stream;
@@ -325,19 +342,19 @@ public sealed class SharedLapTests
 
     private static LapChannelTrace Trace()
     {
-        const int Count = 501;
-        var speed = new float[Count];
-        var elapsed = new float[Count];
-        for (var i = 0; i < Count; i++)
+        const int count = 501;
+        float[] speed = new float[count];
+        float[] elapsed = new float[count];
+        for (int i = 0; i < count; i++)
         {
-            var t = i / (double)(Count - 1);
+            double t = i / (double)(count - 1);
             speed[i] = (float)(100 + (200 * t));
             elapsed[i] = (float)(101.5 * t);
         }
 
         return new LapChannelTrace
         {
-            PositionStep = 1.0 / (Count - 1),
+            PositionStep = 1.0 / (count - 1),
             TrackLengthMeters = TrackLength,
             Channels = new Dictionary<string, float[]>(StringComparer.Ordinal)
             {
@@ -351,29 +368,29 @@ public sealed class SharedLapTests
     {
         public List<LapHistorySession> Saved { get; } = [];
 
-        public IReadOnlyList<LapHistorySession> LoadAll() => Saved;
+        public IReadOnlyList<LapHistorySession> LoadAll() => this.Saved;
 
         public void Save(LapHistorySession session)
         {
-            Saved.RemoveAll(existing => existing.Id == session.Id);
-            Saved.Add(session);
+            this.Saved.RemoveAll(existing => existing.Id == session.Id);
+            this.Saved.Add(session);
         }
 
-        public void Delete(string sessionId) => Saved.RemoveAll(s => s.Id == sessionId);
+        public void Delete(string sessionId) => this.Saved.RemoveAll(s => s.Id == sessionId);
     }
 
     private sealed class FakeTraces : ILapTraceStore
     {
         private readonly Dictionary<string, LapChannelTrace> _all = new(StringComparer.Ordinal);
 
-        public void Save(string traceId, LapChannelTrace trace) => _all[traceId] = trace;
+        public void Save(string traceId, LapChannelTrace trace) => this._all[traceId] = trace;
 
         public LapChannelTrace? Load(string traceId) =>
-            _all.TryGetValue(traceId, out var trace) ? trace : null;
+            this._all.TryGetValue(traceId, out LapChannelTrace? trace) ? trace : null;
 
-        public void Delete(string traceId) => _all.Remove(traceId);
+        public void Delete(string traceId) => this._all.Remove(traceId);
 
         public IReadOnlyList<LapTraceInfo> List() =>
-            [.. _all.Select(pair => new LapTraceInfo(pair.Key, 0, Now))];
+            [.. this._all.Select(pair => new LapTraceInfo(pair.Key, 0, Now))];
     }
 }

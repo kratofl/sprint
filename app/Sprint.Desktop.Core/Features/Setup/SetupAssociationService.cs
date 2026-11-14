@@ -1,3 +1,4 @@
+using System.Text;
 using Sprint.Desktop.Features.SessionPlanning;
 
 namespace Sprint.Desktop.Features.Setup;
@@ -35,7 +36,7 @@ public static class SetupAssociation
 public sealed record SetupAssociationProposal(SetupSnapshot? Candidate, string Reason)
 {
     /// <summary>True when no setup could be identified, so confirming records <see cref="SetupAssociation.Unknown"/>.</summary>
-    public bool IsUnknown => Candidate is null;
+    public bool IsUnknown => this.Candidate is null;
 
     /// <summary>
     /// Rear brake bias as telemetry observed it, when the caller supplied it, and the value
@@ -55,7 +56,7 @@ public sealed record SetupAssociationProposal(SetupSnapshot? Candidate, string R
     /// <summary>
     /// What confirming this proposal as-is records: the candidate's id, or the unknown marker.
     /// </summary>
-    public string Reference => Candidate?.Id ?? SetupAssociation.Unknown;
+    public string Reference => this.Candidate?.Id ?? SetupAssociation.Unknown;
 }
 
 /// <summary>
@@ -76,8 +77,8 @@ public sealed class SetupAssociationService
 
     public SetupAssociationService(ISetupSnapshotStore setups, ILapHistoryStore history)
     {
-        _setups = setups ?? throw new ArgumentNullException(nameof(setups));
-        _history = history ?? throw new ArgumentNullException(nameof(history));
+        this._setups = setups ?? throw new ArgumentNullException(nameof(setups));
+        this._history = history ?? throw new ArgumentNullException(nameof(history));
     }
 
     /// <summary>
@@ -93,8 +94,8 @@ public sealed class SetupAssociationService
     {
         ArgumentNullException.ThrowIfNull(session);
 
-        var context = session.Context;
-        var candidates = _setups.LoadAll()
+        LapHistoryContext context = session.Context;
+        List<SetupSnapshot> candidates = this._setups.LoadAll()
             .Where(snapshot => Matches(snapshot, context))
             // The setup in the car is the one most recently saved for it. The file's own
             // timestamp, not when Sprint captured it: a first capture pass sees a folder of
@@ -112,7 +113,7 @@ public sealed class SetupAssociationService
             };
         }
 
-        var candidate = candidates[0];
+        SetupSnapshot candidate = candidates[0];
         return new SetupAssociationProposal(
             candidate,
             $"Most recently saved setup for {Describe(context)}.")
@@ -138,9 +139,9 @@ public sealed class SetupAssociationService
         ArgumentException.ThrowIfNullOrEmpty(reference);
 
         session.SetupReference = reference;
-        _history.Save(session);
+        this._history.Save(session);
 
-        foreach (var lap in segment?.Laps ?? [])
+        foreach (LapSummary lap in segment?.Laps ?? [])
         {
             lap.SetupReference = reference;
         }
@@ -154,7 +155,7 @@ public sealed class SetupAssociationService
     private static bool Matches(SetupSnapshot snapshot, LapHistoryContext context) =>
         string.Equals(snapshot.Game, context.Game, StringComparison.OrdinalIgnoreCase)
         && NamesTrack(snapshot.Track, context.TrackCourse)
-        && DescribesCar(snapshot.VehicleDescriptor, context.CarModel);
+        && DescribesCar(snapshot.VehicleDescriptor, context.CarType ?? context.CarModel);
 
     /// <summary>
     /// Whether the folder the game filed a setup under names the course that was driven. The
@@ -164,8 +165,8 @@ public sealed class SetupAssociationService
     /// </summary>
     private static bool NamesTrack(string? track, string course)
     {
-        var stored = Normalize(track);
-        var driven = Normalize(course);
+        string stored = Normalize(track);
+        string driven = Normalize(course);
         if (stored.Length == 0 || driven.Length == 0)
         {
             return false;
@@ -178,13 +179,14 @@ public sealed class SetupAssociationService
     /// <summary>
     /// Whether a setup's declared class names the car that was driven. The declaration is a
     /// class string ("Hypercar Porsche_963 WEC2025") and the driven car is a model
-    /// ("Porsche 963"), so every word of the model must appear in it — which one car's class
-    /// string does and another's does not.
+    /// ("Porsche 963", the context's car type; its name where no type was recorded), so every
+    /// word of the model must appear in it — which one car's class string does and another's
+    /// does not.
     /// </summary>
     private static bool DescribesCar(string? vehicleDescriptor, string carModel)
     {
-        var declared = Normalize(vehicleDescriptor);
-        var driven = Normalize(carModel);
+        string declared = Normalize(vehicleDescriptor);
+        string driven = Normalize(carModel);
         if (declared.Length == 0 || driven.Length == 0)
         {
             return false;
@@ -206,8 +208,8 @@ public sealed class SetupAssociationService
             return "";
         }
 
-        var normalized = new System.Text.StringBuilder(value.Length);
-        foreach (var c in value)
+        StringBuilder normalized = new System.Text.StringBuilder(value.Length);
+        foreach (char c in value)
         {
             if (char.IsLetterOrDigit(c))
             {

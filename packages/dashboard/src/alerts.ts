@@ -1,25 +1,12 @@
-// Stateful parameter-change alert detection, ported from the desktop client's
-// `Features/Dashes/DashAlertTracker.cs` and `DashAttention.cs`. Compares each frame to the
-// previous one for the alert types configured on the layout (tc/abs/brake bias/engine map) and
-// produces a transient popup that expires after a fixed duration. There is no internal clock:
-// callers drive time explicitly via `advanceTo`, which is what makes expiry deterministic to test.
+// Dash alerts as the editor sees them: the alert types, the popups an alert shows, and the
+// sample popup the designer plays so an alert's look can be set without the car. The Rust
+// renderer (renderer/src/alerts.rs) detects real changes on the wheel and draws every popup;
+// `previewAlertBanner` here builds the same popup it would, so its look is the alert's own or
+// the layout's exactly as on the wheel.
 
-import type { TelemetryFrame } from '@sprint/types'
 import type { DashAlert, DashLayout } from './index'
 import { canonicalAlertColorToken, dashSettingColors, findPresetByAlertColorToken, presetSwatchColor, type DashPaletteColors } from './palette'
-import { formatFrontBrakeBias } from './format'
-import type { DashTargets } from './bindings'
-import { LapSummaryWatcher, type LapSummary } from './lapSummary'
-
-export type DashCondition =
-  | 'neutral'
-  | 'goodOnTarget'
-  | 'coldLow'
-  | 'assistActive'
-  | 'warning'
-  | 'critical'
-  | 'fault'
-  | 'raceControl'
+import type { DashMultiDialPopup } from './multiDial'
 
 /**
  * The parameter changes a dash alert can fire on. `DashAlert.type` stays a plain
@@ -55,44 +42,68 @@ export interface DashSettingPopup {
   invertColors: boolean
 }
 
-/** The full-screen summary of a finished lap. */
-export interface DashLapSummaryPopup extends LapSummary {
+/**
+ * The full-screen summary of a finished lap. Each delta is actual minus target (negative is
+ * better) and null when there is nothing to compare against.
+ */
+export interface DashLapSummaryPopup {
   kind: 'lapSummary'
+  lap: number
+  /** The session's lap limit, for "LAP 12 OF 24"; null when the session has none. */
+  totalLaps: number | null
+  /** The race position as the lap finished; null when the game reports none. */
+  position: number | null
+  lapTime: number
+  /** False when the game flagged the lap invalid; it never counts as a best. */
+  valid: boolean
+  /** Lap time minus the best valid lap before it. Negative is a new best. */
+  lapDelta: number | null
+  /** Lap time minus the plan's lap-time target the lap was driven with. Negative is faster. */
+  targetDelta: number | null
+  /** Liters the lap used, or null when the lap's start was not seen or the car was refueled. */
+  fuelUsed: number | null
+  /** Fuel used minus the plan's per-lap target. Positive means over target. */
+  fuelDelta: number | null
 }
 
-/** What DashAlertTracker.evaluate asks the renderer to draw over the dash. */
-export type DashAlertBanner = DashSettingPopup | DashLapSummaryPopup
+/** What the renderer draws over the dash: the JSON `render_still` takes as its banner, the multi-dial popup included. */
+export type DashAlertBanner = DashSettingPopup | DashLapSummaryPopup | DashMultiDialPopup
 
-/** How long the lap summary stays up unless its alert sets its own duration: longer than a setting popup, there are two numbers to read. */
+/** How long the lap summary stays up unless its alert sets its own duration: longer than a setting popup, there is a whole lap to read. */
 export const LAP_SUMMARY_SECONDS = 5
+
+/** The longest the lap summary may stay up; every other alert keeps to `MAX_ALERT_SECONDS`. */
+export const LAP_SUMMARY_MAX_SECONDS = 15
+
+/** The shortest any alert stays up, and the longest a setting popup does. */
+export const MIN_ALERT_SECONDS = 0.5
+export const MAX_ALERT_SECONDS = 5
+
+/** The longest an alert of `type` may stay up (the renderer clamps to the same). */
+export function maxAlertSeconds(type: string): number {
+  return type === 'lap_summary' ? LAP_SUMMARY_MAX_SECONDS : MAX_ALERT_SECONDS
+}
 
 interface ResolvedAlertConfig {
   fullScreen: boolean
-  durationSeconds: number
   invertColors: boolean
   colorToken: string
 }
 
 const DEFAULT_ALERT_CONFIG: ResolvedAlertConfig = {
   fullScreen: true,
-  durationSeconds: 1.5,
   invertColors: false,
   colorToken: 'auto',
 }
 
-/** Narrows the layout's untyped `alertConfig` bag to the fields this tracker reads. */
+/** Narrows the layout's untyped `alertConfig` bag to the look fields a popup reads. */
 function readAlertConfig(raw: Record<string, unknown> | undefined): ResolvedAlertConfig {
   if (!raw) return DEFAULT_ALERT_CONFIG
   return {
     fullScreen: raw.displayMode !== 'center',
-    durationSeconds: typeof raw.durationSeconds === 'number' ? raw.durationSeconds : DEFAULT_ALERT_CONFIG.durationSeconds,
     invertColors: typeof raw.invertColors === 'boolean' ? raw.invertColors : DEFAULT_ALERT_CONFIG.invertColors,
     colorToken: typeof raw.colorToken === 'string' ? raw.colorToken : DEFAULT_ALERT_CONFIG.colorToken,
   }
-}
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, value))
 }
 
 /** "auto" is the setting's own identity color; a named token overrides it with that preset's swatch. */
@@ -105,39 +116,41 @@ function resolveAlertColor(token: string | undefined, settingColor: string, pale
   return canonicalAlertColorToken(token) === 'yellow' ? palette.warning : settingColor
 }
 
-/** How each setting reads, prints and colors itself. Changes are detected on the printed value, so sensor noise below the display precision never fires. */
-const SETTINGS: Record<SettingAlertType, { title: string; color: string; value: (frame: TelemetryFrame) => string; max: (frame: TelemetryFrame) => number }> = {
-  tc_change: { title: 'TC', color: dashSettingColors.tc, value: (frame) => String(Math.trunc(frame.electronics.tc)), max: (frame) => frame.electronics.tcMax },
-  abs_change: { title: 'ABS', color: dashSettingColors.abs, value: (frame) => String(Math.trunc(frame.electronics.abs)), max: (frame) => frame.electronics.absMax },
-  bias_change: { title: 'BIAS', color: dashSettingColors.brakeBias, value: (frame) => formatFrontBrakeBias(frame.car.brakeBiasRear), max: () => 0 },
-  enginemap_change: { title: 'MAP', color: dashSettingColors.engineMap, value: (frame) => String(Math.trunc(frame.electronics.motorMap)), max: (frame) => frame.electronics.motorMapMax },
+/** How each setting titles and colors its popup. */
+const SETTINGS: Record<SettingAlertType, { title: string; color: string }> = {
+  tc_change: { title: 'TC', color: dashSettingColors.tc },
+  abs_change: { title: 'ABS', color: dashSettingColors.abs },
+  bias_change: { title: 'BIAS', color: dashSettingColors.brakeBias },
+  enginemap_change: { title: 'MAP', color: dashSettingColors.engineMap },
 }
 
 const isSettingAlertType = (type: string): type is SettingAlertType => type in SETTINGS
 
-function detectCandidate(
-  alert: DashAlert,
-  frame: TelemetryFrame,
-  prev: TelemetryFrame,
-  config: ResolvedAlertConfig,
-  layout: DashLayout,
-  palette: DashPaletteColors,
-): DashSettingPopup | null {
-  if (!isSettingAlertType(alert.type)) return null
-  const setting = SETTINGS[alert.type]
-  const value = setting.value(frame)
-  const previous = setting.value(prev)
-  if (value === previous) return null
+/** Whether an alert shows full screen: its own choice when it has one, otherwise the layout's. */
+function alertFullScreen(alert: DashAlert, config: ResolvedAlertConfig): boolean {
+  if (alert.displayMode === 'center') return false
+  if (alert.displayMode === 'full') return true
+  return config.fullScreen
+}
 
-  const max = setting.max(frame)
+/** A setting's change as the popup shows it. */
+interface SettingChange {
+  value: string
+  previous: string
+  max: number | null
+}
+
+/** The popup for one setting change, in the alert's look (its own, or the layout's). */
+function settingPopup(alert: DashAlert, type: SettingAlertType, change: SettingChange, config: ResolvedAlertConfig, layout: DashLayout, palette: DashPaletteColors): DashSettingPopup {
+  const setting = SETTINGS[type]
   return {
     kind: 'setting',
     title: setting.title,
-    value,
-    previous,
-    max: max > 0 ? max : null,
+    value: change.value,
+    previous: change.previous,
+    max: change.max,
     color: resolveAlertColor(alert.colorToken ?? config.colorToken, setting.color, palette),
-    fullScreen: config.fullScreen,
+    fullScreen: alertFullScreen(alert, config),
     col: alert.col,
     row: alert.row,
     colSpan: alert.colSpan,
@@ -148,87 +161,46 @@ function detectCandidate(
   }
 }
 
-/**
- * Feeds frames through the setting change detectors and the lap watcher, and holds the
- * resulting popup for its configured duration. Time is supplied explicitly via `advanceTo`
- * (epoch milliseconds) rather than read from a real clock, so expiry is exercised
- * deterministically.
- */
-export class DashAlertTracker {
-  private readonly fallbackDurationSeconds: number
-  private readonly laps = new LapSummaryWatcher()
-  private now = 0
-  private prev: TelemetryFrame | null = null
-  private active: DashAlertBanner | null = null
-  private expiresAt = 0
-
-  constructor(fallbackDurationSeconds = 1.5) {
-    this.fallbackDurationSeconds = fallbackDurationSeconds
-  }
-
-  /** Advances the tracker's clock to `nowMs` (epoch milliseconds). Call before `evaluate`. */
-  advanceTo(nowMs: number): void {
-    this.now = nowMs
-  }
-
-  /**
-   * Feeds a frame in and returns the popup to draw this tick, or `null` when none is active.
-   * `targets` is the driver's plan; its fuel target is what the lap summary compares against.
-   */
-  evaluate(layout: DashLayout, frame: TelemetryFrame, palette: DashPaletteColors, targets: DashTargets | null = null): DashAlertBanner | null {
-    const config = readAlertConfig(layout.alertConfig)
-
-    // Watched even while the summary is off, so turning it on mid-session has a lap to compare.
-    const summary = this.laps.observe(frame, this.now, targets?.fuelPerLapLiters ?? null)
-    const summaryAlert = layout.alerts.find((alert) => alert.enabled && alert.type === 'lap_summary')
-    if (summary && summaryAlert) {
-      this.active = { kind: 'lapSummary', ...summary }
-      this.expiresAt = this.now + clamp(summaryAlert.durationSeconds ?? LAP_SUMMARY_SECONDS, 0.5, LAP_SUMMARY_SECONDS) * 1000
-    }
-
-    // A setting turned on the same frame still wins: it is the driver's own input.
-    if (this.prev) {
-      // Last configured alert that fired this frame wins (matches the desktop painter loop).
-      for (const alert of layout.alerts) {
-        if (!alert.enabled) continue
-        const candidate = detectCandidate(alert, frame, this.prev, config, layout, palette)
-        if (candidate) {
-          this.active = candidate
-          const requested = alert.durationSeconds ?? (config.durationSeconds <= 0 ? this.fallbackDurationSeconds : config.durationSeconds)
-          const duration = clamp(requested, 0.5, 5.0)
-          this.expiresAt = this.now + duration * 1000
-        }
-      }
-    }
-
-    this.prev = frame
-    if (this.active && this.now < this.expiresAt) {
-      return this.active
-    }
-
-    this.active = null
-    return null
-  }
-
-  /** Clears change-tracking state (call when the link goes offline so a stale diff doesn't fire on reconnect). */
-  reset(): void {
-    this.prev = null
-    this.active = null
-    this.laps.reset()
-  }
+// The made-up changes the designer plays an alert with.
+const SAMPLE_CHANGES: Record<SettingAlertType, SettingChange> = {
+  tc_change: { value: '5', previous: '4', max: 9 },
+  abs_change: { value: '3', previous: '4', max: 9 },
+  bias_change: { value: '56.5', previous: '56.0', max: null },
+  enginemap_change: { value: '3', previous: '2', max: 9 },
 }
 
-const CRITICAL_INVERSION_PHASE_MS = 250
+const SAMPLE_LAP: DashLapSummaryPopup = {
+  kind: 'lapSummary',
+  lap: 12,
+  totalLaps: 24,
+  position: 4,
+  lapTime: 124.912,
+  valid: true,
+  lapDelta: -0.214,
+  targetDelta: -0.088,
+  fuelUsed: 2.41,
+  fuelDelta: -0.09,
+}
 
 /**
- * Whether a value's colors should be shown inverted this instant, for the blinking effect on
- * out-of-bounds "critical" readings (two stable/inverted phases per second). Only the
- * critical condition supports animated inversion — everything else never blinks.
+ * The popup `alert` would show, with made-up values, for the designer to play on the dash so its
+ * look can be set without turning a knob in the car. Built exactly as a real change builds it
+ * on the wheel, so it honours the alert's own look and the layout's. Null for a type the
+ * renderer does not know.
  */
-export function isAttentionInverted(condition: DashCondition, requested: boolean, activeForMs: number): boolean {
-  if (!requested || condition !== 'critical' || activeForMs < 0) {
-    return false
-  }
+export function previewAlertBanner(layout: DashLayout, alert: DashAlert, palette: DashPaletteColors): DashAlertBanner | null {
+  if (alert.type === 'lap_summary') return SAMPLE_LAP
+  if (!isSettingAlertType(alert.type)) return null
+  return settingPopup(alert, alert.type, SAMPLE_CHANGES[alert.type], readAlertConfig(layout.alertConfig), layout, palette)
+}
 
-  return Math.floor(activeForMs / CRITICAL_INVERSION_PHASE_MS) % 2 === 1
+/**
+ * The colour an alert colour token paints a popup, for a colour picker: a theme preset's
+ * swatch, or the palette's warning yellow. Null for "auto" (each setting's own colour) and for
+ * a token nothing knows.
+ */
+export function alertColorSwatch(token: string, palette: DashPaletteColors): string | null {
+  const preset = findPresetByAlertColorToken(token)
+  if (preset) return preset.alertColorToken.toLowerCase() === 'auto' ? null : presetSwatchColor(preset)
+  return canonicalAlertColorToken(token) === 'yellow' ? palette.warning : null
 }

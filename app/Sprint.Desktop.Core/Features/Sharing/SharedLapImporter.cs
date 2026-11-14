@@ -11,12 +11,7 @@ public sealed record SharedLapImportResult(bool Added, bool AlreadyPresent, stri
 }
 
 /// <summary>
-/// The one path a lap from somebody else takes into the corpus (#197, #198).
-/// <para>
-/// A file import and a cloud fetch share it rather than each filing their own session: the two
-/// produce the same thing, and two writers would be two chances to record provenance
-/// differently for the same lap.
-/// </para>
+/// The one path a lap from somebody else takes into the corpus (#198).
 /// <para>
 /// A shared lap becomes its own single-lap history session with
 /// <see cref="LapHistoryOrigin.Shared"/>, so every existing corpus reader — statistics, the
@@ -30,17 +25,21 @@ public sealed class SharedLapImporter
     private readonly ILapTraceStore _traces;
     private readonly Func<DateTimeOffset> _clock;
     private readonly ILog _log;
+    private readonly StoredCarNames? _carNames;
 
+    /// <param name="carNames">Names a lap from an older Sprint, which filed it under the livery. Without it the lap keeps the name it came with.</param>
     public SharedLapImporter(
         ILapHistoryStore history,
         ILapTraceStore traces,
         Func<DateTimeOffset>? clock = null,
-        ILog? log = null)
+        ILog? log = null,
+        StoredCarNames? carNames = null)
     {
-        _history = history ?? throw new ArgumentNullException(nameof(history));
-        _traces = traces ?? throw new ArgumentNullException(nameof(traces));
-        _clock = clock ?? (() => DateTimeOffset.UtcNow);
-        _log = log ?? NullLog.Instance;
+        this._history = history ?? throw new ArgumentNullException(nameof(history));
+        this._traces = traces ?? throw new ArgumentNullException(nameof(traces));
+        this._clock = clock ?? (() => DateTimeOffset.UtcNow);
+        this._log = log ?? NullLog.Instance;
+        this._carNames = carNames;
     }
 
     /// <summary>
@@ -52,23 +51,21 @@ public sealed class SharedLapImporter
     {
         ArgumentNullException.ThrowIfNull(lap);
 
-        var fingerprint = lap.Fingerprint;
-        if (_history.LoadAll().FirstOrDefault(session =>
-                string.Equals(session.SharedFingerprint, fingerprint, StringComparison.Ordinal))
-            is { } existing)
+        if (this.Existing(lap) is { } existing)
         {
             return SharedLapImportResult.Duplicate(existing.Id);
         }
 
-        var sessionId = $"shared-{fingerprint}";
-        var traceId = LapTraceId.For(sessionId, lap.LapNumber);
+        string fingerprint = lap.Fingerprint;
+        string sessionId = $"shared-{fingerprint}";
+        string traceId = LapTraceId.For(sessionId, lap.LapNumber);
 
         // The trace goes down first. A record pointing at a trace that is not there yet would
         // advertise a tier the store cannot deliver — the lie the corpus works to avoid — and
         // the reverse (an orphan trace) is something retention already cleans up.
-        _traces.Save(traceId, lap.Trace);
+        this._traces.Save(traceId, lap.Trace);
 
-        var session = new LapHistorySession
+        LapHistorySession session = new LapHistorySession
         {
             Id = sessionId,
             Context = lap.Context,
@@ -79,8 +76,7 @@ public sealed class SharedLapImporter
             StartedAt = lap.Provenance.DrivenAt ?? lap.Provenance.SharedAt,
             EndedAt = lap.Provenance.DrivenAt ?? lap.Provenance.SharedAt,
             SharedFrom = lap.Attribution,
-            SharedAt = _clock(),
-            ShareCode = lap.Provenance.ShareCode,
+            SharedAt = this._clock(),
             SharedFingerprint = fingerprint,
             Laps =
             [
@@ -94,13 +90,41 @@ public sealed class SharedLapImporter
                     // drive a position-accurate delta exactly like one of the driver's own. This
                     // is why elapsed time is a stored channel at all (spec §2.1).
                     ReferenceCurve = CurveFrom(lap.Trace),
+                    // Somebody else's words: kept on the record, where they stay read-only.
+                    Notes = [.. lap.Notes],
                 },
             ],
         };
 
-        _history.Save(session);
-        _log.Info($"Imported a shared lap from {lap.Attribution} at {lap.Context.TrackCourse}");
+        // After the fingerprint: it was taken over the name the lap arrived with, and has to stay
+        // that so the same file imported again is still recognised.
+        this._carNames?.Rename(session.Context, LapHistoryOrigin.Shared);
+        this._history.Save(session);
+        this._log.Info($"Imported a shared lap from {lap.Attribution} at {lap.Context.TrackCourse}");
         return new SharedLapImportResult(true, false, sessionId);
+    }
+
+    /// <summary>
+    /// Whether the lap is already in the corpus, so the driver is told before they confirm an
+    /// import that adding it would change nothing.
+    /// </summary>
+    public bool IsPresent(SharedLap lap)
+    {
+        ArgumentNullException.ThrowIfNull(lap);
+        return this.Existing(lap) is not null;
+    }
+
+    /// <summary>
+    /// The session this lap was filed as before, if any. Matched on either fingerprint: a lap sent
+    /// by an older Sprint was filed under its livery, a newer one under the car's name.
+    /// </summary>
+    private LapHistorySession? Existing(SharedLap lap)
+    {
+        string fingerprint = lap.Fingerprint;
+        string classNameFingerprint = lap.ClassNameFingerprint;
+        return this._history.LoadAll().FirstOrDefault(session =>
+            string.Equals(session.SharedFingerprint, fingerprint, StringComparison.Ordinal)
+            || string.Equals(session.SharedFingerprint, classNameFingerprint, StringComparison.Ordinal));
     }
 
     /// <summary>
@@ -110,16 +134,16 @@ public sealed class SharedLapImporter
     /// </summary>
     private static LapReferenceCurve? CurveFrom(LapChannelTrace trace)
     {
-        if (!trace.TryGetChannel(LapTraceChannels.ElapsedSeconds, out var elapsed) || elapsed.Length < 2)
+        if (!trace.TryGetChannel(LapTraceChannels.ElapsedSeconds, out float[]? elapsed) || elapsed.Length < 2)
         {
             return null;
         }
 
-        var count = (int)Math.Round(1.0 / LapReferenceCurve.PositionStepDefault) + 1;
-        var times = new List<double>(count);
-        for (var i = 0; i < count; i++)
+        int count = (int)Math.Round(1.0 / LapReferenceCurve.PositionStepDefault) + 1;
+        List<double> times = new List<double>(count);
+        for (int i = 0; i < count; i++)
         {
-            var position = i * LapReferenceCurve.PositionStepDefault;
+            double position = i * LapReferenceCurve.PositionStepDefault;
             times.Add(Math.Round(trace.ValueAt(LapTraceChannels.ElapsedSeconds, position) ?? 0, 3));
         }
 

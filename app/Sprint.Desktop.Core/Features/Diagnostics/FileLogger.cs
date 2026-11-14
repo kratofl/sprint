@@ -22,28 +22,28 @@ public sealed class FileLogger : ILog
         int retainDays = 7,
         bool echoToConsole = false)
     {
-        _paths = paths;
-        _minimumLevel = minimumLevel;
-        _clock = clock ?? (() => DateTimeOffset.UtcNow);
-        _echoToConsole = echoToConsole;
-        PruneOldLogs(retainDays);
+        this._paths = paths;
+        this._minimumLevel = minimumLevel;
+        this._clock = clock ?? (() => DateTimeOffset.UtcNow);
+        this._echoToConsole = echoToConsole;
+        this.PruneOldLogs(retainDays);
     }
 
     public void Write(LogLevel level, string message, Exception? exception = null)
     {
-        if (level < _minimumLevel)
+        if (level < this._minimumLevel)
         {
             return;
         }
 
-        var timestamp = _clock();
-        var line = LogFormat.Line(timestamp, level, message, exception);
+        DateTimeOffset timestamp = this._clock();
+        string line = LogFormat.Line(timestamp, level, message, exception);
 
-        lock (_gate)
+        lock (this._gate)
         {
             try
             {
-                File.AppendAllText(_paths.LogFileFor(timestamp), line + Environment.NewLine);
+                File.AppendAllText(this._paths.LogFileFor(timestamp), line + Environment.NewLine);
             }
             catch
             {
@@ -53,7 +53,7 @@ public sealed class FileLogger : ILog
             }
         }
 
-        if (_echoToConsole)
+        if (this._echoToConsole)
         {
             Console.Error.WriteLine(line);
         }
@@ -63,8 +63,8 @@ public sealed class FileLogger : ILog
     {
         try
         {
-            var existing = Directory.EnumerateFiles(_paths.LogDirectory, "sprint-*.log");
-            foreach (var stale in FileRetention.SelectForDeletion(existing, Math.Max(1, retainDays)))
+            IEnumerable<string> existing = Directory.EnumerateFiles(this._paths.LogDirectory, "sprint-*.log");
+            foreach (string stale in FileRetention.SelectForDeletion(existing, Math.Max(1, retainDays)))
             {
                 File.Delete(stale);
             }

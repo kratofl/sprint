@@ -28,11 +28,11 @@ public sealed class ChartStackTests
     [Fact]
     public void Cursor_on_the_shared_domain_reports_a_value_for_every_chart()
     {
-        var controller = new ChartStackController(TwoChartsOverTrackPosition());
+        ChartStackController controller = new ChartStackController(TwoChartsOverTrackPosition());
 
         Assert.True(controller.MoveCursor(0.62));
 
-        var readout = controller.Readout;
+        ChartStackReadout? readout = controller.Readout;
         Assert.NotNull(readout);
         Assert.Equal(0.62, readout.Domain, 6);
         Assert.Equal(2, readout.Charts.Count);
@@ -63,7 +63,7 @@ public sealed class ChartStackTests
     [Fact]
     public void Moving_to_the_same_coordinate_changes_nothing_and_leaving_clears_the_readout()
     {
-        var controller = new ChartStackController(TwoChartsOverTrackPosition());
+        ChartStackController controller = new ChartStackController(TwoChartsOverTrackPosition());
 
         Assert.True(controller.MoveCursor(0.62));
         Assert.False(controller.MoveCursor(0.62));
@@ -78,7 +78,7 @@ public sealed class ChartStackTests
     public void Lap_number_domain_snaps_the_cursor_to_a_whole_lap_and_holds_discrete_values()
     {
         // A stint's fuel use. Lap 4 was invalid and never recorded, so there is a hole.
-        var controller = new ChartStackController(new ChartStack(
+        ChartStackController controller = new ChartStackController(new ChartStack(
             ChartDomain.LapNumbers(1, 6),
             [
                 new ChartPanel(
@@ -111,7 +111,7 @@ public sealed class ChartStackTests
     public void Session_time_domain_stays_continuous_and_labels_the_clock()
     {
         // Track temperature over an hour: exactly 20 + seconds / 200.
-        var controller = new ChartStackController(new ChartStack(
+        ChartStackController controller = new ChartStackController(new ChartStack(
             ChartDomain.SessionTime(0, 3600),
             [new ChartPanel("Track temp", [new ChartSeries("Session", [new(0, 20), new(3600, 38)])]) { Unit = "C" }]));
 
@@ -130,11 +130,11 @@ public sealed class ChartStackTests
     [Fact]
     public void Cursor_exactly_on_a_sample_reports_the_recorded_value()
     {
-        var controller = new ChartStackController(TwoChartsOverTrackPosition());
+        ChartStackController controller = new ChartStackController(TwoChartsOverTrackPosition());
 
         controller.MoveCursor(0.5);
 
-        var readout = controller.Readout!;
+        ChartStackReadout readout = controller.Readout!;
         Assert.Equal(100d, Assert.Single(readout.Charts[0].Series).Value!.Value, 9);
         Assert.Equal(2d, Assert.Single(readout.Charts[1].Series).Value!.Value, 9);
 
@@ -147,8 +147,8 @@ public sealed class ChartStackTests
     public void A_single_sample_chart_is_insufficient_data_and_reads_only_at_its_own_coordinate()
     {
         // One recorded lap cannot be a line, and it says nothing about the laps around it.
-        var panel = new ChartPanel("Fuel used", [new ChartSeries("Stint 1", [new(2, 3.4)])]);
-        var controller = new ChartStackController(new ChartStack(ChartDomain.LapNumbers(1, 3), [panel]));
+        ChartPanel panel = new ChartPanel("Fuel used", [new ChartSeries("Stint 1", [new(2, 3.4)])]);
+        ChartStackController controller = new ChartStackController(new ChartStack(ChartDomain.LapNumbers(1, 3), [panel]));
 
         Assert.Equal(ChartPanelState.InsufficientData, panel.State);
 
@@ -165,8 +165,8 @@ public sealed class ChartStackTests
     [Fact]
     public void An_empty_chart_reports_no_value_at_any_coordinate()
     {
-        var panel = new ChartPanel("Tyre wear", [new ChartSeries("Front left", [])]);
-        var controller = new ChartStackController(new ChartStack(ChartDomain.TrackPosition(), [panel]));
+        ChartPanel panel = new ChartPanel("Tyre wear", [new ChartSeries("Front left", [])]);
+        ChartStackController controller = new ChartStackController(new ChartStack(ChartDomain.TrackPosition(), [panel]));
 
         Assert.Equal(ChartPanelState.Empty, panel.State);
         Assert.Equal(ChartPanelState.Empty, new ChartPanel("Tyre wear", []).State);
@@ -180,17 +180,17 @@ public sealed class ChartStackTests
     {
         // Fuel is recorded for every lap; virtual energy only exists in some games, so its
         // chart has to be able to stand there stating that rather than faking a flat line.
-        var fuel = new ChartPanel("Fuel used", [new ChartSeries("Stint 2", [new(1, 3.0), new(2, 3.2)])]);
-        var energy = new ChartPanel("Virtual energy", [new ChartSeries("Stint 2", [])]);
-        var stack = new ChartStack(ChartDomain.LapNumbers(1, 2), [fuel, energy]);
-        var controller = new ChartStackController(stack);
+        ChartPanel fuel = new ChartPanel("Fuel used", [new ChartSeries("Stint 2", [new(1, 3.0), new(2, 3.2)])]);
+        ChartPanel energy = new ChartPanel("Virtual energy", [new ChartSeries("Stint 2", [])]);
+        ChartStack stack = new ChartStack(ChartDomain.LapNumbers(1, 2), [fuel, energy]);
+        ChartStackController controller = new ChartStackController(stack);
 
         Assert.False(stack.IsEmpty);
         Assert.Equal(ChartPanelState.Ready, fuel.State);
         Assert.Equal(ChartPanelState.Empty, energy.State);
 
         controller.MoveCursor(2);
-        var readout = controller.Readout!;
+        ChartStackReadout readout = controller.Readout!;
         Assert.Equal(3.2, Assert.Single(readout.Charts[0].Series).Value!.Value, 9);
         Assert.Null(Assert.Single(readout.Charts[1].Series).Value);
 
@@ -204,16 +204,16 @@ public sealed class ChartStackTests
     {
         // A quarter-lap step with five stored times, so index i sits at position i * 0.25 and
         // elapsed time is exactly 80 * position.
-        var curve = new LapReferenceCurve { PositionStep = 0.25, TimesSeconds = [0, 20, 40, 60, 80] };
+        LapReferenceCurve curve = new LapReferenceCurve { PositionStep = 0.25, TimesSeconds = [0, 20, 40, 60, 80] };
 
-        var series = LapReferenceCurveSeries.Create(curve, "Lap 14");
+        ChartSeries series = LapReferenceCurveSeries.Create(curve, "Lap 14");
 
         Assert.Equal(5, series.Samples.Count);
         Assert.Equal(0.75, series.Samples[3].X, 9);
         Assert.Equal(60d, series.Samples[3].Y, 9);
         Assert.Equal(ChartInterpolation.Linear, series.Interpolation);
 
-        var controller = new ChartStackController(new ChartStack(
+        ChartStackController controller = new ChartStackController(new ChartStack(
             ChartDomain.TrackPosition(),
             [new ChartPanel("Elapsed", [series]) { Unit = "s" }]));
         controller.MoveCursor(0.62);
@@ -234,7 +234,7 @@ public sealed class ChartStackTests
         // The series covers the middle of the lap only, so both edges of the shared domain
         // fall outside it. Holding the nearest sample would state a measurement at a
         // position nobody drove.
-        var controller = new ChartStackController(new ChartStack(
+        ChartStackController controller = new ChartStackController(new ChartStack(
             ChartDomain.TrackPosition(),
             [new ChartPanel("Speed", [new ChartSeries("Lap 14", [new(0.25, 50), new(0.75, 150)])])]));
 

@@ -73,6 +73,11 @@ pnpm-debug.log*
 # ─── Rust ────────────────────────────────────────────────────────────────────
 target/
 Cargo.lock
+# The dash renderer crate builds a shipped library: its lockfile is committed so every build
+# resolves the same dependencies.
+!packages/dashboard/renderer/Cargo.lock
+# Its WebAssembly build (scripts/build-dash-renderer.mjs --wasm), which the dashboard package loads.
+packages/dashboard/generated/
 
 # ─── Environment & Secrets ───────────────────────────────────────────────────
 .env
@@ -92,9 +97,10 @@ app/build/bin/
 app/Sprint.Desktop.Tests/artifacts/
 # Renamed Electron bundle that `make dev-app` runs from on macOS (scripts/dev.mjs).
 app/desktop/.dev/
-# OpenXR layer: CMake build tree, and the copy `make build-xr-layer` stages for packaging.
-app/Sprint.OpenXrLayer/build/
-app/desktop/resources/openxr-layer/
+# Design mockups (src/mockup/mockup.ts): throwaway A/B/C options, local only.
+app/desktop/src/mockups/
+web/mockups/*
+!web/mockups/README.md
 
 # ─── Next.js ──────────────────────────────────────────────────────────────────
 .next/

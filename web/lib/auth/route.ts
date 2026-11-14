@@ -14,9 +14,11 @@ export const requestPathHeader = 'x-sprint-path'
 // Paths that work signed out. Next internals and static files never reach the
 // proxy (see the matcher in proxy.ts). An engineer invite link
 // (/engineer/invite/<token>) is public too, so it can say who invited you before
-// you sign in.
+// you sign in. So is a design mockup (/mockups/<name>): made-up data, no API, and
+// the page exists only under `next dev` (next.config.ts), so elsewhere it is a 404.
 const publicPaths = ['/sign-in', '/sign-out', '/api/health', '/auth/discord', '/auth/complete']
 const invitePath = /^\/engineer\/invite\/[^/]+$/
+const mockupPath = /^\/mockups\/[^/]+$/
 
 // Decides whether a request may reach its page, from the session cookie alone.
 export function routeDecision(request: RouteRequest): RouteDecision {
@@ -24,7 +26,9 @@ export function routeDecision(request: RouteRequest): RouteDecision {
   if (request.pathname === '/sign-in' && signedIn) {
     return { kind: 'redirect', to: safeNext(new URLSearchParams(request.search).get('next')) }
   }
-  if (signedIn || publicPaths.includes(request.pathname) || invitePath.test(request.pathname)) return { kind: 'pass' }
+  if (signedIn || publicPaths.includes(request.pathname) || invitePath.test(request.pathname) || mockupPath.test(request.pathname)) {
+    return { kind: 'pass' }
+  }
   return { kind: 'redirect', to: signInPath(`${request.pathname}${request.search}`) }
 }
 

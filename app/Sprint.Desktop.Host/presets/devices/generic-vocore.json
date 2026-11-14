@@ -1,7 +1,9 @@
 {
   "id": "generic-vocore",
-  "name": "Generic VoCore Screen",
+  "name": "VoCore screen",
   "description": "Any VoCore display — Sprint will find the first unregistered device",
+  "brand": "VoCore",
+  "detect": [{ "vid": 51314, "pid": 0 }],
   "type": "screen",
   "vid": 0,
   "pid": 0,

@@ -55,6 +55,10 @@ function baseFrame(): TelemetryFrame {
       positionY: 0,
       positionZ: 0,
       brakeBiasRear: 0.435,
+      inGarage: null,
+      inPitLane: null,
+      pitState: null,
+      pitLimiter: null,
     },
     tires: [
       { position: TirePosition.FrontLeft, tempInner: 84, tempMiddle: 86, tempOuter: 88, tempSurface: 86, tempCore: 90, pressureKPa: 165, wearPercent: 12, compound: 'Medium' },
@@ -93,6 +97,12 @@ function baseFrame(): TelemetryFrame {
       absMax: 12,
       motorMap: 3,
       motorMapMax: 8,
+      migration: 0,
+      migrationMax: 0,
+      frontAntiRollBar: 0,
+      frontAntiRollBarMax: 0,
+      rearAntiRollBar: 0,
+      rearAntiRollBarMax: 0,
       drsActive: false,
       absAvailable: true,
       tcAvailable: true,
@@ -104,6 +114,7 @@ function baseFrame(): TelemetryFrame {
     energy: { virtualEnergy: 68, virtualEnergyPerLap: 3.4, soc: 0.68, regenPower: 18, deployPower: 92 },
     penalties: { incidents: 0, trackLimitSteps: 0, pitStops: 0 },
     conditions: { pathWetness: null, trackGripLevel: null, fuelMultiplier: null, tireMultiplier: null, fixedSetup: null },
+    field: [],
   }
 }
 

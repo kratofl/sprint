@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import type { SprintState } from '../bridge'
-import { homeDevices, lapHistorySummary, openPlans, overviewPrimary } from './HomeDomain'
+import { homeDevices, openPlans, overviewPrimary, planFacts, recentSessions } from './HomeDomain'
 
 // ── Fixtures ─────────────────────────────────────────────────────────────
 
@@ -20,7 +20,8 @@ function state(overrides: Partial<SprintState>): SprintState {
     radioLog: [],
     engineerPushState: {},
     plans: [],
-    lapHistory: [],
+    sessionCount: 0,
+    recentSessions: null,
     screens: [],
     ...overrides,
   }
@@ -86,15 +87,59 @@ test('overviewPrimary opens the armed plan and otherwise falls back to planning 
   assert.equal(primary.kind, 'open-plan')
   assert.equal(primary.kind === 'open-plan' ? primary.plan.id : null, 'armed')
 
-  assert.deepEqual(overviewPrimary(plans.filter((plan) => plan.status === 'Draft')), { kind: 'plan-session' })
+  const fallback = overviewPrimary(plans.filter((plan) => plan.status === 'Draft'))
+  assert.equal(fallback.kind === 'plan-session' ? fallback.draft?.id : null, 'draft', 'with nothing armed, the draft is offered')
 })
 
-// ── lapHistorySummary ────────────────────────────────────────────────────
+test('planFacts takes the earliest planned start, the race target lap and a readable race length', () => {
+  const [plan] = openPlans(
+    state({
+      plans: [
+        {
+          id: 'spa',
+          status: 'Armed',
+          createdAt: '2026-09-01',
+          raceLengthFormat: 'TimeBased',
+          raceLengthValue: 90,
+          avgLapTimeSeconds: 126,
+          fuelPerLapLiters: 3.5,
+          segments: [
+            { id: 'r', kind: 'Race', plannedStart: '2026-10-02T17:30:00Z', laps: [] },
+            { id: 'q', kind: 'Qualifying', plannedStart: '2026-10-02T17:00:00Z', laps: [] },
+          ],
+          targets: [{ kind: 'Race', lapTime: { scope: 'Practice', lapTimeSeconds: 125.8, sampleSize: 9, updatedAt: '2026-10-01' } }],
+        },
+      ],
+    }),
+  )
 
-test('lapHistorySummary counts recorded sessions and their laps, skipping rows without an id', () => {
-  const sprint = state({
-    lapHistory: [{ id: 'a', laps: [{}, {}, {}] }, { id: 'b', laps: [] }, { id: 'c' }, { laps: [{}] }],
-  })
+  assert.ok(plan)
+  assert.deepEqual(planFacts(plan), { startsAt: '2026-10-02T17:00:00Z', raceLength: '1 h 30 min', targetLapSeconds: 125.8, fuelPerLapLiters: 3.5 })
+})
 
-  assert.deepEqual(lapHistorySummary(sprint), { sessions: 3, laps: 3 })
+// ── recentSessions ───────────────────────────────────────────────────────
+
+// The comparison itself is computed on the host (RecentSessionsTests.cs); this side narrows and labels.
+const hostSession = (id: string, kind: string) => ({
+  id, kind, track: 'Spa', car: 'Porsche 963', startedAt: '2026-09-28T19:00:00+00:00', lapCount: 2, bestLapSeconds: 125, bestSectors: [36.1, 53.8, 35.1],
+})
+
+test('recentSessions narrows the host summary and labels each kind', () => {
+  const recent = recentSessions(state({
+    recentSessions: {
+      last: hostSession('newest', 'TestDay'),
+      comparison: { gapSeconds: -0.2, sectorGaps: [-0.2, null, 0.1] },
+      earlier: [hostSession('older', 'Qualifying'), { id: 'no-start' }],
+    },
+  }))
+
+  assert.ok(recent)
+  assert.equal(recent.last.kind, 'Test day')
+  assert.deepEqual(recent.last.bestSectors, [36.1, 53.8, 35.1])
+  assert.deepEqual(recent.comparison, { gapSeconds: -0.2, sectorGaps: [-0.2, null, 0.1] })
+  assert.deepEqual(recent.earlier.map((entry) => [entry.id, entry.kind]), [['older', 'Qualifying']], 'a malformed row is dropped')
+})
+
+test('recentSessions is nothing without sessions', () => {
+  assert.equal(recentSessions(state({ recentSessions: null })), null)
 })

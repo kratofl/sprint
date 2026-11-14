@@ -17,12 +17,12 @@ public sealed class ResultsImportScanTests
     {
         WithLedger(ledger =>
         {
-            var importer = new FakeResultsImporter(
+            FakeResultsImporter importer = new FakeResultsImporter(
                 Entry("race.xml"),
                 Entry("quali.xml"));
             ledger.MarkImported(importer.Entries);
 
-            var found = new ResultsImportScanner(ledger).Scan(importer);
+            ResultsImportProposal found = new ResultsImportScanner(ledger).Scan(importer);
 
             // The whole point of the ledger: startup cost must not grow with the archive.
             Assert.True(found.IsEmpty);
@@ -35,7 +35,7 @@ public sealed class ResultsImportScanTests
     {
         WithLedger(ledger =>
         {
-            var importer = new FakeResultsImporter(
+            FakeResultsImporter importer = new FakeResultsImporter(
                 Entry("old-race.xml"),
                 Entry("practice-1.xml"),
                 Entry("practice-2.xml"),
@@ -45,7 +45,7 @@ public sealed class ResultsImportScanTests
             importer.Kinds["quali.xml"] = ImportedSessionKind.Qualifying;
             ledger.MarkImported([Entry("old-race.xml")]);
 
-            var found = new ResultsImportScanner(ledger).Scan(importer);
+            ResultsImportProposal found = new ResultsImportScanner(ledger).Scan(importer);
 
             Assert.False(found.IsEmpty);
             Assert.Equal(3, found.Entries.Count);
@@ -63,8 +63,8 @@ public sealed class ResultsImportScanTests
     {
         WithLedger(ledger =>
         {
-            var importer = new FakeResultsImporter(Entry("race.xml"));
-            var found = new ResultsImportScanner(ledger).Scan(importer);
+            FakeResultsImporter importer = new FakeResultsImporter(Entry("race.xml"));
+            ResultsImportProposal found = new ResultsImportScanner(ledger).Scan(importer);
             Assert.False(found.IsEmpty);
 
             ledger.MarkDeclined(found.Entries);
@@ -78,9 +78,9 @@ public sealed class ResultsImportScanTests
     {
         WithLedger(ledger =>
         {
-            var importer = new FakeResultsImporter(Entry("race.xml"));
+            FakeResultsImporter importer = new FakeResultsImporter(Entry("race.xml"));
             ledger.MarkDeclined(importer.Entries);
-            var scanner = new ResultsImportScanner(ledger);
+            ResultsImportScanner scanner = new ResultsImportScanner(ledger);
 
             // "Not now" silences the startup prompt, not the driver's ability to change
             // their mind from the planner header or settings.
@@ -94,7 +94,7 @@ public sealed class ResultsImportScanTests
     {
         WithLedger(ledger =>
         {
-            var importer = new FakeResultsImporter(Entry("race.xml"));
+            FakeResultsImporter importer = new FakeResultsImporter(Entry("race.xml"));
             ledger.MarkImported(importer.Entries);
 
             Assert.True(new ResultsImportScanner(ledger).Scan(importer, includeDeclined: true).IsEmpty);
@@ -106,7 +106,7 @@ public sealed class ResultsImportScanTests
     {
         WithLedger(ledger =>
         {
-            var entry = Entry("race.xml");
+            ResultsArchiveEntry entry = Entry("race.xml");
             ledger.MarkDeclined([entry]);
 
             // Declining silences the prompt; it must not mark the session as already in the
@@ -121,12 +121,12 @@ public sealed class ResultsImportScanTests
     {
         WithLedger(ledger =>
         {
-            var original = Entry("race.xml");
+            ResultsArchiveEntry original = Entry("race.xml");
             ledger.MarkImported([original]);
 
             // Same path, new size and stamp: the sim rewrote it, so it is not the file the
             // ledger settled.
-            var rewritten = original with { SizeBytes = original.SizeBytes + 40, LastWriteUtc = Stamp.AddHours(1) };
+            ResultsArchiveEntry rewritten = original with { SizeBytes = original.SizeBytes + 40, LastWriteUtc = Stamp.AddHours(1) };
 
             Assert.False(ledger.IsSettled(rewritten));
         });
@@ -135,10 +135,10 @@ public sealed class ResultsImportScanTests
     [Fact]
     public void TheLedgerSurvivesARestart()
     {
-        var root = TestEnv.NewTempDataRoot();
+        string root = TestEnv.NewTempDataRoot();
         try
         {
-            var entry = Entry("race.xml");
+            ResultsArchiveEntry entry = Entry("race.xml");
             new ResultsImportLedger(root).MarkImported([entry]);
 
             Assert.True(new ResultsImportLedger(root).IsSettled(entry));
@@ -152,15 +152,15 @@ public sealed class ResultsImportScanTests
     [Fact]
     public void AMovedResultsFolderCostsOneReparseAndImportsNothingTwice()
     {
-        var root = TestEnv.NewTempDataRoot();
-        var corpus = new CollectingLapHistoryStore();
+        string root = TestEnv.NewTempDataRoot();
+        CollectingLapHistoryStore corpus = new CollectingLapHistoryStore();
         try
         {
-            var ledger = new ResultsImportLedger(root);
-            var service = new LapHistoryImportService(corpus);
-            var importer = new FakeResultsImporter(Entry("race.xml"));
+            ResultsImportLedger ledger = new ResultsImportLedger(root);
+            LapHistoryImportService service = new LapHistoryImportService(corpus);
+            FakeResultsImporter importer = new FakeResultsImporter(Entry("race.xml"));
 
-            var first = new ResultsImportScanner(ledger).Scan(importer);
+            ResultsImportProposal first = new ResultsImportScanner(ledger).Scan(importer);
             service.Import(importer, first.Entries);
             ledger.MarkImported(first.Entries);
             Assert.Single(corpus.Sessions);
@@ -168,11 +168,11 @@ public sealed class ResultsImportScanTests
             // The archive moves: same sessions, different ids, so the ledger cannot know them
             // and they are parsed once more. The importer's natural key is what stops the
             // corpus gaining a duplicate.
-            var moved = new FakeResultsImporter(Entry("backup/race.xml"));
-            var second = new ResultsImportScanner(ledger).Scan(moved);
+            FakeResultsImporter moved = new FakeResultsImporter(Entry("backup/race.xml"));
+            ResultsImportProposal second = new ResultsImportScanner(ledger).Scan(moved);
             Assert.False(second.IsEmpty);
 
-            var report = service.Import(moved, second.Entries);
+            LapHistoryImportReport report = service.Import(moved, second.Entries);
 
             Assert.Single(corpus.Sessions);
             Assert.Equal(0, report.ImportedCount);
@@ -313,7 +313,7 @@ public sealed class ResultsImportScanTests
 
     private static void WithLedger(Action<ResultsImportLedger> body)
     {
-        var root = TestEnv.NewTempDataRoot();
+        string root = TestEnv.NewTempDataRoot();
         try
         {
             body(new ResultsImportLedger(root));
@@ -340,7 +340,7 @@ public sealed class ResultsImportScanTests
 
         public string SourceDescription => "fake archive";
 
-        public IReadOnlyList<ResultsArchiveEntry> ListEntries() => Entries;
+        public IReadOnlyList<ResultsArchiveEntry> ListEntries() => this.Entries;
 
         public ImportedSession? Read(ResultsArchiveEntry entry)
         {
@@ -364,12 +364,12 @@ public sealed class ResultsImportScanTests
     {
         private readonly Dictionary<string, LapHistorySession> _sessions = [];
 
-        public IReadOnlyCollection<LapHistorySession> Sessions => _sessions.Values;
+        public IReadOnlyCollection<LapHistorySession> Sessions => this._sessions.Values;
 
-        public IReadOnlyList<LapHistorySession> LoadAll() => [.. _sessions.Values];
+        public IReadOnlyList<LapHistorySession> LoadAll() => [.. this._sessions.Values];
 
-        public void Save(LapHistorySession session) => _sessions[session.Id] = session;
+        public void Save(LapHistorySession session) => this._sessions[session.Id] = session;
 
-        public void Delete(string sessionId) => _sessions.Remove(sessionId);
+        public void Delete(string sessionId) => this._sessions.Remove(sessionId);
     }
 }

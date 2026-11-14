@@ -1,310 +1,273 @@
-import { useEffect, useRef, useState } from 'react'
-import { Copy, Minus, Plus, SlidersHorizontal, Trash2 } from 'lucide-react'
-import type { SprintCommand, SprintState } from '../bridge'
-import type { RuntimeState } from '../shell/runtime'
-import { CommandDivider, PageHeader } from '../shell/PageHeader'
+import { useRef, useState } from 'react'
+import { ArrowUpDown, Check, ChevronDown, ChevronRight, GitCompareArrows, ListFilter } from 'lucide-react'
+import { PageHeader } from '../shell/PageHeader'
+import { usePageUp } from '../shell/pageUp'
+import { MenuLayer, type MenuAnchor } from '../shell/Menu'
 import {
-  buildSetupDelete,
-  buildSetupDuplicate,
-  buildSetupSave,
-  clampToParameter,
-  formatSetupValue,
-  parseSetupParameters,
-  parseSetupPrograms,
-  setupParameterGroups,
-  valueFor,
+  FILTERS,
+  LIST_PAGE,
+  NO_FILTERS,
+  comparePair,
+  filterChoices,
+  filterSetups,
+  groupSetups,
+  hasFilters,
+  savedLine,
+  toggleFilter,
 } from './SetupsDomain'
-import type { SetupParameter, SetupProgram } from './SetupsDomain'
+import type { SetupFilters, SetupItem, SetupRef, SetupSort, SetupsPage } from './SetupsDomain'
+import { FilterChip } from './FilterChip'
+import { ComparePage, SetupPage, SetupTags } from './SetupsPages'
+import { useSetupLibrary } from './useSetups'
 import './SetupsView.css'
 
-type LoadedState = { templates: SetupProgram[]; programs: SetupProgram[]; parameters: SetupParameter[] }
-
-const toLoadedState = (sprint: SprintState): LoadedState => ({
-  templates: parseSetupPrograms(sprint.setupTemplates),
-  programs: parseSetupPrograms(sprint.setupPrograms),
-  parameters: parseSetupParameters(sprint),
-})
-
-const UNDO_SECONDS = 8
-
-/** A delete the driver can still undo: `setup.delete` is not sent until the window runs out. */
-type PendingDelete = { program: SetupProgram; secondsLeft: number }
-
 /**
- * Setups: PageHeader + CommandBar (duplicate, delete), then the setups table card beside
- * the selected setup's parameter cards. Templates are read-only; user edits save
- * immediately. Parameter bounds come from the host's `setupParameters` (see
- * SetupsDomain's header comment).
- *
- * Deleting a user setup sends `setup.delete` (`RuntimeCoordinator.DeleteSetup`).
- * `RuntimeCoordinator` has no restore/undo command, so an 8-second undo window
- * cannot work by sending the delete immediately and re-inserting on undo. Instead
- * the command is deferred: the setup disappears from this view right away, but
- * `setup.delete` is sent once the window runs out, or immediately if the page is
- * left first. Undo cancels the pending send — nothing was ever told to the host, so there is
- * nothing to restore.
+ * Setups: the setups Le Mans Ultimate stores, read from its setup folder (SetupsDomain.ts). View
+ * only — values are changed in the game. Three pages over the whole content width: the list
+ * (search, filter chips, grouped by car and track), one setup opened from it with its versions,
+ * and two setups compared (SetupsPages.tsx). Which page is open, the filters and the sort are
+ * the only local state; the list is fetched again each time it is shown.
  */
-export function SetupsView({ runtime, send }: { runtime: RuntimeState; send: (command: SprintCommand) => Promise<void> }) {
-  const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null)
-  // `setInterval`'s callback closes over the value from the tick it was created on, so the
-  // running countdown is mirrored into a ref the tick handler reads instead of relying on a
-  // fresh closure per tick.
-  const pendingDeleteRef = useRef<PendingDelete | null>(null)
-  const intervalRef = useRef<number | null>(null)
+export function SetupsView() {
+  const [page, setPage] = useState<SetupsPage>(LIST_PAGE)
+  const [shown, setShown] = useState(0)
+  const library = useSetupLibrary(shown)
+  usePageUp(page.kind === 'list' ? null : 'All setups', () => toList())
+  const setups = library.kind === 'ready' ? library.setups : []
 
-  // Leaving the page commits a pending delete: the driver chose to delete and only had
-  // the undo window left, so walking away must not quietly bring the setup back.
-  const sendRef = useRef(send)
-  sendRef.current = send
-  useEffect(() => {
-    return () => {
-      if (intervalRef.current !== null) window.clearInterval(intervalRef.current)
-      const pending = pendingDeleteRef.current
-      pendingDeleteRef.current = null
-      if (pending) void sendRef.current(buildSetupDelete(pending.program.id))
-    }
-  }, [])
+  function toList() {
+    setPage(LIST_PAGE)
+    setShown((count) => count + 1)
+  }
 
-  const state = runtime.kind === 'ready' ? toLoadedState(runtime.sprint) : null
+  const openCompare = (from: string | null) => {
+    const pair = comparePair(setups, from)
+    if (pair) setPage({ kind: 'compare', ...pair })
+  }
 
-  if (state === null) {
+  if (page.kind === 'setup') {
     return (
-      <div className="setups">
-        <PageHeader title="Setups" />
-        <div className="setups-split">
-          <div className="card skeleton setups-list" />
-          <div className="card skeleton setups-editor-skeleton" />
+      <SetupPage
+        setup={page.setup}
+        canCompare={setups.length > 1}
+        onBack={toList}
+        onVersion={(version) => setPage({ kind: 'setup', setup: { id: page.setup.id, version } })}
+        onCompare={(first: SetupRef, second: SetupRef | null) => {
+          const pair = comparePair(setups, first.id)
+          const other = second ?? pair?.second
+          if (other) setPage({ kind: 'compare', first, second: other })
+        }}
+      />
+    )
+  }
+
+  if (page.kind === 'compare') {
+    return (
+      <ComparePage
+        first={page.first}
+        second={page.second}
+        setups={setups}
+        onBack={toList}
+        onPick={(first, second) => setPage({ kind: 'compare', first, second })}
+      />
+    )
+  }
+
+  return (
+    <div className="setups-page">
+      <PageHeader title="Setups">
+        <button type="button" className="button" disabled={setups.length < 2} onClick={() => openCompare(null)}>
+          <GitCompareArrows /> Compare…
+        </button>
+      </PageHeader>
+      {library.kind === 'loading' ? (
+        <>
+          <div className="card skeleton setups-bar-skeleton" />
+          <div className="card skeleton setups-list-skeleton" />
+        </>
+      ) : library.kind === 'unavailable' ? (
+        <div className="card setups-empty">
+          <div className="empty-state">
+            <h2>No Le Mans Ultimate setups found</h2>
+            <p>Sprint looks for the game in your Steam libraries and reads the setups saved in its garage.</p>
+          </div>
+        </div>
+      ) : library.kind === 'failed' ? (
+        <div className="card setups-empty">
+          <div className="empty-state">
+            <h2>The setups could not be read</h2>
+            <p>Sprint could not reach the game's setup folder just now.</p>
+            <button type="button" className="button" onClick={() => setShown((count) => count + 1)}>
+              Try again
+            </button>
+          </div>
+        </div>
+      ) : (
+        <SetupList setups={setups} onOpen={(id) => setPage({ kind: 'setup', setup: { id, version: null } })} />
+      )}
+    </div>
+  )
+}
+
+const SORTS: ReadonlyArray<{ id: SetupSort; label: string }> = [
+  { id: 'newest', label: 'Newest first' },
+  { id: 'name', label: 'Car and track' },
+]
+
+/** The list: search, the filter chips and sort, then every setup grouped by car and track. */
+function SetupList({ setups, onOpen }: { setups: SetupItem[]; onOpen: (id: string) => void }) {
+  const [filters, setFilters] = useState<SetupFilters>(NO_FILTERS)
+  const [sort, setSort] = useState<SetupSort>('newest')
+  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set())
+  const [sortMenu, setSortMenu] = useState<MenuAnchor | null>(null)
+  const sortButton = useRef<HTMLButtonElement | null>(null)
+
+  if (setups.length === 0) {
+    return (
+      <div className="card setups-empty">
+        <div className="empty-state">
+          <h2>No setups saved yet</h2>
+          <p>Save a setup in the game's garage and it shows up here.</p>
         </div>
       </div>
     )
   }
 
-  const cancelPendingDelete = () => {
-    if (intervalRef.current !== null) window.clearInterval(intervalRef.current)
-    intervalRef.current = null
-    pendingDeleteRef.current = null
-    setPendingDelete(null)
+  const matching = filterSetups(setups, filters)
+  const groups = groupSetups(matching, sort)
+  const filtered = hasFilters(filters)
+  const toggleGroup = (key: string) => {
+    const next = new Set(collapsed)
+    if (next.has(key)) next.delete(key)
+    else next.add(key)
+    setCollapsed(next)
   }
-
-  const startDelete = (program: SetupProgram) => {
-    cancelPendingDelete()
-    setSelectedId(null)
-    const pending: PendingDelete = { program, secondsLeft: UNDO_SECONDS }
-    pendingDeleteRef.current = pending
-    setPendingDelete(pending)
-    intervalRef.current = window.setInterval(() => {
-      const current = pendingDeleteRef.current
-      if (!current) return
-      if (current.secondsLeft <= 1) {
-        if (intervalRef.current !== null) window.clearInterval(intervalRef.current)
-        intervalRef.current = null
-        pendingDeleteRef.current = null
-        setPendingDelete(null)
-        void send(buildSetupDelete(current.program.id))
-        return
-      }
-
-      const next: PendingDelete = { ...current, secondsLeft: current.secondsLeft - 1 }
-      pendingDeleteRef.current = next
-      setPendingDelete(next)
-    }, 1000)
-  }
-
-  // The pending setup is hidden immediately — the undo bar's "deleted" claim has to be true
-  // on screen even though the host has not been told yet.
-  const programs = pendingDelete ? state.programs.filter((program) => program.id !== pendingDelete.program.id) : state.programs
-  const all = [...programs, ...state.templates]
-  const selected = all.find((program) => program.id === selectedId) ?? programs[0] ?? state.templates[0] ?? null
 
   return (
-    <div className="setups">
-      <PageHeader title="Setups">
+    <>
+      <div className="setups-bar">
+        <input
+          type="search"
+          className="setups-search"
+          placeholder="Search setup, car or track"
+          aria-label="Search setups"
+          value={filters.search}
+          onChange={(event) => setFilters({ ...filters, search: event.target.value })}
+        />
+        <span className="setups-count">
+          {filtered ? `${matching.length} of ${setups.length} setups` : `${setups.length} setups in Le Mans Ultimate`}
+        </span>
         <button
+          ref={sortButton}
           type="button"
-          className="button primary"
-          disabled={selected === null}
-          onClick={() => {
-            // The host assigns the duplicate's id; sendCommand does not return it, so
-            // selection cannot deterministically follow the copy. The next state push
-            // will show it in the table for the driver to select.
-            if (selected) void send(buildSetupDuplicate(selected.id))
+          className="button subtle"
+          aria-haspopup="menu"
+          aria-expanded={sortMenu !== null}
+          onClick={(event) => {
+            const box = event.currentTarget.getBoundingClientRect()
+            setSortMenu({ x: box.right - 180, y: box.bottom + 4 })
           }}
         >
-          <Copy /> {selected?.isTemplate === false ? 'Duplicate setup' : 'Duplicate template'}
+          <ArrowUpDown /> {SORTS.find((option) => option.id === sort)?.label}
         </button>
-        <CommandDivider />
-        <button
-          type="button"
-          className="button subtle destructive"
-          disabled={selected === null || selected.isTemplate}
-          title={selected?.isTemplate ? 'Templates cannot be deleted.' : undefined}
-          onClick={() => {
-            if (selected && !selected.isTemplate) startDelete(selected)
-          }}
-        >
-          <Trash2 /> Delete
-        </button>
-      </PageHeader>
+        {sortMenu && (
+          <MenuLayer
+            anchor={sortMenu}
+            label="Sort"
+            width={180}
+            onClose={() => {
+              setSortMenu(null)
+              sortButton.current?.focus()
+            }}
+          >
+            {SORTS.map((option) => (
+              <button
+                key={option.id}
+                type="button"
+                role="menuitemradio"
+                aria-checked={sort === option.id}
+                className="menu-item"
+                onClick={() => {
+                  setSort(option.id)
+                  setSortMenu(null)
+                  sortButton.current?.focus()
+                }}
+              >
+                <span className="setups-menu-check">{sort === option.id && <Check />}</span>
+                {option.label}
+              </button>
+            ))}
+          </MenuLayer>
+        )}
+      </div>
 
-      <div className="setups-body">
-        {pendingDelete && (
-          <div className="infobar info" role="status">
-            <span className="infobar-icon" aria-hidden="true">
-              i
-            </span>
-            <strong className="infobar-title">Setup deleted</strong>
-            <span className="infobar-message">
-              {pendingDelete.program.name} can be restored for <span className="tabular">{pendingDelete.secondsLeft}</span>s.
-            </span>
-            <button type="button" className="button" onClick={cancelPendingDelete}>
-              Undo
+      <div className="setups-chips" role="group" aria-label="Filters">
+        <ListFilter className="setups-chips-icon" aria-hidden="true" />
+        {FILTERS.map((filter) => (
+          <FilterChip
+            key={filter.key}
+            label={filter.label}
+            choices={filterChoices(setups, filter.key)}
+            chosen={filters[filter.key]}
+            onToggle={(value) => setFilters(toggleFilter(filters, filter.key, value))}
+            onClear={() => setFilters({ ...filters, [filter.key]: [] })}
+          />
+        ))}
+        {filtered && (
+          <button type="button" className="button subtle setups-clear" onClick={() => setFilters(NO_FILTERS)}>
+            Clear filters
+          </button>
+        )}
+      </div>
+
+      {groups.length === 0 ? (
+        <div className="card setups-empty">
+          <div className="empty-state">
+            <h2>No setups match</h2>
+            <p>Try another search, or clear the filters.</p>
+            <button type="button" className="button" onClick={() => setFilters(NO_FILTERS)}>
+              Clear filters
             </button>
           </div>
-        )}
-
-        {all.length === 0 ? (
-          <div className="card">
-            <div className="empty-state">
-              <SlidersHorizontal size={28} strokeWidth={1.5} />
-              <h2>No setups yet</h2>
-              <p>Setup templates will appear here once the game reports a car.</p>
-            </div>
-          </div>
-        ) : (
-          <div className="setups-split">
-            <SetupTable programs={programs} templates={state.templates} selectedId={selected?.id ?? null} onSelect={setSelectedId} />
-            {selected && <SetupEditor key={selected.id} program={selected} parameters={state.parameters} send={send} />}
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
-
-/** The setups table: user setups first (they are the ones being edited), then the templates. */
-function SetupTable({
-  programs,
-  templates,
-  selectedId,
-  onSelect,
-}: {
-  programs: SetupProgram[]
-  templates: SetupProgram[]
-  selectedId: string | null
-  onSelect: (id: string) => void
-}) {
-  return (
-    <section className="card list-card setups-list" aria-label="Setups">
-      <div className="card-header">
-        <h2 className="card-title">All setups</h2>
-        <span className="muted tabular">{programs.length + templates.length}</span>
-      </div>
-      <div className="list-header setups-columns" aria-hidden="true">
-        <span>Name</span>
-        <span>Type</span>
-      </div>
-      <ul className="list-rows">
-        {[...programs, ...templates].map((program) => {
-          const isSelected = program.id === selectedId
-          return (
-            <li key={program.id}>
-              <button
-                type="button"
-                className={isSelected ? 'list-row setups-columns selected' : 'list-row setups-columns'}
-                aria-current={isSelected ? 'true' : undefined}
-                onClick={() => onSelect(program.id)}
-              >
-                <span className="setups-row-name">{program.name}</span>
-                <span className="setups-row-type">{program.isTemplate ? 'Template' : 'User setup'}</span>
-              </button>
-            </li>
-          )
-        })}
-      </ul>
-      {programs.length === 0 && <p className="muted setups-list-hint">No user setups yet. Duplicate a template to start editing.</p>}
-    </section>
-  )
-}
-
-function SetupEditor({
-  program,
-  parameters,
-  send,
-}: {
-  program: SetupProgram
-  parameters: SetupParameter[]
-  send: (command: SprintCommand) => Promise<void>
-}) {
-  // Local mirror so a stepper reflects the click immediately; RuntimeCoordinator
-  // re-validates and persists on every change (setup.save is called per field).
-  const [values, setValues] = useState(program.values)
-
-  const setValue = (key: string, value: number) => {
-    setValues((current) => ({ ...current, [key]: value }))
-    void send(buildSetupSave(program.id, key, value))
-  }
-
-  return (
-    <div className="setups-editor">
-      <div className="setups-editor-head">
-        <h2 className="setups-editor-title">{program.name}</h2>
-        <span className={program.isTemplate ? 'chip chip-muted' : 'chip'}>{program.isTemplate ? 'Template' : 'User setup'}</span>
-      </div>
-
-      {program.isTemplate && (
-        <div className="infobar info" role="status">
-          <span className="infobar-icon" aria-hidden="true">
-            i
-          </span>
-          <strong className="infobar-title">Read-only template</strong>
-          <span className="infobar-message">Duplicate this template to edit its values.</span>
         </div>
-      )}
-
-      <div className="setups-groups">
-        {setupParameterGroups(parameters).map(({ group, parameters: groupParameters }) => (
-          <section className="card setups-group" key={group}>
-            <h3 className="card-title">{group}</h3>
-            <div className="setups-params">
-              {groupParameters.map((parameter) => {
-                const current = values[parameter.key] ?? valueFor(program, parameter)
-                return (
-                  <div className="setups-param-row" key={parameter.key}>
-                    <span className="setups-param-label">{parameter.label}</span>
-                    <span className="muted tabular setups-param-range">
-                      {parameter.min}–{parameter.max} {parameter.unit}
+      ) : (
+        <section className="card list-card setups-groups" aria-label="Setups">
+          {groups.map((group) => {
+            const open = !collapsed.has(group.key)
+            return (
+              <div key={group.key} className="setups-group">
+                <button type="button" className="setups-group-head" aria-expanded={open} onClick={() => toggleGroup(group.key)}>
+                  {open ? <ChevronDown /> : <ChevronRight />}
+                  <span className="setups-group-text">
+                    <strong>
+                      {group.car} · {group.trackName}
+                    </strong>
+                    <span className="setups-dim">
+                      {group.carClass ? `${group.carClass} · ` : ''}
+                      {group.setups.length === 1 ? '1 setup' : `${group.setups.length} setups`}
                     </span>
-                    <span className="setups-stepper">
-                      <button
-                        type="button"
-                        className="icon-button"
-                        aria-label={`Decrease ${parameter.label}`}
-                        title={`Decrease ${parameter.label}`}
-                        disabled={program.isTemplate || current <= parameter.min}
-                        onClick={() => setValue(parameter.key, clampToParameter(parameter, current - parameter.step))}
-                      >
-                        <Minus size={14} />
+                  </span>
+                </button>
+                {open && (
+                  <div className="list-rows">
+                    {group.setups.map((setup) => (
+                      <button key={setup.id} type="button" className="list-row setups-row" onClick={() => onOpen(setup.id)}>
+                        <span className="setups-row-session">{setup.session && <span className="chip">{setup.session}</span>}</span>
+                        <span className="setups-row-name">
+                          <strong>{setup.name}</strong>
+                          <span className="setups-dim">{savedLine(setup)}</span>
+                        </span>
+                        <SetupTags setup={setup} session={false} />
+                        <ChevronRight className="setups-row-chevron" />
                       </button>
-                      <span className="setups-stepper-value tabular">{formatSetupValue(parameter, current)}</span>
-                      <button
-                        type="button"
-                        className="icon-button"
-                        aria-label={`Increase ${parameter.label}`}
-                        title={`Increase ${parameter.label}`}
-                        disabled={program.isTemplate || current >= parameter.max}
-                        onClick={() => setValue(parameter.key, clampToParameter(parameter, current + parameter.step))}
-                      >
-                        <Plus size={14} />
-                      </button>
-                    </span>
+                    ))}
                   </div>
-                )
-              })}
-            </div>
-          </section>
-        ))}
-      </div>
-    </div>
+                )}
+              </div>
+            )
+          })}
+        </section>
+      )}
+    </>
   )
 }

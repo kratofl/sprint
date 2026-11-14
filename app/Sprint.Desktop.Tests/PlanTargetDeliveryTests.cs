@@ -1,5 +1,7 @@
 using Sprint.Desktop.Api.Telemetry;
+using Sprint.Desktop.Features.Live;
 using Sprint.Desktop.Features.SessionPlanning;
+using Sprint.Desktop.Runtime;
 using Xunit;
 
 namespace Sprint.Desktop.Tests;
@@ -23,13 +25,14 @@ public sealed class PlanTargetDeliveryTests
     [Fact]
     public void A_curve_backed_target_delivers_both_the_reference_and_the_scalar()
     {
-        var delivery = new PlanTargetDelivery(() => PlanWith(RaceTarget()), Corpus());
+        PlanTargetDelivery delivery = new PlanTargetDelivery(() => PlanWith(RaceTarget()), Corpus());
+        delivery.ResolveReferences();
 
-        var latched = delivery.Observe(RaceFrame(lap: 1));
+        bool latched = delivery.Observe(RaceFrame(lap: 1));
 
         Assert.True(latched);
         Assert.Equal(100, delivery.Targets.LapTimeSeconds);
-        var reference = Assert.IsType<Sprint.Desktop.Features.Live.DeltaReference>(delivery.Reference);
+        DeltaReference reference = Assert.IsType<Sprint.Desktop.Features.Live.DeltaReference>(delivery.Reference);
         Assert.Equal(100, reference.LapTimeSeconds);
         Assert.Equal(0.01, reference.PositionStep);
         Assert.Equal(50, reference.TimesSeconds[50], precision: 6); // half a lap ⇒ half the time
@@ -39,8 +42,8 @@ public sealed class PlanTargetDeliveryTests
     public void A_scalar_only_target_delivers_a_time_and_no_reference()
     {
         // An imported lap: a real target time, but nothing describing how it was driven.
-        var manual = new PlanTarget { Scope = PlanTargetScope.Manual, LapTimeSeconds = 100 };
-        var delivery = new PlanTargetDelivery(() => PlanWith(manual), Corpus());
+        PlanTarget manual = new PlanTarget { Scope = PlanTargetScope.Manual, LapTimeSeconds = 100 };
+        PlanTargetDelivery delivery = new PlanTargetDelivery(() => PlanWith(manual), Corpus());
 
         delivery.Observe(RaceFrame(lap: 1));
 
@@ -55,9 +58,10 @@ public sealed class PlanTargetDeliveryTests
     {
         // The stored target says the lap had a curve; the corpus no longer holds that lap.
         // The claim on the target is not evidence — only the lap itself is.
-        var delivery = new PlanTargetDelivery(
+        PlanTargetDelivery delivery = new PlanTargetDelivery(
             () => PlanWith(RaceTarget()),
             new FakeLapHistoryStore([]));
+        delivery.ResolveReferences();
 
         delivery.Observe(RaceFrame(lap: 1));
 
@@ -68,8 +72,9 @@ public sealed class PlanTargetDeliveryTests
     [Fact]
     public void A_target_changed_mid_lap_takes_effect_only_at_the_next_line()
     {
-        var target = RaceTarget();
-        var delivery = new PlanTargetDelivery(() => PlanWith(target), Corpus());
+        PlanTarget target = RaceTarget();
+        PlanTargetDelivery delivery = new PlanTargetDelivery(() => PlanWith(target), Corpus());
+        delivery.ResolveReferences();
 
         // No lap was in progress, so the first frame in the car applies at once.
         Assert.True(delivery.Observe(RaceFrame(lap: 4)));
@@ -94,7 +99,8 @@ public sealed class PlanTargetDeliveryTests
     public void Clearing_the_target_takes_the_reference_away_at_the_next_line()
     {
         PlanTarget? target = RaceTarget();
-        var delivery = new PlanTargetDelivery(() => PlanWith(target), Corpus());
+        PlanTargetDelivery delivery = new PlanTargetDelivery(() => PlanWith(target), Corpus());
+        delivery.ResolveReferences();
 
         delivery.Observe(RaceFrame(lap: 4));
         Assert.NotNull(delivery.Reference);
@@ -113,7 +119,7 @@ public sealed class PlanTargetDeliveryTests
     [Fact]
     public void A_plan_with_no_target_delivers_nothing_at_all()
     {
-        var delivery = new PlanTargetDelivery(() => PlanWith(null), Corpus());
+        PlanTargetDelivery delivery = new PlanTargetDelivery(() => PlanWith(null), Corpus());
 
         Assert.True(delivery.Observe(RaceFrame(lap: 1)));
 
@@ -124,7 +130,7 @@ public sealed class PlanTargetDeliveryTests
     [Fact]
     public void No_active_plan_delivers_nothing_at_all()
     {
-        var delivery = new PlanTargetDelivery(() => null, Corpus());
+        PlanTargetDelivery delivery = new PlanTargetDelivery(() => null, Corpus());
 
         delivery.Observe(RaceFrame(lap: 1));
 
@@ -135,7 +141,7 @@ public sealed class PlanTargetDeliveryTests
     [Fact]
     public void A_qualifying_target_is_not_delivered_into_the_race()
     {
-        var plan = new SessionPlan
+        SessionPlan plan = new SessionPlan
         {
             Id = "plan-1",
             Game = Game,
@@ -143,7 +149,7 @@ public sealed class PlanTargetDeliveryTests
             Car = Car,
             Targets = [new PlanTargets { Kind = SegmentKind.Qualifying, LapTime = RaceTarget() }],
         };
-        var delivery = new PlanTargetDelivery(() => plan, Corpus());
+        PlanTargetDelivery delivery = new PlanTargetDelivery(() => PlanTargetDelivery.Aim.Of(plan), Corpus());
 
         delivery.Observe(RaceFrame(lap: 1, sessionType: SessionType.Race));
         Assert.True(delivery.Targets.IsEmpty);
@@ -155,11 +161,134 @@ public sealed class PlanTargetDeliveryTests
     [Fact]
     public void The_planned_fuel_per_lap_is_delivered_as_a_target()
     {
-        var delivery = new PlanTargetDelivery(() => PlanWith(null, fuelPerLapLiters: 3.4), Corpus());
+        PlanTargetDelivery delivery = new PlanTargetDelivery(() => PlanWith(null, fuelPerLapLiters: 3.4), Corpus());
 
         delivery.Observe(RaceFrame(lap: 1));
 
         Assert.Equal(3.4, delivery.Targets.FuelPerLapLiters);
+    }
+
+    [Fact]
+    public void A_plan_that_leaves_fuel_to_the_laps_gets_the_laps_figure_as_its_target()
+    {
+        PlanTargetDelivery delivery = new PlanTargetDelivery(
+            () => PlanWith(null),
+            Corpus(),
+            new FixedFuelHistory(new FuelHistoryFigures(null, 0, 3.6, 9, null)));
+
+        delivery.Observe(RaceFrame(lap: 1));
+
+        Assert.Equal(3.6, delivery.Targets.FuelPerLapLiters);
+    }
+
+    [Fact]
+    public void A_typed_fuel_per_lap_wins_over_the_laps()
+    {
+        PlanTargetDelivery delivery = new PlanTargetDelivery(
+            () => PlanWith(null, fuelPerLapLiters: 3.4),
+            Corpus(),
+            new FixedFuelHistory(new FuelHistoryFigures(null, 0, 3.6, 9, null)));
+
+        delivery.Observe(RaceFrame(lap: 1));
+
+        Assert.Equal(3.4, delivery.Targets.FuelPerLapLiters);
+    }
+
+    [Fact]
+    public void A_legacy_zero_fuel_per_lap_is_not_typed_and_the_laps_figure_stands_in()
+    {
+        // Plans stored before the planner refused 0 kept it for "not typed"; the Race card shows the
+        // laps' median for them, so the wheel must aim at that too rather than at 0 L.
+        PlanTargetDelivery delivery = new PlanTargetDelivery(
+            () => PlanWith(null, fuelPerLapLiters: 0),
+            Corpus(),
+            new FixedFuelHistory(new FuelHistoryFigures(null, 0, 3.6, 9, null)));
+
+        delivery.Observe(RaceFrame(lap: 1));
+
+        Assert.Equal(3.6, delivery.Targets.FuelPerLapLiters);
+    }
+
+    [Fact]
+    public void The_laps_fuel_target_comes_from_what_the_state_poll_worked_out_never_from_the_corpus()
+    {
+        CountingStore corpus = new(
+        [
+            new LapHistorySession
+            {
+                Id = "hs-race",
+                Kind = HistorySessionKind.Race,
+                Context = new LapHistoryContext { Game = Game, TrackCourse = Track, CarModel = Car },
+                Laps = [new LapHistoryRecord { LapNumber = 2, IsValid = true, LapTimeSeconds = 120, FuelUsedLiters = 3.5 }],
+            },
+        ]);
+        LapHistoryFuelSource fuel = new(corpus, () => FuelHistorySource.AllValidLaps);
+        PlanTargetDelivery delivery = new PlanTargetDelivery(() => PlanWith(null), Corpus(), fuel);
+
+        // Out of the car the latch applies on every frame, and it still never reads the corpus:
+        // nothing has worked the figure out yet, so there is no fuel target rather than a stall.
+        delivery.Observe(RaceFrame(lap: 1, inCar: false));
+        delivery.Observe(RaceFrame(lap: 1));
+        Assert.Equal(0, corpus.Reads);
+        Assert.Null(delivery.Targets.FuelPerLapLiters);
+
+        // The state poll asks for the plan's race fuel; the next line picks the figure up.
+        fuel.ForRace(new PlanContext(Game, Car, Track));
+        Assert.Equal(1, corpus.Reads);
+        delivery.Observe(RaceFrame(lap: 2));
+
+        Assert.Equal(3.5, delivery.Targets.FuelPerLapLiters);
+        Assert.Equal(1, corpus.Reads);
+    }
+
+    [Fact]
+    public void The_reference_comes_from_what_a_resolve_found_never_from_the_corpus_at_the_line()
+    {
+        CountingStore corpus = new CountingStore(Corpus().LoadAll());
+        PlanTargetDelivery delivery = new PlanTargetDelivery(() => PlanWith(RaceTarget()), corpus);
+
+        // Out of the car the latch applies on every frame, and neither that nor a line reads the
+        // corpus: nothing has resolved the lap yet, so the tracker stays on its session best.
+        delivery.Observe(RaceFrame(lap: 1, inCar: false));
+        delivery.Observe(RaceFrame(lap: 1));
+        Assert.Equal(0, corpus.Reads);
+        Assert.Null(delivery.Reference);
+        Assert.Equal(100, delivery.Targets.LapTimeSeconds);
+
+        // The state poll resolves the curve mid-lap; the lap in progress keeps what it started with.
+        delivery.ResolveReferences();
+        Assert.Equal(1, corpus.Reads);
+        Assert.False(delivery.Observe(RaceFrame(lap: 1)));
+        Assert.Null(delivery.Reference);
+
+        // The next line picks it up, still without a read.
+        Assert.True(delivery.Observe(RaceFrame(lap: 2)));
+        DeltaReference reference = Assert.IsType<DeltaReference>(delivery.Reference);
+        Assert.Equal(50, reference.TimesSeconds[50], precision: 6);
+        Assert.Equal(1, corpus.Reads);
+    }
+
+    private sealed class FixedFuelHistory(FuelHistoryFigures figures) : IFuelHistorySource
+    {
+        public FuelHistoryFigures ForRace(PlanContext context) => figures;
+
+        public FuelHistoryFigures? Cached(PlanContext context) => figures;
+    }
+
+    /// <summary>A corpus that counts its full reads: the loading path the telemetry loop must never take.</summary>
+    private sealed class CountingStore(IReadOnlyList<LapHistorySession> sessions) : ILapHistoryStore
+    {
+        public int Reads { get; private set; }
+
+        public IReadOnlyList<LapHistorySession> LoadAll()
+        {
+            this.Reads++;
+            return sessions;
+        }
+
+        public void Save(LapHistorySession session) => throw new NotSupportedException();
+
+        public void Delete(string sessionId) => throw new NotSupportedException();
     }
 
     // ---- fixtures ----
@@ -192,7 +321,7 @@ public sealed class PlanTargetDeliveryTests
         HasReferenceCurve = hasReferenceCurve,
     };
 
-    private static SessionPlan PlanWith(PlanTarget? lapTime, double? fuelPerLapLiters = null) => new()
+    private static PlanTargetDelivery.Aim PlanWith(PlanTarget? lapTime, double? fuelPerLapLiters = null) => PlanTargetDelivery.Aim.Of(new SessionPlan
     {
         Id = "plan-1",
         Game = Game,
@@ -203,7 +332,7 @@ public sealed class PlanTargetDeliveryTests
         Targets = lapTime is null
             ? []
             : [new PlanTargets { Kind = SegmentKind.Race, LapTime = lapTime }],
-    };
+    });
 
     // One recorded lap whose curve is exactly p * 100.
     private static ILapHistoryStore Corpus() => new FakeLapHistoryStore(

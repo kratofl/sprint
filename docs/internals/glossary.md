@@ -22,7 +22,8 @@ splits searches and confuses the next agent.
 
 - **Dash** — a `DashLayout`: pages of widgets for one screen profile. Not "dashboard" in code.
 - **Page** — one screen of a dash; the **idle page** shows when no session runs.
-- **Widget** — one catalog element on a page. A **widget stack** layers widgets in one cell.
+- **Widget** — one catalog element on a page. A **group** gathers widgets and groups; one that
+  shows "one at a time" is a **widget stack**, each child a **layer** (`packages/dashboard/src/groups.ts`).
 - **Binding** — a named value a widget reads (`lap.delta`, `target.fuelPerLapLiters`).
 - **Preset** — a shipped dash, device or setup template under `app/Sprint.Desktop.Host/presets/`.
 - **Theme preset** — a complete dash color theme. **Functional** is the default condition palette;
@@ -30,6 +31,10 @@ splits searches and confuses the next agent.
 - **Condition** — what a dash color means: Neutral, Good/OnTarget, ColdLow, AssistActive, Warning,
   Critical, Fault, RaceControl.
 - **Device** — a saved wheel or screen entry. Its **screen** is the physical panel.
+- **Browser display** — a dash device with no USB link, shown by any browser or VR overlay tool on
+  this PC ([browser-displays.md](browser-displays.md)).
+- **Scene** — what the dash renderer draws besides the telemetry frame: layout, page, idle, logical
+  size, driver name and number, plan targets (`DashSceneContent`).
 - **Purpose** — what a device's screen shows: `dash`, `rear-view-mirror`, `flags`, `lap-times`.
 - **Native size** — the panel's physical pixel size; **logical size** is the size the dash is laid out
   at before rotation.
@@ -40,7 +45,7 @@ splits searches and confuses the next agent.
 - **Active slot** — the single Armed/Tracking plan.
 - **Quick plan / planned plan** — `PlanMode`; quick plans are built from detection under time pressure.
 - **Corpus** — the lap-history store; every recorded and imported lap.
-- **Context** — the corpus key: game + track course + car model.
+- **Context** — the corpus key: game + track course + car name (`CarNames`: "Hypercar BMW", "LMP2 ELMS").
 - **Tier** — what a lap can drive: `full trace`, `reference curve`, or `time only`.
 - **Reference curve** — position→time per lap (`LapReferenceCurve`), the cheap tier.
 - **Channel trace** — `LapChannelTrace`, named channels on a ~2 m grid, the detailed tier.
@@ -48,7 +53,8 @@ splits searches and confuses the next agent.
 - **Latch** — applying a changed target only at the start/finish line.
 - **Live Compare** — comparing the live lap against a target lap's trace; its **HUD** is the overlay
   windows above the game.
-- **Share code** — an unguessable, revocable code that pulls one shared lap.
+- **Lap file** — a `.sprintlap` file holding one lap's trace and its provenance; the only way a lap is
+  shared. A lap that arrived as one is a **shared lap**.
 
 ## Race engineer
 

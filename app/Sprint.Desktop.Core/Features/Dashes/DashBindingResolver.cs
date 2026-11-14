@@ -81,7 +81,7 @@ public static class DashBindingResolver
 
     private static int? TireSurfaceTemp(TelemetryFrame frame, TirePosition position)
     {
-        var tire = Tire(frame, position);
+        TireState? tire = Tire(frame, position);
         return tire is null ? null : (int)Math.Round(tire.TempSurfaceCelsius);
     }
 

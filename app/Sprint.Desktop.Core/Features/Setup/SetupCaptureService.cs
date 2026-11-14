@@ -30,9 +30,9 @@ public sealed class SetupCaptureService
         Func<DateTimeOffset>? clock = null,
         ILog? log = null)
     {
-        _store = store ?? throw new ArgumentNullException(nameof(store));
-        _clock = clock ?? (() => DateTimeOffset.UtcNow);
-        _log = log ?? NullLog.Instance;
+        this._store = store ?? throw new ArgumentNullException(nameof(store));
+        this._clock = clock ?? (() => DateTimeOffset.UtcNow);
+        this._log = log ?? NullLog.Instance;
     }
 
     /// <summary>
@@ -51,28 +51,28 @@ public sealed class SetupCaptureService
 
         // One read of the vault per pass, not per setup: ids are content-addressed, so the ids
         // already stored are the whole deduplication state.
-        var known = new HashSet<string>(
-            _store.LoadAll().Select(snapshot => snapshot.Id),
+        HashSet<string> known = new(
+            this._store.LoadAll().Select(snapshot => snapshot.Id),
             StringComparer.Ordinal);
-        var captured = new List<SetupSnapshot>();
+        List<SetupSnapshot> captured = [];
 
-        foreach (var info in repository.ListSetups())
+        foreach (GameSetupInfo info in repository.ListSetups())
         {
             if (repository.Read(info) is not { } read)
             {
                 // A setup being written as the pass runs, or one the game wrote in a shape this
                 // repository cannot read, must not cost the driver the rest of the folder.
-                _log.Warn($"Skipping setup '{info.Id}': it could not be read");
+                this._log.Warn($"Skipping setup '{info.Id}': it could not be read");
                 continue;
             }
 
-            var snapshot = Map(provider.Descriptor.Id, read);
+            SetupSnapshot snapshot = this.Map(provider.Descriptor.Id, read);
             if (!known.Add(snapshot.Id))
             {
                 continue;
             }
 
-            _store.Save(snapshot);
+            this._store.Save(snapshot);
             captured.Add(snapshot);
         }
 
@@ -91,7 +91,7 @@ public sealed class SetupCaptureService
             return null;
         }
 
-        var snapshot = _store.LoadAll()
+        SetupSnapshot? snapshot = this._store.LoadAll()
             .FirstOrDefault(stored => string.Equals(stored.Id, snapshotId, StringComparison.Ordinal));
         if (snapshot is null)
         {
@@ -100,12 +100,16 @@ public sealed class SetupCaptureService
 
         // Promoting twice keeps the first answer: the vault entry's age is when the driver
         // decided to keep it, and a second click is not a second decision.
-        snapshot.PromotedAt ??= _clock();
-        _store.Save(snapshot);
+        snapshot.PromotedAt ??= this._clock();
+        this._store.Save(snapshot);
         return snapshot;
     }
 
-    private SetupSnapshot Map(string game, GameSetupSnapshot read) => new()
+    /// <summary>
+    /// The version a setup's contents are stored as, without storing it. Two reads of the
+    /// same contents give the same <see cref="SetupSnapshot.Id"/>.
+    /// </summary>
+    public SetupSnapshot Map(string game, GameSetupSnapshot read) => new()
     {
         Id = ContentId(game, read),
         Game = game,
@@ -113,7 +117,7 @@ public sealed class SetupCaptureService
         Name = read.Info.Name,
         Track = read.Info.Track,
         VehicleDescriptor = read.VehicleDescriptor,
-        CapturedAt = _clock(),
+        CapturedAt = this._clock(),
         SourceLastWriteUtc = read.Info.LastWriteUtc,
         Values =
         [
@@ -138,20 +142,20 @@ public sealed class SetupCaptureService
     /// </summary>
     private static string ContentId(string game, GameSetupSnapshot read)
     {
-        var content = new StringBuilder()
+        StringBuilder content = new StringBuilder()
             .Append(game).Append('\n')
             .Append(read.Info.Name).Append('\n')
             .Append(read.Info.Track).Append('\n')
             .Append(read.VehicleDescriptor).Append('\n');
 
-        foreach (var value in read.Values)
+        foreach (GameSetupValue value in read.Values)
         {
             content.Append(value.Section).Append('\0')
                 .Append(value.Key).Append('\0')
                 .Append(value.RawValue).Append('\n');
         }
 
-        var digest = SHA256.HashData(Encoding.UTF8.GetBytes(content.ToString()));
+        byte[] digest = SHA256.HashData(Encoding.UTF8.GetBytes(content.ToString()));
         return "setup-" + Convert.ToHexStringLower(digest.AsSpan(0, 12));
     }
 }

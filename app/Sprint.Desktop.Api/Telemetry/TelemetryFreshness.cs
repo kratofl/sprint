@@ -35,7 +35,7 @@ public static class TelemetryFreshness
             return status.State;
         }
 
-        var maxAge = window ?? DefaultWindow;
+        TimeSpan maxAge = window ?? DefaultWindow;
         return now - lastFrameAt > maxAge
             ? TelemetryConnectionState.Stale
             : TelemetryConnectionState.Connected;

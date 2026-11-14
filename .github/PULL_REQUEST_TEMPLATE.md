@@ -1,25 +1,20 @@
-## What does this PR do?
+## What changes and why
 
-<!-- Brief description of the change and why it's needed -->
+<!-- The outcome for the user and the reason, not a file list. -->
 
-## Type of change
+## How it was verified
 
-- [ ] 🐛 Bug fix
-- [ ] ✨ New feature
-- [ ] 📝 Documentation
-- [ ] ♻️ Refactor
-- [ ] 🧪 Tests
-- [ ] 🔧 Chore / tooling
+<!-- The commands you ran and what they printed, screenshots of the UI you changed (light and
+dark), and anything you could NOT verify. "Should work" is not a verification. -->
 
-## Checklist
+## Risk
 
-- [ ] Code compiles cleanly (`make build`)
-- [ ] Tests pass (`make test`)
-- [ ] Linting passes (`make lint`)
-- [ ] Code is formatted (`make fmt`)
-- [ ] Documentation updated (if applicable)
-- [ ] No secrets or credentials in code
+<!-- What could break, and for whom. Data migrations, settings, file formats, the frame path. -->
+
+## How to revert
+
+<!-- Usually "revert this PR"; say so when it is not (a migration, a rewritten file on disk). -->
 
 ## Related issues
 
-<!-- Link any related issues: Fixes #123, Closes #456 -->
+<!-- Fixes #123 -->

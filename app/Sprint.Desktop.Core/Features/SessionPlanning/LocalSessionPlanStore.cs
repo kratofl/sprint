@@ -28,25 +28,25 @@ public sealed class LocalSessionPlanStore : ISessionPlanStore
 
     public LocalSessionPlanStore(string? dataRoot = null, ILog? log = null)
     {
-        _root = dataRoot ?? Path.Combine(
+        this._root = dataRoot ?? Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             "Sprint",
             "session-plans");
-        _log = log ?? NullLog.Instance;
-        Directory.CreateDirectory(_root);
+        this._log = log ?? NullLog.Instance;
+        Directory.CreateDirectory(this._root);
     }
 
     public IReadOnlyList<SessionPlan> LoadAll()
     {
-        var plans = new List<SessionPlan>();
-        foreach (var file in Directory.EnumerateFiles(_root, "*.json"))
+        List<SessionPlan> plans = new List<SessionPlan>();
+        foreach (string file in Directory.EnumerateFiles(this._root, "*.json"))
         {
             if (string.Equals(Path.GetFileName(file), ActivePointerFile, StringComparison.OrdinalIgnoreCase))
             {
                 continue;
             }
 
-            var plan = LoadPlan(file);
+            SessionPlan? plan = this.LoadPlan(file);
             if (plan is { Id.Length: > 0 })
             {
                 plans.Add(plan);
@@ -63,7 +63,7 @@ public sealed class LocalSessionPlanStore : ISessionPlanStore
             throw new ArgumentException("A plan must have an id before it can be saved.", nameof(plan));
         }
 
-        WriteJson(PlanPath(plan.Id), plan);
+        this.WriteJson(this.PlanPath(plan.Id), plan);
     }
 
     public void Delete(string planId)
@@ -75,35 +75,35 @@ public sealed class LocalSessionPlanStore : ISessionPlanStore
 
         try
         {
-            var path = PlanPath(planId);
+            string path = this.PlanPath(planId);
             if (File.Exists(path))
             {
                 File.Delete(path);
             }
 
-            if (string.Equals(LoadActivePlanId(), planId, StringComparison.Ordinal))
+            if (string.Equals(this.LoadActivePlanId(), planId, StringComparison.Ordinal))
             {
-                SaveActivePlanId(null);
+                this.SaveActivePlanId(null);
             }
         }
         catch (Exception ex)
         {
-            _log.Warn($"Failed to delete session plan '{planId}'", ex);
+            this._log.Warn($"Failed to delete session plan '{planId}'", ex);
         }
     }
 
     public string? LoadActivePlanId()
     {
-        var pointer = LoadJson<ActivePointer>(Path.Combine(_root, ActivePointerFile));
+        ActivePointer? pointer = this.LoadJson<ActivePointer>(Path.Combine(this._root, ActivePointerFile));
         return string.IsNullOrEmpty(pointer?.PlanId) ? null : pointer.PlanId;
     }
 
     public void SaveActivePlanId(string? planId) =>
-        WriteJson(Path.Combine(_root, ActivePointerFile), new ActivePointer { PlanId = planId });
+        this.WriteJson(Path.Combine(this._root, ActivePointerFile), new ActivePointer { PlanId = planId });
 
-    private SessionPlan? LoadPlan(string path) => LoadJson<SessionPlan>(path);
+    private SessionPlan? LoadPlan(string path) => this.LoadJson<SessionPlan>(path);
 
-    private string PlanPath(string planId) => Path.Combine(_root, SafeFileName(planId) + ".json");
+    private string PlanPath(string planId) => Path.Combine(this._root, SafeFileName(planId) + ".json");
 
     private T? LoadJson<T>(string path)
     {
@@ -114,14 +114,14 @@ public sealed class LocalSessionPlanStore : ISessionPlanStore
 
         try
         {
-            using var stream = File.OpenRead(path);
+            using FileStream stream = File.OpenRead(path);
             return JsonSerializer.Deserialize<T>(stream, JsonOptions);
         }
         catch (Exception ex) when (ex is JsonException or IOException)
         {
             // A corrupt/locked file must not sink the whole planner; skip it and
             // leave a breadcrumb instead of silently dropping user history.
-            _log.Warn($"Ignoring unreadable session-plan file at {path}", ex);
+            this._log.Warn($"Ignoring unreadable session-plan file at {path}", ex);
             return default;
         }
     }
@@ -134,7 +134,7 @@ public sealed class LocalSessionPlanStore : ISessionPlanStore
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            _log.Error($"Failed to persist session-plan file at {path}", ex);
+            this._log.Error($"Failed to persist session-plan file at {path}", ex);
         }
     }
 
@@ -143,9 +143,9 @@ public sealed class LocalSessionPlanStore : ISessionPlanStore
     private static string SafeFileName(string planId)
     {
         Span<char> buffer = stackalloc char[planId.Length];
-        for (var i = 0; i < planId.Length; i++)
+        for (int i = 0; i < planId.Length; i++)
         {
-            var c = planId[i];
+            char c = planId[i];
             buffer[i] = Array.IndexOf(Path.GetInvalidFileNameChars(), c) >= 0 ? '_' : c;
         }
 

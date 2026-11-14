@@ -11,7 +11,7 @@ public sealed class SurfaceStateTests
     {
         foreach (SurfaceState state in Enum.GetValues<SurfaceState>())
         {
-            var view = SurfaceStatePresenter.Describe(state);
+            SurfaceStateView view = SurfaceStatePresenter.Describe(state);
             Assert.False(string.IsNullOrWhiteSpace(view.Title));
             Assert.IsType<StatusTone>(view.Tone);
         }

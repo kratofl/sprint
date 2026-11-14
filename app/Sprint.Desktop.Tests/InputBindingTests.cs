@@ -10,7 +10,7 @@ public sealed class InputBindingTests
     [Fact]
     public void CommandBusDispatchesRegisteredHandler()
     {
-        var bus = new CommandBus();
+        CommandBus bus = new CommandBus();
         SprintCommands.RegisterDefaults(bus);
         object? received = "sentinel";
         bus.Handle(SprintCommands.DashPageNext, payload => received = payload);
@@ -23,13 +23,13 @@ public sealed class InputBindingTests
     [Fact]
     public void CommandBusCatalogListsStaticThenDynamic()
     {
-        var bus = new CommandBus();
+        CommandBus bus = new CommandBus();
         SprintCommands.RegisterDefaults(bus);
         bus.ReplaceDynamic([
             new DynamicCommand(new CommandMeta("dash.page.1", "Page 1", "Dashboard", true, true), _ => { }),
         ]);
 
-        var catalog = bus.Catalog();
+        IReadOnlyList<CommandMeta> catalog = bus.Catalog();
         Assert.Equal(SprintCommands.DashPageNext, catalog[0].Id);
         Assert.Contains(catalog, meta => meta.Id == "dash.page.1");
     }
@@ -37,11 +37,11 @@ public sealed class InputBindingTests
     [Fact]
     public void ReplaceDynamicSwapsOutPreviousDynamicSet()
     {
-        var bus = new CommandBus();
+        CommandBus bus = new CommandBus();
         bus.ReplaceDynamic([new DynamicCommand(new CommandMeta("a", "A", "c", true, false), _ => { })]);
         bus.ReplaceDynamic([new DynamicCommand(new CommandMeta("b", "B", "c", true, false), _ => { })]);
 
-        var ids = bus.Catalog().Select(meta => meta.Id).ToArray();
+        string[] ids = bus.Catalog().Select(meta => meta.Id).ToArray();
         Assert.DoesNotContain("a", ids);
         Assert.Contains("b", ids);
         Assert.False(bus.Dispatch("a"));
@@ -50,8 +50,8 @@ public sealed class InputBindingTests
     [Fact]
     public void BindingResolverPrefersDeviceLayerOverGlobal()
     {
-        var device = new[] { new InputBinding { Input = "button:5", Command = "dash.page.next" } };
-        var global = new[] { new InputBinding { Input = "button:5", Command = "dash.page.prev" } };
+        InputBinding[] device = new[] { new InputBinding { Input = "button:5", Command = "dash.page.next" } };
+        InputBinding[] global = new[] { new InputBinding { Input = "button:5", Command = "dash.page.prev" } };
 
         Assert.Equal("dash.page.next", BindingResolver.Resolve("button:5", device, global));
         Assert.Equal("dash.page.prev", BindingResolver.Resolve("button:5", [], global));
@@ -61,7 +61,7 @@ public sealed class InputBindingTests
     [Fact]
     public void HardwareBindingResolverUsesDeviceBindingAcrossSeparateHidIdentity()
     {
-        var wheel = new SavedDevice
+        SavedDevice wheel = new SavedDevice
         {
             Id = "omega",
             Vid = 0xc872,
@@ -72,9 +72,9 @@ public sealed class InputBindingTests
             Height = 800,
             Bindings = [new DeviceBinding { Input = "button:68", Command = "device.command" }],
         };
-        var global = new[] { new InputBinding { Input = "button:68", Command = "global.command" } };
+        InputBinding[] global = new[] { new InputBinding { Input = "button:68", Command = "global.command" } };
 
-        var resolved = HardwareBindingResolver.Resolve(
+        ResolvedHardwareBinding? resolved = HardwareBindingResolver.Resolve(
             new HardwareInputEvent(0x3412, 0x7856, "button:68"),
             [wheel],
             global);
@@ -85,7 +85,7 @@ public sealed class InputBindingTests
     [Fact]
     public void RawInputButtonTrackerSupportsHighUsagesAndRisingEdges()
     {
-        var tracker = new ButtonEdgeTracker();
+        ButtonEdgeTracker tracker = new ButtonEdgeTracker();
 
         Assert.Equal([68, 129], tracker.Update([68, 129]));
         Assert.Empty(tracker.Update([68, 129]));
@@ -115,14 +115,14 @@ public sealed class InputBindingTests
     [Fact]
     public void CaptureReducerCompletesOnButtonAndBuildsBinding()
     {
-        var now = DateTimeOffset.UnixEpoch;
-        var state = InputCaptureReducer.Start("dash.target.set", now);
+        DateTimeOffset now = DateTimeOffset.UnixEpoch;
+        InputCaptureState state = InputCaptureReducer.Start("dash.target.set", now);
         Assert.True(state.IsListening);
 
         state = InputCaptureReducer.Capture(state, "key:F1");
         Assert.Equal(InputCapturePhase.Captured, state.Phase);
 
-        var binding = InputCaptureReducer.ToBinding(state);
+        InputBinding? binding = InputCaptureReducer.ToBinding(state);
         Assert.NotNull(binding);
         Assert.Equal("key:F1", binding!.Input);
         Assert.Equal("dash.target.set", binding.Command);
@@ -131,16 +131,16 @@ public sealed class InputBindingTests
     [Fact]
     public void CaptureReducerIsSingleFlightAndTimesOut()
     {
-        var now = DateTimeOffset.UnixEpoch;
-        var listening = InputCaptureReducer.Start("dash.target.set", now);
+        DateTimeOffset now = DateTimeOffset.UnixEpoch;
+        InputCaptureState listening = InputCaptureReducer.Start("dash.target.set", now);
 
         // Single-flight: a second capture attempt after completion is ignored.
-        var captured = InputCaptureReducer.Capture(listening, "key:A");
-        var again = InputCaptureReducer.Capture(captured, "key:B");
+        InputCaptureState captured = InputCaptureReducer.Capture(listening, "key:A");
+        InputCaptureState again = InputCaptureReducer.Capture(captured, "key:B");
         Assert.Equal("key:A", again.CapturedInput);
 
         // Timeout only fires while still listening.
-        var timedOut = InputCaptureReducer.Tick(listening, now.AddSeconds(6), TimeSpan.FromSeconds(5));
+        InputCaptureState timedOut = InputCaptureReducer.Tick(listening, now.AddSeconds(6), TimeSpan.FromSeconds(5));
         Assert.Equal(InputCapturePhase.TimedOut, timedOut.Phase);
         Assert.Null(InputCaptureReducer.ToBinding(timedOut));
     }
@@ -148,14 +148,14 @@ public sealed class InputBindingTests
     [Fact]
     public void RuntimePersistsControlsAcrossReload()
     {
-        var dataRoot = TestEnv.NewTempDataRoot();
+        string dataRoot = TestEnv.NewTempDataRoot();
         try
         {
-            var runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+            DesktopRuntime runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
             runtime.Controls.Bindings.Add(new InputBinding { Input = "key:F2", Command = "dash.target.set" });
             runtime.SaveControls();
 
-            var reloaded = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+            DesktopRuntime reloaded = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
             Assert.Contains(reloaded.Controls.Bindings, binding => binding.Input == "key:F2" && binding.Command == "dash.target.set");
         }
         finally

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import type { FormEvent, PointerEvent as ReactPointerEvent, ReactNode } from 'react'
+import { ChevronLeft } from 'lucide-react'
 
 // Everything Tab can land on inside the dialog, in DOM order.
 const FOCUSABLE = 'a[href], button:not(:disabled), input:not(:disabled):not([type="hidden"]), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])'
@@ -20,12 +21,14 @@ const focusableIn = (root: HTMLElement): HTMLElement[] =>
  * `onSubmit` renders the dialog as a <form>, so Enter in a field submits it — the footer's
  * `type="submit"` button is the primary action. `closeOnSmokeClick` lets a click on the smoke
  * cancel too; Fluent dialogs normally ignore it, so a half-filled form is never lost by accident.
+ * `onBack` puts a back arrow before the title, for a dialog with a second step.
  */
 export function ContentDialog({
   title,
   footer,
   onCancel,
   onSubmit,
+  onBack,
   role = 'dialog',
   className,
   describedBy,
@@ -36,6 +39,7 @@ export function ContentDialog({
   footer: ReactNode
   onCancel: () => void
   onSubmit?: (event: FormEvent<HTMLFormElement>) => void
+  onBack?: () => void
   role?: 'dialog' | 'alertdialog'
   className?: string
   /** Id of the element that describes the dialog (a confirmation's message). */
@@ -102,9 +106,16 @@ export function ContentDialog({
   const content = (
     <>
       <div className="content-dialog-body">
-        <h2 id={titleId} className="content-dialog-title">
-          {title}
-        </h2>
+        <div className="content-dialog-head">
+          {onBack && (
+            <button type="button" className="icon-button content-dialog-back" aria-label="Back" onClick={onBack}>
+              <ChevronLeft size={16} />
+            </button>
+          )}
+          <h2 id={titleId} className="content-dialog-title">
+            {title}
+          </h2>
+        </div>
         {children}
       </div>
       <div className="content-dialog-footer">{footer}</div>

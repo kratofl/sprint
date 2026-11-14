@@ -2,10 +2,10 @@
 # Usage: make <target>
 # Run `make help` to list all available targets.
 
-.PHONY: help setup types dev-app dev-host dev-db dev-api dev-web dev-cloud build-api build-web build-app build-xr-layer build \
+.PHONY: help setup types dev-app record-app replay-app agent-app smoke-app dev-host dev-db dev-api dev-web dev-cloud build-api build-web build-app build \
         test test-api test-app lint lint-app lint-api fmt schema \
         docker-build docker-up docker-down docker-logs \
-        clean
+        clean reset-dev-data
 
 # Recipes are written to run unchanged under PowerShell (Windows) and sh
 # (macOS/Linux). Anything shell-specific goes through scripts/make-tasks.mjs.
@@ -15,6 +15,8 @@ SHELL = powershell.exe
 endif
 
 TASKS := node scripts/make-tasks.mjs
+# cargo in the wheel-dash renderer crate (packages/dashboard/renderer), found on PATH or in ~/.cargo/bin.
+DASH_CARGO := node scripts/build-dash-renderer.mjs --cargo
 
 APP_DIR    := app
 APP_SOLUTION := $(APP_DIR)/Sprint.Desktop.slnx
@@ -47,6 +49,7 @@ setup: ## Restore project dependencies
 	dotnet restore $(APP_SOLUTION)
 	dotnet restore $(API_SOLUTION)
 	pnpm install
+	$(DASH_CARGO) fetch
 	echo 'Setup complete'
 
 # ─── Development ──────────────────────────────────────────────────────────────
@@ -59,8 +62,20 @@ types: ## Build the shared TypeScript contracts (@sprint/types)
 dev-app: types ## Run the desktop app in dev mode (Vite + Electron + native host)
 	pnpm --filter @sprint/desktop dev
 
+record-app: types ## Run the desktop app and record every telemetry frame into app/recordings
+	$(TASKS) record-app
+
+replay-app: types ## Run the desktop app on a recording instead of the game: make replay-app FILE=<recording>
+	$(TASKS) replay-app $(FILE)
+
+smoke-app: types ## Start the real desktop app hidden, open every page on a replayed race, fail on any error (CI runs it)
+	node app/desktop/scripts/smoke.mjs
+
+agent-app: types ## An agent's hidden run of the desktop app on fresh data, driven over CDP: make agent-app [DATA=<dir to copy>] [FILE=<recording>]
+	node app/desktop/scripts/agent-app.mjs $(if $(DATA),--data "$(DATA)") $(if $(FILE),--replay "$(FILE)")
+
 dev-host: ## Run only the native desktop host (loopback HTTP, no UI)
-	dotnet watch --project $(APP_HOST_PROJECT)
+	$(TASKS) dev-host
 
 # Compose interpolates the whole file, and the prod services require .env secrets,
 # so without a .env the dev database comes up with the .env.example defaults.
@@ -87,13 +102,10 @@ build-api: ## Publish the API server → api/build/bin
 build-web: ## Build the Next.js web app (production)
 	pnpm --filter @sprint/web build
 
-build-app: types ## Package the desktop app -> app/build/bin (RID=win-x64|osx-arm64|osx-x64|linux-x64)
+build-app: types ## Package the desktop app -> app/build/bin; the Windows installer too (RID=win-x64|osx-arm64|osx-x64|linux-x64)
 	dotnet publish $(APP_HOST_PROJECT) -c Release -r $(RID) -p:PublishSingleFile=true -p:InformationalVersion=$(VERSION) -o $(APP_DESKTOP_DIR)/resources/host
 	pnpm --filter @sprint/desktop build
-	pnpm --filter @sprint/desktop package
-
-build-xr-layer: ## Build the OpenXR driving-guide layer -> app/desktop/resources/openxr-layer (Windows only)
-	$(TASKS) build-xr-layer
+	pnpm --filter @sprint/desktop package $(VERSION)
 
 build: build-api build-web ## Build all (API + web)
 
@@ -104,9 +116,10 @@ test: test-api test-app ## Run API and desktop tests
 test-api: ## Run API server tests (xunit)
 	dotnet test $(API_TEST_PROJECT)
 
-test-app: types ## Run desktop tests (native xunit + dashboard/electron TS)
+test-app: types ## Run desktop tests (native xunit, the dash renderer crate, dashboard/electron TS)
 	dotnet test $(APP_TEST_PROJECT)
 	dotnet test $(APP_HOST_TEST_PROJECT)
+	$(DASH_CARGO) test
 	pnpm --filter @sprint/dashboard test
 	pnpm --filter @sprint/desktop test
 
@@ -116,17 +129,20 @@ lint: ## Build the API solution with warnings as errors and run pnpm lint
 	dotnet build $(API_SOLUTION) -warnaserror
 	pnpm lint
 
-lint-app: types ## Build the desktop solution with warnings as errors and type-check the UI
+lint-app: types ## Build the desktop solution with warnings as errors, lint the dash renderer crate and type-check the UI
 	dotnet build $(APP_SOLUTION) -warnaserror
+	$(DASH_CARGO) clippy --all-targets -- -D warnings
+	$(DASH_CARGO) fmt --check
 	pnpm --filter @sprint/dashboard type-check
 	pnpm --filter @sprint/desktop type-check
 
 lint-api: ## Build the API solution with warnings as errors
 	dotnet build $(API_SOLUTION) -warnaserror
 
-fmt: ## Format C# and TS/JS code
+fmt: ## Format C#, Rust and TS/JS code
 	dotnet format $(APP_SOLUTION)
 	dotnet format $(API_SOLUTION)
+	$(DASH_CARGO) fmt
 	pnpm format
 
 # ─── Docker ───────────────────────────────────────────────────────────────────
@@ -147,3 +163,6 @@ docker-logs: ## Tail logs from all running services
 
 clean: ## Remove build artifacts
 	$(TASKS) clean
+
+reset-dev-data: ## Delete this checkout's dev app data (settings, laps, logs); the installed app is untouched
+	$(TASKS) reset-dev-data

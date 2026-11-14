@@ -14,7 +14,7 @@ public sealed record ResultsImportProposal(
     public static ResultsImportProposal Empty { get; } =
         new([], new Dictionary<HistorySessionKind, int>());
 
-    public bool IsEmpty => Entries.Count == 0;
+    public bool IsEmpty => this.Entries.Count == 0;
 
     /// <summary>
     /// The per-kind breakdown as one line ("Practice 9, Qualifying 3, Race 2"), in the order
@@ -23,8 +23,8 @@ public sealed record ResultsImportProposal(
     public string Summary => string.Join(
         ", ",
         Enum.GetValues<HistorySessionKind>()
-            .Where(CountByKind.ContainsKey)
-            .Select(kind => $"{kind} {CountByKind[kind]}"));
+            .Where(this.CountByKind.ContainsKey)
+            .Select(kind => $"{kind} {this.CountByKind[kind]}"));
 }
 
 /// <summary>
@@ -58,8 +58,8 @@ public sealed class ResultsImportScanner
     {
         ArgumentNullException.ThrowIfNull(importer);
 
-        var candidates = importer.ListEntries()
-            .Where(entry => includeDeclined ? !_ledger.WasImported(entry) : !_ledger.IsSettled(entry))
+        List<ResultsArchiveEntry> candidates = importer.ListEntries()
+            .Where(entry => includeDeclined ? !this._ledger.WasImported(entry) : !this._ledger.IsSettled(entry))
             .ToList();
 
         if (candidates.Count == 0)

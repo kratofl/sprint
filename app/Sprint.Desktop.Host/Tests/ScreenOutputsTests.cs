@@ -5,10 +5,9 @@ using Xunit;
 namespace Sprint.Desktop.Host.Tests;
 
 /// <summary>
-/// <see cref="ScreenOutputs.Describe"/> builds the <c>screens</c> array Electron uses to decide
-/// which offscreen browsers to create. It has to be derived from configured devices, not received
-/// frames (see the type's own doc comment for why) — these tests pin the device-selection,
-/// layout-fallback, orientation, and idle-page rules that make that derivation correct.
+/// <see cref="ScreenOutputs.Describe"/> builds the <c>screens</c> array of <c>/api/state</c>
+/// from the configured devices — these tests pin the device-selection,
+/// layout-fallback, orientation, and idle-page rules of that derivation.
 /// </summary>
 public sealed class ScreenOutputsTests
 {
@@ -22,8 +21,7 @@ public sealed class ScreenOutputsTests
 
         IReadOnlyList<ScreenOutputDescription> outputs = ScreenOutputs.Describe(
             [disabled, notDash, buttonBox, enabled],
-            [DefaultLayout("layout-1")],
-            new FrameStore(),
+            [Layout("layout-1")],
             telemetryLive: true);
 
         ScreenOutputDescription only = Assert.Single(outputs);
@@ -31,31 +29,39 @@ public sealed class ScreenOutputsTests
     }
 
     [Fact]
-    public void Describe_FallsBackToDefaultLayoutWhenDashIdIsUnknown()
+    public void Describe_FallsBackToTheFirstDashByNameWhenDashIdIsUnknown()
     {
         SavedDevice device = Device("d1", dashId: "does-not-exist");
-        DashLayout defaultLayout = DefaultLayout("default-layout");
+        DashLayout zeta = Layout("zeta-layout", "Zeta");
+        DashLayout alpha = Layout("alpha-layout", "Alpha");
 
         ScreenOutputDescription output = Assert.Single(ScreenOutputs.Describe(
             [device],
-            [defaultLayout],
-            new FrameStore(),
+            [zeta, alpha],
             telemetryLive: true));
 
-        Assert.Same(defaultLayout, output.Layout);
+        Assert.Same(alpha, output.Layout);
+    }
+
+    [Fact]
+    public void Describe_HasNoOutputForADashDeviceWhenThereAreNoDashes()
+    {
+        Assert.Empty(ScreenOutputs.Describe(
+            [Device("d1", dashId: "deleted")],
+            [],
+            telemetryLive: true));
     }
 
     [Fact]
     public void Describe_ResolvesTheAssignedLayoutWhenItExists()
     {
         SavedDevice device = Device("d1", dashId: "assigned");
-        DashLayout assigned = DefaultLayout("assigned", isDefault: false);
-        DashLayout fallback = DefaultLayout("default-layout");
+        DashLayout assigned = Layout("assigned");
+        DashLayout fallback = Layout("another-layout", "A first by name");
 
         ScreenOutputDescription output = Assert.Single(ScreenOutputs.Describe(
             [device],
             [fallback, assigned],
-            new FrameStore(),
             telemetryLive: true));
 
         Assert.Same(assigned, output.Layout);
@@ -65,13 +71,12 @@ public sealed class ScreenOutputsTests
     public void Describe_UsesIdlePageWhenTelemetryIsNotLive()
     {
         SavedDevice device = Device("d1", dashId: "layout-1");
-        DashLayout layout = DefaultLayout("layout-1");
+        DashLayout layout = Layout("layout-1");
         layout.IdlePage = new DashPage { Id = "idle-page", Name = "Idle" };
 
         ScreenOutputDescription output = Assert.Single(ScreenOutputs.Describe(
             [device],
             [layout],
-            new FrameStore(),
             telemetryLive: false));
 
         Assert.True(output.Idle);
@@ -82,13 +87,12 @@ public sealed class ScreenOutputsTests
     public void Describe_UsesMainPageWhenTelemetryIsLive()
     {
         SavedDevice device = Device("d1", dashId: "layout-1");
-        DashLayout layout = DefaultLayout("layout-1");
+        DashLayout layout = Layout("layout-1");
         layout.IdlePage = new DashPage { Id = "idle-page", Name = "Idle" };
 
         ScreenOutputDescription output = Assert.Single(ScreenOutputs.Describe(
             [device],
             [layout],
-            new FrameStore(),
             telemetryLive: true));
 
         Assert.False(output.Idle);
@@ -103,37 +107,11 @@ public sealed class ScreenOutputsTests
 
         ScreenOutputDescription output = Assert.Single(ScreenOutputs.Describe(
             [device],
-            [DefaultLayout("layout-1")],
-            new FrameStore(),
+            [Layout("layout-1")],
             telemetryLive: true));
 
         Assert.Equal(800, output.Width);
         Assert.Equal(480, output.Height);
-    }
-
-    [Fact]
-    public void Describe_PerformanceIsNullBeforeAFrameAndPresentAfterOne()
-    {
-        SavedDevice device = Device("d1", dashId: "layout-1");
-        FrameStore frames = new();
-
-        ScreenOutputDescription beforeFrame = Assert.Single(ScreenOutputs.Describe(
-            [device],
-            [DefaultLayout("layout-1")],
-            frames,
-            telemetryLive: true));
-        Assert.Null(beforeFrame.Performance);
-
-        frames.Publish("d1", 480, 800, sequence: 1, bytes: 10);
-
-        ScreenOutputDescription afterFrame = Assert.Single(ScreenOutputs.Describe(
-            [device],
-            [DefaultLayout("layout-1")],
-            frames,
-            telemetryLive: true));
-        Assert.NotNull(afterFrame.Performance);
-        Assert.Equal(1, afterFrame.Performance!.Sequence);
-        Assert.Equal(10, afterFrame.Performance!.Bytes);
     }
 
     [Fact]
@@ -144,8 +122,7 @@ public sealed class ScreenOutputsTests
 
         ScreenOutputDescription output = Assert.Single(ScreenOutputs.Describe(
             [device],
-            [DefaultLayout("layout-1")],
-            new FrameStore(),
+            [Layout("layout-1")],
             telemetryLive: true));
 
         Assert.Equal(60, output.RefreshHz);
@@ -173,11 +150,10 @@ public sealed class ScreenOutputsTests
         };
     }
 
-    private static DashLayout DefaultLayout(string id, bool isDefault = true) => new()
+    private static DashLayout Layout(string id, string? name = null) => new()
     {
         Id = id,
-        Name = id,
-        IsDefault = isDefault,
+        Name = name ?? id,
         Pages = [new DashPage { Id = "main-page", Name = "Main" }],
     };
 }

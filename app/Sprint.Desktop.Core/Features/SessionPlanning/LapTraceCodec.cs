@@ -5,9 +5,9 @@ namespace Sprint.Desktop.Features.SessionPlanning;
 /// <summary>
 /// The wire and disk form of a <see cref="LapChannelTrace"/> (#194).
 /// <para>
-/// One codec, three callers: the local trace store, the shareable lap file (#198), and the
-/// cloud blob (#197) all carry the same bytes. Two implementations of this layout would drift,
-/// and the drift would only ever show up on somebody else's machine.
+/// One codec, two callers: the local trace store and the shareable lap file (#198) carry the
+/// same bytes. Two implementations of this layout would drift, and the drift would only ever
+/// show up on somebody else's machine.
 /// </para>
 /// <para>
 /// The layout is length-prefixed and channel names are written into the payload, so a trace
@@ -29,7 +29,7 @@ public static class LapTraceCodec
         ArgumentNullException.ThrowIfNull(stream);
         ArgumentNullException.ThrowIfNull(trace);
 
-        using var writer = new BinaryWriter(stream, Encoding.UTF8, leaveOpen: true);
+        using BinaryWriter writer = new BinaryWriter(stream, Encoding.UTF8, leaveOpen: true);
 
         writer.Write(Magic);
         writer.Write(trace.Version);
@@ -39,11 +39,11 @@ public static class LapTraceCodec
         writer.Write(trace.SampleCount);
         writer.Write(trace.Channels.Count);
 
-        foreach (var (name, values) in trace.Channels)
+        foreach ((string? name, float[]? values) in trace.Channels)
         {
             writer.Write(name);
             writer.Write(values.Length);
-            foreach (var value in values)
+            foreach (float value in values)
             {
                 writer.Write(value);
             }
@@ -51,7 +51,8 @@ public static class LapTraceCodec
     }
 
     /// <summary>
-    /// Reads a trace, or null when the payload is not one. Throws nothing a caller has to
+    /// Reads a trace, or null when the payload is not one or uses a newer layout than this build
+    /// knows. Throws nothing a caller has to
     /// catch for malformed input — a corrupt trace is an expected outcome, not an exception.
     /// </summary>
     public static LapChannelTrace? Read(Stream stream)
@@ -60,19 +61,27 @@ public static class LapTraceCodec
 
         try
         {
-            using var reader = new BinaryReader(stream, Encoding.UTF8, leaveOpen: true);
+            using BinaryReader reader = new BinaryReader(stream, Encoding.UTF8, leaveOpen: true);
 
             if (!reader.ReadBytes(Magic.Length).AsSpan().SequenceEqual(Magic))
             {
                 return null;
             }
 
-            var trace = new LapChannelTrace { Version = reader.ReadInt32() };
+            // A newer layout read as this one would be garbage that happens to parse. That is
+            // the case after a rollback, or when a newer Sprint shared the lap.
+            int version = reader.ReadInt32();
+            if (version > LapChannelTrace.FormatVersion)
+            {
+                return null;
+            }
+
+            LapChannelTrace trace = new LapChannelTrace { Version = version };
             trace.PositionStep = reader.ReadDouble();
-            var length = reader.ReadDouble();
+            double length = reader.ReadDouble();
             trace.TrackLengthMeters = double.IsNaN(length) ? null : length;
             _ = reader.ReadInt32(); // Sample count: each channel carries its own length.
-            var channelCount = reader.ReadInt32();
+            int channelCount = reader.ReadInt32();
 
             // A corrupt length prefix would otherwise ask for an arbitrary allocation before
             // anything has a chance to notice the file is nonsense.
@@ -81,17 +90,17 @@ public static class LapTraceCodec
                 return null;
             }
 
-            for (var i = 0; i < channelCount; i++)
+            for (int i = 0; i < channelCount; i++)
             {
-                var name = reader.ReadString();
-                var count = reader.ReadInt32();
+                string name = reader.ReadString();
+                int count = reader.ReadInt32();
                 if (count is < 0 or > (LapChannelTrace.MaxSamples * 2))
                 {
                     return null;
                 }
 
-                var values = new float[count];
-                for (var j = 0; j < count; j++)
+                float[] values = new float[count];
+                for (int j = 0; j < count; j++)
                 {
                     values[j] = reader.ReadSingle();
                 }

@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { bridge, type AppView, type ResultsImportOffer, type SprintCommand } from './bridge'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { bridge, type AppView, type ResultsImportOffer, type SprintCommand, type UpdateStatus } from './bridge'
 import type { RuntimeState } from './shell/runtime'
 import { TitleBar } from './shell/TitleBar'
 import { Sidebar } from './shell/Sidebar'
@@ -7,6 +7,10 @@ import { ViewRouter, type NavigationTarget } from './shell/ViewRouter'
 import { CommandPalette } from './shell/CommandPalette'
 import { ToastHost } from './shell/ToastHost'
 import { ImportResultsDialog } from './shell/ImportResultsDialog'
+import { Backdrop } from './shell/Backdrop'
+import { FirstRun } from './firstRun/FirstRun'
+import type { FirstRunActions } from './firstRun/FirstRun'
+import { parseSettings } from './views/SettingsDomain'
 import { AccountDialog } from './shell/AccountDialog'
 import { Onboarding } from './onboarding/Onboarding'
 import { localCounts } from './onboarding/summary'
@@ -16,16 +20,23 @@ import { primaryNav, viewLabel } from './shell/nav'
 import { matchShortcut } from './shell/shortcuts'
 import { platform } from './platform'
 import { readSidebarCollapsed } from './shell/settings'
-import { parseUpdateCheck, displayVersion, type UpdateRelease } from './shell/updates'
-import { canGoBack, goBack, initialHistory, navigateTo } from './shell/history'
+import { displayVersion } from './shell/updates'
+import { PageUpContext, type PageUp } from './shell/pageUp'
+import { describeBuild } from './shell/build'
+import { parseUpdatesInfo } from './views/SettingsUpdates'
 import { ToolbarActionsContext, type ToolbarActions } from './shell/toolbarActions'
 
 export type { RuntimeState }
 
-export function App() {
-  // Current page plus the pages visited before it (title-bar back, Alt+Left / ⌘[).
-  const [history, setHistory] = useState(() => initialHistory('Home'))
-  const view = history.view
+/**
+ * The main window. `mockup` (preview build only, mockup/MockupRoot.tsx) opens on its page and
+ * shows its content there in place of the real view; every other page stays the real one.
+ */
+export function App({ mockup }: { mockup?: { view: AppView; content: ReactNode } } = {}) {
+  const [view, setView] = useState<AppView>(mockup?.view ?? 'Home')
+  // The page above the current one, registered by the view (shell/pageUp.ts): where
+  // Alt+Left / ⌘[ goes. Null on a top-level page.
+  const [up, setUp] = useState<PageUp | null>(null)
   // A pending "open this specific item" request from Home (dash card, device
   // row, plan tile). Cleared right after being handed to the target view
   // (below) so it is applied exactly once: the view consumes it on mount to
@@ -41,15 +52,13 @@ export function App() {
   // The Sprint web setup: on the first launch, or to connect later (Settings, the account row).
   const [setup, setSetup] = useState<'first-run' | 'connect' | null>(null)
   const firstRunChecked = useRef(false)
-  const [updateRelease, setUpdateRelease] = useState<UpdateRelease | null>(null)
+  const [updateStatus, setUpdateStatus] = useState<UpdateStatus>({ kind: 'idle' })
   // The results import dialog (#185). `offered` is the startup scan's proposal; null means the
   // dialog was opened by hand and searches for itself.
   const [importDialog, setImportDialog] = useState<{ offered: ResultsImportOffer | null } | null>(null)
   const { toasts, leaving, show: showToast, dismiss: dismissToast } = useToasts()
 
-  // Every page change goes through here so the back stack stays complete.
-  const navigate = useCallback((next: AppView) => setHistory((current) => navigateTo(current, next)), [])
-  const back = useCallback(() => setHistory(goBack), [])
+  const navigate = useCallback((next: AppView) => setView(next), [])
 
   useEffect(() => {
     bridge
@@ -118,43 +127,66 @@ export function App() {
     ;(showSidebarRef.current ?? sidebarToggleRef.current)?.focus()
   }, [collapsed])
 
-  // Shared by the startup check and the palette's manual "Check for updates"
-  // (old app: `NotifyIfUpdateAvailableAsync`). `force` only affects whether a
-  // silent "up to date" result also gets a toast — a background check must
-  // never nag, but an explicit user action deserves an answer either way.
-  const runUpdateCheck = useCallback(
-    async (force: boolean) => {
-      try {
-        const result = await bridge.checkUpdates(force)
-        const release = parseUpdateCheck(result)
-        if (release) {
-          setUpdateRelease(release)
-          showToast({
-            tone: 'info',
-            title: `Sprint ${displayVersion(release.version)} is available`,
-            message: 'Install it from Settings.',
-            action: { label: 'Open Settings', onClick: () => navigate('Settings') },
-          })
-        } else if (force) {
-          showToast({ tone: 'info', title: "You're up to date", message: 'Sprint is already on the latest version for your update channel.' })
+  // The main process checks at startup and installs per the driver's settings; this only follows
+  // it. An update gets one toast when it turns up and one when it is ready. A check the driver
+  // asked for from the palette also answers "up to date" or "couldn't check"; a background one
+  // never nags.
+  const manualCheck = useRef(false)
+  const announcedKind = useRef<UpdateStatus['kind'] | null>(null)
+  useEffect(
+    () =>
+      bridge.subscribeUpdates((status) => {
+        setUpdateStatus(status)
+        // A resubscribe repeats the current status; only a change is news.
+        if (announcedKind.current === status.kind) return
+        announcedKind.current = status.kind
+        const manual = manualCheck.current
+        if (status.kind !== 'checking') manualCheck.current = false
+        switch (status.kind) {
+          case 'available':
+            showToast({
+              tone: 'info',
+              title: `Sprint ${displayVersion(status.version)} is available`,
+              message: 'Update from Settings.',
+              action: { label: 'Open Settings', onClick: () => navigate('Settings') },
+            })
+            return
+          case 'ready':
+            showToast({
+              tone: 'info',
+              title: `Sprint ${displayVersion(status.version)} is ready`,
+              message: 'It installs when you quit Sprint.',
+              action: { label: 'Restart now', onClick: () => void bridge.restartToUpdate() },
+            })
+            return
+          case 'up-to-date':
+            if (manual) showToast({ tone: 'info', title: "You're up to date", message: 'Sprint is already on the latest version for your update channel.' })
+            return
+          case 'failed':
+            if (manual) showToast({ tone: 'danger', title: 'Could not check for updates', message: 'Try again later.' })
+            return
+          default:
+            return
         }
-      } catch (error) {
-        console.error('Update check failed', error)
-        if (force) showToast({ tone: 'danger', title: 'Could not check for updates', message: 'Try again later.' })
-      }
-    },
+      }),
     [showToast, navigate],
   )
-
-  // One check at startup only.
-  useEffect(() => {
-    void runUpdateCheck(false)
-  }, [runUpdateCheck])
+  const checkForUpdates = useCallback(() => {
+    if (updateStatus.kind === 'unsupported') {
+      showToast({ tone: 'info', title: 'Updates need the installed app', message: 'This build of Sprint does not update itself.' })
+      return
+    }
+    manualCheck.current = true
+    void bridge.checkUpdates()
+  }, [updateStatus.kind, showToast])
 
   // The startup import offer (old app: `OfferArchivedSessionsAsync`): prompts only when the
   // results archive holds sessions that are neither imported nor previously declined. Nothing is
   // imported without the driver's answer. A dialog the driver already opened by hand wins.
+  // Not during the first-run setup, which asks the same question as one of its steps.
+  const firstRunDone = runtime.kind === 'ready' && runtime.sprint.firstRun.done
   useEffect(() => {
+    if (!firstRunDone) return
     let live = true
     bridge
       .resultsImportScan(false)
@@ -165,7 +197,7 @@ export function App() {
     return () => {
       live = false
     }
-  }, [])
+  }, [firstRunDone])
 
   // The manual action re-offers declined sessions: "Not now" silenced a prompt, not the laps.
   const scanForImport = useCallback(() => bridge.resultsImportScan(true), [])
@@ -194,7 +226,7 @@ export function App() {
         setPaletteOpen(true)
       } else if (shortcut.kind === 'back') {
         event.preventDefault()
-        back()
+        up?.go()
       } else {
         const target = primaryNav[shortcut.index]
         if (target) {
@@ -205,11 +237,12 @@ export function App() {
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [paletteOpen, toasts, dismissToast, navigate, back])
+  }, [paletteOpen, toasts, dismissToast, navigate, up])
 
   const account = runtime.kind === 'ready' ? runtime.sprint.account : null
   // Off (the shipped default), Sprint web shows nowhere: no setup, no account row, no Settings group.
   const sprintWeb = runtime.kind === 'ready' && runtime.sprint.features.sprintWeb
+  const build = describeBuild(import.meta.env.DEV, __SPRINT_DEV_BRANCH__, runtime.kind === 'ready' ? parseUpdatesInfo(runtime.sprint)?.version ?? null : null)
 
   // Asked once, on the first state that says the setup was never answered.
   useEffect(() => {
@@ -238,8 +271,11 @@ export function App() {
     navigate,
     send,
     toggleSidebar,
-    checkForUpdates: () => void runUpdateCheck(true),
+    checkForUpdates,
+    newDash: () => openItem({ view: 'Dashes', newDash: true }),
     importResults,
+    // A build-time constant: every build but a dev run drops the command.
+    openDebugWindow: import.meta.env.DEV ? () => void bridge.openDebugWindow() : undefined,
   })
 
   // The toolbar slot the page's actions render into, and the room it has for them. Null until
@@ -252,20 +288,38 @@ export function App() {
   )
   const openDiagnostics = useCallback(() => navigate('Help'), [navigate])
 
-  const appClassName = ['app', collapsed === null ? 'pending' : 'ready', collapsed ? 'collapsed' : ''].filter(Boolean).join(' ')
+  // The light trails behind the shell on Windows/Linux; macOS keeps its native vibrancy.
+  const trails = platform !== 'mac'
+  const firstRunActions = useMemo<FirstRunActions>(
+    () => ({ send, pickFolder: bridge.pickFolder, scan: () => bridge.resultsImportScan(false), runImport: bridge.resultsImport, decline: bridge.resultsImportDecline }),
+    [send],
+  )
+
+  // Until the first-run setup is done it is the whole window: no shell behind it to reach.
+  if (runtime.kind === 'ready' && !runtime.sprint.firstRun.done) {
+    const settings = parseSettings(runtime.sprint.settings)
+    return (
+      <FirstRun
+        firstRun={runtime.sprint.firstRun}
+        importAvailable={runtime.sprint.resultsImport.available}
+        driverName={settings.driverName}
+        driverNumber={settings.driverNumber}
+        actions={firstRunActions}
+      />
+    )
+  }
+
+  const appClassName = ['app', collapsed === null ? 'pending' : 'ready', collapsed ? 'collapsed' : '', trails ? 'with-trails' : ''].filter(Boolean).join(' ')
 
   return (
     <div className={appClassName}>
+      {trails ? <Backdrop tone="ambient" /> : null}
       <TitleBar
-        canGoBack={canGoBack(history)}
-        onBack={back}
-        runtime={runtime}
         onOpenPalette={() => setPaletteOpen(true)}
         title={viewLabel(view)}
         sidebarCollapsed={collapsed ?? false}
         onToggleSidebar={toggleSidebarFromButton}
         showSidebarRef={showSidebarRef}
-        onOpenDiagnostics={openDiagnostics}
         onActionsSlot={setActionsSlot}
         onActionsRoom={setActionsRoom}
       />
@@ -277,20 +331,30 @@ export function App() {
           toggleRef={sidebarToggleRef}
           onSelect={navigate}
           accountRow={sprintWeb ? { account, onOpen: () => (account?.signedIn ? setAccountOpen(true) : openSetup()) } : null}
-          updateAvailable={updateRelease !== null}
+          updateAvailable={updateStatus.kind === 'available' || updateStatus.kind === 'ready'}
+          build={build}
+          telemetry={runtime.kind === 'ready' ? runtime.sprint.telemetry : null}
+          onOpenDiagnostics={openDiagnostics}
         />
         <main className="content">
           <ToolbarActionsContext value={toolbarActions}>
-            <ViewRouter
-              view={view}
-              focus={focus}
-              runtime={runtime}
-              send={send}
-              onNavigate={navigate}
-              onOpenItem={openItem}
-              onImportResults={importResults}
-              onSetUpCloud={openSetup}
-            />
+            <PageUpContext value={setUp}>
+              {mockup && view === mockup.view ? (
+                mockup.content
+              ) : (
+                <ViewRouter
+                  view={view}
+                  focus={focus}
+                  runtime={runtime}
+                  send={send}
+                  onNavigate={navigate}
+                  onOpenItem={openItem}
+                  onImportResults={importResults}
+                  onSetUpCloud={openSetup}
+                  updateStatus={updateStatus}
+                />
+              )}
+            </PageUpContext>
           </ToolbarActionsContext>
         </main>
       </div>

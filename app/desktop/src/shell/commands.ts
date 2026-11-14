@@ -19,20 +19,27 @@ export type ShellCommandContext = {
   send: (command: SprintCommand) => Promise<void>
   toggleSidebar: () => void
   checkForUpdates: () => void
+  /** Opens the Dashes page with its New dash dialog, the same one the page's button opens. */
+  newDash: () => void
   /** Opens the results import dialog; absent when the game has no results archive. */
   importResults?: () => void
+  /** Opens the debug window; dev builds only, absent everywhere else. */
+  openDebugWindow?: () => void
 }
 
 /**
- * Ported from the old Avalonia app's `CreateShellCommands` (14 entries). Two of the
- * originals are dropped because their target doesn't exist in this shell:
- * - `compare.hud` toggled a Live Compare overlay that was never rebuilt here.
+ * Ported from the old Avalonia app's `CreateShellCommands` (14 entries). One of the
+ * originals is dropped because its target doesn't exist in this shell:
  * - `device.add` opened a device-catalog dialog; DevicesView owns its own dialogs now
  *   and the shell doesn't reach into view-owned UI, so only navigating to Devices
  *   (already covered by `nav.devices`) is reachable from here.
+ * `dash.create` opens the Dashes page's own New dash dialog through the shell's one-time
+ * "open this" hand-off (`NavigationTarget`), so the palette and the page create dashes the same way.
+ * `compare.hud` starts or stops training; with no lap picked yet it opens On track instead.
  * `nav.engineer` is new: the Race Engineer view didn't exist when the old palette
  * was written. `results.import` is the palette's copy of the planner/analysis
- * "Import results" action, listed only when the game has a results archive.
+ * "Import results" action, listed only when the game has a results archive. `dev.debug` opens the
+ * debug window and exists only in a dev build, with its Electron-handled shortcut shown.
  */
 export function buildShellCommands(context: ShellCommandContext): ShellCommand[] {
   const navCommands: ShellCommand[] = primaryNav.map((item, index) => ({
@@ -67,9 +74,14 @@ export function buildShellCommands(context: ShellCommandContext): ShellCommand[]
       id: 'dash.create',
       label: 'Create dash',
       keywords: 'new layout dashboard',
+      run: context.newDash,
+    },
+    {
+      id: 'compare.hud',
+      label: 'Start or stop training',
+      keywords: 'hud overlay live compare on track target lap',
       run: () => {
-        void context.send({ type: 'dash.create' })
-        context.navigate('Dashes')
+        void context.send({ type: 'compare.hud.toggle' }).catch(() => context.navigate('OnTrack'))
       },
     },
     {
@@ -85,6 +97,17 @@ export function buildShellCommands(context: ShellCommandContext): ShellCommand[]
             label: 'Import race results',
             keywords: 'archive sessions laps history le mans ultimate',
             run: context.importResults,
+          },
+        ]
+      : []),
+    ...(context.openDebugWindow
+      ? [
+          {
+            id: 'dev.debug',
+            label: 'Open debug window',
+            keywords: 'developer telemetry screens fps diagnostics always on top',
+            shortcut: context.platform === 'mac' ? '⌥⇧⌘D' : 'Ctrl+Alt+Shift+D',
+            run: context.openDebugWindow,
           },
         ]
       : []),

@@ -8,7 +8,7 @@ internal readonly record struct ScreenTransferResult(
     long CompletedAt,
     Exception? Error = null)
 {
-    public TimeSpan Elapsed => Stopwatch.GetElapsedTime(StartedAt, CompletedAt);
+    public TimeSpan Elapsed => Stopwatch.GetElapsedTime(this.StartedAt, this.CompletedAt);
 }
 
 /// <summary>
@@ -29,63 +29,63 @@ internal sealed class ScreenTransferWorker : IDisposable
 
     public ScreenTransferWorker(IScreenDriver driver)
     {
-        _driver = driver ?? throw new ArgumentNullException(nameof(driver));
-        _thread = new Thread(Run)
+        this._driver = driver ?? throw new ArgumentNullException(nameof(driver));
+        this._thread = new Thread(this.Run)
         {
             IsBackground = true,
             Name = "Sprint.ScreenTransfer",
         };
-        _thread.Start();
+        this._thread.Start();
     }
 
-    public bool IsInFlight => Volatile.Read(ref _inFlight) == 1;
+    public bool IsInFlight => Volatile.Read(ref this._inFlight) == 1;
 
     public void Start(byte[] frame)
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
+        ObjectDisposedException.ThrowIf(this._disposed, this);
         ArgumentNullException.ThrowIfNull(frame);
-        if (Interlocked.CompareExchange(ref _inFlight, 1, 0) != 0)
+        if (Interlocked.CompareExchange(ref this._inFlight, 1, 0) != 0)
         {
             throw new InvalidOperationException("A screen transfer is already in flight.");
         }
 
-        _frame = frame;
-        _requested.Set();
+        this._frame = frame;
+        this._requested.Set();
     }
 
     public ScreenTransferResult Complete()
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        if (!IsInFlight)
+        ObjectDisposedException.ThrowIf(this._disposed, this);
+        if (!this.IsInFlight)
         {
             throw new InvalidOperationException("No screen transfer is in flight.");
         }
 
-        _completed.WaitOne();
-        _frame = null;
-        Volatile.Write(ref _inFlight, 0);
-        return _result;
+        this._completed.WaitOne();
+        this._frame = null;
+        Volatile.Write(ref this._inFlight, 0);
+        return this._result;
     }
 
     public void Dispose()
     {
-        if (_disposed)
+        if (this._disposed)
         {
             return;
         }
 
-        if (IsInFlight)
+        if (this.IsInFlight)
         {
-            _ = Complete();
+            _ = this.Complete();
         }
 
-        _disposed = true;
-        Volatile.Write(ref _stopping, 1);
-        _requested.Set();
-        if (_thread.Join(TimeSpan.FromSeconds(2)))
+        this._disposed = true;
+        Volatile.Write(ref this._stopping, 1);
+        this._requested.Set();
+        if (this._thread.Join(TimeSpan.FromSeconds(2)))
         {
-            _requested.Dispose();
-            _completed.Dispose();
+            this._requested.Dispose();
+            this._completed.Dispose();
         }
     }
 
@@ -93,20 +93,20 @@ internal sealed class ScreenTransferWorker : IDisposable
     {
         while (true)
         {
-            _requested.WaitOne();
-            if (Volatile.Read(ref _stopping) == 1)
+            this._requested.WaitOne();
+            if (Volatile.Read(ref this._stopping) == 1)
             {
                 return;
             }
 
-            var frame = _frame
+            byte[] frame = this._frame
                 ?? throw new InvalidOperationException("Screen transfer request had no frame.");
-            var startedAt = Stopwatch.GetTimestamp();
+            long startedAt = Stopwatch.GetTimestamp();
             bool succeeded;
             Exception? error = null;
             try
             {
-                succeeded = _driver.TrySendFrame(frame);
+                succeeded = this._driver.TrySendFrame(frame);
             }
             catch (Exception ex)
             {
@@ -114,12 +114,12 @@ internal sealed class ScreenTransferWorker : IDisposable
                 error = ex;
             }
 
-            _result = new ScreenTransferResult(
+            this._result = new ScreenTransferResult(
                 succeeded,
                 startedAt,
                 Stopwatch.GetTimestamp(),
                 error);
-            _completed.Set();
+            this._completed.Set();
         }
     }
 }

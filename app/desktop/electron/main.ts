@@ -1,16 +1,22 @@
-import { app, BrowserWindow, dialog, ipcMain, type BrowserWindowConstructorOptions, Menu, nativeTheme, shell, type IpcMainInvokeEvent, type IpcMainEvent, type WebContents } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, type BrowserWindowConstructorOptions, Menu, nativeTheme, screen, shell, type IpcMainInvokeEvent, type IpcMainEvent, type WebContents } from 'electron'
 import { spawnSync } from 'node:child_process'
-import { existsSync } from 'node:fs'
+import { randomUUID } from 'node:crypto'
+import { existsSync, readFileSync } from 'node:fs'
 import { readFile, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { isRecord, readScreenOutputs } from './frames.js'
-import { guideRoute, readGuideOverlayWanted } from './guideFeed.js'
-import { GuideOverlay } from './guideOverlay.js'
+import { isRecord } from './frames.js'
 import { NativeHost } from './native-host.js'
-import { OffscreenOutputs } from './offscreen.js'
+import { hudRouteFor, TrainingHud } from './hud.js'
+import { HUD_CLOSED, readHudWanted } from './hudFeed.js'
 import { macMenuTemplate } from './appMenu.js'
+import { DEFAULT_DEBUG_PREFS, DebugWindow, readDebugWindowPrefs, type DebugWindowPrefs } from './debugWindow.js'
 import { TRANSPARENT, windowChrome, windowLook, type WindowChrome } from './windowChrome.js'
+import { DashDesigners } from './designerWindows.js'
+import { readDashIds, readDesignerDashId } from './designerRoute.js'
+import { PitWallWindows } from './pitWallWindows.js'
+import { pitWallQuery, readPitWallTarget, readPitWallWindows, readTraceLap } from './pitWallRoute.js'
+import { Updates } from './updates.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const desktopRoot = path.resolve(__dirname, '..')
@@ -35,8 +41,18 @@ function resolveDotnetCommand(): string {
 const nativeHost = new NativeHost()
 let hostStartError: string | undefined
 
+/**
+ * An installed build runs the host published into its resources (`make build-app`); a dev run
+ * builds and runs it from source.
+ */
 async function startNativeHost(): Promise<void> {
   try {
+    if (app.isPackaged) {
+      const hostDir = path.join(process.resourcesPath, 'host')
+      const hostExe = path.join(hostDir, process.platform === 'win32' ? 'Sprint.Desktop.Host.exe' : 'Sprint.Desktop.Host')
+      await nativeHost.start(hostExe, [], hostDir)
+      return
+    }
     await nativeHost.start(resolveDotnetCommand(), ['run', '--project', hostProject], path.dirname(hostProject))
   } catch (error) {
     hostStartError = error instanceof Error ? error.message : String(error)
@@ -51,10 +67,8 @@ function shutdown(): Promise<void> {
   if (!shutdownPromise) {
     polling = false
     if (pollTimer !== undefined) { clearTimeout(pollTimer); pollTimer = undefined }
-    offscreen?.closeAll()
-    offscreen = undefined
-    guideOverlay?.close()
-    guideOverlay = undefined
+    hud?.close()
+    hud = undefined
     shutdownPromise = nativeHost.stop().catch((error: unknown) => {
       console.error('[sprint] native host stop failed:', error)
     })
@@ -67,8 +81,7 @@ function shutdown(): Promise<void> {
 const subscribers = new Set<WebContents>()
 let pollTimer: ReturnType<typeof setTimeout> | undefined
 let polling = false
-let offscreen: OffscreenOutputs | undefined
-let guideOverlay: GuideOverlay | undefined
+let hud: TrainingHud | undefined
 
 function rendererBaseUrl(): string {
   const devServerUrl = process.env.SPRINT_DESKTOP_DEV_SERVER_URL
@@ -83,14 +96,21 @@ function scheduleNextPoll(): void {
 async function pollTick(): Promise<void> {
   if (!polling) { pollTimer = undefined; return }
   try {
+    const started = performance.now()
     const state = await nativeHost.state()
+    // The dev debug window shows how long this poll took, next to the host's own timings.
+    if (debugWindow?.isOpen) void debugWindow.feed(performance.now() - started)
     for (const contents of subscribers) {
       if (!contents.isDestroyed()) contents.send('sprint:state', state)
     }
-    // Dashboard output is driven from the same poll rather than from a renderer
-    // subscription, so screens keep painting with the main window hidden.
-    offscreen?.reconcile(readScreenOutputs(state))
-    guideOverlay?.reconcile(mainWindow !== undefined && readGuideOverlayWanted(state))
+    // Click-through while driving and only stopped from the app; without the main window
+    // nothing could turn it off, so it only shows while that window exists.
+    hud?.reconcile(mainWindow ? readHudWanted(state) : HUD_CLOSED)
+    // A deleted dash takes its designer window with it.
+    designers.reconcile(readDashIds(state))
+    // Pages and tiles the engineer put in their own windows open and close with the layout.
+    pitWall.reconcile(readPitWallWindows(state))
+    updates.reconcile(state)
   } catch (error) {
     console.error('[sprint] state poll failed:', error)
   }
@@ -115,6 +135,27 @@ ipcMain.handle('sprint:diagnostics-logs', (_event: IpcMainInvokeEvent, minLevel:
 })
 
 ipcMain.handle('sprint:plan-context', () => nativeHost.planContext())
+ipcMain.handle('sprint:plan-targets', (_event, planId: unknown) => (typeof planId === 'string' ? nativeHost.planTargets(planId) : null))
+/** The host validates the figures (PlanLimits); this only makes sure an object goes through. */
+ipcMain.handle('sprint:plan-fuel-estimate', (_event: IpcMainInvokeEvent, request: unknown) => {
+  if (!isRecord(request)) throw new Error('A fuel estimate request is required.')
+  return nativeHost.planFuelEstimate(request)
+})
+
+ipcMain.handle('sprint:setups', () => nativeHost.setups())
+
+/** Setup and version ids are opaque keys the host listed itself; it answers 404 for any other. */
+ipcMain.handle('sprint:setup-sheet', (_event: IpcMainInvokeEvent, id: unknown, version: unknown) => {
+  if (typeof id !== 'string' || id.length === 0 || (version !== null && typeof version !== 'string')) {
+    throw new Error('A setup id is required.')
+  }
+  return nativeHost.setupSheet(id, version)
+})
+
+ipcMain.handle('sprint:setup-driven', (_event: IpcMainInvokeEvent, id: unknown) => {
+  if (typeof id !== 'string' || id.length === 0) throw new Error('A setup id is required.')
+  return nativeHost.setupDriven(id)
+})
 
 /** Archive entry ids are opaque keys the host listed itself; the host re-checks them against its listing. */
 const readEntryIds = (ids: unknown): string[] => {
@@ -180,33 +221,13 @@ ipcMain.handle('sprint:cloud-discover', () => nativeHost.cloudDiscover())
 ipcMain.handle('sprint:cloud-push', () => nativeHost.cloudPush())
 ipcMain.handle('sprint:cloud-pull', () => nativeHost.cloudPull())
 
-ipcMain.handle('sprint:updates-check', (_event: IpcMainInvokeEvent, force: unknown) => {
-  return nativeHost.checkUpdates(force === true)
-})
+// Only an installed Windows build updates itself (the NSIS installer is the update).
+const updates = new Updates(app.isPackaged && process.platform === 'win32', () => shutdown())
 
-/**
- * One-click self-replacing install (old app: `ConfirmAndInstallUpdate`/`InstallUpdate`).
- * Only the main process knows its own pid, install directory, and executable name — the
- * renderer never supplies them, so it cannot point the host's self-replace at anything else.
- * Refuses outright when not packaged: in a dev run `app.getPath('exe')` resolves to
- * `electron.exe` inside node_modules, and self-replacing that would corrupt the dev toolchain.
- */
-ipcMain.handle('sprint:updates-install', async () => {
-  if (!app.isPackaged) return { outcome: 'unavailable-in-dev' }
-  const exePath = app.getPath('exe')
-  const result = await nativeHost.installUpdate({
-    pid: process.pid,
-    installDir: path.dirname(exePath),
-    exeName: path.basename(exePath),
-  })
-  // The staged self-replace batch waits for this process to exit before it can copy the new
-  // build over the install directory, so the app must actually quit once staging succeeds.
-  // Deferred one tick so the IPC reply above reaches the renderer before shutdown begins.
-  if (isRecord(result) && result.outcome === 'Staged') {
-    setImmediate(() => { void shutdown().finally(() => app.quit()) })
-  }
-  return result
-})
+ipcMain.on('sprint:updates-subscribe', (event: IpcMainEvent) => updates.subscribe(event.sender))
+ipcMain.handle('sprint:updates-check', () => updates.check())
+ipcMain.handle('sprint:updates-download', () => updates.download())
+ipcMain.handle('sprint:updates-restart', () => updates.restart())
 
 /** The lap file filter for both dialogs. The extension matches `SharedLapFile.Extension`. */
 const LAP_FILE_FILTERS = [{ name: 'Sprint lap', extensions: ['sprintlap'] }]
@@ -232,11 +253,19 @@ ipcMain.handle('sprint:lap-export', async (event: IpcMainInvokeEvent, sessionId:
   } catch (error) {
     return { outcome: 'failed', error: error instanceof Error ? error.message : 'The file could not be written.' }
   }
-  return { outcome: 'saved', fileName: path.basename(choice.filePath), hasPositions: file.hasPositions }
+  return { outcome: 'saved', fileName: path.basename(choice.filePath) }
 })
 
-/** Opens a .sprintlap a friend sent and files it into the corpus. */
-ipcMain.handle('sprint:lap-import', async (event: IpcMainInvokeEvent) => {
+/**
+ * A lap file opened to be imported, waiting for the driver to confirm it (#198: never silently).
+ * Its bytes stay here, where the disk was read, so Add files exactly what the dialog showed.
+ * One at a time: opening another forgets it.
+ */
+let openedLapFile: { token: string; bytes: Uint8Array<ArrayBuffer> } | undefined
+
+/** Opens a .sprintlap a friend sent and has the host read it, without filing it yet. */
+ipcMain.handle('sprint:lap-open', async (event: IpcMainInvokeEvent) => {
+  openedLapFile = undefined
   const owner = BrowserWindow.fromWebContents(event.sender)
   const options = { properties: ['openFile' as const], filters: LAP_FILE_FILTERS }
   const choice = owner ? await dialog.showOpenDialog(owner, options) : await dialog.showOpenDialog(options)
@@ -244,16 +273,59 @@ ipcMain.handle('sprint:lap-import', async (event: IpcMainInvokeEvent) => {
   if (choice.canceled || !filePath) return { outcome: 'cancelled' }
   try {
     if ((await stat(filePath)).size > MAX_LAP_FILE_BYTES) return { outcome: 'failed', error: 'That file is far too large to be a Sprint lap file.' }
-    return await nativeHost.importLap(Uint8Array.from(await readFile(filePath)))
+    const bytes = Uint8Array.from(await readFile(filePath))
+    const preview = await nativeHost.previewLap(bytes)
+    if (!isRecord(preview) || preview.outcome !== 'Ready') return preview
+    const token = randomUUID()
+    openedLapFile = { token, bytes }
+    return { ...preview, token }
   } catch (error) {
     return { outcome: 'failed', error: error instanceof Error ? error.message : 'The file could not be read.' }
   }
+})
+
+/** The driver confirmed: files the opened lap into the corpus. */
+ipcMain.handle('sprint:lap-import', async (_event: IpcMainInvokeEvent, token: unknown) => {
+  const opened = openedLapFile
+  if (!opened || opened.token !== token) return { outcome: 'failed', error: 'That lap file is no longer open. Open it again.' }
+  openedLapFile = undefined
+  try {
+    return await nativeHost.importLap(opened.bytes)
+  } catch (error) {
+    return { outcome: 'failed', error: error instanceof Error ? error.message : 'The lap could not be added.' }
+  }
+})
+
+/** The driver cancelled: forgets the opened lap file. */
+ipcMain.handle('sprint:lap-discard', (_event: IpcMainInvokeEvent, token: unknown) => {
+  if (openedLapFile?.token === token) openedLapFile = undefined
+})
+
+/** A folder picker (the first-run setup's game folder): the chosen path, or null when cancelled. */
+ipcMain.handle('sprint:pick-folder', async (event: IpcMainInvokeEvent, title: unknown) => {
+  const owner = BrowserWindow.fromWebContents(event.sender)
+  const options = { title: typeof title === 'string' ? title : undefined, properties: ['openDirectory' as const] }
+  const choice = owner ? await dialog.showOpenDialog(owner, options) : await dialog.showOpenDialog(options)
+  return choice.canceled ? null : (choice.filePaths[0] ?? null)
 })
 
 ipcMain.handle('sprint:send-command', (_event: IpcMainInvokeEvent, command: unknown) => {
   if (!isRecord(command)) throw new Error('A command object is required.')
   return nativeHost.command(command)
 })
+
+/** The Dashes page opens a dash in its own designer window, or brings that window forward. */
+ipcMain.handle('sprint:open-dash-designer', (_event: IpcMainInvokeEvent, dashId: unknown) => {
+  designers.open(readDesignerDashId(dashId))
+})
+
+/** The Race engineer page opens the pit wall; a page tab marked ↗ brings that page's window forward. */
+ipcMain.handle('sprint:open-pit-wall', (_event: IpcMainInvokeEvent, target: unknown) => {
+  pitWall.open(readPitWallTarget(target))
+})
+
+/** A lap of the linked driver's, for the pit wall's traces (too large for the polled state). */
+ipcMain.handle('sprint:pitwall-trace', (_event: IpcMainInvokeEvent, lap: unknown) => nativeHost.pitWallTrace(readTraceLap(lap)))
 
 ipcMain.on('sprint:subscribe', (event: IpcMainEvent) => {
   subscribers.add(event.sender)
@@ -265,7 +337,18 @@ ipcMain.on('sprint:unsubscribe', (event: IpcMainEvent) => {
   subscribers.delete(event.sender)
 })
 
+ipcMain.on('sprint:hud-subscribe', (event: IpcMainEvent) => {
+  hud?.resend(event.sender)
+})
+
+ipcMain.on('sprint:hud-resize', (event: IpcMainEvent, width: unknown, height: unknown, done: unknown) => {
+  if (typeof width !== 'number' || typeof height !== 'number' || !Number.isFinite(width) || !Number.isFinite(height)) return
+  hud?.resize(event.sender, width, height, done === true)
+})
+
 const isMac = process.platform === 'darwin'
+// SPRINT_DESKTOP_HIDDEN=1 (scripts/agent-app.mjs): a hidden run an agent drives over CDP. Never in a packaged build.
+const agentRun = !app.isPackaged && process.env.SPRINT_DESKTOP_HIDDEN === '1'
 /** The look the main window wears. Follows the OS, except after the dev toggle (`toggleLook`). */
 let look = windowLook(process.platform)
 let mainWindow: BrowserWindow | undefined
@@ -308,8 +391,19 @@ function isToggleLookKey(input: Electron.Input): boolean {
   return input.type === 'keyDown' && input.key.toLowerCase() === 'l' && input.alt && input.shift && (isMac ? input.meta : input.control)
 }
 
-/** Height of the renderer's toolbar (styles.css `.titlebar`), the window title bar; the caption buttons fill it. */
+/** ⌘⌥⇧D on macOS, Ctrl+Alt+Shift+D elsewhere: `OPEN_DEBUG_ACCELERATOR` in appMenu.ts. */
+function isOpenDebugKey(input: Electron.Input): boolean {
+  return input.type === 'keyDown' && input.key.toLowerCase() === 'd' && input.alt && input.shift && (isMac ? input.meta : input.control)
+}
+
+/** Height of the renderer's toolbar (styles.css `.titlebar`), the window title bar, including its 1px bottom edge. */
 const TITLE_BAR_HEIGHT = 48
+
+/**
+ * Height of the caption buttons' overlay. One pixel short of the toolbar: the overlay paints its own
+ * background over the page, and at full height it would hide the toolbar's bottom edge beneath it.
+ */
+const CAPTION_BUTTONS_HEIGHT = TITLE_BAR_HEIGHT - 1
 
 /**
  * macOS traffic lights, as the top-left of the close button. The renderer's
@@ -332,7 +426,7 @@ function chromeOptions(chrome: WindowChrome): BrowserWindowConstructorOptions {
         // snap/maximise and close — including the Snap Layouts flyout, which a drawn
         // HTML button cannot offer.
         titleBarStyle: 'hidden',
-        titleBarOverlay: { color: chrome.background, symbolColor: chrome.symbol, height: TITLE_BAR_HEIGHT },
+        titleBarOverlay: { color: chrome.background, symbolColor: chrome.symbol, height: CAPTION_BUTTONS_HEIGHT },
       }
     case 'vibrancy':
     case 'opaque':
@@ -356,7 +450,7 @@ function applyChrome(window: BrowserWindow, chrome: WindowChrome): void {
     case 'solid':
       window.setBackgroundColor(chrome.background)
       // Windows/Linux only; macOS reaches this in the dev look toggle.
-      if (!isMac) window.setTitleBarOverlay({ color: chrome.background, symbolColor: chrome.symbol, height: TITLE_BAR_HEIGHT })
+      if (!isMac) window.setTitleBarOverlay({ color: chrome.background, symbolColor: chrome.symbol, height: CAPTION_BUTTONS_HEIGHT })
       return
     case 'vibrancy':
       window.setVibrancy('sidebar')
@@ -369,15 +463,29 @@ function applyChrome(window: BrowserWindow, chrome: WindowChrome): void {
   }
 }
 
-function createWindow(): BrowserWindow {
+/** What differs between the main window and a dash designer window; the chrome is the same. */
+type AppWindowOptions = {
+  size: { width: number; height: number; minWidth: number; minHeight: number }
+  title: string
+  /** The renderer query: `platform` always, plus what picks the surface. */
+  query: Record<string, string>
+}
+
+/**
+ * A window on the renderer, in the current look: frameless with the OS caption buttons (or traffic
+ * lights), the same preload, links to the system browser, and its backdrop following the OS theme.
+ */
+function createAppWindow({ size, title, query }: AppWindowOptions): BrowserWindow {
   const window = new BrowserWindow({
-    width: 1440,
-    height: 900,
-    minWidth: 1040,
-    minHeight: 680,
+    ...size,
+    title,
     ...chromeOptions(currentChrome()),
     icon: path.join(desktopRoot, 'resources', 'icon.png'),
+    // An agent run never appears on screen; it is driven and captured over CDP. A merely hidden
+    // window paints nothing, so it renders offscreen instead.
+    show: !agentRun,
     webPreferences: {
+      offscreen: agentRun,
       // Sandboxed preloads must be CommonJS (Electron rejects an ES-module preload
       // there), hence the .cts source compiled to preload.cjs.
       preload: path.join(__dirname, 'preload.cjs'),
@@ -386,23 +494,9 @@ function createWindow(): BrowserWindow {
       sandbox: true,
     },
   })
-  mainWindow = window
-  window.once('closed', () => {
-    if (mainWindow !== window) return
-    mainWindow = undefined
-    // The overlay is click-through and has no controls; without the main window nothing could turn it off.
-    guideOverlay?.close()
-  })
   // The Windows look on a Mac (dev toggle): the traffic lights would sit on its title
   // and icon, so hide them. ⌘W and ⌘Q still close the window.
   if (isMac && look === 'windows') window.setWindowButtonVisibility(false)
-  if (!app.isPackaged) {
-    window.webContents.on('before-input-event', (event, input) => {
-      if (!isToggleLookKey(input)) return
-      event.preventDefault()
-      toggleLook()
-    })
-  }
   // Views link out with plain `target="_blank"` anchors (e.g. Settings/Help's "View
   // release"). Without a handler, Electron opens those in a second frameless Electron
   // window instead of the system browser. Deny every new-window request and hand
@@ -428,10 +522,6 @@ function createWindow(): BrowserWindow {
   window.once('closed', () => nativeTheme.off('updated', onThemeUpdated))
 
   const devServerUrl = process.env.SPRINT_DESKTOP_DEV_SERVER_URL
-  // `?backdrop=window` tells the renderer it is the main window, drawn over the
-  // backdrop above (the offscreen dash pages and the preview harness are not).
-  // `?platform=` picks the look the chrome above was built for.
-  const query = { backdrop: 'window', platform: look }
   if (devServerUrl) {
     const url = new URL(devServerUrl)
     for (const [key, value] of Object.entries(query)) url.searchParams.set(key, value)
@@ -442,7 +532,123 @@ function createWindow(): BrowserWindow {
   return window
 }
 
+function createWindow(): BrowserWindow {
+  // `?backdrop=window` tells the renderer it is the main window, drawn over the
+  // backdrop above (the other windows and the preview harness are not).
+  // `?platform=` picks the look the chrome above was built for.
+  const window = createAppWindow({
+    size: { width: 1440, height: 900, minWidth: 1040, minHeight: 680 },
+    title: 'Sprint',
+    query: { backdrop: 'window', platform: look },
+  })
+  mainWindow = window
+  window.once('closed', () => {
+    if (mainWindow !== window) return
+    mainWindow = undefined
+    hud?.close()
+    // The designers belong to the app, not to a window of their own: Sprint is done with them too.
+    void designers.closeAll()
+    pitWall.closeAll()
+    debugWindow?.close()
+  })
+  if (!app.isPackaged) {
+    window.webContents.on('before-input-event', (event, input) => {
+      if (isToggleLookKey(input)) {
+        event.preventDefault()
+        toggleLook()
+      } else if (isOpenDebugKey(input)) {
+        event.preventDefault()
+        debugWindow?.open()
+      }
+    })
+  }
+  return window
+}
+
+/**
+ * One dash's designer (`?designer=<dashId>`): the same renderer without the shell. The page sets
+ * its title to the dash name, which Electron shows as the window title.
+ */
+const designers = new DashDesigners((dashId) =>
+  createAppWindow({
+    size: { width: 1440, height: 900, minWidth: 960, minHeight: 640 },
+    title: 'Sprint',
+    query: { designer: dashId, platform: look },
+  }),
+)
+
+/**
+ * The engineer's pit wall (`?pitwall=main|page:<id>|tile:<id>`): the wall maximised, and each page
+ * or tile in its own window where the layout puts one. Each window's place goes back to the host.
+ */
+const pitWall = new PitWallWindows({
+  create: (key, bounds) => {
+    const window = createAppWindow({
+      size: { width: key.kind === 'tile' ? 720 : 1440, height: key.kind === 'tile' ? 480 : 900, minWidth: key.kind === 'tile' ? 320 : 960, minHeight: key.kind === 'tile' ? 240 : 600 },
+      title: 'Pit wall',
+      query: { pitwall: pitWallQuery(key), platform: look },
+    })
+    if (bounds) window.setBounds(bounds)
+    return window
+  },
+  place: (key, bounds) => {
+    const command = key.kind === 'main' ? { type: 'pitwall.placeWindow', kind: 'main', bounds } : { type: 'pitwall.placeWindow', kind: key.kind, id: key.id, bounds }
+    nativeHost.command(command).catch((error: unknown) => console.error('[sprint] saving a pit wall window place failed:', error))
+  },
+  displays: () => screen.getAllDisplays().map((display) => display.workArea),
+})
+
 app.setName('Sprint')
+// A dev run (scripts/dev.mjs) keeps the browser profile with the host's data in its own checkout,
+// away from the installed app's. The host reads the same variable.
+const dataRoot = process.env.SPRINT_DESKTOP_DATA_ROOT
+if (dataRoot) app.setPath('userData', dataRoot)
+
+/**
+ * The debug window (`?debug=1`): dev runs only, so a packaged build has no window, IPC, menu item
+ * or shortcut for it. It remembers its place and toggle only in a dev run's own data folder, never
+ * in the installed app's.
+ */
+const debugPrefsFile = dataRoot ? path.join(dataRoot, 'debug-window.json') : null
+const debugWindow = app.isPackaged
+  ? undefined
+  : new DebugWindow({
+      create: (bounds) => {
+        const window = createAppWindow({
+          size: { width: 460, height: 880, minWidth: 360, minHeight: 360 },
+          title: 'Sprint debug',
+          query: { debug: '1', platform: look },
+        })
+        if (bounds) window.setBounds(bounds)
+        return window
+      },
+      displays: () => screen.getAllDisplays().map((display) => display.workArea),
+      snapshot: () => nativeHost.debug(),
+      load: (): DebugWindowPrefs => {
+        if (!debugPrefsFile) return DEFAULT_DEBUG_PREFS
+        try {
+          return readDebugWindowPrefs(JSON.parse(readFileSync(debugPrefsFile, 'utf8')))
+        } catch {
+          return DEFAULT_DEBUG_PREFS
+        }
+      },
+      save: (prefs) => {
+        if (!debugPrefsFile) return
+        writeFile(debugPrefsFile, JSON.stringify(prefs)).catch((error: unknown) => console.error('[sprint] saving the debug window failed:', error))
+      },
+    })
+
+if (debugWindow) {
+  /** The command palette's "Open debug window" (dev builds list it). */
+  ipcMain.handle('sprint:open-debug', () => debugWindow.open())
+  /** The window's own Keep on top switch. */
+  ipcMain.on('sprint:debug-on-top', (_event: IpcMainEvent, onTop: unknown) => {
+    if (typeof onTop === 'boolean') debugWindow.setOnTop(onTop)
+  })
+}
+// An agent run (scripts/agent-app.mjs), dev builds only: every window stays hidden and Chromium
+// opens a DevTools port of its own choosing, written to <userData>/DevToolsActivePort.
+if (agentRun) app.commandLine.appendSwitch('remote-debugging-port', '0')
 // Windows groups taskbar entries and resolves their icon by this id; without it
 // a dev run is filed under Electron's own identity and icon.
 if (process.platform === 'win32') app.setAppUserModelId('com.sprint.desktop')
@@ -451,21 +657,21 @@ async function bootstrap(): Promise<void> {
   await app.whenReady()
   // No OS menu bar on Windows: every command this app has lives in its own UI.
   // macOS needs the standard menu for Quit, Hide, window keys and text editing.
-  Menu.setApplicationMenu(isMac ? Menu.buildFromTemplate(macMenuTemplate({ packaged: app.isPackaged, onToggleLook: toggleLook })) : null)
+  Menu.setApplicationMenu(isMac ? Menu.buildFromTemplate(macMenuTemplate({ packaged: app.isPackaged, onToggleLook: toggleLook, onOpenDebug: () => debugWindow?.open() })) : null)
   // A packaged build gets its icon from the bundle. A dev run may be Electron's own
   // bundle (`pnpm start`), so set it here; the Dock shows this image unmasked, hence
   // the version already shaped and inset to Apple's icon grid.
   if (isMac && !app.isPackaged) app.dock?.setIcon(path.join(desktopRoot, 'resources', 'icon-mac.png'))
   await startNativeHost()
-  offscreen = new OffscreenOutputs(
-    rendererBaseUrl(),
-    (deviceId, frame, signal) => nativeHost.frame(deviceId, frame, signal),
-    (deviceId, error) => { console.error(`[sprint] frame delivery failed for ${deviceId}:`, error) },
-  )
-  guideOverlay = new GuideOverlay(
-    guideRoute(rendererBaseUrl()),
+  const baseUrl = rendererBaseUrl()
+  hud = new TrainingHud(
+    (windowId) => hudRouteFor(baseUrl, windowId),
     path.join(__dirname, 'preload.cjs'),
-    (signal) => nativeHost.guideStream(signal),
+    {
+      windows: (displays) => nativeHost.hudWindows(displays),
+      frame: () => nativeHost.compareFrame(),
+      command: (command) => nativeHost.command(command),
+    },
   )
   polling = true
   ensurePolling()
@@ -479,6 +685,18 @@ async function bootstrap(): Promise<void> {
 }
 
 app.on('window-all-closed', () => { void shutdown().finally(() => app.quit()) })
-app.on('before-quit', () => { void shutdown() })
+app.on('before-quit', (event) => {
+  // Destroyed rather than closed: a page window would otherwise put itself back on the wall.
+  pitWall.closeAll()
+  debugWindow?.close()
+  // An open designer may still be saving its last edit, and the host must outlive that save:
+  // close the designers first, then quit for real.
+  if (designers.count > 0) {
+    event.preventDefault()
+    void designers.closeAll().then(() => app.quit())
+    return
+  }
+  void shutdown()
+})
 
 void bootstrap()

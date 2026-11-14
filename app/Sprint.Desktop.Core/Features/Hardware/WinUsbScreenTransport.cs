@@ -14,6 +14,10 @@ namespace Sprint.Desktop.Features.Hardware;
 internal sealed class WinUsbScreenTransport : IDisposable
 {
     private const uint AutoSuspendPolicy = 0x81;
+    private const uint PipeTransferTimeoutPolicy = 0x03;
+
+    // A full 800x480 frame takes about 30 ms; a write still pending after this is a stuck panel.
+    private const uint BulkTransferTimeoutMs = 1_000;
     private const int ErrorIoPending = 997;
     private const uint WaitObject0 = 0;
     private const uint WaitTimeout = 258;
@@ -28,10 +32,10 @@ internal sealed class WinUsbScreenTransport : IDisposable
 
     private WinUsbScreenTransport(nint file, nint winusb, ushort matchedPid, string devicePath)
     {
-        _file = file;
-        _winusb = winusb;
-        MatchedPid = matchedPid;
-        DevicePath = devicePath;
+        this._file = file;
+        this._winusb = winusb;
+        this.MatchedPid = matchedPid;
+        this.DevicePath = devicePath;
     }
 
     public ushort MatchedPid { get; }
@@ -47,20 +51,20 @@ internal sealed class WinUsbScreenTransport : IDisposable
         out ScreenStatus failureStatus)
     {
         failureStatus = ScreenStatus.Disconnected();
-        var path = WinUsbInterop.FindDevicePath(interfaceGuid, vid, pid);
+        string? path = WinUsbInterop.FindDevicePath(interfaceGuid, vid, pid);
         if (path is null)
         {
-            var pidLabel = pid == 0 ? "any" : $"0x{pid:X4}";
+            string pidLabel = pid == 0 ? "any" : $"0x{pid:X4}";
             failureStatus = ScreenStatus.Disconnected(
                 $"No USB interface matched VID=0x{vid:X4} PID={pidLabel}.");
             log.Warn($"Screen enumeration found no match: vid=0x{vid:X4} pid={pidLabel}.");
             return null;
         }
 
-        var matchedPid = pid == 0 ? "any" : $"0x{pid:X4}";
+        string matchedPid = pid == 0 ? "any" : $"0x{pid:X4}";
         log.Debug($"Screen USB interface found: vid=0x{vid:X4} pid={matchedPid} path={path}.");
         log.Debug($"Screen CreateFile starting: path={path}.");
-        var handles = WinUsbInterop.Open(path, out var stage, out var nativeError);
+        (nint File, nint Winusb)? handles = WinUsbInterop.Open(path, out ScreenOpenFailureStage stage, out int nativeError);
         if (handles is { } h)
         {
             log.Debug($"Screen WinUsb_Initialize completed: path={path}.");
@@ -82,14 +86,14 @@ internal sealed class WinUsbScreenTransport : IDisposable
 
     public bool BulkWrite(byte endpoint, byte[] data)
     {
-        var succeeded = WinUsbInterop.WinUsb_WritePipe(
-            _winusb,
+        bool succeeded = WinUsbInterop.WinUsb_WritePipe(
+            this._winusb,
             endpoint,
             data,
             data.Length,
-            out var transferred,
+            out int transferred,
             nint.Zero);
-        return RecordTransferResult(
+        return this.RecordTransferResult(
             succeeded && transferred == data.Length,
             $"bulk OUT 0x{endpoint:X2}",
             transferred,
@@ -98,7 +102,7 @@ internal sealed class WinUsbScreenTransport : IDisposable
 
     public bool ControlOut(byte requestType, byte request, ushort value, ushort index, byte[]? data)
     {
-        var packet = new WinUsbInterop.WinUsbSetupPacket
+        WinUsbInterop.WinUsbSetupPacket packet = new WinUsbInterop.WinUsbSetupPacket
         {
             RequestType = requestType,
             Request = request,
@@ -106,10 +110,10 @@ internal sealed class WinUsbScreenTransport : IDisposable
             Index = index,
             Length = (ushort)(data?.Length ?? 0),
         };
-        var expected = data?.Length ?? 0;
+        int expected = data?.Length ?? 0;
         // Some composite WinUSB drivers reject a null buffer even for wLength=0.
-        var buffer = data ?? [0x00];
-        return ControlTransfer(
+        byte[] buffer = data ?? [0x00];
+        return this.ControlTransfer(
             packet,
             buffer,
             expected,
@@ -120,7 +124,7 @@ internal sealed class WinUsbScreenTransport : IDisposable
 
     public bool ControlIn(byte requestType, byte request, byte[] data, out int transferred)
     {
-        var packet = new WinUsbInterop.WinUsbSetupPacket
+        WinUsbInterop.WinUsbSetupPacket packet = new WinUsbInterop.WinUsbSetupPacket
         {
             RequestType = requestType,
             Request = request,
@@ -128,7 +132,7 @@ internal sealed class WinUsbScreenTransport : IDisposable
             Index = 0,
             Length = (ushort)data.Length,
         };
-        return ControlTransfer(
+        return this.ControlTransfer(
             packet,
             data,
             data.Length,
@@ -137,61 +141,77 @@ internal sealed class WinUsbScreenTransport : IDisposable
             out transferred);
     }
 
+    /// <summary>
+    /// Bounds every <see cref="BulkWrite"/> on <paramref name="endpoint"/>. WinUSB waits forever by
+    /// default, so a panel that stops taking data would hold the publisher, and the device handle,
+    /// until the process is killed: the screen stays frozen and no other app can open it.
+    /// </summary>
+    public bool LimitBulkWrites(byte endpoint)
+    {
+        bool succeeded = WinUsbInterop.WinUsb_SetPipePolicy(
+            this._winusb,
+            endpoint,
+            PipeTransferTimeoutPolicy,
+            valueLength: sizeof(uint),
+            BitConverter.GetBytes(BulkTransferTimeoutMs));
+        return this.RecordResult(succeeded, $"set bulk 0x{endpoint:X2} timeout");
+    }
+
     public bool ResetPipe(byte endpoint)
     {
-        var succeeded = WinUsbInterop.WinUsb_ResetPipe(_winusb, endpoint);
-        return RecordResult(succeeded, $"reset pipe 0x{endpoint:X2}");
+        bool succeeded = WinUsbInterop.WinUsb_ResetPipe(this._winusb, endpoint);
+        return this.RecordResult(succeeded, $"reset pipe 0x{endpoint:X2}");
     }
 
     public bool DisableAutoSuspend()
     {
-        var succeeded = WinUsbInterop.WinUsb_SetPowerPolicy(
-            _winusb,
+        bool succeeded = WinUsbInterop.WinUsb_SetPowerPolicy(
+            this._winusb,
             AutoSuspendPolicy,
             valueLength: 1,
             [0x00]);
-        return RecordResult(succeeded, "disable AUTO_SUSPEND");
+        return this.RecordResult(succeeded, "disable AUTO_SUSPEND");
     }
 
     public void Dispose()
     {
-        CancelAndDrainPendingTransfers(CancelDrainTimeoutMs);
+        this.CancelAndDrainPendingTransfers(CancelDrainTimeoutMs);
 
-        if (_pendingControlTransfers.Count > 0 && IsValidFileHandle(_file))
+        if (this._pendingControlTransfers.Count > 0 && IsValidFileHandle(this._file))
         {
-            WinUsbInterop.CloseHandle(_file);
-            _file = nint.Zero;
-            DrainPendingTransfers(CloseDrainTimeoutMs);
+            WinUsbInterop.CloseHandle(this._file);
+            this._file = nint.Zero;
+            this.DrainPendingTransfers(CloseDrainTimeoutMs);
         }
 
-        if (_pendingControlTransfers.Count > 0)
+        if (this._pendingControlTransfers.Count > 0)
         {
             // Windows still has references to these OVERLAPPED structures and
             // pinned buffers. Retaining them until process exit is preferable
             // to freeing memory that a delayed kernel completion may touch.
             lock (AbandonedTransfersLock)
             {
-                AbandonedTransfers.AddRange(_pendingControlTransfers);
+                AbandonedTransfers.AddRange(this._pendingControlTransfers);
             }
 
-            LastFailure =
-                $"{LastFailure} Native control-transfer resources were retained " +
+            this.LastFailure =
+                $"{this.LastFailure} Native control-transfer resources were retained " +
                 "because cancellation did not complete before the device closed.";
-            _pendingControlTransfers.Clear();
-            _winusb = nint.Zero;
+            this._pendingControlTransfers.Clear();
+            this._winusb = nint.Zero;
             return;
         }
 
-        if (_winusb != nint.Zero)
+        if (this._winusb != nint.Zero)
         {
-            WinUsbInterop.WinUsb_Free(_winusb);
-            _winusb = nint.Zero;
+            WinUsbInterop.WinUsb_Free(this._winusb);
+            this._winusb = nint.Zero;
         }
 
-        if (IsValidFileHandle(_file))
+        if (IsValidFileHandle(this._file))
         {
-            WinUsbInterop.CloseHandle(_file);
-            _file = nint.Zero;
+            WinUsbInterop.CloseHandle(this._file);
+            this._file = nint.Zero;
         }
     }
 
@@ -204,12 +224,12 @@ internal sealed class WinUsbScreenTransport : IDisposable
     {
         if (succeeded && (!requireExactLength || transferred == expected))
         {
-            LastFailure = null;
+            this.LastFailure = null;
             return true;
         }
 
-        var nativeError = Marshal.GetLastWin32Error();
-        LastFailure =
+        int nativeError = Marshal.GetLastWin32Error();
+        this.LastFailure =
             $"{operation} failed with Win32 error {nativeError}; " +
             $"transferred {transferred} of {expected} bytes.";
         return false;
@@ -219,11 +239,11 @@ internal sealed class WinUsbScreenTransport : IDisposable
     {
         if (succeeded)
         {
-            LastFailure = null;
+            this.LastFailure = null;
             return true;
         }
 
-        LastFailure = $"{operation} failed with Win32 error {Marshal.GetLastWin32Error()}.";
+        this.LastFailure = $"{operation} failed with Win32 error {Marshal.GetLastWin32Error()}.";
         return false;
     }
 
@@ -236,21 +256,21 @@ internal sealed class WinUsbScreenTransport : IDisposable
         out int transferred)
     {
         transferred = 0;
-        var eventHandle = WinUsbInterop.CreateEvent(
+        nint eventHandle = WinUsbInterop.CreateEvent(
             nint.Zero,
             manualReset: true,
             initialState: false,
             name: null);
         if (eventHandle == nint.Zero)
         {
-            LastFailure =
+            this.LastFailure =
                 $"{operation} could not create an overlapped event " +
                 $"(Win32 error {Marshal.GetLastWin32Error()}).";
             return false;
         }
 
-        var resources = new ControlTransferResources(eventHandle, buffer);
-        var releaseResources = true;
+        ControlTransferResources resources = new ControlTransferResources(eventHandle, buffer);
+        bool releaseResources = true;
         try
         {
             Marshal.StructureToPtr(
@@ -258,49 +278,49 @@ internal sealed class WinUsbScreenTransport : IDisposable
                 resources.OverlappedPointer,
                 fDeleteOld: false);
 
-            var started = WinUsbInterop.WinUsb_ControlTransfer(
-                _winusb,
+            bool started = WinUsbInterop.WinUsb_ControlTransfer(
+                this._winusb,
                 packet,
                 buffer,
                 bufferLength,
                 out _,
                 resources.OverlappedPointer);
-            var nativeError = started ? 0 : Marshal.GetLastWin32Error();
+            int nativeError = started ? 0 : Marshal.GetLastWin32Error();
             if (!started && nativeError != ErrorIoPending)
             {
-                LastFailure = $"{operation} failed with Win32 error {nativeError}.";
+                this.LastFailure = $"{operation} failed with Win32 error {nativeError}.";
                 return false;
             }
 
             if (!started)
             {
-                var wait = WinUsbInterop.WaitForSingleObject(eventHandle, ControlTransferTimeoutMs);
+                uint wait = WinUsbInterop.WaitForSingleObject(eventHandle, ControlTransferTimeoutMs);
                 if (wait == WaitTimeout)
                 {
-                    releaseResources = CancelAndDrain(resources);
-                    LastFailure = ScreenTransferFailure.DescribeControlTimeout(
+                    releaseResources = this.CancelAndDrain(resources);
+                    this.LastFailure = ScreenTransferFailure.DescribeControlTimeout(
                         operation,
-                        DevicePath,
+                        this.DevicePath,
                         ControlTransferTimeoutMs);
                     return false;
                 }
 
                 if (wait != WaitObject0)
                 {
-                    var waitError = Marshal.GetLastWin32Error();
-                    releaseResources = CancelAndDrain(resources);
-                    LastFailure =
+                    int waitError = Marshal.GetLastWin32Error();
+                    releaseResources = this.CancelAndDrain(resources);
+                    this.LastFailure =
                         $"{operation} wait failed with Win32 error {waitError}.";
                     return false;
                 }
             }
 
-            var completed = WinUsbInterop.WinUsb_GetOverlappedResult(
-                _winusb,
+            bool completed = WinUsbInterop.WinUsb_GetOverlappedResult(
+                this._winusb,
                 resources.OverlappedPointer,
                 out transferred,
                 wait: false);
-            return RecordTransferResult(
+            return this.RecordTransferResult(
                 completed && (!requireExactLength || transferred == bufferLength),
                 operation,
                 transferred,
@@ -318,9 +338,9 @@ internal sealed class WinUsbScreenTransport : IDisposable
 
     private bool CancelAndDrain(ControlTransferResources resources)
     {
-        if (IsValidFileHandle(_file))
+        if (IsValidFileHandle(this._file))
         {
-            WinUsbInterop.CancelIoEx(_file, resources.OverlappedPointer);
+            WinUsbInterop.CancelIoEx(this._file, resources.OverlappedPointer);
         }
 
         if (WinUsbInterop.WaitForSingleObject(resources.EventHandle, CancelDrainTimeoutMs) == WaitObject0)
@@ -328,26 +348,26 @@ internal sealed class WinUsbScreenTransport : IDisposable
             return true;
         }
 
-        _pendingControlTransfers.Add(resources);
+        this._pendingControlTransfers.Add(resources);
         return false;
     }
 
     private void CancelAndDrainPendingTransfers(uint timeoutMs)
     {
-        if (IsValidFileHandle(_file))
+        if (IsValidFileHandle(this._file))
         {
-            foreach (var resources in _pendingControlTransfers)
+            foreach (ControlTransferResources resources in this._pendingControlTransfers)
             {
-                WinUsbInterop.CancelIoEx(_file, resources.OverlappedPointer);
+                WinUsbInterop.CancelIoEx(this._file, resources.OverlappedPointer);
             }
         }
 
-        DrainPendingTransfers(timeoutMs);
+        this.DrainPendingTransfers(timeoutMs);
     }
 
     private void DrainPendingTransfers(uint timeoutMs)
     {
-        foreach (var resources in _pendingControlTransfers.ToArray())
+        foreach (ControlTransferResources resources in this._pendingControlTransfers.ToArray())
         {
             if (WinUsbInterop.WaitForSingleObject(resources.EventHandle, timeoutMs) != WaitObject0)
             {
@@ -355,7 +375,7 @@ internal sealed class WinUsbScreenTransport : IDisposable
             }
 
             resources.Release();
-            _pendingControlTransfers.Remove(resources);
+            this._pendingControlTransfers.Remove(resources);
         }
     }
 
@@ -365,7 +385,7 @@ internal sealed class WinUsbScreenTransport : IDisposable
     private static ushort? ReadPid(string path)
     {
         const string marker = "pid_";
-        var start = path.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+        int start = path.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
         if (start < 0 || start + marker.Length + 4 > path.Length)
         {
             return null;
@@ -375,7 +395,7 @@ internal sealed class WinUsbScreenTransport : IDisposable
             path.AsSpan(start + marker.Length, 4),
             NumberStyles.HexNumber,
             CultureInfo.InvariantCulture,
-            out var pid)
+            out ushort pid)
             ? pid
             : null;
     }
@@ -387,21 +407,21 @@ internal sealed class WinUsbScreenTransport : IDisposable
 
         public ControlTransferResources(nint eventHandle, byte[] buffer)
         {
-            EventHandle = eventHandle;
+            this.EventHandle = eventHandle;
             try
             {
-                OverlappedPointer =
+                this.OverlappedPointer =
                     Marshal.AllocHGlobal(Marshal.SizeOf<WinUsbInterop.NativeOverlapped>());
-                _pinnedBuffer = GCHandle.Alloc(buffer, GCHandleType.Pinned);
+                this._pinnedBuffer = GCHandle.Alloc(buffer, GCHandleType.Pinned);
             }
             catch
             {
-                if (OverlappedPointer != nint.Zero)
+                if (this.OverlappedPointer != nint.Zero)
                 {
-                    Marshal.FreeHGlobal(OverlappedPointer);
+                    Marshal.FreeHGlobal(this.OverlappedPointer);
                 }
 
-                WinUsbInterop.CloseHandle(EventHandle);
+                WinUsbInterop.CloseHandle(this.EventHandle);
                 throw;
             }
         }
@@ -412,19 +432,19 @@ internal sealed class WinUsbScreenTransport : IDisposable
 
         public void Release()
         {
-            if (_released)
+            if (this._released)
             {
                 return;
             }
 
-            _released = true;
-            if (_pinnedBuffer.IsAllocated)
+            this._released = true;
+            if (this._pinnedBuffer.IsAllocated)
             {
-                _pinnedBuffer.Free();
+                this._pinnedBuffer.Free();
             }
 
-            Marshal.FreeHGlobal(OverlappedPointer);
-            WinUsbInterop.CloseHandle(EventHandle);
+            Marshal.FreeHGlobal(this.OverlappedPointer);
+            WinUsbInterop.CloseHandle(this.EventHandle);
         }
     }
 }

@@ -36,6 +36,42 @@ public sealed record GameSetupSnapshot(
     string? VehicleDescriptor,
     IReadOnlyList<GameSetupValue> Values);
 
+/// <summary>The part of Sprint's setup page a value is shown on.</summary>
+public enum SetupTab
+{
+    Power,
+    WheelsAndBrakes,
+    Suspension,
+    Dampers,
+    ChassisAndAero,
+}
+
+/// <summary>
+/// One stored value as the driver reads it: where it sits on the setup page, what it is
+/// called, and the readable value the game wrote beside it.
+/// </summary>
+/// <param name="Group">The block it is shown in on its tab, such as "Front", "Rear left" or
+/// "Gearbox". A per-corner group is named "Front left", "Front right", "Rear left" or
+/// "Rear right", so a view can fold an axle's two sides into one row.</param>
+/// <param name="Display">The value in the game's own words ("-1.0 deg", "P12"), in whatever
+/// language the game was set to when it saved the file.</param>
+/// <param name="Step">The game's own index for the value, when it has one. Two values with
+/// the same step are the same setting, whatever language their displays are in.</param>
+public sealed record GameSetupReading(
+    string Section,
+    string Key,
+    SetupTab Tab,
+    string Group,
+    string Label,
+    string Display,
+    int? Step);
+
+/// <summary>The car a setup declares, split up for grouping and filtering.</summary>
+/// <param name="Car">The car's name as the driver knows it, such as "Porsche 963".</param>
+/// <param name="Class">The class it races in, such as "Hypercar", when the setup says.</param>
+/// <param name="Season">The season or series version the car is from, such as "WEC 2025".</param>
+public sealed record GameSetupVehicle(string Car, string? Class, string? Season);
+
 /// <summary>
 /// Reads the setups a game stores, mapped onto Sprint records.
 /// </summary>
@@ -69,4 +105,16 @@ public interface ISetupRepository
     /// setup must never abort a scan.
     /// </summary>
     GameSetupSnapshot? Read(GameSetupInfo setup);
+
+    /// <summary>
+    /// How a stored value reads on the setup page, or null when it is not something the
+    /// driver sets: a header, a note, or a setting this car cannot adjust.
+    /// </summary>
+    GameSetupReading? Describe(GameSetupValue value);
+
+    /// <summary>The car a setup's <see cref="GameSetupSnapshot.VehicleDescriptor"/> names.</summary>
+    GameSetupVehicle DescribeVehicle(string vehicleDescriptor);
+
+    /// <summary>A track as the driver knows it, from the name the game files setups under.</summary>
+    string TrackName(string track);
 }

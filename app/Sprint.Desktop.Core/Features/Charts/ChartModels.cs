@@ -78,12 +78,12 @@ public sealed record ChartPanel(string Title, IReadOnlyList<ChartSeries> Series)
     {
         get
         {
-            if (Series.All(series => series.Samples.Count == 0))
+            if (this.Series.All(series => series.Samples.Count == 0))
             {
                 return ChartPanelState.Empty;
             }
 
-            return Series.Any(series => series.Samples.Count > 1)
+            return this.Series.Any(series => series.Samples.Count > 1)
                 ? ChartPanelState.Ready
                 : ChartPanelState.InsufficientData;
         }
@@ -101,5 +101,5 @@ public sealed record ChartStack(ChartDomain Domain, IReadOnlyList<ChartPanel> Ch
     /// True when no chart in the stack has anything to show, so a host can state that once
     /// for the whole stack rather than repeat it down every chart.
     /// </summary>
-    public bool IsEmpty => Charts.Count == 0 || Charts.All(chart => chart.State == ChartPanelState.Empty);
+    public bool IsEmpty => this.Charts.Count == 0 || this.Charts.All(chart => chart.State == ChartPanelState.Empty);
 }

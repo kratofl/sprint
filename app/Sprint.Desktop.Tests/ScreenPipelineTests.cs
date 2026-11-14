@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Sprint.Desktop.Api.Telemetry;
 using Sprint.Desktop.Features.Devices;
+using Sprint.Desktop.Features.Diagnostics;
 using Sprint.Desktop.Features.Hardware;
 using Sprint.Desktop.Runtime;
 using Xunit;
@@ -13,8 +14,8 @@ public sealed class ScreenPipelineTests
     [Fact]
     public void PerformanceTrackerAccountsForEveryFrameStage()
     {
-        var tracker = new ScreenPerformanceTracker();
-        var renderedAt = Stopwatch.GetTimestamp();
+        ScreenPerformanceTracker tracker = new ScreenPerformanceTracker();
+        long renderedAt = Stopwatch.GetTimestamp();
 
         tracker.RecordFrame(
             renderedAt,
@@ -25,7 +26,7 @@ public sealed class ScreenPipelineTests
             TimeSpan.FromMilliseconds(14),
             ScreenFrameDisposition.Sent);
 
-        var performance = tracker.Snapshot;
+        ScreenPerformanceSnapshot performance = tracker.Snapshot;
         Assert.Equal(TimeSpan.FromMilliseconds(6), performance.SourceTime);
         Assert.Equal(TimeSpan.FromMilliseconds(4), performance.PixelTransformTime);
         Assert.Equal(TimeSpan.FromMilliseconds(10), performance.FrameTime);
@@ -39,9 +40,9 @@ public sealed class ScreenPipelineTests
     [Fact]
     public void SkippedFramesPreserveDeliveredTimingsAndExpireOutputFps()
     {
-        var tracker = new ScreenPerformanceTracker();
-        var firstSentAt = Stopwatch.GetTimestamp();
-        var secondSentAt = firstSentAt + Stopwatch.Frequency / 25;
+        ScreenPerformanceTracker tracker = new ScreenPerformanceTracker();
+        long firstSentAt = Stopwatch.GetTimestamp();
+        long secondSentAt = firstSentAt + Stopwatch.Frequency / 25;
         tracker.RecordFrame(
             firstSentAt,
             new ScreenFrameTiming(
@@ -68,7 +69,7 @@ public sealed class ScreenPipelineTests
             TimeSpan.FromMilliseconds(2),
             ScreenFrameDisposition.Skipped);
 
-        var performance = tracker.Snapshot;
+        ScreenPerformanceSnapshot performance = tracker.Snapshot;
         Assert.Equal(0, performance.FramesPerSecond);
         Assert.Equal(TimeSpan.FromMilliseconds(5), performance.SourceTime);
         Assert.Equal(TimeSpan.FromMilliseconds(2), performance.PixelTransformTime);
@@ -100,20 +101,21 @@ public sealed class ScreenPipelineTests
         public int Width => 8;
         public int Height => 8;
         public ManualResetEventSlim SecondRenderStarted { get; } = new();
+        public TimeSpan SourceTime { get; init; }
 
         public ScreenFrameTiming Render(TelemetryFrame frame, Span<byte> rgb565)
         {
-            var rendered = Interlocked.Increment(ref _frames);
+            int rendered = Interlocked.Increment(ref this._frames);
             rgb565.Fill((byte)rendered);
             if (rendered == 2)
             {
-                SecondRenderStarted.Set();
+                this.SecondRenderStarted.Set();
             }
 
-            return new ScreenFrameTiming(TimeSpan.Zero, TimeSpan.Zero);
+            return new ScreenFrameTiming(this.SourceTime, TimeSpan.Zero);
         }
 
-        public void Dispose() => SecondRenderStarted.Dispose();
+        public void Dispose() => this.SecondRenderStarted.Dispose();
     }
 
     private sealed class BlockingScreenDriver : IScreenDriver
@@ -122,11 +124,11 @@ public sealed class ScreenPipelineTests
         private int _framesSent;
 
         public string Name => "Blocking screen";
-        public ScreenStatus Status => _status;
+        public ScreenStatus Status => this._status;
         public ScreenNativeSize? NativeSize => new(8, 8);
         public ManualResetEventSlim FirstTransferStarted { get; } = new();
         public ManualResetEventSlim AllowFirstTransfer { get; } = new();
-        public int FramesSent => Volatile.Read(ref _framesSent);
+        public int FramesSent => Volatile.Read(ref this._framesSent);
 
         public void Configure(ScreenConfig config)
         {
@@ -134,28 +136,28 @@ public sealed class ScreenPipelineTests
 
         public bool Connect()
         {
-            _status = new ScreenStatus { State = ScreenConnectionState.Connected };
+            this._status = new ScreenStatus { State = ScreenConnectionState.Connected };
             return true;
         }
 
         public bool TrySendFrame(byte[] rgb565)
         {
-            if (Interlocked.Increment(ref _framesSent) == 1)
+            if (Interlocked.Increment(ref this._framesSent) == 1)
             {
-                FirstTransferStarted.Set();
-                AllowFirstTransfer.Wait(TimeSpan.FromSeconds(2));
+                this.FirstTransferStarted.Set();
+                this.AllowFirstTransfer.Wait(TimeSpan.FromSeconds(2));
             }
 
             return true;
         }
 
-        public void Disconnect() => _status = ScreenStatus.Disconnected();
+        public void Disconnect() => this._status = ScreenStatus.Disconnected();
 
         public void Dispose()
         {
-            AllowFirstTransfer.Set();
-            FirstTransferStarted.Dispose();
-            AllowFirstTransfer.Dispose();
+            this.AllowFirstTransfer.Set();
+            this.FirstTransferStarted.Dispose();
+            this.AllowFirstTransfer.Dispose();
         }
     }
 
@@ -178,9 +180,9 @@ public sealed class ScreenPipelineTests
     [Fact]
     public void PublisherRendersTheNextFrameWhileThePreviousUsbTransferIsInFlight()
     {
-        var driver = new BlockingScreenDriver();
-        var source = new CoordinatedFrameSource();
-        using var publisher = new ScreenPublisher(
+        BlockingScreenDriver driver = new BlockingScreenDriver();
+        CoordinatedFrameSource source = new CoordinatedFrameSource();
+        using ScreenPublisher publisher = new ScreenPublisher(
             driver,
             source,
             () => new TelemetryFrame(),
@@ -214,12 +216,13 @@ public sealed class ScreenPipelineTests
         public int Width => 8;
         public int Height => 8;
         public bool Failing { get; set; } = true;
+        public string Message { get; set; } = "capture unavailable";
 
         public ScreenFrameTiming Render(TelemetryFrame frame, Span<byte> rgb565)
         {
-            if (Failing)
+            if (this.Failing)
             {
-                throw new InvalidOperationException("capture unavailable");
+                throw new InvalidOperationException(this.Message);
             }
 
             rgb565.Fill(0x1f);
@@ -240,7 +243,7 @@ public sealed class ScreenPipelineTests
         string expectedLabel,
         string expectedDetail)
     {
-        var presented = ScreenStatusPresentation.Describe(new ScreenStatus { State = state });
+        ScreenStatusView presented = ScreenStatusPresentation.Describe(new ScreenStatus { State = state });
 
         Assert.Equal(expectedLabel, presented.Label);
         Assert.Contains(expectedDetail, presented.Detail, StringComparison.OrdinalIgnoreCase);
@@ -281,7 +284,7 @@ public sealed class ScreenPipelineTests
         int nativeError,
         ScreenConnectionState expected)
     {
-        var status = ScreenOpenFailureStatus.Describe(stage, nativeError, 0xC872, 0x1004);
+        ScreenStatus status = ScreenOpenFailureStatus.Describe(stage, nativeError, 0xC872, 0x1004);
 
         Assert.Equal(expected, status.State);
         Assert.Contains(nativeError.ToString(), status.Detail, StringComparison.Ordinal);
@@ -290,8 +293,8 @@ public sealed class ScreenPipelineTests
     [Fact]
     public void PublisherConnectsThenSendsFrames()
     {
-        var driver = new FakeScreenDriver { ConnectResult = ScreenConnectionState.Connected };
-        using var publisher = new ScreenPublisher(driver, new ConstantFrameSource(16, 16), () => new TelemetryFrame());
+        FakeScreenDriver driver = new FakeScreenDriver { ConnectResult = ScreenConnectionState.Connected };
+        using ScreenPublisher publisher = new ScreenPublisher(driver, new ConstantFrameSource(16, 16), () => new TelemetryFrame());
 
         Assert.Equal(ScreenStepOutcome.SentFrame, publisher.Step());
         Assert.Equal(1, driver.ConnectAttempts);
@@ -308,8 +311,8 @@ public sealed class ScreenPipelineTests
     [Fact]
     public void PublisherSkipsAnUnchangedFrameWithoutDisconnectingThePanel()
     {
-        var driver = new FakeScreenDriver { ConnectResult = ScreenConnectionState.Connected };
-        using var publisher = new ScreenPublisher(
+        FakeScreenDriver driver = new FakeScreenDriver { ConnectResult = ScreenConnectionState.Connected };
+        using ScreenPublisher publisher = new ScreenPublisher(
             driver,
             new ConstantFrameSource(16, 16),
             () => new TelemetryFrame());
@@ -324,10 +327,30 @@ public sealed class ScreenPipelineTests
     }
 
     [Fact]
+    public void PublisherNoticesAPanelUnpluggedWhileItShowsAStillPicture()
+    {
+        FakeScreenDriver driver = new() { ConnectResult = ScreenConnectionState.Connected };
+        using ScreenPublisher publisher = new(
+            driver,
+            new ConstantFrameSource(16, 16),
+            () => new TelemetryFrame(),
+            new ScreenPublisherOptions { ResendUnchangedAfter = TimeSpan.Zero });
+
+        Assert.Equal(ScreenStepOutcome.SentFrame, publisher.Step());
+
+        // Only a failed transfer shows the cable is gone, so the unchanged frame goes out again.
+        driver.Unplugged = true;
+        driver.ConnectResult = ScreenConnectionState.Disconnected;
+        Assert.Equal(ScreenStepOutcome.Reconnecting, publisher.Step());
+        Assert.Equal(ScreenStepOutcome.Reconnecting, publisher.Step());
+        Assert.NotEqual(ScreenConnectionState.Connected, publisher.Status.State);
+    }
+
+    [Fact]
     public void PublisherReportsActualScreenOutputFpsAndFrameTime()
     {
-        var driver = new FakeScreenDriver { ConnectResult = ScreenConnectionState.Connected };
-        using var publisher = new ScreenPublisher(
+        FakeScreenDriver driver = new FakeScreenDriver { ConnectResult = ScreenConnectionState.Connected };
+        using ScreenPublisher publisher = new ScreenPublisher(
             driver,
             new CoordinatedFrameSource(),
             () => new TelemetryFrame());
@@ -336,7 +359,7 @@ public sealed class ScreenPipelineTests
         Thread.Sleep(20);
         Assert.Equal(ScreenStepOutcome.SentFrame, publisher.Step());
 
-        var performance = publisher.Performance;
+        ScreenPerformanceSnapshot performance = publisher.Performance;
         Assert.True(performance.HasSamples);
         Assert.Equal(2, performance.FramesRendered);
         Assert.Equal(2, performance.FramesSent);
@@ -351,13 +374,13 @@ public sealed class ScreenPipelineTests
     [Fact]
     public void PublisherRebuildsItsRendererForTheNativeSizeReportedAfterConnect()
     {
-        var driver = new FakeScreenDriver
+        FakeScreenDriver driver = new FakeScreenDriver
         {
             ConnectResult = ScreenConnectionState.Connected,
             NativeSizeOverride = new ScreenNativeSize(8, 4),
         };
-        var requestedSizes = new List<ScreenNativeSize>();
-        using var publisher = new ScreenPublisher(
+        List<ScreenNativeSize> requestedSizes = new List<ScreenNativeSize>();
+        using ScreenPublisher publisher = new ScreenPublisher(
             driver,
             new ConstantFrameSource(4, 4),
             () => new TelemetryFrame(),
@@ -375,8 +398,8 @@ public sealed class ScreenPipelineTests
     [Fact]
     public void PublisherCanShowAStaticTestPatternWithoutTelemetry()
     {
-        var driver = new FakeScreenDriver { ConnectResult = ScreenConnectionState.Connected };
-        using var publisher = new ScreenPublisher(driver, new ConstantFrameSource(4, 2), () => new TelemetryFrame());
+        FakeScreenDriver driver = new FakeScreenDriver { ConnectResult = ScreenConnectionState.Connected };
+        using ScreenPublisher publisher = new ScreenPublisher(driver, new ConstantFrameSource(4, 2), () => new TelemetryFrame());
 
         publisher.SetTestPattern(ScreenTestPattern.Red);
         Assert.Equal(ScreenStepOutcome.SentFrame, publisher.Step());
@@ -392,12 +415,12 @@ public sealed class ScreenPipelineTests
     [Fact]
     public void PublisherIdlesAndSurfacesStatusWhenPermissionDenied()
     {
-        var driver = new FakeScreenDriver
+        FakeScreenDriver driver = new FakeScreenDriver
         {
             ConnectResult = ScreenConnectionState.PermissionDenied,
             ConnectDetail = "WinUSB driver not installed",
         };
-        using var publisher = new ScreenPublisher(driver, new ConstantFrameSource(16, 16), () => new TelemetryFrame());
+        using ScreenPublisher publisher = new ScreenPublisher(driver, new ConstantFrameSource(16, 16), () => new TelemetryFrame());
 
         Assert.Equal(ScreenStepOutcome.Reconnecting, publisher.Step());
         Assert.Equal(0, driver.FramesSent);
@@ -408,8 +431,8 @@ public sealed class ScreenPipelineTests
     [Fact]
     public void PublisherKeepsAStuckNativeOpenDistinctFromConfirmedDeviceBusy()
     {
-        var driver = new FakeScreenDriver { ConnectResult = ScreenConnectionState.Connecting };
-        using var publisher = new ScreenPublisher(
+        FakeScreenDriver driver = new FakeScreenDriver { ConnectResult = ScreenConnectionState.Connecting };
+        using ScreenPublisher publisher = new ScreenPublisher(
             driver,
             new ConstantFrameSource(4, 4),
             () => new TelemetryFrame(),
@@ -424,30 +447,115 @@ public sealed class ScreenPipelineTests
     }
 
     [Fact]
-    public void PublisherNeverThrowsWhenSourceFaults()
+    public void AFailingSourceShowsTheFailurePatternAndReadsFaulted()
     {
-        var driver = new FakeScreenDriver { ConnectResult = ScreenConnectionState.Connected };
-        using var publisher = new ScreenPublisher(driver, new ThrowingFrameSource(), () => new TelemetryFrame());
+        FakeScreenDriver driver = new FakeScreenDriver { ConnectResult = ScreenConnectionState.Connected };
+        using ScreenPublisher publisher = new ScreenPublisher(driver, new ThrowingFrameSource(), () => new TelemetryFrame());
 
-        Assert.Equal(ScreenStepOutcome.Reconnecting, publisher.Step());
+        // The screen keeps getting frames — the failure pattern, never the last good picture.
+        Assert.Equal(ScreenStepOutcome.SentFrame, publisher.Step());
         Assert.Equal("boom", publisher.LastError);
         Assert.Equal(ScreenConnectionState.Faulted, publisher.Status.State);
         Assert.Contains("boom", publisher.Status.Detail, StringComparison.Ordinal);
+
+        byte[] expected = new byte[8 * 8 * 2];
+        ScreenFailurePattern.Fill(expected, 8, 8);
+        Assert.Equal(expected, driver.LastFrame);
+        Assert.Contains(Pixels(expected), pixel => pixel == 0xF800);
+        Assert.Contains(Pixels(expected), pixel => pixel == 0x0000);
+        Assert.All(Pixels(expected), pixel => Assert.True(pixel is 0xF800 or 0x0000));
     }
 
     [Fact]
     public void PublisherClearsFrameSourceFailureAfterAFrameRecovers()
     {
-        var driver = new FakeScreenDriver { ConnectResult = ScreenConnectionState.Connected };
-        var source = new RecoveringFrameSource();
-        using var publisher = new ScreenPublisher(driver, source, () => new TelemetryFrame());
+        FakeScreenDriver driver = new FakeScreenDriver { ConnectResult = ScreenConnectionState.Connected };
+        RecoveringFrameSource source = new RecoveringFrameSource();
+        using ScreenPublisher publisher = new ScreenPublisher(driver, source, () => new TelemetryFrame());
 
-        Assert.Equal(ScreenStepOutcome.Reconnecting, publisher.Step());
+        publisher.Step();
         Assert.Equal(ScreenConnectionState.Faulted, publisher.Status.State);
 
         source.Failing = false;
         Assert.Equal(ScreenStepOutcome.SentFrame, publisher.Step());
         Assert.Null(publisher.LastError);
         Assert.Equal(ScreenConnectionState.Connected, publisher.Status.State);
+        Assert.All(driver.LastFrame!, value => Assert.Equal(0x1f, value));
+    }
+
+    [Fact]
+    public void ASourceFailureIsLoggedOncePerDistinctFailureAndItsRecoveryOnce()
+    {
+        FakeScreenDriver driver = new FakeScreenDriver { ConnectResult = ScreenConnectionState.Connected };
+        RecoveringFrameSource source = new RecoveringFrameSource();
+        RecordingLog log = new RecordingLog();
+        using ScreenPublisher publisher = new ScreenPublisher(driver, source, () => new TelemetryFrame(), log: log, deviceId: "wheel");
+
+        for (int frame = 0; frame < 30; frame++)
+        {
+            publisher.Step();
+        }
+
+        source.Message = "another failure";
+        publisher.Step();
+        publisher.Step();
+        source.Failing = false;
+        publisher.Step();
+        publisher.Step();
+
+        Assert.Equal(
+            ["capture unavailable", "another failure"],
+            log.Records.Where(record => record.Level == LogLevel.Error).Select(record => record.Exception?.Message));
+        Assert.Single(log.Records, record => record.Level == LogLevel.Info && record.Message.Contains("recovered", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void AFrameSlowerThanTheFrameIntervalWarnsOnceAMinuteNamingTheStage()
+    {
+        FakeScreenDriver driver = new FakeScreenDriver { ConnectResult = ScreenConnectionState.Connected };
+        RecordingLog log = new RecordingLog();
+        // 2 ms of rendering is slow for a 1000 Hz screen (1 ms frame interval).
+        using ScreenPublisher publisher = new ScreenPublisher(
+            driver,
+            new CoordinatedFrameSource { SourceTime = TimeSpan.FromMilliseconds(2) },
+            () => new TelemetryFrame(),
+            new ScreenPublisherOptions { TargetFps = 1000 },
+            log,
+            "wheel");
+
+        publisher.Step();
+        publisher.Step();
+        publisher.Step();
+
+        LogRecord warning = Assert.Single(log.Records, record => record.Level == LogLevel.Warn);
+        Assert.Contains("device=wheel stage=render", warning.Message, StringComparison.Ordinal);
+    }
+
+    private static IEnumerable<ushort> Pixels(byte[] rgb565)
+    {
+        for (int offset = 0; offset < rgb565.Length; offset += 2)
+        {
+            yield return (ushort)(rgb565[offset] | rgb565[offset + 1] << 8);
+        }
+    }
+
+    private sealed record LogRecord(LogLevel Level, string Message, Exception? Exception);
+
+    private sealed class RecordingLog : ILog
+    {
+        private readonly List<LogRecord> _records = [];
+
+        public IReadOnlyList<LogRecord> Records
+        {
+            get { lock (this._records) { return this._records.ToArray(); } }
+        }
+
+        public void Write(LogLevel level, string message, Exception? exception = null)
+        {
+            lock (this._records)
+            {
+                this._records.Add(new LogRecord(level, message, exception));
+            }
+        }
     }
 }

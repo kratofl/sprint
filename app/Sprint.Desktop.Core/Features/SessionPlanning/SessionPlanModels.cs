@@ -168,7 +168,25 @@ public sealed class SessionPlan
 
     /// <summary>The target set for <paramref name="kind"/>, or null when none was chosen.</summary>
     public PlanTargets? TargetsFor(SegmentKind kind) =>
-        Targets.FirstOrDefault(targets => targets.Kind == kind);
+        this.Targets.FirstOrDefault(targets => targets.Kind == kind);
+
+    /// <summary>Sets, or with null clears, the lap-time target for <paramref name="kind"/>.</summary>
+    public void SetLapTimeTarget(SegmentKind kind, PlanTarget? target)
+    {
+        PlanTargets? targets = this.TargetsFor(kind);
+        if (targets is null)
+        {
+            if (target is null)
+            {
+                return;
+            }
+
+            targets = new PlanTargets { Kind = kind };
+            this.Targets.Add(targets);
+        }
+
+        targets.LapTime = target;
+    }
 }
 
 /// <summary>A qualifying or race segment of a plan, planned and/or actually tracked.</summary>

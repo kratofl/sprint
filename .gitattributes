@@ -45,3 +45,6 @@ Makefile text eol=lf
 *.otf binary
 *.eot binary
 *.zip binary
+
+# Recorded telemetry sessions: large, binary, kept in Git LFS
+app/recordings/*.jsonl.gz filter=lfs diff=lfs merge=lfs -text

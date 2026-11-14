@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using Sprint.Desktop.Features.SessionPlanning;
 
@@ -5,6 +6,16 @@ namespace Sprint.Desktop.Runtime;
 
 public sealed class AppSettings
 {
+    /// <summary>
+    /// The shape of this file. Adding a setting does not bump it (unknown fields are kept);
+    /// renaming one or changing what a value means does, with a migration on load.
+    /// </summary>
+    public const int CurrentVersion = 1;
+
+    /// <summary>What wrote this file. A file from before versioning reads as 1, the shape it had.</summary>
+    [JsonPropertyName("version")]
+    public int Version { get; set; } = CurrentVersion;
+
     [JsonPropertyName("sidebarCollapsed")]
     public bool SidebarCollapsed { get; set; }
 
@@ -13,6 +24,13 @@ public sealed class AppSettings
 
     /// <summary>The two supported release channels, in ascending pre-release visibility.</summary>
     public static readonly string[] Channels = ["stable", "pre-release"];
+
+    /// <summary>
+    /// Updates download in the background and install when Sprint quits. Off, the driver starts
+    /// each one from Settings. The Electron main process acts on it; the host only keeps it.
+    /// </summary>
+    [JsonPropertyName("autoInstallUpdates")]
+    public bool AutoInstallUpdates { get; set; } = true;
 
     /// <summary>
     /// Maps a persisted or user-supplied channel string to the canonical two-channel
@@ -26,11 +44,28 @@ public sealed class AppSettings
             _ => "stable",
         };
 
+    /// <summary>The placeholder driver name a fresh install starts with; the first-run setup refuses to keep it.</summary>
+    public const string DefaultDriverName = "Your Name";
+
     [JsonPropertyName("driverName")]
-    public string DriverName { get; set; } = "Your Name";
+    public string DriverName { get; set; } = DefaultDriverName;
 
     [JsonPropertyName("driverNumber")]
     public string DriverNumber { get; set; } = "22";
+
+    /// <summary>
+    /// The first-run setup (driver, game folder, results import) was finished, so it is not
+    /// shown again. False by default, so an install from before the setup existed sees it once.
+    /// </summary>
+    [JsonPropertyName("firstRunDone")]
+    public bool FirstRunDone { get; set; }
+
+    /// <summary>
+    /// The Le Mans Ultimate install folder the driver chose, or null to find it in the Steam
+    /// libraries. Setups and results are read from it.
+    /// </summary>
+    [JsonPropertyName("gameFolder")]
+    public string? GameFolder { get; set; }
 
     [JsonPropertyName("dashEditorUI")]
     public DashEditorUiSettings DashEditorUI { get; set; } = new();
@@ -38,8 +73,18 @@ public sealed class AppSettings
     [JsonPropertyName("newDashDefaults")]
     public NewDashDefaults NewDashDefaults { get; set; } = new();
 
+    /// <summary>
+    /// The user's own dash categories, in creation order (the built-ins live in
+    /// <c>DashCategories.BuiltIn</c>). Kept here so a category exists before any dash is in it.
+    /// </summary>
+    [JsonPropertyName("customDashCategories")]
+    public List<string> CustomDashCategories { get; set; } = [];
+
     [JsonPropertyName("devicesUI")]
     public DevicesUiSettings DevicesUI { get; set; } = new();
+
+    [JsonPropertyName("dashesUI")]
+    public DashesUiSettings DashesUI { get; set; } = new();
 
     /// <summary>The most recent non-empty game/car/track telemetry reported. The Session
     /// Planner prefills new plans from this, because a plan is created before entering a
@@ -59,64 +104,24 @@ public sealed class AppSettings
     [JsonPropertyName("cloud")]
     public CloudSettings Cloud { get; set; } = new();
 
-    /// <summary>The AR driving line and brake boards (docs/internals/driving-guide.md).</summary>
-    [JsonPropertyName("drivingGuide")]
-    public DrivingGuideSettings DrivingGuide { get; set; } = new();
+    /// <summary>The live link to an engineer's desktop.</summary>
+    [JsonPropertyName("liveLink")]
+    public LiveLinkSettings LiveLink { get; set; } = new();
+
+    /// <summary>Fields a newer Sprint wrote, kept so a rollback does not erase them.</summary>
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? ExtensionData { get; set; }
 }
 
-/// <summary>
-/// What the driving guide draws, where, and the seat calibration that lines it up with the
-/// game's camera. Everything is off by default: an overlay over a game is never a surprise.
-/// </summary>
-public sealed class DrivingGuideSettings
+/// <summary>The live link's choices on the driver's side.</summary>
+public sealed class LiveLinkSettings
 {
-    [JsonPropertyName("showLine")]
-    public bool ShowLine { get; set; }
+    /// <summary>Whether the engineer's pit wall gets the active session plan and its target lap.</summary>
+    [JsonPropertyName("sharePlan")]
+    public bool SharePlan { get; set; } = true;
 
-    [JsonPropertyName("showBoards")]
-    public bool ShowBoards { get; set; }
-
-    /// <summary>A click-through window over the primary display.</summary>
-    [JsonPropertyName("monitorOverlay")]
-    public bool MonitorOverlay { get; set; }
-
-    /// <summary>The OpenXR layer. The host registers or unregisters it to match.</summary>
-    [JsonPropertyName("vrHeadset")]
-    public bool VrHeadset { get; set; }
-
-    /// <summary>
-    /// Where the driver's eye sits relative to the car's reference point, in metres. Up is
-    /// measured as if the line were on the road, so it is roughly the eye's height above the
-    /// tarmac; the default suits a GT or prototype seat until it is calibrated.
-    /// </summary>
-    [JsonPropertyName("eyeRightMeters")]
-    public double EyeRightMeters { get; set; }
-
-    [JsonPropertyName("eyeUpMeters")]
-    public double EyeUpMeters { get; set; } = 1.0;
-
-    [JsonPropertyName("eyeForwardMeters")]
-    public double EyeForwardMeters { get; set; }
-
-    /// <summary>Positive turns the guide right.</summary>
-    [JsonPropertyName("yawOffsetDegrees")]
-    public double YawOffsetDegrees { get; set; }
-
-    /// <summary>Positive raises the guide.</summary>
-    [JsonPropertyName("pitchOffsetDegrees")]
-    public double PitchOffsetDegrees { get; set; }
-
-    /// <summary>The game's vertical field of view. Only the monitor overlay needs it; VR uses the headset's.</summary>
-    [JsonPropertyName("monitorFovDegrees")]
-    public double MonitorFovDegrees { get; set; } = 50;
-
-    /// <summary>How much of the line is drawn ahead of the car.</summary>
-    [JsonPropertyName("metersAhead")]
-    public double MetersAhead { get; set; } = 250;
-
-    /// <summary>Whether any output would show anything, which is when the guide is worth computing.</summary>
-    [JsonIgnore]
-    public bool Wanted => (this.ShowLine || this.ShowBoards) && (this.MonitorOverlay || this.VrHeadset);
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? ExtensionData { get; set; }
 }
 
 /// <summary>
@@ -136,6 +141,9 @@ public sealed class CloudSettings
 
     [JsonPropertyName("storage")]
     public CloudStorageMode Storage { get; set; } = CloudStorageMode.Local;
+
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? ExtensionData { get; set; }
 }
 
 /// <summary>Which Sprint server the driver chose. Stored by name.</summary>
@@ -190,60 +198,52 @@ public enum FuelHistorySource
     MatchingSessionType,
 }
 
-/// <summary>What Sprint does when it detects a session the driver has no plan for. Stored by name.</summary>
-[JsonConverter(typeof(JsonStringEnumConverter<AutoDetectMode>))]
-public enum AutoDetectMode
-{
-    /// <summary>
-    /// Offer a draft the driver confirms. The default, because a detected plan that armed
-    /// itself would start tracking against numbers nobody agreed to.
-    /// </summary>
-    DraftSuggestion,
-
-    /// <summary>Create the plan and arm it without asking, for drivers who want that.</summary>
-    CreateAndArm,
-}
-
 /// <summary>
 /// Global Session Planner settings (#103). These are defaults for new plans — anything a
 /// plan stores itself can still be overridden per plan.
+/// <para>
+/// An older file's <c>autoDetect</c> key (online detection, #102, never built) lands in
+/// <see cref="ExtensionData"/> and is written back untouched.
+/// </para>
 /// </summary>
 public sealed class SessionPlannerSettings
 {
-    /// <summary>The offered trace storage ceilings in megabytes, ascending.</summary>
-    public static readonly int[] TraceStorageBudgets = [1024, 2048, 4096, 8192, 16384];
-
     /// <summary>Default fuel reserve on top of the estimate, in whole laps.</summary>
     [JsonPropertyName("fuelReserveLaps")]
     public int FuelReserveLaps { get; set; } = 1;
 
+    /// <summary>The largest reserve the planner's settings accept.</summary>
+    public const int MaxFuelReserveLaps = 10;
+
     [JsonPropertyName("fuelHistorySource")]
     public FuelHistorySource FuelHistorySource { get; set; } = FuelHistorySource.AllValidLaps;
 
-    [JsonPropertyName("autoDetect")]
-    public AutoDetectMode AutoDetect { get; set; } = AutoDetectMode.DraftSuggestion;
+    /// <summary>
+    /// After how many days a lap's trace is deleted, or 0 to keep every trace (the default: the
+    /// driver opts into deleting, in Settings). Protection outranks it.
+    /// <para>
+    /// Not the earlier <c>traceRetentionDays</c>, which defaulted to 90 without anyone choosing
+    /// it: a settings file that still holds that key must not read as having opted in.
+    /// </para>
+    /// </summary>
+    [JsonPropertyName("traceExpiryDays")]
+    public int TraceExpiryDays { get; set; }
 
-    /// <summary>How long traces are kept, or 0 for no age limit. Protection outranks it.</summary>
-    [JsonPropertyName("traceRetentionDays")]
-    public int TraceRetentionDays { get; set; } = 90;
-
-    /// <summary>A hard ceiling on trace storage, so a long stint cannot fill the disk.</summary>
-    [JsonPropertyName("traceMaxTotalMegabytes")]
-    public int TraceMaxTotalMegabytes { get; set; } = 4096;
+    /// <summary>The longest age limit a driver can set.</summary>
+    public const int MaxTraceExpiryDays = 3650;
 
     /// <summary>
-    /// How many of the fastest valid laps per (game, track, car) are exempt from pruning. This
-    /// is what makes recording a trace for every lap safe: a reference lap gets old, so an
-    /// unqualified oldest-first policy would delete exactly the laps worth chasing.
+    /// How many of the fastest valid laps per (game, track, car) keep their trace whatever the
+    /// age limit: a reference lap gets old, so deleting by age alone would delete exactly the
+    /// laps worth chasing.
     /// </summary>
     [JsonPropertyName("traceProtectedLapsPerContext")]
     public int TraceProtectedLapsPerContext { get; set; } = 5;
 
     /// <summary>These settings as the retention service's budget (#194).</summary>
     public LapTraceBudget TraceBudget() => new(
-        Math.Max(1, TraceMaxTotalMegabytes) * 1024L * 1024L,
-        Math.Max(0, TraceProtectedLapsPerContext),
-        TraceRetentionDays > 0 ? TraceRetentionDays : null);
+        Math.Max(0, this.TraceProtectedLapsPerContext),
+        this.TraceExpiryDays > 0 ? this.TraceExpiryDays : null);
 
     /// <summary>Warn when live telemetry disagrees with the planned race-length format.</summary>
     [JsonPropertyName("warnOnRaceFormatMismatch")]
@@ -252,6 +252,9 @@ public sealed class SessionPlannerSettings
     /// <summary>Warn when the detected qualifying/race segment changes mid-plan.</summary>
     [JsonPropertyName("warnOnDetectedSegmentChange")]
     public bool WarnOnDetectedSegmentChange { get; set; } = true;
+
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? ExtensionData { get; set; }
 }
 
 /// <summary>Where one Live Compare overlay window sat on one (monitor, resolution).</summary>
@@ -276,6 +279,9 @@ public sealed class HudWindowLayout
 
     [JsonPropertyName("height")]
     public int Height { get; set; }
+
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? ExtensionData { get; set; }
 }
 
 /// <summary>
@@ -314,6 +320,36 @@ public sealed class LiveCompareSettings
     [JsonPropertyName("metersAhead")]
     public double MetersAhead { get; set; } = 600;
 
+    /// <summary>The fewest and most metres the HUD may keep behind the car.</summary>
+    public const double MinMetersBehind = 50;
+    public const double MaxMetersBehind = 1000;
+
+    /// <summary>
+    /// The fewest and most metres the HUD may look ahead. Under 100 m a braking zone arrives with
+    /// no warning; past 2 km a chart a few hundred pixels wide no longer shows a corner's shape.
+    /// </summary>
+    public const double MinMetersAhead = 100;
+    public const double MaxMetersAhead = 2000;
+
+    /// <summary>Whether a rolling window of <paramref name="behind"/> and <paramref name="ahead"/> metres is one the HUD draws; the reason when not.</summary>
+    public static bool IsRange(double behind, double ahead, out string error)
+    {
+        error = "";
+        if (!double.IsFinite(behind) || behind < MinMetersBehind || behind > MaxMetersBehind)
+        {
+            error = $"metersBehind must be between {MinMetersBehind} and {MaxMetersBehind}";
+            return false;
+        }
+
+        if (!double.IsFinite(ahead) || ahead < MinMetersAhead || ahead > MaxMetersAhead)
+        {
+            error = $"metersAhead must be between {MinMetersAhead} and {MaxMetersAhead}";
+            return false;
+        }
+
+        return true;
+    }
+
     /// <summary>
     /// Panel ids from the chart catalogue. One overlay window each, in this order down the
     /// screen on first open.
@@ -333,15 +369,6 @@ public sealed class LiveCompareSettings
     [JsonPropertyName("showDelta")]
     public bool ShowDelta { get; set; } = true;
 
-    /// <summary>
-    /// Whether the overlay windows are click-through. Persisted because a driver who locked
-    /// them wants them locked next time too — an overlay that silently became draggable would
-    /// be nudged out of place by the first stray click. One flag for the whole set: locking is
-    /// "I am done placing these and about to drive", which is never true of one window only.
-    /// </summary>
-    [JsonPropertyName("locked")]
-    public bool Locked { get; set; }
-
     [JsonPropertyName("layouts")]
     public List<HudWindowLayout> Layouts { get; set; } = [];
 
@@ -352,17 +379,20 @@ public sealed class LiveCompareSettings
     /// </summary>
     public bool Migrate()
     {
-        if (Version >= CurrentVersion)
+        if (this.Version >= CurrentVersion)
         {
             return false;
         }
 
-        Version = CurrentVersion;
-        PanelIds = ["throttle", "brake", "speed"];
-        ShowDelta = true;
-        Layouts.Clear();
+        this.Version = CurrentVersion;
+        this.PanelIds = ["throttle", "brake", "speed"];
+        this.ShowDelta = true;
+        this.Layouts.Clear();
         return true;
     }
+
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? ExtensionData { get; set; }
 }
 
 public sealed class LastSeenContext
@@ -375,6 +405,9 @@ public sealed class LastSeenContext
 
     [JsonPropertyName("track")]
     public string Track { get; set; } = "";
+
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? ExtensionData { get; set; }
 }
 
 public sealed class DevicesUiSettings
@@ -386,6 +419,19 @@ public sealed class DevicesUiSettings
     /// <summary>Whether the device detail preview subscribes to live telemetry frames (animates) or shows a single frozen frame.</summary>
     [JsonPropertyName("livePreview")]
     public bool LivePreview { get; set; } = true;
+
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? ExtensionData { get; set; }
+}
+
+public sealed class DashesUiSettings
+{
+    /// <summary>How the Dashes overview lists dashes: "gallery" (tiles, default) or "list".</summary>
+    [JsonPropertyName("viewMode")]
+    public string ViewMode { get; set; } = "gallery";
+
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? ExtensionData { get; set; }
 }
 
 public sealed class NewDashDefaults
@@ -401,6 +447,9 @@ public sealed class NewDashDefaults
 
     [JsonPropertyName("tempUnit")]
     public string TempUnit { get; set; } = "c";
+
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? ExtensionData { get; set; }
 }
 
 public sealed class DashEditorUiSettings
@@ -410,6 +459,9 @@ public sealed class DashEditorUiSettings
 
     [JsonPropertyName("inspector")]
     public DockPanelState Inspector { get; set; } = new();
+
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? ExtensionData { get; set; }
 }
 
 public sealed class DockPanelState
@@ -419,4 +471,7 @@ public sealed class DockPanelState
 
     [JsonPropertyName("pinned")]
     public bool Pinned { get; set; } = true;
+
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? ExtensionData { get; set; }
 }

@@ -1,3 +1,4 @@
+using System.IO.Compression;
 using Sprint.Desktop.Features.SessionPlanning;
 using Xunit;
 
@@ -16,19 +17,19 @@ public sealed class LapTraceStoreTests
     {
         WithStore((store, _) =>
         {
-            var trace = Sample();
+            LapChannelTrace trace = Sample();
 
             store.Save("hs-1-3", trace);
-            var loaded = store.Load("hs-1-3");
+            LapChannelTrace? loaded = store.Load("hs-1-3");
 
             Assert.NotNull(loaded);
             Assert.Equal(trace.Version, loaded!.Version);
             Assert.Equal(trace.PositionStep, loaded.PositionStep, 9);
             Assert.Equal(trace.TrackLengthMeters, loaded.TrackLengthMeters);
             Assert.Equal(trace.SampleCount, loaded.SampleCount);
-            foreach (var (name, values) in trace.Channels)
+            foreach ((string? name, float[]? values) in trace.Channels)
             {
-                Assert.True(loaded.TryGetChannel(name, out var round), $"missing channel {name}");
+                Assert.True(loaded.TryGetChannel(name, out float[]? round), $"missing channel {name}");
                 Assert.Equal(values, round);
             }
         });
@@ -39,7 +40,7 @@ public sealed class LapTraceStoreTests
     {
         WithStore((store, _) =>
         {
-            var trace = Sample();
+            LapChannelTrace trace = Sample();
             trace.TrackLengthMeters = null;
 
             store.Save("hs-1-4", trace);
@@ -55,13 +56,13 @@ public sealed class LapTraceStoreTests
         {
             // The point of naming channels rather than fixing fields: a trace written by a
             // later build must still read back whole on this one.
-            var trace = Sample();
+            LapChannelTrace trace = Sample();
             trace.Channels["tyreTempFl"] = [80f, 81f, 82f, 83f, 84f];
 
             store.Save("hs-1-5", trace);
-            var loaded = store.Load("hs-1-5");
+            LapChannelTrace? loaded = store.Load("hs-1-5");
 
-            Assert.True(loaded!.TryGetChannel("tyreTempFl", out var values));
+            Assert.True(loaded!.TryGetChannel("tyreTempFl", out float[]? values));
             Assert.Equal([80f, 81f, 82f, 83f, 84f], values);
         });
     }
@@ -71,11 +72,11 @@ public sealed class LapTraceStoreTests
     {
         WithStore((store, _) =>
         {
-            var trace = LapChannelTrace.FromSamples(FullLap(), 200.0, 13_626.0);
+            LapChannelTrace? trace = LapChannelTrace.FromSamples(FullLap(), 200.0, 13_626.0);
 
             store.Save("hs-1-6", trace!);
 
-            var info = Assert.Single(store.List());
+            LapTraceInfo info = Assert.Single(store.List());
             // ~160 KB uncompressed was the budget the spec sized storage on; Deflate only helps.
             Assert.InRange(info.SizeBytes, 1, 200_000);
         });
@@ -100,8 +101,8 @@ public sealed class LapTraceStoreTests
         WithStore((store, root) =>
         {
             // Valid Deflate, wrong payload: the magic is what stops this being read as floats.
-            using (var file = File.Create(Path.Combine(root, "wrong.trace")))
-            using (var deflate = new System.IO.Compression.DeflateStream(
+            using (FileStream file = File.Create(Path.Combine(root, "wrong.trace")))
+            using (DeflateStream deflate = new System.IO.Compression.DeflateStream(
                 file, System.IO.Compression.CompressionLevel.Fastest))
             {
                 deflate.Write("JUNKJUNKJUNKJUNKJUNKJUNKJUNKJUNK"u8);
@@ -118,18 +119,22 @@ public sealed class LapTraceStoreTests
     }
 
     [Fact]
-    public void DeletingATraceRemovesItFromTheListingAndTheTotal()
+    public void WhatSettingsShowsFollowsEveryWriteAndDelete()
     {
         WithStore((store, _) =>
         {
+            Assert.Equal(new LapTraceUsage(0, 0), store.Usage());
+
             store.Save("a", Sample());
             store.Save("b", Sample());
-            var before = store.TotalBytes();
+            LapTraceUsage both = store.Usage();
 
             store.Delete("a");
 
+            Assert.Equal(2, both.Laps);
+            Assert.Equal(store.List().Sum(info => info.SizeBytes) * 2, both.Bytes);
             Assert.Single(store.List());
-            Assert.True(store.TotalBytes() < before);
+            Assert.Equal(new LapTraceUsage(both.Bytes / 2, 1), store.Usage());
 
             // A second delete is a no-op, not a failure.
             store.Delete("a");
@@ -151,7 +156,7 @@ public sealed class LapTraceStoreTests
         {
             store.Save(LapTraceId.For("../../evil", 1), Sample());
 
-            var written = Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories).ToList();
+            List<string> written = Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories).ToList();
             Assert.NotEmpty(written);
             Assert.All(
                 written,
@@ -179,10 +184,10 @@ public sealed class LapTraceStoreTests
 
     private static List<LapTraceSample> FullLap()
     {
-        var samples = new List<LapTraceSample>();
-        for (var i = 0; i <= 2000; i++)
+        List<LapTraceSample> samples = new List<LapTraceSample>();
+        for (int i = 0; i <= 2000; i++)
         {
-            var position = i / 2000.0;
+            double position = i / 2000.0;
             samples.Add(new LapTraceSample(
                 position,
                 (float)(100 + (200 * position)),
@@ -198,7 +203,7 @@ public sealed class LapTraceStoreTests
 
     private static void WithStore(Action<LocalLapTraceStore, string> body)
     {
-        var root = TestEnv.NewTempDataRoot();
+        string root = TestEnv.NewTempDataRoot();
         try
         {
             body(new LocalLapTraceStore(root), root);

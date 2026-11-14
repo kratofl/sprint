@@ -40,10 +40,11 @@ public sealed class SessionPlannerService
     private readonly ILog _log;
     private readonly Func<DateTimeOffset> _clock;
     private readonly Func<string> _idFactory;
+    private readonly Func<bool> _warnOnRaceFormatMismatch;
     private readonly List<SessionPlan> _plans;
 
     // The host drives this service from two independent threads: the telemetry ingest loop
-    // (Ingest, and ActivePlan through PlanTargetDelivery) and HTTP plan.* command handlers,
+    // (Ingest, and ReadActive through PlanTargetDelivery) and HTTP plan.* command handlers,
     // which Kestrel can dispatch concurrently. Every public entry point locks on this, so the
     // plan list and the single active slot are never read or mutated half-updated. A plain
     // Monitor lock is fine here (laps complete roughly once a minute; plan.* commands are rarer
@@ -57,23 +58,29 @@ public sealed class SessionPlannerService
     private SessionType _autoStartCandidate = SessionType.Unknown;
     private DateTimeOffset? _autoStartSince;
 
+    /// <param name="warnOnRaceFormatMismatch">
+    /// Read on every race-format check, so turning the setting off stops new warnings at once
+    /// (<see cref="Runtime.SessionPlannerSettings.WarnOnRaceFormatMismatch"/>). Omitted means on.
+    /// </param>
     public SessionPlannerService(
         ISessionPlanStore store,
         ILog? log = null,
         Func<DateTimeOffset>? clock = null,
-        Func<string>? idFactory = null)
+        Func<string>? idFactory = null,
+        Func<bool>? warnOnRaceFormatMismatch = null)
     {
-        _store = store;
-        _log = log ?? NullLog.Instance;
-        _clock = clock ?? (() => DateTimeOffset.UtcNow);
-        _idFactory = idFactory ?? (() => Guid.NewGuid().ToString("N"));
+        this._store = store;
+        this._log = log ?? NullLog.Instance;
+        this._clock = clock ?? (() => DateTimeOffset.UtcNow);
+        this._idFactory = idFactory ?? (() => Guid.NewGuid().ToString("N"));
+        this._warnOnRaceFormatMismatch = warnOnRaceFormatMismatch ?? (() => true);
 
-        _plans = _store.LoadAll()
+        this._plans = this._store.LoadAll()
             .OrderByDescending(plan => plan.CreatedAt)
             .ToList();
 
-        _activePlanId = _store.LoadActivePlanId();
-        ReconcileActiveSlot();
+        this._activePlanId = this._store.LoadActivePlanId();
+        this.ReconcileActiveSlot();
     }
 
     /// <summary>All plans, newest first, including completed history. A snapshot copy, so a
@@ -95,6 +102,19 @@ public sealed class SessionPlannerService
         }
     }
 
+    /// <summary>
+    /// Reads the active plan under the planner's lock, so a reader on another thread (the live
+    /// link sharing it) never sees it half-updated by the ingest loop. Null without an active plan.
+    /// </summary>
+    public T? ReadActive<T>(Func<SessionPlan, T> read)
+        where T : class
+    {
+        lock (this._gate)
+        {
+            return this.ActivePlan is { } plan ? read(plan) : null;
+        }
+    }
+
     public SessionPlan? Find(string planId)
     {
         lock (this._gate)
@@ -108,10 +128,10 @@ public sealed class SessionPlannerService
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        var plan = new SessionPlan
+        SessionPlan plan = new SessionPlan
         {
-            Id = _idFactory(),
-            Name = string.IsNullOrWhiteSpace(request.Name) ? "New Session Plan" : request.Name.Trim(),
+            Id = this._idFactory(),
+            Name = string.IsNullOrWhiteSpace(request.Name) ? DerivedName(request.Track, request.Car) : request.Name.Trim(),
             Game = request.Game,
             Car = request.Car,
             Track = request.Track,
@@ -125,17 +145,30 @@ public sealed class SessionPlannerService
             FuelPerLapLiters = request.FuelPerLapLiters,
             Notes = request.Notes,
             SetupReferences = [.. request.SetupReferences],
-            CreatedAt = _clock(),
+            CreatedAt = this._clock(),
         };
 
         lock (this._gate)
         {
-            _plans.Insert(0, plan);
-            _store.Save(plan);
+            this._plans.Insert(0, plan);
+            this._store.Save(plan);
         }
 
-        _log.Info($"Created session plan '{plan.Id}' ({plan.Game}/{plan.Track})");
+        this._log.Info($"Created session plan '{plan.Id}' ({plan.Game}/{plan.Track})");
         return plan;
+    }
+
+    /// <summary>
+    /// What an unnamed plan is called: where and what it is for (<c>Track – Car</c>), so the plan
+    /// list stays readable. The one rule: the creation sheet previews it as the name field's
+    /// placeholder (mirrored in <c>SessionPlannerDomain.ts</c>), and this is the name the plan gets.
+    /// </summary>
+    public static string DerivedName(string track, string car)
+    {
+        string[] parts = new[] { track.Trim(), car.Trim() }
+            .Where(part => part.Length > 0)
+            .ToArray();
+        return parts.Length == 0 ? "New Session Plan" : string.Join(" – ", parts);
     }
 
     /// <summary>Persists edits to an existing plan (metadata, notes, setup references, etc.).</summary>
@@ -144,15 +177,54 @@ public sealed class SessionPlannerService
         ArgumentNullException.ThrowIfNull(plan);
         lock (this._gate)
         {
-            var index = _plans.FindIndex(existing => existing.Id == plan.Id);
+            int index = this._plans.FindIndex(existing => existing.Id == plan.Id);
             if (index < 0)
             {
                 throw new InvalidOperationException($"No session plan with id '{plan.Id}' exists.");
             }
 
-            _plans[index] = plan;
-            _store.Save(plan);
+            this._plans[index] = plan;
+            this._store.Save(plan);
         }
+    }
+
+    /// <summary>
+    /// Sets, or with null clears, <paramref name="plan"/>'s lap-time target and saves it, under the
+    /// planner's lock: other threads read the active plan's targets through <see cref="ReadActive{T}"/>
+    /// (the state poll, the telemetry loop), and must never enumerate them mid-change.
+    /// </summary>
+    public void SetLapTimeTarget(SessionPlan plan, SegmentKind kind, PlanTarget? target)
+    {
+        ArgumentNullException.ThrowIfNull(plan);
+        lock (this._gate)
+        {
+            plan.SetLapTimeTarget(kind, target);
+            this.UpdatePlan(plan);
+        }
+    }
+
+    /// <summary>
+    /// Moves plans filed under a car's former name to its current one (<see cref="StoredCarNames.FormerNames"/>),
+    /// so they keep matching the history they plan against. Returns how many plans it rewrote.
+    /// </summary>
+    public int RenameCars(IReadOnlyDictionary<string, string> currentNames)
+    {
+        ArgumentNullException.ThrowIfNull(currentNames);
+        int renamed = 0;
+        lock (this._gate)
+        {
+            foreach (SessionPlan plan in this._plans)
+            {
+                if (currentNames.TryGetValue(plan.Car, out string? current) && !string.Equals(current, plan.Car, StringComparison.Ordinal))
+                {
+                    plan.Car = current;
+                    this._store.Save(plan);
+                    renamed++;
+                }
+            }
+        }
+
+        return renamed;
     }
 
     /// <summary>Deletes a plan. If it held the active slot, the slot is cleared.</summary>
@@ -160,17 +232,17 @@ public sealed class SessionPlannerService
     {
         lock (this._gate)
         {
-            var index = _plans.FindIndex(plan => plan.Id == planId);
+            int index = this._plans.FindIndex(plan => plan.Id == planId);
             if (index < 0)
             {
                 return;
             }
 
-            _plans.RemoveAt(index);
-            _store.Delete(planId);
-            if (_activePlanId == planId)
+            this._plans.RemoveAt(index);
+            this._store.Delete(planId);
+            if (this._activePlanId == planId)
             {
-                ClearActiveSlot();
+                this.ClearActiveSlot();
             }
         }
     }
@@ -184,11 +256,11 @@ public sealed class SessionPlannerService
     {
         lock (this._gate)
         {
-            var plan = Require(planId);
-            ClaimActiveSlot(plan);
+            SessionPlan plan = this.Require(planId);
+            this.ClaimActiveSlot(plan);
             plan.Status = PlanStatus.Armed;
-            _store.Save(plan);
-            _log.Info($"Armed session plan '{plan.Id}'");
+            this._store.Save(plan);
+            this._log.Info($"Armed session plan '{plan.Id}'");
         }
     }
 
@@ -202,20 +274,20 @@ public sealed class SessionPlannerService
     {
         lock (this._gate)
         {
-            var plan = Require(planId);
+            SessionPlan plan = this.Require(planId);
             if (plan.Status != PlanStatus.Armed)
             {
                 return;
             }
 
             plan.Status = PlanStatus.Draft;
-            _store.Save(plan);
-            if (_activePlanId == plan.Id)
+            this._store.Save(plan);
+            if (this._activePlanId == plan.Id)
             {
-                ClearActiveSlot();
+                this.ClearActiveSlot();
             }
 
-            _log.Info($"Disarmed session plan '{plan.Id}'");
+            this._log.Info($"Disarmed session plan '{plan.Id}'");
         }
     }
 
@@ -228,7 +300,7 @@ public sealed class SessionPlannerService
     {
         lock (this._gate)
         {
-            var plan = ActivePlan;
+            SessionPlan? plan = this.ActivePlan;
             if (plan is null)
             {
                 return;
@@ -236,11 +308,11 @@ public sealed class SessionPlannerService
 
             if (plan.Status == PlanStatus.Armed)
             {
-                Disarm(plan.Id);
+                this.Disarm(plan.Id);
                 return;
             }
 
-            StopTracking(plan.Id);
+            this.StopTracking(plan.Id);
         }
     }
 
@@ -253,27 +325,27 @@ public sealed class SessionPlannerService
     {
         lock (this._gate)
         {
-            var plan = Require(planId);
-            ClaimActiveSlot(plan);
+            SessionPlan plan = this.Require(planId);
+            this.ClaimActiveSlot(plan);
 
-            var now = _clock();
+            DateTimeOffset now = this._clock();
             plan.StartedAt ??= now;
             plan.Status = PlanStatus.Tracking;
 
-            var segment = OpenSegment(plan)
-                ?? AppendSegment(plan, kind, source, now);
+            PlanSegment segment = OpenSegment(plan)
+                ?? this.AppendSegment(plan, kind, source, now);
 
             // If a different-kind segment was open (e.g. moving Q -> R), close it first.
             if (segment.Kind != kind)
             {
                 segment.ActualEnd = now;
-                segment = AppendSegment(plan, kind, source, now);
+                segment = this.AppendSegment(plan, kind, source, now);
             }
 
             this._lastSeenLap = 0;
             this._lastSeenLapIsValid = true;
-            _store.Save(plan);
-            _log.Info($"Started tracking {kind} for session plan '{plan.Id}'");
+            this._store.Save(plan);
+            this._log.Info($"Started tracking {kind} for session plan '{plan.Id}'");
             return segment;
         }
     }
@@ -286,10 +358,10 @@ public sealed class SessionPlannerService
     {
         lock (this._gate)
         {
-            var plan = Require(planId);
-            var now = _clock();
+            SessionPlan plan = this.Require(planId);
+            DateTimeOffset now = this._clock();
 
-            var segment = OpenSegment(plan);
+            PlanSegment? segment = OpenSegment(plan);
             if (segment is not null)
             {
                 segment.ActualEnd = now;
@@ -297,14 +369,14 @@ public sealed class SessionPlannerService
 
             plan.Status = PlanStatus.Completed;
             plan.EndedAt = now;
-            _store.Save(plan);
+            this._store.Save(plan);
 
-            if (_activePlanId == plan.Id)
+            if (this._activePlanId == plan.Id)
             {
-                ClearActiveSlot();
+                this.ClearActiveSlot();
             }
 
-            _log.Info($"Stopped tracking session plan '{plan.Id}'");
+            this._log.Info($"Stopped tracking session plan '{plan.Id}'");
         }
     }
 
@@ -319,7 +391,7 @@ public sealed class SessionPlannerService
         ArgumentNullException.ThrowIfNull(frame);
         lock (this._gate)
         {
-            var plan = ActivePlan;
+            SessionPlan? plan = this.ActivePlan;
             if (plan is null)
             {
                 return;
@@ -329,7 +401,7 @@ public sealed class SessionPlannerService
             // segment; the frame after this one begins ingesting into it.
             if (plan.Status == PlanStatus.Armed)
             {
-                TryAutoStart(plan, frame);
+                this.TryAutoStart(plan, frame);
                 return;
             }
 
@@ -338,19 +410,25 @@ public sealed class SessionPlannerService
                 return;
             }
 
-            var segment = OpenSegment(plan);
+            PlanSegment? segment = OpenSegment(plan);
             if (segment is null)
             {
                 return;
             }
 
-            var dirty = RecordLiveContext(segment, frame);
-            dirty |= RecordCompletedLap(segment, frame);
-            dirty |= DetectRaceFormatMismatch(plan, segment, frame);
+            // Qualifying is over once the game holds the race: follow it, as arming did.
+            if (segment.Kind == SegmentKind.Qualifying && this.TryAutoStart(plan, frame, segment.Kind))
+            {
+                return;
+            }
+
+            bool dirty = this.RecordLiveContext(segment, frame);
+            dirty |= this.RecordCompletedLap(segment, frame);
+            dirty |= this.DetectRaceFormatMismatch(plan, segment, frame);
 
             if (dirty)
             {
-                _store.Save(plan);
+                this._store.Save(plan);
             }
         }
     }
@@ -358,49 +436,51 @@ public sealed class SessionPlannerService
     // #102 owns the full online-detection ruleset. This is the minimum #100 needs: the
     // reported session type must hold continuously for AutoStartHoldSeconds before a
     // segment opens, so one spurious frame cannot start a session. Confidence stays
-    // Medium — High is reserved for #102's corroborated detection.
-    private bool TryAutoStart(SessionPlan plan, TelemetryFrame frame)
+    // Medium — High is reserved for #102's corroborated detection. With a segment
+    // already open (`current`), only a later session counts: qualifying moves on to the
+    // race, never back.
+    private bool TryAutoStart(SessionPlan plan, TelemetryFrame frame, SegmentKind? current = null)
     {
-        var reported = frame.Session.SessionType;
-        var kind = reported switch
+        SessionType reported = frame.Session.SessionType;
+        SegmentKind? kind = reported switch
         {
-            SessionType.Qualify when plan.QualifyingIncluded => SegmentKind.Qualifying,
-            SessionType.Race => SegmentKind.Race,
+            SessionType.Qualify when plan.QualifyingIncluded && current is null => SegmentKind.Qualifying,
+            SessionType.Race when current != SegmentKind.Race => SegmentKind.Race,
             _ => (SegmentKind?)null,
         };
 
         if (kind is null)
         {
-            _autoStartCandidate = SessionType.Unknown;
-            _autoStartSince = null;
+            this._autoStartCandidate = SessionType.Unknown;
+            this._autoStartSince = null;
             return false;
         }
 
-        var now = _clock();
-        if (_autoStartCandidate != reported || _autoStartSince is null)
+        DateTimeOffset now = this._clock();
+        if (this._autoStartCandidate != reported || this._autoStartSince is null)
         {
-            _autoStartCandidate = reported;
-            _autoStartSince = now;
+            this._autoStartCandidate = reported;
+            this._autoStartSince = now;
             return false;
         }
 
-        if ((now - _autoStartSince.Value).TotalSeconds < AutoStartHoldSeconds)
+        if ((now - this._autoStartSince.Value).TotalSeconds < AutoStartHoldSeconds)
         {
             return false;
         }
 
-        var segment = StartTracking(plan.Id, kind.Value, SegmentSource.Detected);
+        PlanSegment segment = this.StartTracking(plan.Id, kind.Value, SegmentSource.Detected);
         segment.SourceConfidence = DetectionConfidence.Medium;
-        _autoStartCandidate = SessionType.Unknown;
-        _autoStartSince = null;
-        _store.Save(plan);
-        _log.Info($"Auto-started {kind.Value} for session plan '{plan.Id}' from detected {reported}");
+        this._autoStartCandidate = SessionType.Unknown;
+        this._autoStartSince = null;
+        this._store.Save(plan);
+        this._log.Info($"Auto-started {kind.Value} for session plan '{plan.Id}' from detected {reported}");
         return true;
     }
 
     private bool RecordLiveContext(PlanSegment segment, TelemetryFrame frame)
     {
-        var sessionType = frame.Session.SessionType.ToString();
+        string sessionType = frame.Session.SessionType.ToString();
         if (segment.LiveSessionType == sessionType)
         {
             return false;
@@ -442,23 +522,30 @@ public sealed class SessionPlannerService
         return true;
     }
 
+    /// <summary>
+    /// Records the race format the game reports on the race segment — the plan page shows it
+    /// whatever the plan says — and warns once when it disagrees with the plan, unless the driver
+    /// turned that warning off.
+    /// </summary>
     private bool DetectRaceFormatMismatch(SessionPlan plan, PlanSegment segment, TelemetryFrame frame)
     {
-        if (segment.Kind != SegmentKind.Race || plan.RaceLengthFormat == RaceLengthFormat.Unknown)
+        if (segment.Kind != SegmentKind.Race)
         {
             return false;
         }
 
-        var detected = frame.Session.MaxLaps > 0 ? RaceLengthFormat.LapBased : RaceLengthFormat.TimeBased;
-        var changed = segment.DetectedRaceFormat != detected;
+        RaceLengthFormat detected = frame.Session.MaxLaps > 0 ? RaceLengthFormat.LapBased : RaceLengthFormat.TimeBased;
+        bool changed = segment.DetectedRaceFormat != detected;
         segment.DetectedRaceFormat = detected;
 
-        if (detected == plan.RaceLengthFormat)
+        if (plan.RaceLengthFormat == RaceLengthFormat.Unknown
+            || detected == plan.RaceLengthFormat
+            || !this._warnOnRaceFormatMismatch())
         {
             return changed;
         }
 
-        var alreadyWarned = plan.Warnings.Any(warning => warning.Kind == RaceFormatMismatchWarning);
+        bool alreadyWarned = plan.Warnings.Any(warning => warning.Kind == RaceFormatMismatchWarning);
         if (alreadyWarned)
         {
             return changed;
@@ -468,9 +555,9 @@ public sealed class SessionPlannerService
         {
             Kind = RaceFormatMismatchWarning,
             Message = $"Live telemetry reports a {detected} race, but the plan is {plan.RaceLengthFormat}.",
-            CreatedAt = _clock(),
+            CreatedAt = this._clock(),
         });
-        _log.Warn($"Race format mismatch on plan '{plan.Id}': planned {plan.RaceLengthFormat}, detected {detected}");
+        this._log.Warn($"Race format mismatch on plan '{plan.Id}': planned {plan.RaceLengthFormat}, detected {detected}");
         return true;
     }
 
@@ -479,9 +566,9 @@ public sealed class SessionPlannerService
 
     private PlanSegment AppendSegment(SessionPlan plan, SegmentKind kind, SegmentSource source, DateTimeOffset start)
     {
-        var segment = new PlanSegment
+        PlanSegment segment = new PlanSegment
         {
-            Id = _idFactory(),
+            Id = this._idFactory(),
             Kind = kind,
             Source = source,
             ActualStart = start,
@@ -491,61 +578,61 @@ public sealed class SessionPlannerService
     }
 
     private SessionPlan Require(string planId) =>
-        Find(planId) ?? throw new InvalidOperationException($"No session plan with id '{planId}' exists.");
+        this.Find(planId) ?? throw new InvalidOperationException($"No session plan with id '{planId}' exists.");
 
     private void ClaimActiveSlot(SessionPlan plan)
     {
-        if (_activePlanId is not null && _activePlanId != plan.Id)
+        if (this._activePlanId is not null && this._activePlanId != plan.Id)
         {
             throw new InvalidOperationException(
-                $"Session plan '{_activePlanId}' is already active; only one plan can be active at a time.");
+                $"Session plan '{this._activePlanId}' is already active; only one plan can be active at a time.");
         }
 
-        if (_activePlanId != plan.Id)
+        if (this._activePlanId != plan.Id)
         {
-            _activePlanId = plan.Id;
-            _store.SaveActivePlanId(plan.Id);
+            this._activePlanId = plan.Id;
+            this._store.SaveActivePlanId(plan.Id);
         }
     }
 
     private void ClearActiveSlot()
     {
-        _activePlanId = null;
+        this._activePlanId = null;
         this._lastSeenLap = 0;
         this._lastSeenLapIsValid = true;
-        _autoStartCandidate = SessionType.Unknown;
-        _autoStartSince = null;
-        _store.SaveActivePlanId(null);
+        this._autoStartCandidate = SessionType.Unknown;
+        this._autoStartSince = null;
+        this._store.SaveActivePlanId(null);
     }
 
     // On startup, drop a dangling active pointer (deleted plan) and demote a plan left
     // "tracking" by a crash to Abandoned so the single active slot is never wedged.
     private void ReconcileActiveSlot()
     {
-        if (_activePlanId is null)
+        if (this._activePlanId is null)
         {
             return;
         }
 
-        var active = _plans.FirstOrDefault(plan => plan.Id == _activePlanId);
+        SessionPlan? active = this._plans.FirstOrDefault(plan => plan.Id == this._activePlanId);
         if (active is null)
         {
-            ClearActiveSlot();
+            this.ClearActiveSlot();
             return;
         }
 
         if (active.Status == PlanStatus.Tracking)
         {
             active.Status = PlanStatus.Abandoned;
-            active.EndedAt ??= _clock();
-            foreach (var open in active.Segments.Where(segment => segment.ActualStart is not null && segment.ActualEnd is null))
+            active.EndedAt ??= this._clock();
+            foreach (PlanSegment? open in active.Segments.Where(segment => segment.ActualStart is not null && segment.ActualEnd is null))
             {
                 open.ActualEnd = active.EndedAt;
             }
 
-            _store.Save(active);
-            _log.Warn($"Session plan '{active.Id}' was left tracking; marked Abandoned on startup.");
-            ClearActiveSlot();
+            this._store.Save(active);
+            this._log.Warn($"Session plan '{active.Id}' was left tracking; marked Abandoned on startup.");
+            this.ClearActiveSlot();
         }
     }
 }

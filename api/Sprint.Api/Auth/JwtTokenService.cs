@@ -21,14 +21,14 @@ public sealed class JwtTokenService
 
     private readonly SymmetricSecurityKey _key;
 
-    public JwtTokenService(SymmetricSecurityKey key) => _key = key;
+    public JwtTokenService(SymmetricSecurityKey key) => this._key = key;
 
     /// <summary>Creates and signs a token for the given user.</summary>
     public string Issue(string userId, string email)
     {
-        var now = DateTime.UtcNow;
-        var creds = new SigningCredentials(_key, SecurityAlgorithms.HmacSha256);
-        var token = new JwtSecurityToken(
+        DateTime now = DateTime.UtcNow;
+        SigningCredentials creds = new SigningCredentials(this._key, SecurityAlgorithms.HmacSha256);
+        JwtSecurityToken token = new JwtSecurityToken(
             claims:
             [
                 new Claim(UserIdClaim, userId),
@@ -52,8 +52,8 @@ public sealed class JwtTokenService
             throw new GraphQLException("Missing token.");
         try
         {
-            var principal = new JwtSecurityTokenHandler()
-                .ValidateToken(rawToken, ValidationParameters, out _);
+            ClaimsPrincipal principal = new JwtSecurityTokenHandler()
+                .ValidateToken(rawToken, this.ValidationParameters, out _);
             return principal.FindFirst(UserIdClaim)?.Value
                    ?? throw new GraphQLException("Invalid token.");
         }
@@ -74,7 +74,7 @@ public sealed class JwtTokenService
         ValidateAudience = false,
         ValidateLifetime = true,
         ValidateIssuerSigningKey = true,
-        IssuerSigningKey = _key,
+        IssuerSigningKey = this._key,
         ValidAlgorithms = [SecurityAlgorithms.HmacSha256],
         ClockSkew = TimeSpan.FromSeconds(30)
     };
@@ -82,7 +82,7 @@ public sealed class JwtTokenService
     /// <summary>Builds a signing key from the configured secret (dev fallback mirrors the Go default).</summary>
     public static SymmetricSecurityKey KeyFromSecret(string? secret)
     {
-        var value = string.IsNullOrEmpty(secret)
+        string value = string.IsNullOrEmpty(secret)
             ? "changeme-set-JWT_SECRET-in-production"
             : secret;
         return new SymmetricSecurityKey(Encoding.UTF8.GetBytes(value));

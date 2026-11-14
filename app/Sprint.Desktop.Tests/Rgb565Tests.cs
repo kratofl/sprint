@@ -10,8 +10,8 @@ public sealed class Rgb565Tests
     public void FromBgraEncodesRedPixelLittleEndian()
     {
         // One red pixel in SkiaSharp BGRA order: B=0, G=0, R=255, A=255.
-        var bgra = new byte[] { 0, 0, 255, 255 };
-        var dst = new byte[2];
+        byte[] bgra = new byte[] { 0, 0, 255, 255 };
+        byte[] dst = new byte[2];
         Rgb565.FromBgra(bgra, 1, 1, 0, dst);
 
         // R5=31, G6=0, B5=0 → 0xF800, little-endian.
@@ -31,21 +31,21 @@ public sealed class Rgb565Tests
     [Fact]
     public void ApplyMarginAddsUniformBorder()
     {
-        var src = new byte[4 * 4 * 2];
-        for (var i = 0; i < 16; i++)
+        byte[] src = new byte[4 * 4 * 2];
+        for (int i = 0; i < 16; i++)
         {
             src[i * 2] = (byte)i;
             src[i * 2 + 1] = (byte)i;
         }
 
-        var dst = new byte[src.Length];
+        byte[] dst = new byte[src.Length];
         Rgb565.ApplyMargin(src, dst, 4, 4, 1);
 
-        for (var y = 0; y < 4; y++)
+        for (int y = 0; y < 4; y++)
         {
-            for (var x = 0; x < 4; x++)
+            for (int x = 0; x < 4; x++)
             {
-                var got = dst[(y * 4 + x) * 2];
+                byte got = dst[(y * 4 + x) * 2];
                 if (x is 0 or 3 || y is 0 or 3)
                 {
                     Assert.Equal(0, got);
@@ -53,9 +53,9 @@ public sealed class Rgb565Tests
             }
         }
 
-        for (var y = 1; y <= 2; y++)
+        for (int y = 1; y <= 2; y++)
         {
-            for (var x = 1; x <= 2; x++)
+            for (int x = 1; x <= 2; x++)
             {
                 Assert.NotEqual(0, dst[(y * 4 + x) * 2]);
             }
@@ -65,9 +65,9 @@ public sealed class Rgb565Tests
     [Fact]
     public void ApplyMarginClearsWhenInsetConsumesFrame()
     {
-        var src = new byte[2 * 2 * 2];
+        byte[] src = new byte[2 * 2 * 2];
         Array.Fill(src, (byte)0xFF);
-        var dst = new byte[src.Length];
+        byte[] dst = new byte[src.Length];
 
         Rgb565.ApplyMargin(src, dst, 2, 2, 1);
 
@@ -78,15 +78,15 @@ public sealed class Rgb565Tests
     public void ApplyMarginPreservesThinVerticalLines()
     {
         const int w = 800, h = 480, margin = 5;
-        var src = new byte[w * h * 2];
-        var dst = new byte[src.Length];
-        var (lineLo, lineHi) = Encode565(42, 42, 42);
+        byte[] src = new byte[w * h * 2];
+        byte[] dst = new byte[src.Length];
+        (byte lineLo, byte lineHi) = Encode565(42, 42, 42);
 
-        foreach (var x in new[] { 79, 479 })
+        foreach (int x in new[] { 79, 479 })
         {
-            for (var y = 0; y < h; y++)
+            for (int y = 0; y < h; y++)
             {
-                var idx = (y * w + x) * 2;
+                int idx = (y * w + x) * 2;
                 src[idx] = lineLo;
                 src[idx + 1] = lineHi;
             }
@@ -94,11 +94,11 @@ public sealed class Rgb565Tests
 
         Rgb565.ApplyMargin(src, dst, w, h, margin);
 
-        foreach (var sourceX in new[] { 79, 479 })
+        foreach (int sourceX in new[] { 79, 479 })
         {
-            var x = margin + ScaleSourceColumn(sourceX, w, w - margin * 2);
-            var y = h / 2;
-            var idx = (y * w + x) * 2;
+            int x = margin + ScaleSourceColumn(sourceX, w, w - margin * 2);
+            int y = h / 2;
+            int idx = (y * w + x) * 2;
             Assert.Equal(lineLo, dst[idx]);
             Assert.Equal(lineHi, dst[idx + 1]);
         }
@@ -109,17 +109,17 @@ public sealed class Rgb565Tests
     {
         // 3x3, fill non-zero, offset (1,1) with rotation 0 → top row + left column cleared.
         const int w = 3, h = 3;
-        var buf = new byte[w * h * 2];
+        byte[] buf = new byte[w * h * 2];
         Array.Fill(buf, (byte)0x20);
 
         Rgb565.ApplyOffset(buf, w, h, offsetX: 1, offsetY: 1, rotation: 0);
 
-        for (var x = 0; x < w; x++)
+        for (int x = 0; x < w; x++)
         {
             Assert.Equal(0, buf[x * 2]); // top row black
         }
 
-        for (var y = 0; y < h; y++)
+        for (int y = 0; y < h; y++)
         {
             Assert.Equal(0, buf[(y * w) * 2]); // left column black
         }
@@ -131,8 +131,8 @@ public sealed class Rgb565Tests
     public void ToBgraDecodesFullScaleRedToOpaque()
     {
         // 0xF800 LE = full red in 565.
-        var src = new byte[] { 0x00, 0xF8 };
-        var dst = new byte[4];
+        byte[] src = new byte[] { 0x00, 0xF8 };
+        byte[] dst = new byte[4];
         Rgb565.ToBgra(src, 1, 1, dst);
 
         Assert.Equal(0x00, dst[0]); // B
@@ -146,7 +146,7 @@ public sealed class Rgb565Tests
     {
         // Encode a spread of colours to 565 and back; each channel must land within
         // one 565 step of the original (5-bit R/B ≈ 8, 6-bit G ≈ 4).
-        var colors = new byte[][]
+        byte[][] colors = new byte[][]
         {
             new byte[] { 0, 0, 0, 255 },
             new byte[] { 255, 255, 255, 255 },
@@ -154,11 +154,11 @@ public sealed class Rgb565Tests
             new byte[] { 255, 106, 0, 255 }, // ember #FF6A00 in BGRA order below
         };
 
-        foreach (var bgra in colors)
+        foreach (byte[] bgra in colors)
         {
-            var rgb565 = new byte[2];
+            byte[] rgb565 = new byte[2];
             Rgb565.FromBgra(bgra, 1, 1, 0, rgb565);
-            var decoded = new byte[4];
+            byte[] decoded = new byte[4];
             Rgb565.ToBgra(rgb565, 1, 1, decoded);
 
             Assert.True(Math.Abs(decoded[0] - bgra[0]) <= 8, $"B off by {Math.Abs(decoded[0] - bgra[0])}");
@@ -169,56 +169,111 @@ public sealed class Rgb565Tests
     }
 
     [Fact]
-    public void FusedCompositionIsByteEquivalentToTheLegacyPipeline()
+    public void ComposerIsByteEquivalentToTheSeparateSteps()
     {
-        var nativeSizes = new[] { (Width: 5, Height: 3), (Width: 3, Height: 5) };
-        var transforms = new[]
-        {
-            (Margin: 0, OffsetX: 0, OffsetY: 0),
-            (Margin: 1, OffsetX: 1, OffsetY: 1),
-            (Margin: 1, OffsetX: 2, OffsetY: 0),
-            (Margin: 1, OffsetX: 0, OffsetY: 2),
-            (Margin: 3, OffsetX: 0, OffsetY: 0),
-            (Margin: 0, OffsetX: 99, OffsetY: 99),
-            (Margin: -1, OffsetX: -2, OffsetY: -3),
-        };
+        (int Width, int Height)[] nativeSizes =
+            [(5, 3), (3, 5), (1, 1), (2, 9), (9, 2), (7, 7), (64, 37), (37, 64)];
+        int[] margins = [-1, 0, 1, 2, 3, 5, 17];
+        (int X, int Y)[] offsets =
+            [(0, 0), (1, 1), (2, 0), (0, 2), (99, 99), (-1, 0), (0, -2), (-3, 2), (4, -5), (-50, 50)];
 
-        foreach (var native in nativeSizes)
+        foreach ((int Width, int Height) native in nativeSizes)
         {
-            foreach (var orientation in Enum.GetValues<DeviceOrientation>())
+            foreach (DeviceOrientation orientation in Enum.GetValues<DeviceOrientation>())
             {
-                var orientationTransform = DeviceOrientations.Transform(
+                DeviceOrientationTransform transform = DeviceOrientations.Transform(
                     native.Width,
                     native.Height,
                     orientation);
-                var bgra = Pattern(
-                    orientationTransform.LogicalWidth,
-                    orientationTransform.LogicalHeight);
+                byte[][] pictures =
+                [
+                    Pattern(transform.LogicalWidth, transform.LogicalHeight),
+                    Noise(transform.LogicalWidth, transform.LogicalHeight, seed: 7),
+                    Ties(transform.LogicalWidth, transform.LogicalHeight, seed: 11),
+                ];
 
-                foreach (var transform in transforms)
+                foreach (byte[] bgra in pictures)
                 {
-                    var expected = LegacyCompose(
-                        bgra,
-                        native.Width,
-                        native.Height,
-                        orientationTransform,
-                        transform.Margin,
-                        transform.OffsetX,
-                        transform.OffsetY);
-                    var actual = new byte[expected.Length];
+                    foreach (int margin in margins)
+                    {
+                        foreach ((int X, int Y) offset in offsets)
+                        {
+                            byte[] expected = SeparateSteps(
+                                bgra,
+                                native.Width,
+                                native.Height,
+                                transform,
+                                margin,
+                                offset.X,
+                                offset.Y);
+                            byte[] actual = new byte[expected.Length];
 
-                    Rgb565.ComposeFromBgra(
-                        bgra,
-                        native.Width,
-                        native.Height,
-                        orientationTransform,
-                        transform.Margin,
-                        transform.OffsetX,
-                        transform.OffsetY,
-                        actual);
+                            new Rgb565Composer(
+                                native.Width,
+                                native.Height,
+                                transform,
+                                margin,
+                                offset.X,
+                                offset.Y).Compose(bgra, actual);
 
-                    Assert.Equal(expected, actual);
+                            Assert.True(
+                                expected.AsSpan().SequenceEqual(actual),
+                                $"{native.Width}x{native.Height} {orientation}, margin {margin}, offset {offset}");
+                        }
+                    }
                 }
+            }
+        }
+    }
+
+    [Fact]
+    public void AbsurdMarginsAndOffsetsGiveABlackPanel()
+    {
+        const int width = 6;
+        const int height = 4;
+        DeviceOrientationTransform transform = DeviceOrientations.Transform(width, height, DeviceOrientation.Landscape);
+        byte[] bgra = Noise(transform.LogicalWidth, transform.LogicalHeight, seed: 3);
+        (int Margin, int OffsetX, int OffsetY)[] cases =
+            [(int.MaxValue, 0, 0), (1 << 30, 0, 0), (0, int.MaxValue, 0), (0, 0, int.MinValue), (2, int.MinValue, int.MaxValue)];
+
+        foreach ((int Margin, int OffsetX, int OffsetY) setting in cases)
+        {
+            // Two bytes past the panel must survive: Compose writes width * height * 2 bytes only.
+            byte[] destination = new byte[width * height * 2 + 2];
+            Array.Fill(destination, (byte)0xA5);
+
+            new Rgb565Composer(width, height, transform, setting.Margin, setting.OffsetX, setting.OffsetY)
+                .Compose(bgra, destination);
+
+            Assert.All(destination[..^2], value => Assert.Equal(0, value));
+            Assert.Equal(new byte[] { 0xA5, 0xA5 }, destination[^2..]);
+        }
+    }
+
+    [Fact]
+    public void NegativeOffsetsShiftTheImageLeftAndUp()
+    {
+        const int width = 5;
+        const int height = 3;
+        DeviceOrientationTransform transform = Enum.GetValues<DeviceOrientation>()
+            .Select(orientation => DeviceOrientations.Transform(width, height, orientation))
+            .First(candidate => candidate.PixelRotation == PixelRotation.None);
+        byte[] bgra = Pattern(transform.LogicalWidth, transform.LogicalHeight);
+        byte[] centred = new byte[width * height * 2];
+        byte[] shifted = new byte[centred.Length];
+
+        new Rgb565Composer(width, height, transform, margin: 0, offsetX: 0, offsetY: 0).Compose(bgra, centred);
+        new Rgb565Composer(width, height, transform, margin: 0, offsetX: -1, offsetY: -1).Compose(bgra, shifted);
+
+        for (int y = 0; y < height; y++)
+        {
+            for (int x = 0; x < width; x++)
+            {
+                int at = (y * width + x) * 2;
+                bool pushedOff = x == width - 1 || y == height - 1;
+                int from = ((y + 1) * width + x + 1) * 2;
+                Assert.Equal(pushedOff ? (byte)0 : centred[from], shifted[at]);
+                Assert.Equal(pushedOff ? (byte)0 : centred[from + 1], shifted[at + 1]);
             }
         }
     }
@@ -228,26 +283,18 @@ public sealed class Rgb565Tests
     {
         const int width = 480;
         const int height = 272;
-        var transform = DeviceOrientations.Transform(width, height, DeviceOrientation.Landscape);
-        var bgra = Pattern(transform.LogicalWidth, transform.LogicalHeight);
-        var fused = new byte[width * height * 2];
+        DeviceOrientationTransform transform = DeviceOrientations.Transform(width, height, DeviceOrientation.Landscape);
+        byte[] bgra = Pattern(transform.LogicalWidth, transform.LogicalHeight);
+        byte[] fused = new byte[width * height * 2];
+        Rgb565Composer composer = new(width, height, transform, margin: 5, offsetX: 2, offsetY: 2);
 
-        void Compose() =>
-            Rgb565.ComposeFromBgra(
-                bgra,
-                width,
-                height,
-                transform,
-                margin: 5,
-                offsetX: 2,
-                offsetY: 2,
-                fused);
+        void Compose() => composer.Compose(bgra, fused);
 
         Compose();
 
         const int frames = 20;
-        var allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
-        for (var frame = 0; frame < frames; frame++)
+        long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+        for (int frame = 0; frame < frames; frame++)
         {
             Compose();
         }
@@ -255,7 +302,10 @@ public sealed class Rgb565Tests
         Assert.Equal(0, GC.GetAllocatedBytesForCurrentThread() - allocatedBefore);
     }
 
-    private static byte[] LegacyCompose(
+    // The composer's behaviour spelled out as the old separate steps: convert with rotation, inset,
+    // then offset. ApplyOffset only pushes from the edges a positive offset picks, so a negative
+    // one is applied as a positive one from the opposite edge (rotation + 180).
+    private static byte[] SeparateSteps(
         byte[] bgra,
         int nativeWidth,
         int nativeHeight,
@@ -264,14 +314,10 @@ public sealed class Rgb565Tests
         int offsetX,
         int offsetY)
     {
-        var converted = new byte[nativeWidth * nativeHeight * 2];
-        var destination = new byte[converted.Length];
-        Rgb565.FromBgra(
-            bgra,
-            transform.LogicalWidth,
-            transform.LogicalHeight,
-            (int)transform.PixelRotation,
-            converted);
+        int rotation = (int)transform.PixelRotation;
+        byte[] converted = new byte[nativeWidth * nativeHeight * 2];
+        byte[] destination = new byte[converted.Length];
+        Rgb565.FromBgra(bgra, transform.LogicalWidth, transform.LogicalHeight, rotation, converted);
         if (margin > 0)
         {
             Rgb565.ApplyMargin(converted, destination, nativeWidth, nativeHeight, margin);
@@ -285,20 +331,27 @@ public sealed class Rgb565Tests
             destination,
             nativeWidth,
             nativeHeight,
-            offsetX,
-            offsetY,
-            (int)transform.PixelRotation);
+            Math.Abs(offsetX),
+            0,
+            offsetX < 0 ? rotation + 180 : rotation);
+        Rgb565.ApplyOffset(
+            destination,
+            nativeWidth,
+            nativeHeight,
+            0,
+            Math.Abs(offsetY),
+            offsetY < 0 ? rotation + 180 : rotation);
         return destination;
     }
 
     private static byte[] Pattern(int width, int height)
     {
-        var bgra = new byte[width * height * 4];
-        for (var y = 0; y < height; y++)
+        byte[] bgra = new byte[width * height * 4];
+        for (int y = 0; y < height; y++)
         {
-            for (var x = 0; x < width; x++)
+            for (int x = 0; x < width; x++)
             {
-                var offset = (y * width + x) * 4;
+                int offset = (y * width + x) * 4;
                 bgra[offset] = (byte)(x * 31 + y * 7);
                 bgra[offset + 1] = (byte)(x * 13 + y * 29);
                 bgra[offset + 2] = (byte)(x * 47 + y * 11);
@@ -309,12 +362,40 @@ public sealed class Rgb565Tests
         return bgra;
     }
 
+    // Random colours and alpha.
+    private static byte[] Noise(int width, int height, int seed)
+    {
+        byte[] bgra = new byte[width * height * 4];
+        new Random(seed).NextBytes(bgra);
+        return bgra;
+    }
+
+    // Distinct colours with equal visibility, so the first-on-tie rule decides what an inset
+    // keeps; the bits RGB565 drops and alpha are random.
+    private static byte[] Ties(int width, int height, int seed)
+    {
+        // Each group of three shares one visibility score.
+        ushort[] palette = [0x021D, 0x607F, 0xD002, 0x023D, 0x71C0, 0xD022, 0x0000];
+        Random random = new(seed);
+        byte[] bgra = new byte[width * height * 4];
+        for (int at = 0; at < bgra.Length; at += 4)
+        {
+            ushort pixel = palette[random.Next(palette.Length)];
+            bgra[at] = (byte)(((pixel & 0x1F) << 3) | random.Next(8));
+            bgra[at + 1] = (byte)((((pixel >> 5) & 0x3F) << 2) | random.Next(4));
+            bgra[at + 2] = (byte)(((pixel >> 11) << 3) | random.Next(8));
+            bgra[at + 3] = (byte)random.Next(256);
+        }
+
+        return bgra;
+    }
+
     private static int ScaleSourceColumn(int sourceX, int sourceW, int destW) =>
         (sourceX * 2 + 1) * destW / (sourceW * 2);
 
     private static (byte Lo, byte Hi) Encode565(byte r, byte g, byte b)
     {
-        var px = (ushort)(((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3));
+        ushort px = (ushort)(((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3));
         return ((byte)px, (byte)(px >> 8));
     }
 }

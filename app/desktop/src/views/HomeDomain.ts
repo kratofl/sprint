@@ -1,16 +1,15 @@
-import type { SprintState } from '../bridge'
-import { deviceHasScreen, parseDevices } from './DevicesDomain'
-import type { Device } from './DevicesDomain'
-import { layoutScreenProfile, parseDashLayouts } from './DashesDomain'
-import type { DashLayout } from '@sprint/dashboard'
-import { activePlan, parsePlans } from './SessionPlannerDomain'
+import type { SprintState, TelemetryLinkState } from '../bridge'
+import { deviceHasScreen, deviceImageKey, parseCatalog, parseDevices, toRecordArray } from './DevicesDomain'
+import type { Device, DeviceImageKey } from './DevicesDomain'
+import { parseDashLayouts } from './DashesDomain'
+import { activePlan, parsePlans, targetsFor } from './SessionPlannerDomain'
 import type { PlanStatus, SessionPlan } from './SessionPlannerDomain'
 
 /**
- * Home domain: the Overview's own assembly of state already parsed elsewhere
- * (devices, dash layouts, plans) plus the two things nothing else on Home's
- * surface parses yet — a screen's live hardware connection state and the size
- * of the recorded lap history.
+ * Home domain: the Overview's own assembly of state already parsed elsewhere (devices, plans)
+ * plus what nothing else on Home's surface parses yet — a screen's live hardware connection
+ * state, the game link as a rig card, and the recent sessions with how the last one compares
+ * to your earlier best on the same car and track.
  */
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null
@@ -76,13 +75,45 @@ function screenStatusTone(state: ScreenConnectionState): ScreenStatusTone {
   }
 }
 
-// ── Screen devices ───────────────────────────────────────────────────────
+// ── Rig: the game link ───────────────────────────────────────────────────
+// The game as the rig's first card. The sidebar's status row already says the whole sentence
+// ("Le Mans Ultimate · 60 Hz"); the card splits it into a name and a short status word.
+
+export type HomeGameTone = 'live' | 'attention' | 'idle' | 'fault'
+
+export type HomeGame = { name: string; statusLabel: string; detail: string | null; tone: HomeGameTone }
+
+const GAME_STATUS: Record<TelemetryLinkState, { label: string; tone: HomeGameTone }> = {
+  Connected: { label: 'Live', tone: 'live' },
+  Stale: { label: 'No fresh data', tone: 'attention' },
+  Connecting: { label: 'Connecting', tone: 'attention' },
+  WaitingForGame: { label: 'Not running', tone: 'idle' },
+  Disconnected: { label: 'No telemetry source', tone: 'idle' },
+  Unsupported: { label: 'Not supported here', tone: 'fault' },
+  PermissionDenied: { label: 'No access', tone: 'fault' },
+  Faulted: { label: 'Failed', tone: 'fault' },
+}
+
+export function homeGame(telemetry: SprintState['telemetry']): HomeGame {
+  const { link, hz } = telemetry
+  const status = GAME_STATUS[link.state]
+  const rejected = link.state === 'Connected' && !link.lastFrameValid ? (link.invalidReason ?? 'Latest frame was rejected') : null
+  return {
+    name: link.sourceName || 'Game',
+    statusLabel: status.label,
+    detail: link.state === 'Connected' ? (rejected ?? `${Math.round(hz)} Hz`) : link.detail,
+    tone: rejected ? 'attention' : status.tone,
+  }
+}
+
+// ── Rig: screen devices ──────────────────────────────────────────────────
 // Every saved, enabled, screen-capable device with its live hardware link. "Connected" means
-// the same thing the retired Avalonia launchpad meant by it: the link is actually up right
-// now, not merely saved. Connected devices sort first; otherwise the saved order is kept.
+// the link is actually up right now, not merely saved. Connected devices sort first; otherwise
+// the saved order is kept.
 
 export type HomeDevice = {
   device: Device
+  image: DeviceImageKey | null
   dashName: string | null
   connected: boolean
   statusLabel: string
@@ -91,6 +122,7 @@ export type HomeDevice = {
 
 export function homeDevices(sprint: SprintState): HomeDevice[] {
   const dashes = parseDashLayouts(sprint.dashLayouts)
+  const catalog = parseCatalog(toRecordArray(sprint.catalog))
   const result: HomeDevice[] = []
   for (const device of parseDevices(sprint.devices)) {
     if (device.disabled || !deviceHasScreen(device)) continue
@@ -98,6 +130,7 @@ export function homeDevices(sprint: SprintState): HomeDevice[] {
     const state = screen ? parseScreenConnectionState(screen) : null
     result.push({
       device,
+      image: deviceImageKey(device, catalog),
       dashName: dashes.find((layout) => layout.id === device.dashId)?.name ?? null,
       connected: state === 'Connected',
       statusLabel: state ? SCREEN_STATUS_LABELS[state] : 'Not connected',
@@ -108,25 +141,9 @@ export function homeDevices(sprint: SprintState): HomeDevice[] {
   return [...result.filter((entry) => entry.connected), ...result.filter((entry) => !entry.connected)]
 }
 
-// ── Dashes ───────────────────────────────────────────────────────────────
-
-export type HomeDash = { layout: DashLayout; profileLabel: string; assignedDeviceNames: string[] }
-
-export function homeDashes(sprint: SprintState): HomeDash[] {
-  const devices = parseDevices(sprint.devices).filter((device) => !device.disabled && deviceHasScreen(device))
-  return parseDashLayouts(sprint.dashLayouts).map((layout) => {
-    const profile = layoutScreenProfile(layout)
-    return {
-      layout,
-      profileLabel: profile.name,
-      assignedDeviceNames: devices.filter((device) => device.dashId === layout.id).map((device) => device.name),
-    }
-  })
-}
-
 // ── Session plans ────────────────────────────────────────────────────────
-// "Open" mirrors the retired launchpad's `_plannerController.OpenPlans`: everything still
-// ahead of or in progress for the driver, not yet completed or abandoned.
+// "Open" is everything still ahead of or in progress for the driver, not yet completed or
+// abandoned.
 
 const CLOSED_PLAN_STATUSES: readonly PlanStatus[] = ['Completed', 'Abandoned']
 
@@ -134,31 +151,107 @@ export function openPlans(sprint: SprintState): SessionPlan[] {
   return parsePlans(sprint.plans).filter((plan) => !CLOSED_PLAN_STATUSES.includes(plan.status))
 }
 
-// ── Primary action ───────────────────────────────────────────────────────
-// The Overview's one accent command: jump into the plan that holds the active
-// (armed/tracking) slot, or — with nothing armed — go plan a session.
+// ── Primary action + the plan card ───────────────────────────────────────
+// The Overview's one accent command: jump into the plan that holds the active (armed/tracking)
+// slot, or — with nothing armed — go plan a session. Without an active plan the card offers the
+// newest draft instead.
 
-export type OverviewPrimary = { kind: 'open-plan'; plan: SessionPlan } | { kind: 'plan-session' }
+export type OverviewPrimary = { kind: 'open-plan'; plan: SessionPlan } | { kind: 'plan-session'; draft: SessionPlan | null }
 
 export function overviewPrimary(plans: readonly SessionPlan[]): OverviewPrimary {
   const active = activePlan(plans)
-  return active ? { kind: 'open-plan', plan: active } : { kind: 'plan-session' }
+  return active ? { kind: 'open-plan', plan: active } : { kind: 'plan-session', draft: plans.find((plan) => plan.status === 'Draft') ?? null }
 }
 
-// ── Lap history ──────────────────────────────────────────────────────────
-// `state.lapHistory` is the full recorded/imported corpus (LapHistorySession[]). Home only
-// counts it, so each row is narrowed just far enough to count sessions and their laps.
+/** The four facts on the "Next up" card; times stay raw for the view to format. */
+export type PlanFacts = { startsAt: string | null; raceLength: string | null; targetLapSeconds: number | null; fuelPerLapLiters: number | null }
 
-export type HistorySummary = { sessions: number; laps: number }
-
-export function lapHistorySummary(sprint: SprintState): HistorySummary {
-  let sessions = 0
-  let laps = 0
-  for (const row of sprint.lapHistory) {
-    if (typeof row.id !== 'string') continue
-    sessions += 1
-    laps += Array.isArray(row.laps) ? row.laps.length : 0
+export function planFacts(plan: SessionPlan): PlanFacts {
+  const starts = plan.segments.map((segment) => segment.plannedStart).filter((start): start is string => start !== null)
+  starts.sort((a, b) => Date.parse(a) - Date.parse(b))
+  return {
+    startsAt: starts[0] ?? null,
+    raceLength: raceLength(plan),
+    targetLapSeconds: targetsFor(plan, 'Race')?.lapTime?.lapTimeSeconds ?? plan.avgLapTimeSeconds,
+    fuelPerLapLiters: plan.fuelPerLapLiters,
   }
+}
 
-  return { sessions, laps }
+/** "6 h", "1 h 30 min", "45 min" or "24 laps"; null when the plan has no race length yet. */
+function raceLength(plan: SessionPlan): string | null {
+  if (!(plan.raceLengthValue > 0)) return null
+  switch (plan.raceLengthFormat) {
+    case 'TimeBased': {
+      const hours = Math.floor(plan.raceLengthValue / 60)
+      const minutes = plan.raceLengthValue % 60
+      return hours === 0 ? `${minutes} min` : minutes === 0 ? `${hours} h` : `${hours} h ${minutes} min`
+    }
+    case 'LapBased':
+      return `${plan.raceLengthValue} laps`
+    case 'Unknown':
+      return null
+  }
+}
+
+// ── Recent sessions ──────────────────────────────────────────────────────
+// Built on the host from the lap-history corpus (`RecentSessions` in Core), so the corpus never
+// travels in the polled state. Narrowed here; only the kind's label is decided on this side.
+
+export type HomeSession = {
+  id: string
+  kind: string
+  track: string
+  car: string
+  startedAt: string
+  lapCount: number
+  bestLapSeconds: number | null
+  /** The best lap's sector times; empty when the game did not report them. */
+  bestSectors: number[]
+}
+
+/** How the newest session's best lap compares with every earlier session on the same combo. */
+export type LastSessionComparison = {
+  /** Negative is faster, so a new personal best. Null when there is no earlier lap to compare with. */
+  gapSeconds: number | null
+  /** Per sector of the best lap, against your best earlier time in that sector; null where there is none. */
+  sectorGaps: (number | null)[]
+}
+
+export type RecentSessions = { last: HomeSession; comparison: LastSessionComparison; earlier: HomeSession[] }
+
+const SESSION_KIND_LABELS: Record<string, string> = { TestDay: 'Test day', Warmup: 'Warm-up', Unknown: 'Session' }
+
+const numberOrNull = (value: unknown): number | null => (typeof value === 'number' && Number.isFinite(value) ? value : null)
+
+function parseRecentSession(value: unknown): HomeSession | null {
+  if (!isRecord(value) || typeof value.id !== 'string' || typeof value.startedAt !== 'string' || Number.isNaN(Date.parse(value.startedAt))) return null
+  const text = (field: unknown) => (typeof field === 'string' ? field : '')
+  const kind = text(value.kind)
+  return {
+    id: value.id,
+    kind: SESSION_KIND_LABELS[kind] ?? (kind || 'Session'),
+    track: text(value.track),
+    car: text(value.car),
+    startedAt: value.startedAt,
+    lapCount: typeof value.lapCount === 'number' && Number.isInteger(value.lapCount) ? value.lapCount : 0,
+    bestLapSeconds: numberOrNull(value.bestLapSeconds),
+    bestSectors: Array.isArray(value.bestSectors) ? value.bestSectors.filter((item): item is number => typeof item === 'number' && Number.isFinite(item)) : [],
+  }
+}
+
+/** The host's recent sessions, newest first; the first opened up with its comparison. Null with no sessions. */
+export function recentSessions(sprint: SprintState): RecentSessions | null {
+  const value = sprint.recentSessions
+  if (!isRecord(value)) return null
+  const last = parseRecentSession(value.last)
+  if (!last) return null
+  const comparison = isRecord(value.comparison) ? value.comparison : {}
+  return {
+    last,
+    comparison: {
+      gapSeconds: numberOrNull(comparison.gapSeconds),
+      sectorGaps: Array.isArray(comparison.sectorGaps) ? comparison.sectorGaps.map(numberOrNull) : [],
+    },
+    earlier: Array.isArray(value.earlier) ? value.earlier.map(parseRecentSession).filter((entry): entry is HomeSession => entry !== null) : [],
+  }
 }

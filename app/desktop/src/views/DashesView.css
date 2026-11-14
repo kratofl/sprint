@@ -1,124 +1,222 @@
-/* Dashes: the dash library as a Fluent GridView of cards. Built on the shared
-   primitives in styles.css (.card, .chip, .status, .infobar, .menu-flyout, .empty-state,
-   .skeleton, .field, content dialog); this file only lays them out. The dash
-   thumbnails are hardware output (packages/dashboard) and keep their own colours
-   in both app themes. */
+/* Dashes (DashesView.tsx), its menus (DashesMenus.tsx) and dialogs (DashesDialogs.tsx). The
+   overview wears the Devices overview's layout (.devices-filter, .devices-group, .devices-grid,
+   .devices-tile-text, … in DevicesView.css); this file only adds what a dash needs on top. Tokens
+   come from @sprint/tokens/desktop.css only. The still pictures are hardware output
+   (packages/dashboard) and keep their own colours in both app themes. */
 
-.dashes-page {
+/* ── Still pictures (DashStill.tsx) ───────────────────────────────────────── */
+
+.dash-still {
+  display: block;
+  flex: none;
+  overflow: hidden;
+  border-radius: 2px;
+  pointer-events: none;
+}
+
+/* ── Overview ─────────────────────────────────────────────────────────────── */
+
+.dashes-infobar {
+  margin-bottom: 16px;
+}
+
+.dashes-tile-skeleton {
+  height: 238px;
+}
+
+.dashes-group-head {
   display: flex;
-  flex-direction: column;
-  gap: 12px;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 8px;
 }
 
-.dashes-page .page-header {
-  margin-bottom: 0;
+.dashes-group-head .devices-group-title {
+  align-items: baseline;
+  margin: 0;
 }
 
-.dashes-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(248px, 1fr));
-  gap: 12px;
+.dashes-group-tag {
+  color: var(--label-secondary);
+  font-size: 12px;
+  font-weight: 400;
 }
 
-/* GridView item: thumbnail on top, details below. Selected = 2px brand stroke. */
-.dashes-card {
-  display: flex;
-  flex-direction: column;
+.dashes-group-more {
+  color: var(--label-secondary);
+}
+
+/* Tile: the card is one button that opens the dash; the ⋯ sits over its name line. */
+.dashes-tile {
+  position: relative;
   min-width: 0;
   padding: 0;
   overflow: hidden;
-  outline-offset: 2px;
 }
 
-.dashes-card:hover .dashes-card-body {
+.dashes-tile:hover {
+  border-color: var(--control-stroke);
+}
+
+.dashes-tile-open {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+
+.dashes-tile-open:hover {
   background: var(--subtle-hover);
 }
 
-.dashes-card.selected {
-  border-color: var(--brand-500);
-  box-shadow: inset 0 0 0 1px var(--brand-500);
+.dashes-tile-open:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
+  border-radius: inherit;
 }
 
-.dashes-card-skeleton {
-  height: 236px;
-}
-
-.dashes-thumb {
+.dashes-tile-picture {
   display: grid;
   place-items: center;
-  height: 156px;
-  flex: none;
-  background: var(--subtle-selected);
+  height: 170px;
   border-bottom: 1px solid var(--card-stroke);
+  background: var(--layer);
 }
 
-.dashes-thumb-canvas {
-  pointer-events: none;
-  border-radius: 2px;
-  overflow: hidden;
+/* Room on the right of the name for the ⋯. */
+.dashes-tile .devices-tile-text {
+  padding-right: 48px;
 }
 
-.dashes-card-body {
+.dashes-tile-name {
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.dashes-tile-more {
+  position: absolute;
+  right: 10px;
+  bottom: 22px;
+  color: var(--label-secondary);
+}
+
+/* List: picture | dash | screen | pages | chevron, header and rows share the columns. */
+.dashes-columns {
+  display: grid;
+  grid-template-columns: 60px minmax(0, 1.6fr) minmax(0, 1fr) 120px 16px;
+  align-items: center;
+  gap: 16px;
+}
+
+.list-row.dashes-row {
+  min-height: 52px;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+
+.dashes-row-picture {
+  display: grid;
+  place-items: center;
+  width: 60px;
+  height: 36px;
+}
+
+/* ── New dash, Duplicate and category dialogs ────────────────────────────────────────── */
+
+.dashes-new-dialog {
+  width: min(560px, 100%);
+}
+
+.dashes-new-dialog .content-dialog-body {
+  gap: 18px;
+}
+
+.dashes-category-dialog {
+  width: min(440px, 100%);
+}
+
+.dashes-field {
   display: flex;
-  flex: 1;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.dashes-field-label {
+  font-weight: 600;
+}
+
+/* Screen: radio rows, the size drawn as its shape. */
+.dashes-sizes {
+  display: flex;
   flex-direction: column;
   gap: 2px;
-  min-width: 0;
-  padding: 10px 14px 12px;
 }
 
-.dashes-card-title-row {
-  display: flex;
+.dashes-size {
+  display: grid;
+  grid-template-columns: 16px 24px minmax(160px, auto) minmax(0, 1fr);
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  min-width: 0;
+  gap: 12px;
+  height: 36px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
 }
 
-.dashes-card-name {
+.dashes-size:hover {
+  background: var(--subtle-hover);
+}
+
+.dashes-size[aria-checked='true'] {
+  background: var(--subtle-selected);
+}
+
+.dashes-size .muted {
   overflow: hidden;
-  font-size: 14px;
-  font-weight: 600;
-  line-height: 20px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* Devices showing this dash, each with its screen status (dot + word). */
-.dashes-devices {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin-top: 8px;
-  padding-top: 8px;
-  border-top: 1px solid var(--divider);
-}
-
-.dashes-device {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  min-width: 0;
   font-size: 12px;
-  line-height: 16px;
-}
-
-.dashes-device-name {
-  min-width: 0;
-  overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-/* Context menu: a transparent layer catches the outside click; the flyout sits at the pointer. */
-.dashes-menu-layer {
-  position: fixed;
-  inset: 0;
-  z-index: 150;
+.dashes-size-radio {
+  width: 16px;
+  height: 16px;
+  border: 1px solid var(--label-secondary);
+  border-radius: 50%;
 }
 
-.dashes-menu {
-  position: fixed;
-  width: 220px;
+.dashes-size[aria-checked='true'] .dashes-size-radio {
+  border: 5px solid var(--brand-500);
+}
+
+.dashes-size-shape {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+}
+
+.dashes-size-shape > span {
+  border: 1.5px solid var(--label-secondary);
+  border-radius: 2px;
+}
+
+.dashes-more-sizes {
+  align-self: flex-start;
+  margin-left: 2px;
+}
+
+.dashes-category-pick {
+  flex-wrap: wrap;
 }

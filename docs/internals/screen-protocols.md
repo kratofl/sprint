@@ -7,13 +7,14 @@ the firmware behaviour cannot be read from the source.
 
 ## Shared pipeline
 
-The dash is painted by an offscreen Electron browser, not by native code. Each screen composes one
-complete frame in the panel's native RGB565 format and hands it to a driver-specific transport:
+The dash is drawn in the host by the Rust dash renderer, on the screen's publisher thread (see
+[overview.md](overview.md#the-frame-path)). Each screen composes one complete frame in the panel's
+native RGB565 format and hands it to a driver-specific transport:
 
 ```text
-Dash:      offscreen browser paint -> raw BGRA POST -> LatestBgraFrameExchange -> BrowserFrameSource
+Dash:      scene + telemetry frame -> Rust renderer (BGRA, logical size) -> NativeDashFrameSource
 Rear view: desktop region capture (BGRA) -> DesktopCaptureFrameSource
-Both:      Rgb565.ComposeFromBgra (rotation, margin, offset)
+Both:      Rgb565Composer (rotation, margin, offset)
   -> duplicate-frame suppression
   -> double-buffered compose / USB transfer overlap (ScreenPublisher + ScreenTransferWorker)
   -> IScreenDriver.TrySendFrame(byte[])
@@ -30,8 +31,11 @@ Key files:
   off-thread frame scheduling.
 - `ScreenTransferWorker.cs`: blocking USB transfer ownership while the publisher prepares the next
   native frame.
-- `LatestBgraFrameExchange.cs`: latest-frame-wins handoff between the producer and the publisher.
-- `Rgb565.cs`: BGRA-to-RGB565 conversion, rotation, margin, and offset.
+- `Rgb565Composer.cs`: BGRA-to-RGB565 in one pass with rotation, margin and offset (`Rgb565.cs`
+  holds the separate steps the tests check it against).
+- `ScreenFailurePattern.cs`: what a screen shows while its frame source fails.
+- `LatestBgraFrameExchange.cs`: latest-frame-wins handoff from a desktop capture to the rear-view
+  preview.
 - `WinUsbScreenTransport.cs`: WinUSB bulk/control transport.
 - `VoCoreProtocol.cs` / `Usbd480Protocol.cs`: packet and model encoding.
 - `FakeScreenDriver.cs`: scripted driver for tests.
@@ -70,11 +74,25 @@ Runtime behavior:
 - Two saved entries targeting the same physical USB identity do not start competing
   publishers. The less-specific duplicate reports `Duplicate target`.
 - Disabling a saved screen stops its publisher and releases the USB handle.
+- An unchanged frame is skipped, but resent once a second: only a failed transfer
+  shows that a panel was unplugged, so a screen on a still picture (the idle page
+  with no game running) would otherwise read Connected forever.
+- Add device's "Plugged in now" lists USB devices every 3 seconds without opening
+  any (`UsbPresence`) and matches each preset's `detect` ids (`DeviceDetection`).
+  A preset without `detect` is never offered. Every VoCore panel reports the same
+  id, so the Omega also lists its button box (`16D0:127A`); entries with more ids
+  claim first, and saved devices claim their hardware before any entry does.
 - Sprint reuses the compatible Windows USB binding already configured for the
   screen (including a working SimHub setup); it does not require a separate
   per-use driver installation step.
-- On shutdown VoCore releases its handles so firmware resumes ownership;
-  USBD480 sets brightness to zero before releasing its handles.
+- On a clean disconnect (Sprint quits, the screen is disabled) both drivers set
+  the backlight to zero before releasing their handles; closing the handle alone
+  leaves the last dash frame lit. A panel that has stopped answering is released
+  without it, so it cannot hold up the host's exit.
+- Bulk frame writes time out after 1 second (`PIPE_TRANSFER_TIMEOUT`). WinUSB
+  waits forever by default, and a write stuck on a panel that stopped taking
+  data would keep the device handle open: the screen freezes and no other app,
+  Sprint's next launch included, can open it.
 
 The render loop defaults are driver-specific:
 
@@ -89,7 +107,15 @@ next buffer. Unchanged frames are not retransmitted. The configured target FPS
 is therefore a cap on physical output, not a promise to resend identical
 content. Source, pixel-transform, USB, total delivered-frame timing, and recent
 successful-output FPS are exposed in every screen-purpose detail view and
-written to the activity log every five seconds while output is active.
+written to the activity log at Info once a minute while output is active; a
+frame slower than the frame interval is a warning (see
+[diagnostics](../operations/diagnostics.md#wheel-screens)).
+
+A frame source that throws (the renderer cannot be loaded, rejects the dash, or
+fails a frame; a desktop capture fails) does not stop the screen: the frame
+becomes red and black diagonal stripes, the status reads `Faulted` with the
+source's message, and the next frame tries again. A frozen last picture would
+look like a working dash, and a wheel screen has no text to explain itself.
 
 ## VoCore M-PRO
 
@@ -176,8 +202,8 @@ Open sequence:
 8. Build draw command `00 2C <size24le> 00`, where `0x2C` is Memory
    Write and `size = width * height * 2`.
 
-Control transfers use a 2-second overlapped timeout; failures are surfaced and
-retried by reopening the device.
+Control transfers use a 2-second overlapped timeout, bulk writes a 1-second
+pipe timeout; failures are surfaced and retried by reopening the device.
 
 Hardware-verified 2026-07-23 (BavarianSimTec Omega PRO V2, `0xC872:0x1004`,
 `bcdDevice 0x01A0`): the firmware can enter a wedged state in which enumeration,
@@ -307,7 +333,8 @@ Close sequence:
 | Black screen after connect | Previous app left the backlight off or first frame failed | Check the first-frame transfer log and the VoCore wake/brightness warnings; USBD480 additionally logs request `0x81` |
 | Every vendor control transfer times out, standard requests work | VoCore firmware is wedged (seen on `0x1004`, `bcdDevice 0x01A0`) | Power-cycle (replug) the screen; no host-side command recovers it |
 | Transfers fail after Ref disable | Device is suspended or still owned | For USBD480, verify `AUTO_SUSPEND` is disabled; for both drivers, close other owners |
-| Distorted or rotated image | Logical size and native rotation mismatch | Check `BrowserFrameSource` logical/native dimensions and the `Rgb565` rotation path |
+| Distorted or rotated image | Logical size and native rotation mismatch | Check the device's orientation, the `Screen renderer resized` entry and the `Rgb565Composer` rotation path |
+| Red and black diagonal stripes | The frame source failed: the dash renderer could not be loaded or rejected the dash, or a capture failed | The device's `Faulted` reason in Devices and the `Screen frame source failed` log entry |
 | Repeated reconnects | USB send error or screen disconnect | Check screen state-change/transfer logs and the cable |
 
 When debugging protocol changes, verify both the open path and the send path.

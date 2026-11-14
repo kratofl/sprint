@@ -21,11 +21,11 @@ public sealed class RateMeter
             throw new ArgumentOutOfRangeException(nameof(smoothing), smoothing, "Smoothing must be in (0, 1].");
         }
 
-        _smoothing = smoothing;
+        this._smoothing = smoothing;
     }
 
     /// <summary>The current smoothed rate in Hz; 0 until at least two samples have been seen.</summary>
-    public double Hz => _hz;
+    public double Hz => this._hz;
 
     /// <summary>
     /// Record a sample at <paramref name="now"/> and return the updated rate.
@@ -33,28 +33,28 @@ public sealed class RateMeter
     /// </summary>
     public double Sample(DateTimeOffset now)
     {
-        if (_last is { } last)
+        if (this._last is { } last)
         {
-            var seconds = (now - last).TotalSeconds;
+            double seconds = (now - last).TotalSeconds;
             if (seconds > 0)
             {
-                var instant = 1.0 / seconds;
-                _hz = _hz <= 0 ? instant : _hz + _smoothing * (instant - _hz);
-                _last = now;
+                double instant = 1.0 / seconds;
+                this._hz = this._hz <= 0 ? instant : this._hz + this._smoothing * (instant - this._hz);
+                this._last = now;
             }
         }
         else
         {
-            _last = now;
+            this._last = now;
         }
 
-        return _hz;
+        return this._hz;
     }
 
     /// <summary>Forget all history (e.g. after a disconnect), so the next sample restarts measurement.</summary>
     public void Reset()
     {
-        _last = null;
-        _hz = 0;
+        this._last = null;
+        this._hz = 0;
     }
 }

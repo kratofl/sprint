@@ -59,4 +59,58 @@ public static class AtomicFile
             File.Move(tempPath, fullPath, overwrite: true);
         }
     }
+
+    /// <summary>
+    /// Moves a file its store could not read out of the way, to
+    /// <c>name.ext.yyyyMMdd-HHmmss.unreadable</c> beside it, and returns where it went (null when
+    /// it could not be moved). The store falls back to defaults then, and its next save would
+    /// otherwise overwrite the file for good, though it may well be fine: written by a newer
+    /// Sprint before a rollback. The suffix keeps it out of every <c>*.json</c> directory scan.
+    /// </summary>
+    public static string? SetAside(string path)
+    {
+        ArgumentNullException.ThrowIfNull(path);
+
+        string fullPath = Path.GetFullPath(path);
+        string target = $"{fullPath}.{DateTime.Now:yyyyMMdd-HHmmss}.unreadable";
+        object gate = Gates.GetOrAdd(fullPath, static _ => new object());
+        lock (gate)
+        {
+            try
+            {
+                File.Move(fullPath, target, overwrite: false);
+                return target;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                return null;
+            }
+        }
+    }
+
+    // ERROR_SHARING_VIOLATION as an HResult.
+    private const int SharingViolation = unchecked((int)0x80070020);
+    private const int ReadAttempts = 10;
+
+    /// <summary>
+    /// Reads a file <see cref="Write"/> may be replacing at that moment. On Windows the rename
+    /// holds the real path for an instant, and a reader landing then fails with a sharing
+    /// violation although the file is fine a moment later; that one error is retried briefly.
+    /// Every other error (missing, denied) is the caller's, at once.
+    /// </summary>
+    public static byte[] ReadAllBytes(string path)
+    {
+        ArgumentNullException.ThrowIfNull(path);
+        for (int attempt = 1; ; attempt++)
+        {
+            try
+            {
+                return File.ReadAllBytes(path);
+            }
+            catch (IOException ex) when (ex.HResult == SharingViolation && attempt < ReadAttempts)
+            {
+                Thread.Sleep(20 * attempt);
+            }
+        }
+    }
 }

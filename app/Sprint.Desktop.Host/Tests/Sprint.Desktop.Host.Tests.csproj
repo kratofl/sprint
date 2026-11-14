@@ -13,7 +13,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\Sprint.Desktop.Core\Sprint.Desktop.Core.csproj" />
-    <!-- FrameStore/ScreenOutputs live in the Host exe project itself; referencing it here is
+    <!-- ScreenOutputs and the other screen types live in the Host exe project itself; referencing it here is
          safe because Host has no types that collide with Core, and referencing an Exe
          project does not invoke its top-level Main. -->
     <ProjectReference Include="..\Sprint.Desktop.Host.csproj" />

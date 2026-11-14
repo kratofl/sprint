@@ -17,17 +17,18 @@
     "@sprint/dashboard": "workspace:*",
     "@sprint/tokens": "workspace:*",
     "@sprint/types": "workspace:*",
+    "electron-updater": "6.8.11",
     "lucide-react": "^1.23.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7"
   },
   "devDependencies": {
-    "@electron/packager": "20.3.0",
-    "@vitejs/plugin-react": "6.1.1",
     "@types/node": "^26.1.0",
     "@types/react": "^19.2.16",
     "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "6.1.1",
     "electron": "44.9.3",
+    "electron-builder": "26.18.0",
     "tsx": "^4.22.4",
     "typescript": "^6.0.3",
     "vite": "8.3.5"

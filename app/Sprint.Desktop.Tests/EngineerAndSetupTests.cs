@@ -17,20 +17,20 @@ public sealed class EngineerAndSetupTests
     [Fact]
     public void DiffFlagsOnlyChangedControlsAsDirty()
     {
-        var changes = EngineerStageService.Diff(Controls());
+        IReadOnlyList<StagedControlChange> changes = EngineerStageService.Diff(Controls());
         Assert.Equal(2, changes.Count);
         Assert.False(changes.Single(c => c.Key == "tc").IsDirty);
         Assert.True(changes.Single(c => c.Key == "abs").IsDirty);
 
-        var dirty = EngineerStageService.DirtyChanges(Controls());
+        IReadOnlyList<StagedControlChange> dirty = EngineerStageService.DirtyChanges(Controls());
         Assert.Equal("abs", Assert.Single(dirty).Key);
     }
 
     [Fact]
     public void PushAppliesStagedOntoCarAndRevertDiscards()
     {
-        var controls = Controls();
-        var applied = EngineerStageService.Push(controls);
+        List<EngineerControl> controls = Controls();
+        IReadOnlyList<StagedControlChange> applied = EngineerStageService.Push(controls);
         Assert.Equal("abs", Assert.Single(applied).Key);
         Assert.Equal(5, controls.Single(c => c.Key == "abs").CarValue);
         Assert.Equal(0, EngineerStageService.DirtyCount(controls));
@@ -43,12 +43,12 @@ public sealed class EngineerAndSetupTests
     [Fact]
     public void RuntimeEngineerPushRemainsPendingUntilExternalAcknowledgement()
     {
-        var dataRoot = TestEnv.NewTempDataRoot();
+        string dataRoot = TestEnv.NewTempDataRoot();
         try
         {
-            var runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
-            var control = runtime.EngineerControls[0];
-            var original = control.CarValue;
+            DesktopRuntime runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+            EngineerControl control = runtime.EngineerControls[0];
+            double original = control.CarValue;
             control.StagedValue = original + control.Step;
 
             runtime.PushEngineerChanges();
@@ -70,14 +70,14 @@ public sealed class EngineerAndSetupTests
     [Fact]
     public void SetTargetLapCommandRoundTripsThroughContractJson()
     {
-        var command = EngineerStageService.SetTargetLap(82.531, lapNumber: 12, from: "engineer-1", timestampMs: 1000);
+        EngineerCommand command = EngineerStageService.SetTargetLap(82.531, lapNumber: 12, from: "engineer-1", timestampMs: 1000);
         Assert.Equal(EngineerCommandType.SetTargetLap, command.Type);
 
-        var json = JsonSerializer.Serialize(command);
+        string json = JsonSerializer.Serialize(command);
         Assert.Contains("\"type\":\"set_target_lap\"", json);
         Assert.Contains("\"lapTime\":82.531", json);
 
-        using var doc = JsonDocument.Parse(json);
+        using JsonDocument doc = JsonDocument.Parse(json);
         Assert.Equal("engineer-1", doc.RootElement.GetProperty("from").GetString());
         Assert.Equal(1000, doc.RootElement.GetProperty("timestamp").GetInt64());
     }
@@ -85,8 +85,8 @@ public sealed class EngineerAndSetupTests
     [Fact]
     public void SendNoteCommandCarriesText()
     {
-        var command = EngineerStageService.SendNote("Box this lap", "engineer-1", 2000);
-        var payload = Assert.IsType<NotePayload>(command.Payload);
+        EngineerCommand command = EngineerStageService.SendNote("Box this lap", "engineer-1", 2000);
+        NotePayload payload = Assert.IsType<NotePayload>(command.Payload);
         Assert.Equal("Box this lap", payload.Text);
         Assert.Equal(EngineerCommandType.SendNote, command.Type);
     }
@@ -94,10 +94,10 @@ public sealed class EngineerAndSetupTests
     [Fact]
     public void SetupCompareReturnsZeroForIdenticalPrograms()
     {
-        var a = new SetupProgram { Id = "a", Name = "A", Values = { ["fuelLoad"] = 40, ["rearWing"] = 6 } };
-        var b = new SetupProgram { Id = "b", Name = "B", Values = { ["fuelLoad"] = 40, ["rearWing"] = 6 } };
+        SetupProgram a = new SetupProgram { Id = "a", Name = "A", Values = { ["fuelLoad"] = 40, ["rearWing"] = 6 } };
+        SetupProgram b = new SetupProgram { Id = "b", Name = "B", Values = { ["fuelLoad"] = 40, ["rearWing"] = 6 } };
 
-        var prediction = SetupComparison.Compare(a, b);
+        SetupPrediction prediction = SetupComparison.Compare(a, b);
         Assert.Equal(0, prediction.LapDeltaSeconds);
         Assert.Empty(prediction.Contributions);
     }
@@ -105,10 +105,10 @@ public sealed class EngineerAndSetupTests
     [Fact]
     public void SetupCompareMorefuelPredictsSlowerCandidate()
     {
-        var baseline = new SetupProgram { Id = "a", Name = "A", Values = { ["fuelLoad"] = 40 } };
-        var heavy = new SetupProgram { Id = "b", Name = "B", Values = { ["fuelLoad"] = 60 } };
+        SetupProgram baseline = new SetupProgram { Id = "a", Name = "A", Values = { ["fuelLoad"] = 40 } };
+        SetupProgram heavy = new SetupProgram { Id = "b", Name = "B", Values = { ["fuelLoad"] = 60 } };
 
-        var prediction = SetupComparison.Compare(baseline, heavy);
+        SetupPrediction prediction = SetupComparison.Compare(baseline, heavy);
         Assert.True(prediction.LapDeltaSeconds > 0, "More fuel should predict a slower (positive delta) candidate.");
         Assert.Equal("fuelLoad", Assert.Single(prediction.Contributions).Key);
     }

@@ -21,8 +21,8 @@ public static class FileRetention
             keep = 0;
         }
 
-        var ordered = files.OrderBy(path => path, StringComparer.Ordinal).ToList();
-        var excess = ordered.Count - keep;
+        List<string> ordered = files.OrderBy(path => path, StringComparer.Ordinal).ToList();
+        int excess = ordered.Count - keep;
         return excess <= 0 ? Array.Empty<string>() : ordered.Take(excess).ToList();
     }
 }

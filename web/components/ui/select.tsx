@@ -6,7 +6,7 @@ import { IconCheck, IconChevronDown } from '@tabler/icons-react'
 import { menuContentClass, menuItemClass } from '@/components/ui/dropdown-menu'
 import { cn } from '@/lib/utils'
 
-// The dropdown field: a 28px surface field (border-control edge) with the value on
+// The dropdown field: a flat 28px fill-strong field (as Input) with the value on
 // the left and, on the right, a small secondary icon box with a chevron-down. The
 // list opens as a context menu. Below lg the field is a 44px pill.
 
@@ -18,7 +18,7 @@ function SelectTrigger({ className, children, ...props }: ComponentProps<typeof 
     <SelectPrimitive.Trigger
       data-slot="select-trigger"
       className={cn(
-        'flex h-7 w-full min-w-0 items-center justify-between gap-2 rounded-sm border border-border-control bg-surface pr-[3px] pl-2.5 text-left text-callout text-label disabled:cursor-not-allowed disabled:bg-bg disabled:text-label-disabled aria-invalid:border-red-500 data-placeholder:text-label-secondary max-lg:h-11 max-lg:rounded-full max-lg:pr-[7px] max-lg:pl-4 [&>span:first-child]:truncate',
+        'flex h-7 w-full min-w-0 items-center justify-between gap-2 rounded-sm border border-transparent bg-fill-strong pr-[3px] pl-2.5 text-left text-callout text-label disabled:cursor-not-allowed disabled:bg-bg disabled:text-label-disabled aria-invalid:border-red-500 data-placeholder:text-label-secondary max-lg:h-11 max-lg:rounded-full max-lg:pr-[7px] max-lg:pl-4 [&>span:first-child]:truncate',
         className,
       )}
       {...props}

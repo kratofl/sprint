@@ -19,6 +19,13 @@ public sealed record ScreenPublisherOptions
     /// distinct failure such as access denied/device busy.
     /// </summary>
     public TimeSpan ConnectingWarningAfter { get; init; } = TimeSpan.FromSeconds(3);
+
+    /// <summary>
+    /// An unchanged frame is skipped, but sent again once this long has passed since the last
+    /// transfer: only a failed transfer reveals an unplugged panel, so a screen showing a still
+    /// picture (the idle page while no game runs) would otherwise read Connected forever.
+    /// </summary>
+    public TimeSpan ResendUnchangedAfter { get; init; } = TimeSpan.FromSeconds(1);
 }
 
 /// <summary>The outcome of one <see cref="ScreenPublisher.Step"/> iteration, used to pace the loop.</summary>
@@ -41,7 +48,10 @@ internal enum ScreenStepOutcome
 /// </summary>
 public sealed class ScreenPublisher : IDisposable
 {
-    private static readonly TimeSpan PerformanceLogInterval = TimeSpan.FromSeconds(5);
+    // Timings go to the log where a user's report will have them (Info), once a minute per screen;
+    // frames slower than the screen's refresh are a warning, at most once a minute per screen.
+    private static readonly TimeSpan PerformanceLogInterval = TimeSpan.FromMinutes(1);
+    private static readonly TimeSpan SlowFrameWarningInterval = TimeSpan.FromMinutes(1);
 
     private readonly record struct RenderedFrame(
         byte[] Buffer,
@@ -57,6 +67,7 @@ public sealed class ScreenPublisher : IDisposable
     private byte[] _buffer;
     private byte[] _lastSentBuffer;
     private bool _hasSentFrame;
+    private long _lastSentAt;
     private readonly ILog _log;
     private readonly string _deviceId;
     private readonly ScreenPerformanceTracker _performance = new();
@@ -70,6 +81,10 @@ public sealed class ScreenPublisher : IDisposable
     private bool _loggedFirstFrame;
     private long _connectAttemptStarted;
     private long _lastPerformanceLog;
+    private readonly TimeSpan _frameInterval;
+    private long _lastSlowFrameWarning;
+    private int _slowFrames;
+    private string? _sourceFailure;
 
     public ScreenPublisher(
         IScreenDriver driver,
@@ -80,15 +95,16 @@ public sealed class ScreenPublisher : IDisposable
         string? deviceId = null,
         Func<int, int, IDashFrameSource>? sourceFactory = null)
     {
-        _driver = driver ?? throw new ArgumentNullException(nameof(driver));
-        _source = source ?? throw new ArgumentNullException(nameof(source));
-        _frameProvider = frameProvider ?? throw new ArgumentNullException(nameof(frameProvider));
-        _sourceFactory = sourceFactory;
-        _options = options ?? new ScreenPublisherOptions();
-        _log = log ?? NullLog.Instance;
-        _deviceId = string.IsNullOrWhiteSpace(deviceId) ? driver.Name : deviceId;
-        _buffer = new byte[source.Width * source.Height * 2];
-        _lastSentBuffer = new byte[_buffer.Length];
+        this._driver = driver ?? throw new ArgumentNullException(nameof(driver));
+        this._source = source ?? throw new ArgumentNullException(nameof(source));
+        this._frameProvider = frameProvider ?? throw new ArgumentNullException(nameof(frameProvider));
+        this._sourceFactory = sourceFactory;
+        this._options = options ?? new ScreenPublisherOptions();
+        this._log = log ?? NullLog.Instance;
+        this._deviceId = string.IsNullOrWhiteSpace(deviceId) ? driver.Name : deviceId;
+        this._frameInterval = TimeSpan.FromMilliseconds(1000.0 / Math.Max(1, this._options.TargetFps));
+        this._buffer = new byte[source.Width * source.Height * 2];
+        this._lastSentBuffer = new byte[this._buffer.Length];
     }
 
     /// <summary>The driver's current link status (source of truth for the Devices UI).</summary>
@@ -96,7 +112,7 @@ public sealed class ScreenPublisher : IDisposable
     {
         get
         {
-            if (_lastError is { } sourceError)
+            if (this._lastError is { } sourceError)
             {
                 return new ScreenStatus
                 {
@@ -105,17 +121,17 @@ public sealed class ScreenPublisher : IDisposable
                 };
             }
 
-            var status = _driver.Status;
-            var started = Volatile.Read(ref _connectAttemptStarted);
+            ScreenStatus status = this._driver.Status;
+            long started = Volatile.Read(ref this._connectAttemptStarted);
             if (status.State == ScreenConnectionState.Connecting
                 && started != 0
-                && Stopwatch.GetElapsedTime(started) >= _options.ConnectingWarningAfter)
+                && Stopwatch.GetElapsedTime(started) >= this._options.ConnectingWarningAfter)
             {
                 return new ScreenStatus
                 {
                     State = ScreenConnectionState.Connecting,
                     Detail =
-                        $"The native USB open is taking longer than {_options.ConnectingWarningAfter.TotalSeconds:0.#} seconds. " +
+                        $"The native USB open is taking longer than {this._options.ConnectingWarningAfter.TotalSeconds:0.#} seconds. " +
                         "It may be blocked in device enumeration or WinUSB initialization; check the latest screen log stage.",
                 };
             }
@@ -125,58 +141,58 @@ public sealed class ScreenPublisher : IDisposable
     }
 
     /// <summary>The last unexpected render/transport error, if any (defense-in-depth beyond driver status).</summary>
-    public string? LastError => _lastError;
+    public string? LastError => this._lastError;
 
     /// <summary>
     /// Latest measurements from the real render/capture → transport pipeline.
     /// The immutable snapshot is safe for the UI thread to read.
     /// </summary>
-    public ScreenPerformanceSnapshot Performance => _performance.Snapshot;
+    public ScreenPerformanceSnapshot Performance => this._performance.Snapshot;
 
     /// <summary>
     /// The panel size the driver learned after connecting, which can differ from the
     /// saved configuration (USBD480 reports its real dimensions, and a generic entry
     /// starts with a placeholder). Null until a driver reports one.
     /// </summary>
-    public ScreenNativeSize? DetectedNativeSize => _driver.NativeSize;
+    public ScreenNativeSize? DetectedNativeSize => this._driver.NativeSize;
 
     public ScreenTestPattern TestPattern =>
-        (ScreenTestPattern)Volatile.Read(ref _testPattern);
+        (ScreenTestPattern)Volatile.Read(ref this._testPattern);
 
     /// <summary>
     /// Replaces telemetry rendering with a deterministic hardware test frame.
     /// <see cref="ScreenTestPattern.Dashboard"/> restores normal rendering.
     /// </summary>
     public void SetTestPattern(ScreenTestPattern pattern) =>
-        Volatile.Write(ref _testPattern, (int)pattern);
+        Volatile.Write(ref this._testPattern, (int)pattern);
 
     public void Start()
     {
-        if (Volatile.Read(ref _disposed) == 1 || Interlocked.CompareExchange(ref _started, 1, 0) != 0)
+        if (Volatile.Read(ref this._disposed) == 1 || Interlocked.CompareExchange(ref this._started, 1, 0) != 0)
         {
             return;
         }
 
-        _thread = new Thread(RunLoop)
+        this._thread = new Thread(this.RunLoop)
         {
             IsBackground = true,
             Name = "Sprint.ScreenPublisher"
         };
-        _log.Debug($"Screen publisher thread starting: device={_deviceId} fps={_options.TargetFps}.");
-        _thread.Start();
+        this._log.Debug($"Screen publisher thread starting: device={this._deviceId} fps={this._options.TargetFps}.");
+        this._thread.Start();
     }
 
     public void Dispose()
     {
-        if (Interlocked.CompareExchange(ref _disposed, 1, 0) != 0)
+        if (Interlocked.CompareExchange(ref this._disposed, 1, 0) != 0)
         {
             return;
         }
 
-        _cts.Cancel();
-        _log.Debug($"Screen publisher stopping: device={_deviceId}.");
-        var thread = _thread;
-        var joined = thread is null || !thread.IsAlive || thread.Join(TimeSpan.FromSeconds(2));
+        this._cts.Cancel();
+        this._log.Debug($"Screen publisher stopping: device={this._deviceId}.");
+        Thread? thread = this._thread;
+        bool joined = thread is null || !thread.IsAlive || thread.Join(TimeSpan.FromSeconds(2));
 
         // Only dispose once the loop thread has actually exited, so we never dispose
         // the source/driver/CTS out from under an in-flight render or blocking USB
@@ -186,18 +202,18 @@ public sealed class ScreenPublisher : IDisposable
         // cancelled loop's exit still Disconnects best-effort. Mirrors TelemetryEngine.
         if (joined)
         {
-            try { _driver.Disconnect(); } catch { /* terminal cleanup never throws */ }
-            try { _driver.Dispose(); } catch { /* terminal cleanup never throws */ }
-            try { _source.Dispose(); } catch { /* terminal cleanup never throws */ }
-            _cts.Dispose();
+            try { this._driver.Disconnect(); } catch { /* terminal cleanup never throws */ }
+            try { this._driver.Dispose(); } catch { /* terminal cleanup never throws */ }
+            try { this._source.Dispose(); } catch { /* terminal cleanup never throws */ }
+            this._cts.Dispose();
         }
     }
 
     private void RunLoop()
     {
-        var token = _cts.Token;
-        var frameInterval = TimeSpan.FromMilliseconds(1000.0 / Math.Max(1, _options.TargetFps));
-        using var transfers = new ScreenTransferWorker(_driver);
+        CancellationToken token = this._cts.Token;
+        TimeSpan frameInterval = this._frameInterval;
+        using ScreenTransferWorker transfers = new ScreenTransferWorker(this._driver);
         byte[]? alternateBuffer = null;
         try
         {
@@ -205,19 +221,19 @@ public sealed class ScreenPublisher : IDisposable
             {
                 try
                 {
-                    if (!_driver.Status.IsConnected && !TryConnect())
+                    if (!this._driver.Status.IsConnected && !this.TryConnect())
                     {
-                        token.WaitHandle.WaitOne(_options.ReconnectInterval);
+                        token.WaitHandle.WaitOne(this._options.ReconnectInterval);
                         continue;
                     }
 
-                    EnsureNativeFrameSize();
-                    if (alternateBuffer is null || alternateBuffer.Length != _buffer.Length)
+                    this.EnsureNativeFrameSize();
+                    if (alternateBuffer is null || alternateBuffer.Length != this._buffer.Length)
                     {
-                        alternateBuffer = new byte[_buffer.Length];
+                        alternateBuffer = new byte[this._buffer.Length];
                     }
 
-                    PublishConnectedFrames(
+                    this.PublishConnectedFrames(
                         transfers,
                         alternateBuffer,
                         frameInterval,
@@ -225,15 +241,15 @@ public sealed class ScreenPublisher : IDisposable
                 }
                 catch (Exception ex)
                 {
-                    _lastError = ex.Message;
-                    _log.Error($"Screen publisher failed: device={_deviceId}.", ex);
-                    token.WaitHandle.WaitOne(_options.ReconnectInterval);
+                    this._lastError = ex.Message;
+                    this._log.Error($"Screen publisher failed: device={this._deviceId}.", ex);
+                    token.WaitHandle.WaitOne(this._options.ReconnectInterval);
                 }
             }
         }
         finally
         {
-            try { _driver.Disconnect(); } catch { /* best effort */ }
+            try { this._driver.Disconnect(); } catch { /* best effort */ }
         }
     }
 
@@ -246,24 +262,24 @@ public sealed class ScreenPublisher : IDisposable
         RenderedFrame? pending = null;
         try
         {
-            var rendered = RenderCurrentFrame(_buffer);
-            if (IsDuplicate(rendered.Buffer))
+            RenderedFrame rendered = this.RenderCurrentFrame(this._buffer);
+            if (this.IsDuplicate(rendered.Buffer))
             {
-                RecordSkipped(rendered);
+                this.RecordSkipped(rendered);
                 WaitForNextFrame(frameInterval, rendered.StartedAt, token);
                 return;
             }
 
             transfers.Start(rendered.Buffer);
             pending = rendered;
-            var renderBuffer = alternateBuffer;
+            byte[] renderBuffer = alternateBuffer;
             while (!token.IsCancellationRequested)
             {
-                var next = RenderCurrentFrame(renderBuffer);
-                var transfer = transfers.Complete();
-                var completed = pending.Value;
+                RenderedFrame next = this.RenderCurrentFrame(renderBuffer);
+                ScreenTransferResult transfer = transfers.Complete();
+                RenderedFrame completed = pending.Value;
                 pending = null;
-                if (!RecordTransfer(completed, transfer))
+                if (!this.RecordTransfer(completed, transfer))
                 {
                     return;
                 }
@@ -273,9 +289,9 @@ public sealed class ScreenPublisher : IDisposable
                     return;
                 }
 
-                if (IsDuplicate(next.Buffer))
+                if (this.IsDuplicate(next.Buffer))
                 {
-                    RecordSkipped(next);
+                    this.RecordSkipped(next);
                     WaitForNextFrame(frameInterval, transfer.StartedAt, token);
                     return;
                 }
@@ -288,16 +304,16 @@ public sealed class ScreenPublisher : IDisposable
 
                 transfers.Start(next.Buffer);
                 pending = next;
-                renderBuffer = ReferenceEquals(renderBuffer, _buffer)
+                renderBuffer = ReferenceEquals(renderBuffer, this._buffer)
                     ? alternateBuffer
-                    : _buffer;
+                    : this._buffer;
             }
         }
         finally
         {
             if (transfers.IsInFlight && pending is { } inFlight)
             {
-                CompletePendingTransfer(transfers, inFlight);
+                this.CompletePendingTransfer(transfers, inFlight);
             }
         }
     }
@@ -308,14 +324,14 @@ public sealed class ScreenPublisher : IDisposable
     {
         try
         {
-            var transfer = transfers.Complete();
-            _ = RecordTransfer(pending, transfer);
+            ScreenTransferResult transfer = transfers.Complete();
+            _ = this.RecordTransfer(pending, transfer);
         }
         catch (Exception ex)
         {
-            _lastError = ex.Message;
-            _log.Error(
-                $"Screen publisher failed while completing an in-flight transfer: device={_deviceId}.",
+            this._lastError = ex.Message;
+            this._log.Error(
+                $"Screen publisher failed while completing an in-flight transfer: device={this._deviceId}.",
                 ex);
         }
     }
@@ -328,92 +344,135 @@ public sealed class ScreenPublisher : IDisposable
     {
         try
         {
-            if (!_driver.Status.IsConnected && !TryConnect())
+            if (!this._driver.Status.IsConnected && !this.TryConnect())
             {
                 return ScreenStepOutcome.Reconnecting;
             }
 
-            return SendCurrentFrame();
+            return this.SendCurrentFrame();
         }
         catch (Exception ex)
         {
-            _lastError = ex.Message;
-            _log.Error($"Screen publisher failed: device={_deviceId}.", ex);
+            this._lastError = ex.Message;
+            this._log.Error($"Screen publisher failed: device={this._deviceId}.", ex);
             return ScreenStepOutcome.Reconnecting;
         }
     }
 
     private ScreenStepOutcome SendCurrentFrame()
     {
-        EnsureNativeFrameSize();
-        var rendered = RenderCurrentFrame(_buffer);
-        if (IsDuplicate(rendered.Buffer))
+        this.EnsureNativeFrameSize();
+        RenderedFrame rendered = this.RenderCurrentFrame(this._buffer);
+        if (this.IsDuplicate(rendered.Buffer))
         {
-            RecordSkipped(rendered);
+            this.RecordSkipped(rendered);
             return ScreenStepOutcome.UnchangedFrame;
         }
 
-        var transferStarted = Stopwatch.GetTimestamp();
-        var transfer = new ScreenTransferResult(
-            _driver.TrySendFrame(rendered.Buffer),
+        long transferStarted = Stopwatch.GetTimestamp();
+        ScreenTransferResult transfer = new ScreenTransferResult(
+            this._driver.TrySendFrame(rendered.Buffer),
             transferStarted,
             Stopwatch.GetTimestamp());
-        return RecordTransfer(rendered, transfer)
+        return this.RecordTransfer(rendered, transfer)
             ? ScreenStepOutcome.SentFrame
             : ScreenStepOutcome.Reconnecting;
     }
 
     private bool TryConnect()
     {
-        _log.Debug($"Screen connect attempt: device={_deviceId} driver={_driver.Name}.");
-        Volatile.Write(ref _connectAttemptStarted, Stopwatch.GetTimestamp());
-        var connected = _driver.Connect();
-        if (connected || _driver.Status.State != ScreenConnectionState.Connecting)
+        this._log.Debug($"Screen connect attempt: device={this._deviceId} driver={this._driver.Name}.");
+        Volatile.Write(ref this._connectAttemptStarted, Stopwatch.GetTimestamp());
+        bool connected = this._driver.Connect();
+        if (connected || this._driver.Status.State != ScreenConnectionState.Connecting)
         {
-            Volatile.Write(ref _connectAttemptStarted, 0);
+            Volatile.Write(ref this._connectAttemptStarted, 0);
         }
 
-        LogStatusIfChanged();
+        this.LogStatusIfChanged();
         return connected;
     }
 
+    /// <summary>
+    /// Renders the next frame into <paramref name="buffer"/>. A source that throws never stops the
+    /// screen and never leaves its last picture up as if nothing happened: the frame becomes the
+    /// <see cref="ScreenFailurePattern"/>, <see cref="Status"/> reads Faulted with the source's
+    /// message, and the source is asked again on the next frame, so the screen recovers by itself.
+    /// </summary>
     private RenderedFrame RenderCurrentFrame(byte[] buffer)
     {
-        var frameStarted = Stopwatch.GetTimestamp();
-        var pattern = TestPattern;
-        ScreenFrameTiming renderTiming;
-        if (pattern == ScreenTestPattern.Dashboard)
+        long frameStarted = Stopwatch.GetTimestamp();
+        ScreenTestPattern pattern = this.TestPattern;
+        if (pattern != ScreenTestPattern.Dashboard)
         {
-            renderTiming = _source.Render(_frameProvider(), buffer);
-        }
-        else
-        {
-            ScreenTestPatternRenderer.Fill(pattern, buffer, _source.Width, _source.Height);
-            renderTiming = new ScreenFrameTiming(
-                Stopwatch.GetElapsedTime(frameStarted),
-                TimeSpan.Zero);
+            ScreenTestPatternRenderer.Fill(pattern, buffer, this._source.Width, this._source.Height);
+            this._lastError = null;
+            return new RenderedFrame(
+                buffer,
+                frameStarted,
+                new ScreenFrameTiming(Stopwatch.GetElapsedTime(frameStarted), TimeSpan.Zero));
         }
 
-        _lastError = null;
-        return new RenderedFrame(
-            buffer,
-            frameStarted,
-            renderTiming);
+        try
+        {
+            ScreenFrameTiming renderTiming = this._source.Render(this._frameProvider(), buffer);
+            this.NoteSourceWorking();
+            return new RenderedFrame(buffer, frameStarted, renderTiming);
+        }
+        catch (Exception ex)
+        {
+            this.NoteSourceFailure(ex);
+            ScreenFailurePattern.Fill(buffer, this._source.Width, this._source.Height);
+            return new RenderedFrame(
+                buffer,
+                frameStarted,
+                new ScreenFrameTiming(Stopwatch.GetElapsedTime(frameStarted), TimeSpan.Zero));
+        }
+    }
+
+    // Logged once per distinct failure: a source failing every frame would otherwise log 30 times a second.
+    private void NoteSourceFailure(Exception ex)
+    {
+        this._lastError = ex.Message;
+        if (string.Equals(this._sourceFailure, ex.Message, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        this._sourceFailure = ex.Message;
+        this._log.Error(
+            $"Screen frame source failed: device={this._deviceId}. The screen shows the failure pattern until it renders again.",
+            ex);
+    }
+
+    private void NoteSourceWorking()
+    {
+        this._lastError = null;
+        if (this._sourceFailure is null)
+        {
+            return;
+        }
+
+        this._sourceFailure = null;
+        this._log.Info($"Screen frame source recovered: device={this._deviceId}.");
     }
 
     private bool IsDuplicate(byte[] buffer) =>
-        _hasSentFrame && buffer.AsSpan().SequenceEqual(_lastSentBuffer);
+        this._hasSentFrame
+        && Stopwatch.GetElapsedTime(this._lastSentAt) < this._options.ResendUnchangedAfter
+        && buffer.AsSpan().SequenceEqual(this._lastSentBuffer);
 
     private void RecordSkipped(RenderedFrame rendered)
     {
-        var completedAt = Stopwatch.GetTimestamp();
-        _performance.RecordFrame(
+        long completedAt = Stopwatch.GetTimestamp();
+        this._performance.RecordFrame(
             completedAt,
             rendered.Timing,
             TimeSpan.Zero,
             Stopwatch.GetElapsedTime(rendered.StartedAt, completedAt),
             ScreenFrameDisposition.Skipped);
-        LogPerformanceIfDue(completedAt);
+        this.WarnIfSlow(rendered.Timing, TimeSpan.Zero, completedAt);
+        this.LogPerformanceIfDue(completedAt);
     }
 
     private bool RecordTransfer(RenderedFrame rendered, ScreenTransferResult transfer)
@@ -425,55 +484,57 @@ public sealed class ScreenPublisher : IDisposable
 
         if (transfer.Succeeded)
         {
-            rendered.Buffer.CopyTo(_lastSentBuffer, 0);
-            _hasSentFrame = true;
-            _performance.RecordFrame(
+            rendered.Buffer.CopyTo(this._lastSentBuffer, 0);
+            this._hasSentFrame = true;
+            this._lastSentAt = transfer.CompletedAt;
+            this._performance.RecordFrame(
                 transfer.CompletedAt,
                 rendered.Timing,
                 transfer.Elapsed,
                 rendered.Timing.FrameTime + transfer.Elapsed,
                 ScreenFrameDisposition.Sent);
-            LogPerformanceIfDue(transfer.CompletedAt);
-            if (!_loggedFirstFrame)
+            this.WarnIfSlow(rendered.Timing, transfer.Elapsed, transfer.CompletedAt);
+            this.LogPerformanceIfDue(transfer.CompletedAt);
+            if (!this._loggedFirstFrame)
             {
-                _loggedFirstFrame = true;
-                _log.Info(
-                    $"Screen first frame sent: device={_deviceId} " +
-                    $"bytes={rendered.Buffer.Length} pattern={TestPattern}.");
+                this._loggedFirstFrame = true;
+                this._log.Info(
+                    $"Screen first frame sent: device={this._deviceId} " +
+                    $"bytes={rendered.Buffer.Length} pattern={this.TestPattern}.");
             }
 
             return true;
         }
 
-        _performance.RecordFrame(
+        this._performance.RecordFrame(
             transfer.CompletedAt,
             rendered.Timing,
             transfer.Elapsed,
             rendered.Timing.FrameTime + transfer.Elapsed,
             ScreenFrameDisposition.Rendered);
-        LogPerformanceIfDue(transfer.CompletedAt);
-        LogStatusIfChanged();
-        _log.Warn($"Screen frame was not sent: device={_deviceId} pattern={TestPattern}.");
+        this.LogPerformanceIfDue(transfer.CompletedAt);
+        this.LogStatusIfChanged();
+        this._log.Warn($"Screen frame was not sent: device={this._deviceId} pattern={this.TestPattern}.");
         return false;
     }
 
     private void LogPerformanceIfDue(long completedAt)
     {
-        if (_lastPerformanceLog == 0)
+        if (this._lastPerformanceLog == 0)
         {
-            _lastPerformanceLog = completedAt;
+            this._lastPerformanceLog = completedAt;
             return;
         }
 
-        if (Stopwatch.GetElapsedTime(_lastPerformanceLog, completedAt) < PerformanceLogInterval)
+        if (Stopwatch.GetElapsedTime(this._lastPerformanceLog, completedAt) < PerformanceLogInterval)
         {
             return;
         }
 
-        _lastPerformanceLog = completedAt;
-        var performance = _performance.Snapshot;
-        _log.Debug(
-            $"Screen performance: device={_deviceId} " +
+        this._lastPerformanceLog = completedAt;
+        ScreenPerformanceSnapshot performance = this._performance.Snapshot;
+        this._log.Info(
+            $"Screen performance: device={this._deviceId} " +
             $"fps={performance.FramesPerSecond:0.0} " +
             $"sourceMs={performance.SourceTime.TotalMilliseconds:0.0} " +
             $"pixelMs={performance.PixelTransformTime.TotalMilliseconds:0.0} " +
@@ -483,12 +544,47 @@ public sealed class ScreenPublisher : IDisposable
             $"skipped={performance.FramesSkipped}.");
     }
 
+    /// <summary>
+    /// Warns when a frame's work took longer than the screen's frame interval, naming the slowest
+    /// stage. Rendering and the USB transfer overlap (the next frame renders while the previous one
+    /// is on the wire), so either one alone over the interval is what costs frames.
+    /// </summary>
+    private void WarnIfSlow(ScreenFrameTiming timing, TimeSpan usb, long completedAt)
+    {
+        // The first frame pays for loading fonts and compiling the pixel path; a warning for it
+        // on every start would teach everyone to ignore the real ones.
+        if (!this._loggedFirstFrame
+            || (timing.FrameTime <= this._frameInterval && usb <= this._frameInterval))
+        {
+            return;
+        }
+
+        this._slowFrames++;
+        if (this._lastSlowFrameWarning != 0
+            && Stopwatch.GetElapsedTime(this._lastSlowFrameWarning, completedAt) < SlowFrameWarningInterval)
+        {
+            return;
+        }
+
+        string stage = timing.SourceTime >= timing.PixelTransformTime && timing.SourceTime >= usb ? "render"
+            : timing.PixelTransformTime >= usb ? "pixel transform"
+            : "USB";
+        this._log.Warn(
+            $"Screen frame slower than the {this._options.TargetFps} Hz frame interval " +
+            $"({this._frameInterval.TotalMilliseconds:0.0} ms): device={this._deviceId} stage={stage} " +
+            $"renderMs={timing.SourceTime.TotalMilliseconds:0.0} " +
+            $"pixelMs={timing.PixelTransformTime.TotalMilliseconds:0.0} " +
+            $"usbMs={usb.TotalMilliseconds:0.0} slowFrames={this._slowFrames}.");
+        this._lastSlowFrameWarning = completedAt;
+        this._slowFrames = 0;
+    }
+
     private static void WaitForNextFrame(
         TimeSpan frameInterval,
         long previousTransferStartedAt,
         CancellationToken token)
     {
-        var wait = RemainingFrameDelay(
+        TimeSpan wait = RemainingFrameDelay(
             frameInterval,
             Stopwatch.GetElapsedTime(previousTransferStartedAt));
         if (wait > TimeSpan.FromMilliseconds(5))
@@ -510,22 +606,22 @@ public sealed class ScreenPublisher : IDisposable
 
     private void EnsureNativeFrameSize()
     {
-        var native = _driver.NativeSize;
+        ScreenNativeSize? native = this._driver.NativeSize;
         if (native is not { IsValid: true } size
-            || (size.Width == _source.Width && size.Height == _source.Height))
+            || (size.Width == this._source.Width && size.Height == this._source.Height))
         {
             return;
         }
 
-        if (_sourceFactory is null)
+        if (this._sourceFactory is null)
         {
-            _log.Warn(
-                $"Screen reported native size {size.Width}x{size.Height}, but device={_deviceId} " +
-                $"has no renderer factory; continuing with {_source.Width}x{_source.Height}.");
+            this._log.Warn(
+                $"Screen reported native size {size.Width}x{size.Height}, but device={this._deviceId} " +
+                $"has no renderer factory; continuing with {this._source.Width}x{this._source.Height}.");
             return;
         }
 
-        var replacement = _sourceFactory(size.Width, size.Height);
+        IDashFrameSource replacement = this._sourceFactory(size.Width, size.Height);
         if (replacement.Width != size.Width || replacement.Height != size.Height)
         {
             replacement.Dispose();
@@ -534,27 +630,27 @@ public sealed class ScreenPublisher : IDisposable
                 $"expected native size {size.Width}x{size.Height}.");
         }
 
-        var previous = _source;
-        _source = replacement;
-        _buffer = new byte[size.Width * size.Height * 2];
-        _lastSentBuffer = new byte[_buffer.Length];
-        _hasSentFrame = false;
+        IDashFrameSource previous = this._source;
+        this._source = replacement;
+        this._buffer = new byte[size.Width * size.Height * 2];
+        this._lastSentBuffer = new byte[this._buffer.Length];
+        this._hasSentFrame = false;
         previous.Dispose();
-        _log.Info(
+        this._log.Info(
             $"Screen renderer resized to native device dimensions: " +
-            $"device={_deviceId} size={size.Width}x{size.Height} bytes={_buffer.Length}.");
+            $"device={this._deviceId} size={size.Width}x{size.Height} bytes={this._buffer.Length}.");
     }
 
     private void LogStatusIfChanged()
     {
-        var status = Status;
-        if (_lastLoggedState == status.State)
+        ScreenStatus status = this.Status;
+        if (this._lastLoggedState == status.State)
         {
             return;
         }
 
-        _lastLoggedState = status.State;
-        var detail = string.IsNullOrWhiteSpace(status.Detail) ? "" : $" detail={status.Detail}";
-        _log.Info($"Screen status changed: device={_deviceId} state={status.State}.{detail}");
+        this._lastLoggedState = status.State;
+        string detail = string.IsNullOrWhiteSpace(status.Detail) ? "" : $" detail={status.Detail}";
+        this._log.Info($"Screen status changed: device={this._deviceId} state={status.State}.{detail}");
     }
 }

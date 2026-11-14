@@ -8,6 +8,7 @@ namespace Sprint.Desktop.Features.Analysis;
 /// One recorded session as the picker lists it: enough to recognise "the one I drove yesterday
 /// evening" without loading a single lap.
 /// </summary>
+/// <param name="Runs">How many drives out of the garage its laps came from; 0 when they do not say.</param>
 public sealed record CorpusSession(
     string Id,
     LapHistoryContext Context,
@@ -17,29 +18,30 @@ public sealed record CorpusSession(
     int LapCount,
     int TracedLapCount,
     double? BestLapSeconds,
-    string? SharedFrom)
+    string? SharedFrom,
+    int Runs = 0)
 {
     /// <summary>The local day this session was driven on, which is how a driver remembers it.</summary>
-    public DateOnly Day => DateOnly.FromDateTime(StartedAt.ToLocalTime().DateTime);
+    public DateOnly Day => DateOnly.FromDateTime(this.StartedAt.ToLocalTime().DateTime);
 
     /// <summary>"Practice · 19:04" — the kind and the time, because that is what is recalled.</summary>
-    public string Label => SharedFrom is { Length: > 0 } from
+    public string Label => this.SharedFrom is { Length: > 0 } from
         ? $"Shared by {from}"
-        : $"{Kind} · {StartedAt.ToLocalTime().ToString("HH:mm", CultureInfo.InvariantCulture)}";
+        : $"{this.Kind} · {this.StartedAt.ToLocalTime().ToString("HH:mm", CultureInfo.InvariantCulture)}";
 
     public string Detail
     {
         get
         {
-            var laps = LapCount == 1 ? "1 lap" : $"{LapCount} laps";
-            return BestLapSeconds is { } best
+            string laps = this.LapCount == 1 ? "1 lap" : $"{this.LapCount} laps";
+            return this.BestLapSeconds is { } best
                 ? $"{laps} · best {PlanTargetResolver.FormatLapTime(best)}"
                 : laps;
         }
     }
 
     /// <summary>Whether any lap here can be overlaid channel by channel.</summary>
-    public bool HasChannels => TracedLapCount > 0;
+    public bool HasChannels => this.TracedLapCount > 0;
 }
 
 /// <summary>The compact badge and full name shown for one car-class choice.</summary>
@@ -68,10 +70,10 @@ public sealed class LapCorpusFilter
 
     public LapCorpusFilter(IReadOnlyList<CorpusSession> sessions)
     {
-        _all = sessions ?? throw new ArgumentNullException(nameof(sessions));
-        if (Games.Count == 1)
+        this._all = sessions ?? throw new ArgumentNullException(nameof(sessions));
+        if (this.Games.Count == 1)
         {
-            SelectGame(Games[0]);
+            this.SelectGame(this.Games[0]);
         }
     }
 
@@ -96,41 +98,41 @@ public sealed class LapCorpusFilter
     public DateOnly? DateTo { get; private set; }
 
     /// <summary>Compatibility view for callers that selected one exact day.</summary>
-    public DateOnly? Day => DateFrom == DateTo ? DateFrom : null;
+    public DateOnly? Day => this.DateFrom == this.DateTo ? this.DateFrom : null;
 
     /// <summary>Games in the corpus, most recently driven first.</summary>
     public IReadOnlyList<string> Games =>
-        [.. _all
+        [.. this._all
             .GroupBy(session => session.Context.Game, StringComparer.Ordinal)
             .OrderByDescending(group => group.Max(session => session.StartedAt))
             .Select(group => group.Key)];
 
     /// <summary>Tracks for the selected game, most recently driven first.</summary>
     public IReadOnlyList<string> Tracks =>
-        [.. Matching(game: true)
+        [.. this.Matching(game: true)
             .GroupBy(session => session.Context.TrackCourse, StringComparer.Ordinal)
             .OrderByDescending(group => group.Max(session => session.StartedAt))
             .Select(group => group.Key)];
 
     /// <summary>Circuits for the selected game, most recently driven first.</summary>
-    public IReadOnlyList<GameCircuit> Circuits => GameTrackCatalog.Circuits(Game, Tracks);
+    public IReadOnlyList<GameCircuit> Circuits => GameTrackCatalog.Circuits(this.Game, this.Tracks);
 
     /// <summary>The layouts of the selected circuit, in catalog order.</summary>
     public IReadOnlyList<GameTrackLayout> Layouts =>
-        Circuit is null
+        this.Circuit is null
             ? []
-            : Circuits
-                .FirstOrDefault(circuit => string.Equals(circuit.Id, Circuit, StringComparison.Ordinal))
+            : this.Circuits
+                .FirstOrDefault(circuit => string.Equals(circuit.Id, this.Circuit, StringComparison.Ordinal))
                 ?.Layouts
               ?? [];
 
     /// <summary>Whether the chosen circuit still leaves a layout to pick.</summary>
-    public bool LayoutIsAChoice => Layouts.Count > 1;
+    public bool LayoutIsAChoice => this.Layouts.Count > 1;
 
     /// <summary>Canonical car classes at the selected track.</summary>
     public IReadOnlyList<string> Classes =>
-        [.. Matching(game: true, track: true)
-            .Select(session => GameCarClassCatalog.CanonicalId(Game, ClassOf(session)))
+        [.. this.Matching(game: true, track: true)
+            .Select(session => GameCarClassCatalog.CanonicalId(this.Game, ClassOf(session)))
             .Distinct(StringComparer.Ordinal)
             .Order(StringComparer.Ordinal)];
 
@@ -139,30 +141,30 @@ public sealed class LapCorpusFilter
     /// a track choice narrowed the next step.
     /// </summary>
     public IReadOnlyList<GameCarClass> ClassOptions => GameCarClassCatalog.Classes(
-        Game,
-        Matching(game: true).Select(ClassOf));
+        this.Game,
+        this.Matching(game: true).Select(ClassOf));
 
     /// <summary>Car models in the selected track and class.</summary>
     public IReadOnlyList<string> CarModels =>
-        [.. Matching(game: true, track: true, carClass: true)
+        [.. this.Matching(game: true, track: true, carClass: true)
             .Select(session => session.Context.CarModel)
             .Distinct(StringComparer.Ordinal)
             .Order(StringComparer.Ordinal)];
 
     /// <summary>Days that have a session for the selected track, class and car — newest first.</summary>
     public IReadOnlyList<DateOnly> Days =>
-        [.. Matching(game: true, track: true, carClass: true, carModel: true)
+        [.. this.Matching(game: true, track: true, carClass: true, carModel: true)
             .Select(session => session.Day)
             .Distinct()
             .OrderDescending()];
 
     /// <summary>The sessions that survive every filter, newest first.</summary>
     public IReadOnlyList<CorpusSession> Sessions =>
-        [.. Matching(game: true, track: true, carClass: true, carModel: true, day: true)
+        [.. this.Matching(game: true, track: true, carClass: true, carModel: true, day: true)
             .OrderByDescending(session => session.StartedAt)];
 
     /// <summary>Whether the corpus holds nothing at all.</summary>
-    public bool IsEmpty => _all.Count == 0;
+    public bool IsEmpty => this._all.Count == 0;
 
     /// <summary>
     /// How many sessions were driven on one exact layout, so choosing between a circuit's layouts
@@ -171,7 +173,7 @@ public sealed class LapCorpusFilter
     public int SessionsOnLayout(string trackName)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(trackName);
-        return Matching(game: true).Count(session =>
+        return this.Matching(game: true).Count(session =>
             string.Equals(session.Context.TrackCourse, trackName, StringComparison.Ordinal));
     }
 
@@ -179,23 +181,23 @@ public sealed class LapCorpusFilter
     /// Whether a step still has a real choice in it. A step with one answer is not a question,
     /// so the view does not draw it.
     /// </summary>
-    public bool ClassIsAChoice => Classes.Count > 1;
+    public bool ClassIsAChoice => this.Classes.Count > 1;
 
-    public bool CarModelIsAChoice => CarModels.Count > 1;
+    public bool CarModelIsAChoice => this.CarModels.Count > 1;
 
     public void SelectGame(string? game)
     {
-        Game = game;
-        Circuit = null;
-        Track = null;
-        CarClass = null;
-        CarModel = null;
-        ClearDateRange();
+        this.Game = game;
+        this.Circuit = null;
+        this.Track = null;
+        this.CarClass = null;
+        this.CarModel = null;
+        this.ClearDateRange();
 
-        var circuits = Circuits;
+        IReadOnlyList<GameCircuit> circuits = this.Circuits;
         if (circuits.Count == 1)
         {
-            SelectCircuit(circuits[0].Id);
+            this.SelectCircuit(circuits[0].Id);
         }
     }
 
@@ -205,47 +207,47 @@ public sealed class LapCorpusFilter
     /// </summary>
     public void SelectCircuit(string? circuitId)
     {
-        Circuit = circuitId;
-        Track = null;
-        CarClass = null;
-        CarModel = null;
-        ClearDateRange();
+        this.Circuit = circuitId;
+        this.Track = null;
+        this.CarClass = null;
+        this.CarModel = null;
+        this.ClearDateRange();
 
-        var layouts = Layouts;
+        IReadOnlyList<GameTrackLayout> layouts = this.Layouts;
         if (layouts.Count == 1)
         {
-            Track = layouts[0].TrackName;
-            CascadeClass();
+            this.Track = layouts[0].TrackName;
+            this.CascadeClass();
         }
     }
 
     public void SelectTrack(string? track)
     {
-        Track = track;
-        Circuit = track is null ? null : GameTrackCatalog.CircuitId(Game, track);
+        this.Track = track;
+        this.Circuit = track is null ? null : GameTrackCatalog.CircuitId(this.Game, track);
         // Everything downstream belonged to the old track.
-        CarClass = null;
-        CarModel = null;
-        ClearDateRange();
-        CascadeClass();
+        this.CarClass = null;
+        this.CarModel = null;
+        this.ClearDateRange();
+        this.CascadeClass();
     }
 
     public void SelectClass(string? carClass)
     {
-        CarClass = carClass is null ? null : GameCarClassCatalog.CanonicalId(Game, carClass);
-        CarModel = null;
-        ClearDateRange();
-        CascadeCarModel();
+        this.CarClass = carClass is null ? null : GameCarClassCatalog.CanonicalId(this.Game, carClass);
+        this.CarModel = null;
+        this.ClearDateRange();
+        this.CascadeCarModel();
     }
 
     public void SelectCarModel(string? carModel)
     {
-        CarModel = carModel;
-        ClearDateRange();
+        this.CarModel = carModel;
+        this.ClearDateRange();
     }
 
     /// <summary>Sets or clears one exact day while preserving the existing controller API.</summary>
-    public void SelectDay(DateOnly? day) => SelectDateRange(day, day);
+    public void SelectDay(DateOnly? day) => this.SelectDateRange(day, day);
 
     /// <summary>Sets an inclusive, optionally open-ended date range.</summary>
     public void SelectDateRange(DateOnly? from, DateOnly? to)
@@ -255,27 +257,27 @@ public sealed class LapCorpusFilter
             throw new ArgumentException("The start date must not be later than the end date.", nameof(from));
         }
 
-        DateFrom = from;
-        DateTo = to;
+        this.DateFrom = from;
+        this.DateTo = to;
     }
 
     /// <summary>Changes the start and moves an older end forward to keep the range valid.</summary>
     public void SelectDateFrom(DateOnly? from)
     {
-        DateFrom = from;
-        if (from is not null && DateTo is not null && DateTo < from)
+        this.DateFrom = from;
+        if (from is not null && this.DateTo is not null && this.DateTo < from)
         {
-            DateTo = from;
+            this.DateTo = from;
         }
     }
 
     /// <summary>Changes the end and moves a newer start back to keep the range valid.</summary>
     public void SelectDateTo(DateOnly? to)
     {
-        DateTo = to;
-        if (to is not null && DateFrom is not null && DateFrom > to)
+        this.DateTo = to;
+        if (to is not null && this.DateFrom is not null && this.DateFrom > to)
         {
-            DateFrom = to;
+            this.DateFrom = to;
         }
     }
 
@@ -294,7 +296,7 @@ public sealed class LapCorpusFilter
     public static AnalysisCarClassDisplay DisplayClass(GameCarClass option)
     {
         ArgumentNullException.ThrowIfNull(option);
-        var abbreviation = option.Id switch
+        string abbreviation = option.Id switch
         {
             "Hypercar" => "HYP",
             _ => AbbreviationFromIdentity(option.Id),
@@ -314,26 +316,26 @@ public sealed class LapCorpusFilter
     // is exactly the "if there is only one, preselect it" the driver asked for.
     private void CascadeClass()
     {
-        var classes = Classes;
+        IReadOnlyList<string> classes = this.Classes;
         if (classes.Count == 1)
         {
-            CarClass = classes[0];
+            this.CarClass = classes[0];
         }
 
-        CascadeCarModel();
+        this.CascadeCarModel();
     }
 
     private void CascadeCarModel()
     {
-        if (CarClass is null)
+        if (this.CarClass is null)
         {
             return;
         }
 
-        var models = CarModels;
+        IReadOnlyList<string> models = this.CarModels;
         if (models.Count == 1)
         {
-            CarModel = models[0];
+            this.CarModel = models[0];
         }
     }
 
@@ -344,39 +346,39 @@ public sealed class LapCorpusFilter
         bool carModel = false,
         bool day = false)
     {
-        var query = _all.AsEnumerable();
-        if (game && Game is not null)
+        IEnumerable<CorpusSession> query = this._all.AsEnumerable();
+        if (game && this.Game is not null)
         {
             query = query.Where(session =>
-                string.Equals(session.Context.Game, Game, StringComparison.Ordinal));
+                string.Equals(session.Context.Game, this.Game, StringComparison.Ordinal));
         }
 
-        if (track && Track is not null)
+        if (track && this.Track is not null)
         {
             query = query.Where(session =>
-                string.Equals(session.Context.TrackCourse, Track, StringComparison.Ordinal));
+                string.Equals(session.Context.TrackCourse, this.Track, StringComparison.Ordinal));
         }
 
-        if (carClass && CarClass is not null)
+        if (carClass && this.CarClass is not null)
         {
             query = query.Where(session => string.Equals(
-                GameCarClassCatalog.CanonicalId(Game, ClassOf(session)),
-                CarClass,
+                GameCarClassCatalog.CanonicalId(this.Game, ClassOf(session)),
+                this.CarClass,
                 StringComparison.Ordinal));
         }
 
-        if (carModel && CarModel is not null)
+        if (carModel && this.CarModel is not null)
         {
             query = query.Where(session =>
-                string.Equals(session.Context.CarModel, CarModel, StringComparison.Ordinal));
+                string.Equals(session.Context.CarModel, this.CarModel, StringComparison.Ordinal));
         }
 
-        if (day && DateFrom is { } from)
+        if (day && this.DateFrom is { } from)
         {
             query = query.Where(session => session.Day >= from);
         }
 
-        if (day && DateTo is { } to)
+        if (day && this.DateTo is { } to)
         {
             query = query.Where(session => session.Day <= to);
         }
@@ -386,13 +388,13 @@ public sealed class LapCorpusFilter
 
     private void ClearDateRange()
     {
-        DateFrom = null;
-        DateTo = null;
+        this.DateFrom = null;
+        this.DateTo = null;
     }
 
     private static string AbbreviationFromIdentity(string identity)
     {
-        var parts = identity
+        string[] parts = identity
             .Split(['_', '-', ' '], StringSplitOptions.RemoveEmptyEntries)
             .Select(part => part.ToUpperInvariant())
             .ToArray();

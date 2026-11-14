@@ -19,12 +19,12 @@ public sealed class DesktopCaptureSelectionTests
             int destinationHeight,
             byte[] bgra)
         {
-            Region = region;
-            Width = destinationWidth;
-            Height = destinationHeight;
-            for (var pixel = 0; pixel < destinationWidth * destinationHeight; pixel++)
+            this.Region = region;
+            this.Width = destinationWidth;
+            this.Height = destinationHeight;
+            for (int pixel = 0; pixel < destinationWidth * destinationHeight; pixel++)
             {
-                var offset = pixel * 4;
+                int offset = pixel * 4;
                 bgra[offset] = 0x00;
                 bgra[offset + 1] = 0x00;
                 bgra[offset + 2] = 0xff;
@@ -42,8 +42,8 @@ public sealed class DesktopCaptureSelectionTests
 
         public IDesktopCaptureSurface? Create(int width, int height)
         {
-            var surface = new RecordingSurface(width, height);
-            Surfaces.Add(surface);
+            RecordingSurface surface = new RecordingSurface(width, height);
+            this.Surfaces.Add(surface);
             return surface;
         }
     }
@@ -57,12 +57,12 @@ public sealed class DesktopCaptureSelectionTests
 
         public bool TryCapture(ScreenCaptureRegion region, byte[] bgra)
         {
-            Captures++;
+            this.Captures++;
             Array.Fill(bgra, (byte)0x7f);
             return true;
         }
 
-        public void Dispose() => Disposed = true;
+        public void Dispose() => this.Disposed = true;
     }
 
     private sealed class PatternCapturer : IDesktopRegionCapturer
@@ -77,13 +77,13 @@ public sealed class DesktopCaptureSelectionTests
             int destinationHeight,
             byte[] bgra)
         {
-            Width = destinationWidth;
-            Height = destinationHeight;
-            for (var y = 0; y < destinationHeight; y++)
+            this.Width = destinationWidth;
+            this.Height = destinationHeight;
+            for (int y = 0; y < destinationHeight; y++)
             {
-                for (var x = 0; x < destinationWidth; x++)
+                for (int x = 0; x < destinationWidth; x++)
                 {
-                    var offset = (y * destinationWidth + x) * 4;
+                    int offset = (y * destinationWidth + x) * 4;
                     bgra[offset] = (byte)(x * 7);
                     bgra[offset + 1] = (byte)(y * 11);
                     bgra[offset + 2] = (byte)(x + y);
@@ -91,7 +91,7 @@ public sealed class DesktopCaptureSelectionTests
                 }
             }
 
-            LastFrame = bgra.ToArray();
+            this.LastFrame = bgra.ToArray();
             return true;
         }
     }
@@ -106,13 +106,13 @@ public sealed class DesktopCaptureSelectionTests
             int destinationHeight,
             byte[] bgra)
         {
-            _red += 0x20;
-            for (var pixel = 0; pixel < destinationWidth * destinationHeight; pixel++)
+            this._red += 0x20;
+            for (int pixel = 0; pixel < destinationWidth * destinationHeight; pixel++)
             {
-                var offset = pixel * 4;
+                int offset = pixel * 4;
                 bgra[offset] = 0;
                 bgra[offset + 1] = 0;
-                bgra[offset + 2] = _red;
+                bgra[offset + 2] = this._red;
                 bgra[offset + 3] = 0xff;
             }
 
@@ -152,9 +152,9 @@ public sealed class DesktopCaptureSelectionTests
         int expectedHeight,
         double expectedAspect)
     {
-        var device = ScreenDevice(rotation);
+        SavedDevice device = ScreenDevice(rotation);
 
-        var size = CaptureSelectionGeometry.EffectiveSize(device);
+        CaptureSelectionSize size = CaptureSelectionGeometry.EffectiveSize(device);
 
         Assert.Equal(expectedWidth, size.Width);
         Assert.Equal(expectedHeight, size.Height);
@@ -173,7 +173,7 @@ public sealed class DesktopCaptureSelectionTests
         int expectedWidth,
         int expectedHeight)
     {
-        var device = ScreenDevice(rotation);
+        SavedDevice device = ScreenDevice(rotation);
         device.Width = driverWidth;
         device.Height = driverHeight;
 
@@ -185,9 +185,9 @@ public sealed class DesktopCaptureSelectionTests
     [Fact]
     public void ExistingPortraitSelectionIsNormalizedWhenOrientationBecomesLandscape()
     {
-        var portrait = new ScreenCaptureRegion(100, 200, 480, 800);
+        ScreenCaptureRegion portrait = new ScreenCaptureRegion(100, 200, 480, 800);
 
-        var landscape = CaptureSelectionGeometry.NormalizeRegionAspect(
+        ScreenCaptureRegion landscape = CaptureSelectionGeometry.NormalizeRegionAspect(
             portrait,
             800d / 480d);
 
@@ -200,13 +200,13 @@ public sealed class DesktopCaptureSelectionTests
     public void ResizeUsesTheDominantPointerAxisAndKeepsTheExactAspectRatio()
     {
         const double aspect = 16d / 9d;
-        var previous = new CaptureSelectionSize(640, 360);
+        CaptureSelectionSize previous = new CaptureSelectionSize(640, 360);
 
-        var widthDriven = CaptureSelectionGeometry.ConstrainResize(
+        CaptureSelectionSize widthDriven = CaptureSelectionGeometry.ConstrainResize(
             previous,
             new CaptureSelectionSize(800, 390),
             aspect);
-        var heightDriven = CaptureSelectionGeometry.ConstrainResize(
+        CaptureSelectionSize heightDriven = CaptureSelectionGeometry.ConstrainResize(
             previous,
             new CaptureSelectionSize(660, 450),
             aspect);
@@ -225,9 +225,9 @@ public sealed class DesktopCaptureSelectionTests
         int expectedWidth,
         int expectedHeight)
     {
-        var region = new ScreenCaptureRegion(25, 50, 800, 480);
+        ScreenCaptureRegion region = new ScreenCaptureRegion(25, 50, 800, 480);
 
-        var reoriented = CaptureSelectionGeometry.ReorientRegion(
+        ScreenCaptureRegion reoriented = CaptureSelectionGeometry.ReorientRegion(
             region,
             DeviceOrientations.Resolve(previousRotation),
             DeviceOrientations.Resolve(nextRotation));
@@ -238,10 +238,10 @@ public sealed class DesktopCaptureSelectionTests
     [Fact]
     public void DisconnectedMonitorSelectionRecoversInsideTheVisibleScreen()
     {
-        var stale = new ScreenCaptureRegion(-1920, 100, 1600, 900);
-        var primaryWorkingArea = new ScreenCaptureRegion(0, 0, 1920, 1040);
+        ScreenCaptureRegion stale = new ScreenCaptureRegion(-1920, 100, 1600, 900);
+        ScreenCaptureRegion primaryWorkingArea = new ScreenCaptureRegion(0, 0, 1920, 1040);
 
-        var recovered = CaptureSelectionGeometry.RecoverToVisibleBounds(
+        ScreenCaptureRegion recovered = CaptureSelectionGeometry.RecoverToVisibleBounds(
             stale,
             primaryWorkingArea,
             16d / 9d);
@@ -256,19 +256,19 @@ public sealed class DesktopCaptureSelectionTests
     [Fact]
     public void CaptureRegionPersistsNegativeMultiMonitorCoordinates()
     {
-        var dataRoot = TestEnv.NewTempDataRoot();
+        string dataRoot = TestEnv.NewTempDataRoot();
         try
         {
-            var runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
-            var device = ScreenDevice(rotation: 90);
+            DesktopRuntime runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+            SavedDevice device = ScreenDevice(rotation: 90);
             runtime.Devices.Add(device);
 
             runtime.UpdateDeviceCaptureRegion(
                 device,
                 new ScreenCaptureRegion(-1920, 140, 1600, 960));
 
-            var reloaded = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
-            var persisted = reloaded.Devices.Single(item => item.Id == device.Id);
+            DesktopRuntime reloaded = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+            SavedDevice persisted = reloaded.Devices.Single(item => item.Id == device.Id);
 
             Assert.Equal(
                 new ScreenCaptureRegion(-1920, 140, 1600, 960),
@@ -283,16 +283,16 @@ public sealed class DesktopCaptureSelectionTests
     [Fact]
     public void FrameSourceCapturesAtLogicalSizeThenUsesTheExistingRgb565Pipeline()
     {
-        var region = new ScreenCaptureRegion(-800, 25, 1600, 960);
-        var capturer = new RecordingCapturer();
-        var config = new ScreenConfig
+        ScreenCaptureRegion region = new ScreenCaptureRegion(-800, 25, 1600, 960);
+        RecordingCapturer capturer = new RecordingCapturer();
+        ScreenConfig config = new ScreenConfig
         {
             Width = 2,
             Height = 4,
             Orientation = DeviceOrientation.Landscape,
         };
-        using var source = new DesktopCaptureFrameSource(region, config, capturer);
-        var destination = new byte[config.Width * config.Height * 2];
+        using DesktopCaptureFrameSource source = new DesktopCaptureFrameSource(region, config, capturer);
+        byte[] destination = new byte[config.Width * config.Height * 2];
 
         source.Render(new TelemetryFrame(), destination);
 
@@ -307,19 +307,19 @@ public sealed class DesktopCaptureSelectionTests
     [Fact]
     public void FrameSourceReportsCaptureAndPixelTransformAsSeparateStages()
     {
-        var capturer = new RecordingCapturer();
-        var config = new ScreenConfig
+        RecordingCapturer capturer = new RecordingCapturer();
+        ScreenConfig config = new ScreenConfig
         {
             Width = 8,
             Height = 4,
             Orientation = DeviceOrientation.Landscape,
         };
-        using var source = new DesktopCaptureFrameSource(
+        using DesktopCaptureFrameSource source = new DesktopCaptureFrameSource(
             new ScreenCaptureRegion(0, 0, 1600, 800),
             config,
             capturer);
 
-        var timing = source.Render(
+        ScreenFrameTiming timing = source.Render(
             new TelemetryFrame(),
             new byte[config.Width * config.Height * 2]);
 
@@ -331,22 +331,22 @@ public sealed class DesktopCaptureSelectionTests
     [Fact]
     public void FrameSourceDoesNotAllocatePerCapturedFrame()
     {
-        var capturer = new RecordingCapturer();
-        var config = new ScreenConfig
+        RecordingCapturer capturer = new RecordingCapturer();
+        ScreenConfig config = new ScreenConfig
         {
             Width = 320,
             Height = 240,
             Orientation = DeviceOrientation.Landscape,
         };
-        using var source = new DesktopCaptureFrameSource(
+        using DesktopCaptureFrameSource source = new DesktopCaptureFrameSource(
             new ScreenCaptureRegion(0, 0, 1600, 900),
             config,
             capturer);
-        var destination = new byte[config.Width * config.Height * 2];
-        var frame = new TelemetryFrame();
+        byte[] destination = new byte[config.Width * config.Height * 2];
+        TelemetryFrame frame = new TelemetryFrame();
 
         // Warm up first, so only the steady-state capture + compose path is measured.
-        for (var index = 0; index < 10; index++)
+        for (int index = 0; index < 10; index++)
         {
             source.Render(frame, destination);
         }
@@ -356,11 +356,11 @@ public sealed class DesktopCaptureSelectionTests
         // allocation shows up in every one of them.
         const int windows = 5;
         const int framesPerWindow = 50;
-        var quietestWindow = long.MaxValue;
-        for (var window = 0; window < windows; window++)
+        long quietestWindow = long.MaxValue;
+        for (int window = 0; window < windows; window++)
         {
-            var allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
-            for (var index = 0; index < framesPerWindow; index++)
+            long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+            for (int index = 0; index < framesPerWindow; index++)
             {
                 source.Render(frame, destination);
             }
@@ -376,15 +376,15 @@ public sealed class DesktopCaptureSelectionTests
     [Fact]
     public void FrameSourcePublishesItsLatestLogicalCaptureForPreviewReuse()
     {
-        var capturer = new PatternCapturer();
-        var config = new ScreenConfig
+        PatternCapturer capturer = new PatternCapturer();
+        ScreenConfig config = new ScreenConfig
         {
             Width = 8,
             Height = 4,
             Orientation = DeviceOrientation.Landscape,
         };
-        var exchange = new LatestBgraFrameExchange(8, 4);
-        using var source = new DesktopCaptureFrameSource(
+        LatestBgraFrameExchange exchange = new LatestBgraFrameExchange(8, 4);
+        using DesktopCaptureFrameSource source = new DesktopCaptureFrameSource(
             new ScreenCaptureRegion(0, 0, 1600, 800),
             config,
             capturer,
@@ -394,7 +394,7 @@ public sealed class DesktopCaptureSelectionTests
             new TelemetryFrame(),
             new byte[config.Width * config.Height * 2]);
 
-        var shared = new byte[8 * 4 * 4];
+        byte[] shared = new byte[8 * 4 * 4];
         long version = 0;
         Assert.Equal(
             LatestFrameReadResult.Copied,
@@ -405,14 +405,14 @@ public sealed class DesktopCaptureSelectionTests
     [Fact]
     public void LandscapeCaptureSourceStaysLandscapeWhenDriverReportsLandscapeDimensions()
     {
-        var capturer = new RecordingCapturer();
-        var config = new ScreenConfig
+        RecordingCapturer capturer = new RecordingCapturer();
+        ScreenConfig config = new ScreenConfig
         {
             Width = 800,
             Height = 480,
             Orientation = DeviceOrientation.Landscape,
         };
-        using var source = new DesktopCaptureFrameSource(
+        using DesktopCaptureFrameSource source = new DesktopCaptureFrameSource(
             new ScreenCaptureRegion(0, 0, 1600, 960),
             config,
             capturer);
@@ -426,7 +426,7 @@ public sealed class DesktopCaptureSelectionTests
     [Fact]
     public void RearViewFramesUseTheSameOrientationContractForEveryDriverDimensionOrder()
     {
-        var cases = new[]
+        (int NativeWidth, int NativeHeight, DeviceOrientation Orientation, int LogicalWidth, int LogicalHeight, int PixelRotation)[] cases = new[]
         {
             (NativeWidth: 3, NativeHeight: 5, Orientation: DeviceOrientation.Portrait, LogicalWidth: 3, LogicalHeight: 5, PixelRotation: 0),
             (NativeWidth: 3, NativeHeight: 5, Orientation: DeviceOrientation.Landscape, LogicalWidth: 5, LogicalHeight: 3, PixelRotation: 90),
@@ -438,10 +438,10 @@ public sealed class DesktopCaptureSelectionTests
             (NativeWidth: 5, NativeHeight: 3, Orientation: DeviceOrientation.LandscapeInverted, LogicalWidth: 5, LogicalHeight: 3, PixelRotation: 180),
         };
 
-        foreach (var testCase in cases)
+        foreach ((int NativeWidth, int NativeHeight, DeviceOrientation Orientation, int LogicalWidth, int LogicalHeight, int PixelRotation) testCase in cases)
         {
-            var capturer = new PatternCapturer();
-            var config = new ScreenConfig
+            PatternCapturer capturer = new PatternCapturer();
+            ScreenConfig config = new ScreenConfig
             {
                 Width = testCase.NativeWidth,
                 Height = testCase.NativeHeight,
@@ -450,24 +450,24 @@ public sealed class DesktopCaptureSelectionTests
                 OffsetX = 1,
                 OffsetY = 1,
             };
-            using var source = new DesktopCaptureFrameSource(
+            using DesktopCaptureFrameSource source = new DesktopCaptureFrameSource(
                 new ScreenCaptureRegion(0, 0, 50, 30),
                 config,
                 capturer);
-            var actual = new byte[config.Width * config.Height * 2];
+            byte[] actual = new byte[config.Width * config.Height * 2];
 
             source.Render(new TelemetryFrame(), actual);
 
             Assert.Equal(testCase.LogicalWidth, capturer.Width);
             Assert.Equal(testCase.LogicalHeight, capturer.Height);
-            var converted = new byte[actual.Length];
+            byte[] converted = new byte[actual.Length];
             Rgb565.FromBgra(
                 capturer.LastFrame,
                 testCase.LogicalWidth,
                 testCase.LogicalHeight,
                 testCase.PixelRotation,
                 converted);
-            var expected = new byte[actual.Length];
+            byte[] expected = new byte[actual.Length];
             Rgb565.ApplyMargin(
                 converted,
                 expected,
@@ -488,18 +488,18 @@ public sealed class DesktopCaptureSelectionTests
     [Fact]
     public void CaptureSourceReadsEachNewCapturedFrame()
     {
-        var config = new ScreenConfig
+        ScreenConfig config = new ScreenConfig
         {
             Width = 80,
             Height = 48,
             Orientation = DeviceOrientation.Landscape,
         };
-        using var source = new DesktopCaptureFrameSource(
+        using DesktopCaptureFrameSource source = new DesktopCaptureFrameSource(
             new ScreenCaptureRegion(0, 0, 800, 480),
             config,
             new ChangingCapturer());
-        var first = new byte[config.Width * config.Height * 2];
-        var second = new byte[first.Length];
+        byte[] first = new byte[config.Width * config.Height * 2];
+        byte[] second = new byte[first.Length];
 
         source.Render(new TelemetryFrame(), first);
         source.Render(new TelemetryFrame(), second);
@@ -510,14 +510,14 @@ public sealed class DesktopCaptureSelectionTests
     [Fact]
     public void WindowsCapturerReusesItsNativeSurfaceUntilTheOutputSizeChanges()
     {
-        var factory = new RecordingSurfaceFactory();
-        var capturer = new WindowsDesktopRegionCapturer(factory);
-        var region = new ScreenCaptureRegion(0, 0, 1600, 960);
+        RecordingSurfaceFactory factory = new RecordingSurfaceFactory();
+        WindowsDesktopRegionCapturer capturer = new WindowsDesktopRegionCapturer(factory);
+        ScreenCaptureRegion region = new ScreenCaptureRegion(0, 0, 1600, 960);
 
         Assert.True(capturer.TryCapture(region, 800, 480, new byte[800 * 480 * 4]));
         Assert.True(capturer.TryCapture(region, 800, 480, new byte[800 * 480 * 4]));
 
-        var first = Assert.Single(factory.Surfaces);
+        RecordingSurface first = Assert.Single(factory.Surfaces);
         Assert.Equal(2, first.Captures);
         Assert.False(first.Disposed);
 

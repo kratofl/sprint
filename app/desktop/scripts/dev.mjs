@@ -9,6 +9,7 @@ import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } fr
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import electronPath from 'electron'
+import { devDataRoot } from './dev-data.mjs'
 import { stopTree, treeSpawnOptions } from './process-tree.mjs'
 
 const desktopRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
@@ -122,11 +123,16 @@ async function main() {
   // ELECTRON_RUN_AS_NODE (set when this runs under an Electron-based tool) would make
   // Electron start as plain Node instead of the app.
   const { ELECTRON_RUN_AS_NODE, ...env } = process.env
+  // This checkout's own data (dev-data.mjs), unless the caller pointed it somewhere else.
+  // Electron keeps its profile there too and passes the variable on to the host.
+  const dataRoot = env.SPRINT_DESKTOP_DATA_ROOT ?? devDataRoot
+  mkdirSync(dataRoot, { recursive: true })
+  console.log(`[sprint] dev data: ${dataRoot} (make reset-dev-data clears it)`)
   const electron = spawn(electronExecutable(), [path.join(desktopRoot, 'dist-electron', 'main.js')], {
     ...treeSpawnOptions,
     cwd: desktopRoot,
     stdio: childStdio,
-    env: { ...env, SPRINT_DESKTOP_DEV_SERVER_URL: url },
+    env: { ...env, SPRINT_DESKTOP_DEV_SERVER_URL: url, SPRINT_DESKTOP_DATA_ROOT: dataRoot },
   })
   children.push(electron)
 

@@ -41,7 +41,7 @@ public enum LapHistoryOrigin
     Imported,
 
     /// <summary>
-    /// Somebody else's lap, received as a file or by share code (#197, #198). Carries channels
+    /// Somebody else's lap, received as a lap file (#198). Carries channels
     /// but none of the driver's own context — no fuel, no setup, no conditions.
     /// </summary>
     Shared,
@@ -78,9 +78,24 @@ public sealed class LapHistoryContext
     [JsonPropertyName("trackCourse")]
     public string TrackCourse { get; set; } = "";
 
-    /// <summary>The car model (e.g. "Porsche 963"), the field both writers can agree on.</summary>
+    /// <summary>
+    /// The car's name per <see cref="CarNames"/> (e.g. "Hypercar BMW", "LMP2 ELMS"), the field
+    /// both writers can agree on. The game's own name when the car cannot be named — a livery for
+    /// LMU history that predates the rule and could not be matched.
+    /// </summary>
     [JsonPropertyName("carModel")]
     public string CarModel { get; set; } = "";
+
+    /// <summary>The car's model as the game names it (e.g. "Oreca 07"). Detail, not part of the key; null when unknown.</summary>
+    [JsonPropertyName("carType")]
+    public string? CarType { get; set; }
+
+    /// <summary>
+    /// The entry that was driven (e.g. "DKR Engineering #3:ELMS26"), when the game names one apart
+    /// from the model. Detail, not part of the key; null when unknown.
+    /// </summary>
+    [JsonPropertyName("livery")]
+    public string? Livery { get; set; }
 
     /// <summary>
     /// Track length in metres, stored beside the key as a cross-check between writers
@@ -95,6 +110,17 @@ public sealed class LapHistoryContext
     /// </summary>
     [JsonPropertyName("carClass")]
     public string? CarClass { get; set; }
+
+    /// <summary>
+    /// The car's fuel tank in litres, as the game reported it while the session was recorded.
+    /// Metadata like <see cref="CarClass"/>, not part of the key; imports never know it, and older
+    /// recordings do not have it. The planner cuts a race into stints with it.
+    /// </summary>
+    [JsonPropertyName("fuelCapacityLiters")]
+    public double? FuelCapacityLiters { get; set; }
+
+    /// <summary>A field-for-field copy, for <see cref="LapHistorySession.Snapshot"/>.</summary>
+    internal LapHistoryContext Copy() => (LapHistoryContext)this.MemberwiseClone();
 }
 
 /// <summary>
@@ -166,10 +192,6 @@ public sealed class LapHistorySession
     [JsonPropertyName("sharedAt")]
     public DateTimeOffset? SharedAt { get; set; }
 
-    /// <summary>The code this lap was pulled with, when it came from the cloud. Null for a file.</summary>
-    [JsonPropertyName("shareCode")]
-    public string? ShareCode { get; set; }
-
     /// <summary>
     /// Identity of the shared lap, so importing the same one twice is a no-op. Null for laps
     /// this machine recorded — those are already identified by their session and lap number.
@@ -179,6 +201,41 @@ public sealed class LapHistorySession
 
     [JsonExtensionData]
     public Dictionary<string, JsonElement>? ExtensionData { get; set; }
+
+    /// <summary>
+    /// A copy to hand to a write on another thread while the recorder keeps filling this session:
+    /// its own lap list and context, which the recorder changes as it goes. The lap records are
+    /// shared — a record is complete before it is added and never changed by the recorder after.
+    /// Field for field rather than property by property, so a field added later is not silently
+    /// left out of every save.
+    /// </summary>
+    public LapHistorySession Snapshot()
+    {
+        LapHistorySession copy = (LapHistorySession)this.MemberwiseClone();
+        copy.Context = this.Context.Copy();
+        copy.Laps = [.. this.Laps];
+        return copy;
+    }
+}
+
+/// <summary>
+/// A note a driver left at a place on a lap, written afterwards in Analysis. It travels with the
+/// lap when it is shared.
+/// </summary>
+/// <param name="DistanceMeters">Where on the lap, in metres from the line.</param>
+/// <param name="Author">Who wrote it: the driver name in Settings when it was written.</param>
+public sealed record LapNote(
+    [property: JsonPropertyName("id")] string Id,
+    [property: JsonPropertyName("distanceMeters")] double DistanceMeters,
+    [property: JsonPropertyName("text")] string Text,
+    [property: JsonPropertyName("author")] string Author,
+    [property: JsonPropertyName("createdAt")] DateTimeOffset CreatedAt)
+{
+    /// <summary>The longest note, in characters: a thought about a corner, not a report.</summary>
+    public const int MaxTextLength = 500;
+
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? ExtensionData { get; init; }
 }
 
 /// <summary>Per-corner tyre state at the end of a lap. Every value nullable.</summary>
@@ -243,7 +300,7 @@ public static class LapCompleteness
             return false;
         }
 
-        for (var i = 1; i < positions.Count; i++)
+        for (int i = 1; i < positions.Count; i++)
         {
             if (positions[i] - positions[i - 1] > MaxGap)
             {
@@ -319,12 +376,12 @@ public sealed class LapReferenceCurve
             return null;
         }
 
-        var count = (int)Math.Round(1.0 / PositionStepDefault) + 1;
-        var times = new List<double>(count);
-        var index = 0;
-        for (var i = 0; i < count; i++)
+        int count = (int)Math.Round(1.0 / PositionStepDefault) + 1;
+        List<double> times = new List<double>(count);
+        int index = 0;
+        for (int i = 0; i < count; i++)
         {
-            var position = i * PositionStepDefault;
+            double position = i * PositionStepDefault;
             if (position <= samples[0].Position)
             {
                 // Before the first sample nothing was observed; holding the first reading is
@@ -345,9 +402,9 @@ public sealed class LapReferenceCurve
                 index++;
             }
 
-            var (startPosition, startTime) = samples[index];
-            var (endPosition, endTime) = samples[index + 1];
-            var span = endPosition - startPosition;
+            (double startPosition, double startTime) = samples[index];
+            (double endPosition, double endTime) = samples[index + 1];
+            double span = endPosition - startPosition;
             times.Add(Round(span <= PositionEpsilon
                 ? startTime
                 : startTime + ((endTime - startTime) * ((position - startPosition) / span))));
@@ -404,6 +461,18 @@ public sealed class LapHistoryRecord
     [JsonPropertyName("tires")]
     public List<LapHistoryTire> Tires { get; set; } = [];
 
+    /// <summary>The front tyres' compound as the game named it, or null when no front corner said.</summary>
+    [JsonIgnore]
+    public string? FrontCompound => this.CompoundOf("FrontLeft", "FrontRight");
+
+    /// <summary>The rear tyres' compound as the game named it, or null when no rear corner said.</summary>
+    [JsonIgnore]
+    public string? RearCompound => this.CompoundOf("RearLeft", "RearRight");
+
+    private string? CompoundOf(string left, string right) =>
+        this.Tires.FirstOrDefault(tire => tire.Position == left && tire.Compound is not null)?.Compound
+        ?? this.Tires.FirstOrDefault(tire => tire.Position == right && tire.Compound is not null)?.Compound;
+
     /// <summary>
     /// How the lap was driven, when a position trace was available. Null otherwise: an
     /// imported lap has none and never will, so it degrades to a scalar target.
@@ -429,7 +498,7 @@ public sealed class LapHistoryRecord
     /// above <see cref="HasReferenceCurve"/>.
     /// </summary>
     [JsonIgnore]
-    public bool HasChannelTrace => !string.IsNullOrEmpty(TraceId);
+    public bool HasChannelTrace => !string.IsNullOrEmpty(this.TraceId);
 
     /// <summary>
     /// Whether this lap can honestly drive a position-accurate delta. A reader has to be
@@ -438,7 +507,7 @@ public sealed class LapHistoryRecord
     /// </summary>
     [JsonIgnore]
     public bool HasReferenceCurve =>
-        ReferenceCurve is { PositionStep: > 0, TimesSeconds.Count: > 1 };
+        this.ReferenceCurve is { PositionStep: > 0, TimesSeconds.Count: > 1 };
 
     /// <summary>Practice-program tag. Written once practice programs exist; null until then.</summary>
     [JsonPropertyName("programType")]
@@ -449,6 +518,28 @@ public sealed class LapHistoryRecord
 
     [JsonPropertyName("runId")]
     public string? RunId { get; set; }
+
+    /// <summary>
+    /// Which drive out of the garage the lap belongs to, counted up within its session. A new
+    /// one starts each time the car leaves the garage, the only place its setup can change, so
+    /// every lap of one outing was driven with one setup. Not the practice-program
+    /// <see cref="RunId"/>. Null when the source could not tell (imports, laps recorded before
+    /// outings were): the whole session reads as one.
+    /// </summary>
+    [JsonPropertyName("outing")]
+    public int? Outing { get; set; }
+
+    /// <summary>When the car crossed the line to finish the lap. Null for imported laps.</summary>
+    [JsonPropertyName("completedAt")]
+    public DateTimeOffset? CompletedAt { get; set; }
+
+    /// <summary>
+    /// The notes that came with a lap somebody shared, read-only here. The driver's own notes are
+    /// not kept on the record but in <c>LapNotes</c>: the recorder rewrites the session it is
+    /// filling from its own copy, which would drop a note written while it is still being driven.
+    /// </summary>
+    [JsonPropertyName("notes")]
+    public List<LapNote> Notes { get; set; } = [];
 
     [JsonExtensionData]
     public Dictionary<string, JsonElement>? ExtensionData { get; set; }

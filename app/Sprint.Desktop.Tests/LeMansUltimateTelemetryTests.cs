@@ -25,7 +25,7 @@ public sealed class LeMansUltimateTelemetryTests
 
     private static void WriteString(byte[] buffer, int offset, int length, string value)
     {
-        var bytes = System.Text.Encoding.UTF8.GetBytes(value);
+        byte[] bytes = System.Text.Encoding.UTF8.GetBytes(value);
         bytes.AsSpan(0, Math.Min(bytes.Length, length)).CopyTo(buffer.AsSpan(offset, length));
     }
 
@@ -48,16 +48,16 @@ public sealed class LeMansUltimateTelemetryTests
     [Fact]
     public void Lmu_source_reports_total_session_time_separately_from_elapsed_time()
     {
-        var buffer = EmptyLmuBuffer();
+        byte[] buffer = EmptyLmuBuffer();
         // mCurrentET (elapsed) @68 and mEndET (total) @76, per ScoringInfoV01 under
         // #pragma pack(4) — the layout whose field walk also reproduces the struct's
         // documented 548-byte size.
         WriteDouble(buffer, LmuBinary.ScoringStart + 68, 300.0);
         WriteDouble(buffer, LmuBinary.ScoringStart + 76, 5400.0);
-        using var source = new LeMansUltimateTelemetrySource(new InMemoryLmuSnapshotProvider(buffer));
+        using LeMansUltimateTelemetrySource source = new LeMansUltimateTelemetrySource(new InMemoryLmuSnapshotProvider(buffer));
         source.Connect();
 
-        Assert.True(source.TryRead(out var frame));
+        Assert.True(source.TryRead(out TelemetryFrame? frame));
         Assert.Equal(300.0, frame.Session.SessionTime);
         Assert.Equal(5400.0, frame.Session.TotalSessionTime);
     }
@@ -70,57 +70,72 @@ public sealed class LeMansUltimateTelemetryTests
     [InlineData(200000.0)]
     public void Lmu_source_reports_an_implausible_session_length_as_unknown(double endElapsedTime)
     {
-        var buffer = EmptyLmuBuffer();
+        byte[] buffer = EmptyLmuBuffer();
         WriteDouble(buffer, LmuBinary.ScoringStart + 68, 300.0);
         WriteDouble(buffer, LmuBinary.ScoringStart + 76, endElapsedTime);
-        using var source = new LeMansUltimateTelemetrySource(new InMemoryLmuSnapshotProvider(buffer));
+        using LeMansUltimateTelemetrySource source = new LeMansUltimateTelemetrySource(new InMemoryLmuSnapshotProvider(buffer));
         source.Connect();
 
-        Assert.True(source.TryRead(out var frame));
+        Assert.True(source.TryRead(out TelemetryFrame? frame));
         Assert.Null(frame.Session.TotalSessionTime);
     }
 
     [Fact]
     public void Lmu_source_keeps_a_twenty_four_hour_race_as_a_plausible_session_length()
     {
-        var buffer = EmptyLmuBuffer();
+        byte[] buffer = EmptyLmuBuffer();
         WriteDouble(buffer, LmuBinary.ScoringStart + 76, 24 * 60 * 60.0);
-        using var source = new LeMansUltimateTelemetrySource(new InMemoryLmuSnapshotProvider(buffer));
+        using LeMansUltimateTelemetrySource source = new LeMansUltimateTelemetrySource(new InMemoryLmuSnapshotProvider(buffer));
         source.Connect();
 
-        Assert.True(source.TryRead(out var frame));
+        Assert.True(source.TryRead(out TelemetryFrame? frame));
         Assert.Equal(86400.0, frame.Session.TotalSessionTime);
     }
 
     [Fact]
     public void Lmu_source_reports_the_time_remaining_in_a_timed_session()
     {
-        var buffer = EmptyLmuBuffer();
+        byte[] buffer = EmptyLmuBuffer();
         WriteDouble(buffer, LmuBinary.ScoringStart + 68, 4200.0);
         WriteDouble(buffer, LmuBinary.ScoringStart + 76, 5400.0);
         // mSessionTimeRemaining @340, reached by walking ScoringInfoV01 under pack(4);
         // the same walk lands the trailing vehicle pointer exactly on the struct's
         // documented 548-byte size.
         WriteSingle(buffer, LmuBinary.ScoringStart + 340, 1200.5f);
-        using var source = new LeMansUltimateTelemetrySource(new InMemoryLmuSnapshotProvider(buffer));
+        using LeMansUltimateTelemetrySource source = new LeMansUltimateTelemetrySource(new InMemoryLmuSnapshotProvider(buffer));
         source.Connect();
 
-        Assert.True(source.TryRead(out var frame));
+        Assert.True(source.TryRead(out TelemetryFrame? frame));
         Assert.Equal(1200.5, frame.Session.SessionTimeRemaining!.Value, precision: 3);
+    }
+
+    [Theory]
+    [InlineData(int.MaxValue)]
+    [InlineData(-1)]
+    public void Lmu_source_reports_a_session_without_a_lap_limit_as_zero_laps(int maxLaps)
+    {
+        byte[] buffer = EmptyLmuBuffer();
+        // LMU writes int.MaxValue here for a timed or open session.
+        WriteInt32(buffer, LmuBinary.ScoringStart + 84, maxLaps);
+        using LeMansUltimateTelemetrySource source = new LeMansUltimateTelemetrySource(new InMemoryLmuSnapshotProvider(buffer));
+        source.Connect();
+
+        Assert.True(source.TryRead(out TelemetryFrame? frame));
+        Assert.Equal(0, frame.Session.MaxLaps);
     }
 
     [Fact]
     public void Lmu_source_reports_no_time_remaining_when_the_session_has_no_known_length()
     {
-        var buffer = EmptyLmuBuffer();
+        byte[] buffer = EmptyLmuBuffer();
         // A lap-based session: 31 laps, no end time. Whatever the remaining-time field
         // holds is leftover noise, not a countdown.
         WriteInt32(buffer, LmuBinary.ScoringStart + 84, 31);
         WriteSingle(buffer, LmuBinary.ScoringStart + 340, 900f);
-        using var source = new LeMansUltimateTelemetrySource(new InMemoryLmuSnapshotProvider(buffer));
+        using LeMansUltimateTelemetrySource source = new LeMansUltimateTelemetrySource(new InMemoryLmuSnapshotProvider(buffer));
         source.Connect();
 
-        Assert.True(source.TryRead(out var frame));
+        Assert.True(source.TryRead(out TelemetryFrame? frame));
         Assert.Equal(31, frame.Session.MaxLaps);
         Assert.Null(frame.Session.TotalSessionTime);
         Assert.Null(frame.Session.SessionTimeRemaining);
@@ -132,13 +147,13 @@ public sealed class LeMansUltimateTelemetryTests
     [InlineData(9000f)]
     public void Lmu_source_reports_an_implausible_time_remaining_as_unknown(float remaining)
     {
-        var buffer = EmptyLmuBuffer();
+        byte[] buffer = EmptyLmuBuffer();
         WriteDouble(buffer, LmuBinary.ScoringStart + 76, 5400.0);
         WriteSingle(buffer, LmuBinary.ScoringStart + 340, remaining);
-        using var source = new LeMansUltimateTelemetrySource(new InMemoryLmuSnapshotProvider(buffer));
+        using LeMansUltimateTelemetrySource source = new LeMansUltimateTelemetrySource(new InMemoryLmuSnapshotProvider(buffer));
         source.Connect();
 
-        Assert.True(source.TryRead(out var frame));
+        Assert.True(source.TryRead(out TelemetryFrame? frame));
         Assert.Equal(5400.0, frame.Session.TotalSessionTime);
         Assert.Null(frame.Session.SessionTimeRemaining);
     }
@@ -146,28 +161,28 @@ public sealed class LeMansUltimateTelemetryTests
     [Fact]
     public void Lmu_source_reports_the_track_length_and_treats_a_missing_one_as_unknown()
     {
-        var withLength = EmptyLmuBuffer();
+        byte[] withLength = EmptyLmuBuffer();
         WriteDouble(withLength, LmuBinary.ScoringStart + 88, 7004.0);
-        using var known = new LeMansUltimateTelemetrySource(new InMemoryLmuSnapshotProvider(withLength));
+        using LeMansUltimateTelemetrySource known = new LeMansUltimateTelemetrySource(new InMemoryLmuSnapshotProvider(withLength));
         known.Connect();
 
-        using var unknown = new LeMansUltimateTelemetrySource(
+        using LeMansUltimateTelemetrySource unknown = new LeMansUltimateTelemetrySource(
             new InMemoryLmuSnapshotProvider(EmptyLmuBuffer()));
         unknown.Connect();
 
-        Assert.True(known.TryRead(out var knownFrame));
+        Assert.True(known.TryRead(out TelemetryFrame? knownFrame));
         Assert.Equal(7004.0, knownFrame.Session.TrackLengthMeters);
-        Assert.True(unknown.TryRead(out var unknownFrame));
+        Assert.True(unknown.TryRead(out TelemetryFrame? unknownFrame));
         Assert.Null(unknownFrame.Session.TrackLengthMeters);
     }
 
     [Fact]
     public void Lmu_mapper_splits_the_last_lap_into_per_sector_durations()
     {
-        var mapper = new LmuTelemetryMapper();
+        LmuTelemetryMapper mapper = new LmuTelemetryMapper();
         // The sim reports cumulative sector marks: S1, then S1+S2. The third sector is
         // whatever the lap time has left.
-        var parsed = CreateInCarParsedFrame(lapNumber: 4) with
+        LmuParsedFrame parsed = CreateInCarParsedFrame(lapNumber: 4) with
         {
             Scoring = new LmuVehicleScoring
             {
@@ -179,7 +194,7 @@ public sealed class LeMansUltimateTelemetryTests
             },
         };
 
-        var frame = mapper.Map(parsed);
+        TelemetryFrame frame = mapper.Map(parsed);
 
         Assert.Equal([30.5, 44.75, 55.75], frame.Lap.LastLapSectorsSeconds);
     }
@@ -187,8 +202,8 @@ public sealed class LeMansUltimateTelemetryTests
     [Fact]
     public void Lmu_mapper_reports_no_sectors_when_the_marks_are_not_yet_credible()
     {
-        var mapper = new LmuTelemetryMapper();
-        var parsed = CreateInCarParsedFrame(lapNumber: 1) with
+        LmuTelemetryMapper mapper = new LmuTelemetryMapper();
+        LmuParsedFrame parsed = CreateInCarParsedFrame(lapNumber: 1) with
         {
             Scoring = new LmuVehicleScoring
             {
@@ -207,16 +222,16 @@ public sealed class LeMansUltimateTelemetryTests
     [Fact]
     public void Lmu_source_reports_the_conditions_a_session_is_run_under()
     {
-        var buffer = EmptyLmuBuffer();
+        byte[] buffer = EmptyLmuBuffer();
         // mAvgPathWetness @332, mIsFixedSetup @348, mTrackGripLevel @349 — the same
         // pack(4) walk that lands ScoringInfoV01 on its documented 548-byte size.
         WriteDouble(buffer, LmuBinary.ScoringStart + 332, 0.35);
         WriteBool(buffer, LmuBinary.ScoringStart + 348, true);
         buffer[LmuBinary.ScoringStart + 349] = 92;
-        using var source = new LeMansUltimateTelemetrySource(new InMemoryLmuSnapshotProvider(buffer));
+        using LeMansUltimateTelemetrySource source = new LeMansUltimateTelemetrySource(new InMemoryLmuSnapshotProvider(buffer));
         source.Connect();
 
-        Assert.True(source.TryRead(out var frame));
+        Assert.True(source.TryRead(out TelemetryFrame? frame));
         Assert.Equal(0.35, frame.Conditions.PathWetness!.Value, precision: 3);
         Assert.True(frame.Conditions.FixedSetup);
         Assert.Equal(92, frame.Conditions.TrackGripLevel);
@@ -229,7 +244,7 @@ public sealed class LeMansUltimateTelemetryTests
     [Fact]
     public void Lmu_parser_reads_in_realtime_rather_than_the_start_light_count()
     {
-        var buffer = EmptyLmuBuffer();
+        byte[] buffer = EmptyLmuBuffer();
         // mNumRedLights @114 is a track property and is routinely non-zero, so reading it
         // as mInRealtime @115 claims the driver is on track whenever they are at the
         // monitor with a car assigned — and hands stale telemetry to every consumer.
@@ -237,7 +252,7 @@ public sealed class LeMansUltimateTelemetryTests
         WriteBool(buffer, LmuBinary.ScoringStart + 115, false);
         WriteBool(buffer, LmuBinary.PlayerHasVehicleOffset, true);
 
-        var parsed = LmuParser.Parse(buffer);
+        LmuParsedFrame parsed = LmuParser.Parse(buffer);
 
         Assert.False(parsed.ScoringInfo.InRealtime);
         Assert.False(parsed.PlayerInCar);
@@ -246,8 +261,8 @@ public sealed class LeMansUltimateTelemetryTests
     [Fact]
     public void Lmu_mapper_carries_the_car_class_from_scoring_while_in_car()
     {
-        var mapper = new LmuTelemetryMapper();
-        var parsed = CreateInCarParsedFrame(lapNumber: 3) with
+        LmuTelemetryMapper mapper = new LmuTelemetryMapper();
+        LmuParsedFrame parsed = CreateInCarParsedFrame(lapNumber: 3) with
         {
             Scoring = new LmuVehicleScoring
             {
@@ -257,7 +272,7 @@ public sealed class LeMansUltimateTelemetryTests
             }
         };
 
-        var frame = mapper.Map(parsed);
+        TelemetryFrame frame = mapper.Map(parsed);
 
         Assert.Equal("Peugeot 9X8", frame.Session.Car);
         Assert.Equal("Hypercar", frame.Session.CarClass);
@@ -266,19 +281,19 @@ public sealed class LeMansUltimateTelemetryTests
     [Fact]
     public void Lmu_source_reports_the_lobby_car_before_the_driver_enters_the_cockpit()
     {
-        var buffer = EmptyLmuBuffer();
+        byte[] buffer = EmptyLmuBuffer();
         WriteString(buffer, LmuBinary.ScoringStart, 64, "Spa");
         WriteInt32(buffer, LmuBinary.ScoringStart + 104, 3);
         // The player is the third entry in the lobby and the sim says so with mIsPlayer,
         // so the car is available from scoring with no cockpit and no telemetry block.
-        var playerVehicle = LmuBinary.VehicleScoringBase + 2 * LmuBinary.VehicleScoringSize;
+        int playerVehicle = LmuBinary.VehicleScoringBase + 2 * LmuBinary.VehicleScoringSize;
         WriteString(buffer, playerVehicle + 36, 64, "Porsche 963");
         WriteBool(buffer, playerVehicle + 196, true);
         WriteString(buffer, playerVehicle + 200, 32, "Hypercar");
-        using var source = new LeMansUltimateTelemetrySource(new InMemoryLmuSnapshotProvider(buffer));
+        using LeMansUltimateTelemetrySource source = new LeMansUltimateTelemetrySource(new InMemoryLmuSnapshotProvider(buffer));
         source.Connect();
 
-        Assert.True(source.TryRead(out var frame));
+        Assert.True(source.TryRead(out TelemetryFrame? frame));
         Assert.False(frame.Session.InCar);
         Assert.Equal("Spa", frame.Session.Track);
         Assert.Equal("Porsche 963", frame.Session.Car);
@@ -309,10 +324,10 @@ public sealed class LeMansUltimateTelemetryTests
     [Fact]
     public void In_memory_lmu_provider_copies_exact_snapshot_bytes()
     {
-        var snapshot = EmptyLmuBuffer();
+        byte[] snapshot = EmptyLmuBuffer();
         snapshot[123] = 77;
-        using var provider = new InMemoryLmuSnapshotProvider(snapshot);
-        var destination = new byte[LmuBinary.TotalBufferSize];
+        using InMemoryLmuSnapshotProvider provider = new InMemoryLmuSnapshotProvider(snapshot);
+        byte[] destination = new byte[LmuBinary.TotalBufferSize];
 
         provider.Open();
         provider.CopySnapshot(destination);
@@ -324,14 +339,14 @@ public sealed class LeMansUltimateTelemetryTests
     [Fact]
     public void Lmu_source_connects_reads_and_publishes_connected_status()
     {
-        var buffer = EmptyLmuBuffer();
+        byte[] buffer = EmptyLmuBuffer();
         WriteString(buffer, LmuBinary.ScoringStart, 64, "Spa");
         WriteInt32(buffer, LmuBinary.ScoringStart + 64, 10);
         WriteDouble(buffer, LmuBinary.ScoringStart + 68, 200.0);
-        using var source = new LeMansUltimateTelemetrySource(new InMemoryLmuSnapshotProvider(buffer));
+        using LeMansUltimateTelemetrySource source = new LeMansUltimateTelemetrySource(new InMemoryLmuSnapshotProvider(buffer));
 
         source.Connect();
-        var fresh = source.TryRead(out var frame);
+        bool fresh = source.TryRead(out TelemetryFrame? frame);
 
         Assert.True(fresh);
         Assert.Equal("Le Mans Ultimate", source.Name);
@@ -341,7 +356,7 @@ public sealed class LeMansUltimateTelemetryTests
         Assert.Equal("Spa", frame.Session.Track);
         Assert.Same(source.Current, frame);
 
-        var lastFrameAt = source.Status.LastFrameAt;
+        DateTimeOffset? lastFrameAt = source.Status.LastFrameAt;
         source.Connect();
         Assert.Equal(lastFrameAt, source.Status.LastFrameAt);
         Assert.True(source.Status.LastFrameValid);
@@ -350,12 +365,12 @@ public sealed class LeMansUltimateTelemetryTests
     [Fact]
     public void Lmu_source_exposes_driver_inputs_instead_of_filtered_vehicle_controls()
     {
-        var buffer = EmptyLmuBuffer();
+        byte[] buffer = EmptyLmuBuffer();
         WriteBool(buffer, LmuBinary.ScoringStart + 115, true);
         buffer[LmuBinary.PlayerIndexOffset] = 0;
         WriteBool(buffer, LmuBinary.PlayerHasVehicleOffset, true);
 
-        var telemetry = LmuBinary.TelemetryInfoBase;
+        int telemetry = LmuBinary.TelemetryInfoBase;
         WriteDouble(buffer, telemetry + 388, 0.9);
         WriteDouble(buffer, telemetry + 396, 0.4);
         WriteDouble(buffer, telemetry + 404, -0.3);
@@ -365,10 +380,10 @@ public sealed class LeMansUltimateTelemetryTests
         WriteDouble(buffer, telemetry + 436, -0.1);
         WriteDouble(buffer, telemetry + 444, 0.05);
 
-        using var source = new LeMansUltimateTelemetrySource(new InMemoryLmuSnapshotProvider(buffer));
+        using LeMansUltimateTelemetrySource source = new LeMansUltimateTelemetrySource(new InMemoryLmuSnapshotProvider(buffer));
         source.Connect();
 
-        Assert.True(source.TryRead(out var frame));
+        Assert.True(source.TryRead(out TelemetryFrame? frame));
         Assert.Equal(0.9f, frame.Car.Throttle);
         Assert.Equal(0.4f, frame.Car.Brake);
         Assert.Equal(-0.3f, frame.Car.Steering);
@@ -376,9 +391,102 @@ public sealed class LeMansUltimateTelemetryTests
     }
 
     [Fact]
+    public void Lmu_source_reads_the_car_model_class_championship_and_what_reached_the_car()
+    {
+        byte[] buffer = EmptyLmuBuffer();
+        WriteBool(buffer, LmuBinary.ScoringStart + 115, true);
+        buffer[LmuBinary.PlayerIndexOffset] = 0;
+        WriteBool(buffer, LmuBinary.PlayerHasVehicleOffset, true);
+
+        // Offsets walked through TelemInfoV01 under #pragma pack(4): the walk reproduces every
+        // offset the parser already reads and ends the struct at 1888.
+        int telemetry = LmuBinary.TelemetryInfoBase;
+        WriteString(buffer, telemetry + 32, 64, "DKR Engineering #3:ELMS26");
+        WriteDouble(buffer, telemetry + 420, 0.55);
+        WriteDouble(buffer, telemetry + 428, 0.15);
+        WriteString(buffer, telemetry + 796, 30, "Oreca 07");
+        buffer[telemetry + 826] = 0x02; // IP_VehicleClass::LMP2_ELMS
+        buffer[telemetry + 827] = 0x11; // IP_VehicleChampionship::ELMS_2026
+
+        using LeMansUltimateTelemetrySource source = new(new InMemoryLmuSnapshotProvider(buffer));
+        source.Connect();
+
+        Assert.True(source.TryRead(out TelemetryFrame frame));
+        Assert.Equal("DKR Engineering #3:ELMS26", frame.Session.Car);
+        Assert.Equal("Oreca 07", frame.Session.CarType);
+        Assert.Equal("ELMS 2026", frame.Session.CarChampionship);
+        // Scoring states no class here, so the telemetry block's class byte fills it.
+        Assert.Equal("LMP2_ELMS", frame.Session.CarClass);
+        Assert.Equal(0.55f, frame.Car.ThrottleApplied);
+        Assert.Equal(0.15f, frame.Car.BrakeApplied);
+    }
+
+    [Fact]
+    public void Lmu_mapper_keeps_the_car_model_when_the_driver_steps_out_to_the_garage_screen()
+    {
+        LmuTelemetryMapper mapper = new();
+        LmuParsedFrame inCar = CreateInCarParsedFrame(lapNumber: 3) with
+        {
+            Telemetry = new LmuVehicleTelemetry
+            {
+                VehicleName = "BMW M Team WRT 2026 #15:LM",
+                VehicleModel = "BMW M Hybrid V8",
+                VehicleChampionship = LmuVehicleChampionship.Wec2026,
+            },
+        };
+        LmuParsedFrame garage = new()
+        {
+            ScoringInfo = inCar.ScoringInfo with { InRealtime = false },
+            PlayerHasVehicle = true,
+            PlayerIndex = 2,
+            PlayerVehicle = new LmuVehicleScoring { VehicleName = "BMW M Team WRT 2026 #15:LM", VehicleClass = "Hyper" },
+        };
+
+        mapper.Map(inCar);
+        TelemetryFrame frame = mapper.Map(garage);
+
+        Assert.False(frame.Session.InCar);
+        Assert.Equal("BMW M Hybrid V8", frame.Session.CarType);
+        Assert.Equal("WEC 2026", frame.Session.CarChampionship);
+    }
+
+    [Fact]
+    public void Lmu_source_lets_go_once_the_game_stops_writing_its_shared_memory()
+    {
+        byte[] buffer = EmptyLmuBuffer();
+        InMemoryLmuSnapshotProvider provider = new(buffer);
+        DateTimeOffset now = DateTimeOffset.UnixEpoch;
+        using LeMansUltimateTelemetrySource source = new(provider, clock: () => now);
+        source.Connect();
+        Assert.True(source.TryRead(out _));
+        DateTimeOffset? lastFrameAt = source.Status.LastFrameAt;
+
+        // The game quit, but its mapping lingers with the last frame in it: no new frame, and
+        // LastFrameAt holds still so the freshness check can call the link stale.
+        now += TimeSpan.FromSeconds(1);
+        Assert.False(source.TryRead(out _));
+        Assert.Equal(lastFrameAt, source.Status.LastFrameAt);
+
+        now += LeMansUltimateTelemetrySource.StoppedWritingAfter;
+        Assert.False(source.TryRead(out _));
+        Assert.Equal(TelemetryConnectionState.WaitingForGame, source.Status.State);
+        Assert.False(provider.IsOpen);
+
+        // Reopening the still-frozen mapping does not pretend the game is back.
+        source.Connect();
+        Assert.Equal(TelemetryConnectionState.WaitingForGame, source.Status.State);
+
+        // The game writes again.
+        WriteInt32(buffer, LmuBinary.ScoringStart + 64, 10);
+        source.Connect();
+        Assert.Equal(TelemetryConnectionState.Connected, source.Status.State);
+        Assert.True(source.TryRead(out _));
+    }
+
+    [Fact]
     public void Lmu_source_dispose_is_terminal()
     {
-        using var source = new LeMansUltimateTelemetrySource(new InMemoryLmuSnapshotProvider(EmptyLmuBuffer()));
+        using LeMansUltimateTelemetrySource source = new LeMansUltimateTelemetrySource(new InMemoryLmuSnapshotProvider(EmptyLmuBuffer()));
         source.Connect();
         source.Dispose();
 
@@ -390,7 +498,7 @@ public sealed class LeMansUltimateTelemetryTests
     [Fact]
     public void Lmu_parser_returns_session_only_when_player_is_not_realtime()
     {
-        var buffer = EmptyLmuBuffer();
+        byte[] buffer = EmptyLmuBuffer();
         WriteString(buffer, LmuBinary.ScoringStart, 64, "Fuji");
         WriteInt32(buffer, LmuBinary.ScoringStart + 64, 10);
         WriteDouble(buffer, LmuBinary.ScoringStart + 68, 123.5);
@@ -401,7 +509,7 @@ public sealed class LeMansUltimateTelemetryTests
         buffer[LmuBinary.PlayerIndexOffset] = 3;
         WriteBool(buffer, LmuBinary.PlayerHasVehicleOffset, true);
 
-        var parsed = LmuParser.Parse(buffer);
+        LmuParsedFrame parsed = LmuParser.Parse(buffer);
 
         Assert.Equal("Fuji", parsed.ScoringInfo.TrackName);
         Assert.Equal(10, parsed.ScoringInfo.Session);
@@ -419,8 +527,8 @@ public sealed class LeMansUltimateTelemetryTests
     [Fact]
     public void Lmu_parser_decodes_player_telemetry_and_scoring_when_realtime()
     {
-        var buffer = EmptyLmuBuffer();
-        var scoringInfo = LmuBinary.ScoringStart;
+        byte[] buffer = EmptyLmuBuffer();
+        int scoringInfo = LmuBinary.ScoringStart;
         WriteString(buffer, scoringInfo, 64, "Spa");
         WriteInt32(buffer, scoringInfo + 64, 10);
         WriteDouble(buffer, scoringInfo + 68, 200.0);
@@ -431,7 +539,7 @@ public sealed class LeMansUltimateTelemetryTests
         buffer[LmuBinary.PlayerIndexOffset] = 2;
         WriteBool(buffer, LmuBinary.PlayerHasVehicleOffset, true);
 
-        var telemetry = LmuBinary.TelemetryInfoBase + 2 * LmuBinary.VehicleTelemetrySize;
+        int telemetry = LmuBinary.TelemetryInfoBase + 2 * LmuBinary.VehicleTelemetrySize;
         WriteDouble(buffer, telemetry + 12, 200.5);
         WriteInt32(buffer, telemetry + 20, 7);
         WriteDouble(buffer, telemetry + 24, 188.0);
@@ -469,7 +577,7 @@ public sealed class LeMansUltimateTelemetryTests
         BitConverter.TryWriteBytes(buffer.AsSpan(780, sizeof(float)), 1.2f);
         BitConverter.TryWriteBytes(buffer.AsSpan(784, sizeof(float)), 0.9f);
 
-        var wheel = telemetry + 848;
+        int wheel = telemetry + 848;
         WriteDouble(buffer, wheel + 120, 190.0);
         WriteDouble(buffer, wheel + 128, 363.15);
         WriteDouble(buffer, wheel + 136, 365.15);
@@ -477,10 +585,27 @@ public sealed class LeMansUltimateTelemetryTests
         WriteDouble(buffer, wheel + 152, 0.12);
         WriteDouble(buffer, wheel + 204, 360.15);
 
-        var wheel4 = telemetry + 848 + 3 * 260;
+        int wheel4 = telemetry + 848 + 3 * 260;
         WriteDouble(buffer, wheel4 + 120, 193.0);
+        // The corner channels, at the offsets TelemWheelV01 walks to under pack(4).
+        WriteDouble(buffer, wheel4 + 0, 0.031);
+        WriteDouble(buffer, wheel4 + 8, 0.045);
+        WriteDouble(buffer, wheel4 + 24, 612.0);
+        WriteDouble(buffer, wheel4 + 40, 180.5);
+        WriteDouble(buffer, wheel4 + 48, 1.5);
+        WriteDouble(buffer, wheel4 + 56, 9.25);
+        WriteDouble(buffer, wheel4 + 64, -2.0);
+        WriteDouble(buffer, wheel4 + 72, 60.0);
+        WriteDouble(buffer, wheel4 + 80, -0.035);
+        WriteDouble(buffer, wheel4 + 88, -3100.0);
+        WriteDouble(buffer, wheel4 + 96, 2800.0);
+        WriteDouble(buffer, wheel4 + 104, 5100.0);
+        WriteDouble(buffer, wheel4 + 112, 0.3);
+        buffer[wheel4 + 176] = 5;
+        WriteBool(buffer, wheel4 + 178, true);
+        buffer[wheel4 + 179] = 35;
 
-        var vehicleScoring = LmuBinary.VehicleScoringBase + 2 * LmuBinary.VehicleScoringSize;
+        int vehicleScoring = LmuBinary.VehicleScoringBase + 2 * LmuBinary.VehicleScoringSize;
         buffer[vehicleScoring + 103] = unchecked((byte)1);
         WriteDouble(buffer, vehicleScoring + 104, 7004.0);
         WriteDouble(buffer, vehicleScoring + 144, 91.234);
@@ -495,7 +620,7 @@ public sealed class LeMansUltimateTelemetryTests
         WriteBool(buffer, vehicleScoring + 507, true);
         WriteBool(buffer, vehicleScoring + 579, true);
 
-        var parsed = LmuParser.Parse(buffer);
+        LmuParsedFrame parsed = LmuParser.Parse(buffer);
 
         Assert.True(parsed.PlayerInCar);
         Assert.Equal("Peugeot 9X8", parsed.Telemetry!.VehicleName);
@@ -516,14 +641,33 @@ public sealed class LeMansUltimateTelemetryTests
         Assert.Equal(4, parsed.Telemetry.Wheels.Count);
         Assert.Equal(190.0, parsed.Telemetry.Wheels[0].PressureKPa);
         Assert.Equal(193.0, parsed.Telemetry.Wheels[3].PressureKPa);
+        LmuWheel rearRight = parsed.Telemetry.Wheels[3];
+        Assert.Equal(0.031, rearRight.SuspensionDeflectionMeters);
+        Assert.Equal(0.045, rearRight.RideHeightMeters);
+        Assert.Equal(612.0, rearRight.BrakeTempCelsius);
+        Assert.Equal(180.5, rearRight.RotationRadiansPerSecond);
+        Assert.Equal(1.5, rearRight.LateralPatchVelocity);
+        Assert.Equal(9.25, rearRight.LongitudinalPatchVelocity);
+        Assert.Equal(-2.0, rearRight.LateralGroundVelocity);
+        Assert.Equal(60.0, rearRight.LongitudinalGroundVelocity);
+        Assert.Equal(-0.035, rearRight.CamberRadians);
+        Assert.Equal(-3100.0, rearRight.LateralForceNewtons);
+        Assert.Equal(2800.0, rearRight.LongitudinalForceNewtons);
+        Assert.Equal(5100.0, rearRight.LoadNewtons);
+        Assert.Equal(0.3, rearRight.GripFraction);
+        Assert.Equal(5, rearRight.SurfaceType);
+        Assert.False(rearRight.Flat);
+        Assert.True(rearRight.Detached);
+        Assert.Equal(35, rearRight.RadiusCentimeters);
+        Assert.Equal(193.0, rearRight.PressureKPa);
         Assert.True(parsed.Scoring.DrsState);
     }
 
     [Fact]
     public void Lmu_mapper_emits_session_only_frame_when_not_in_car()
     {
-        var mapper = new LmuTelemetryMapper(() => new DateTimeOffset(2026, 6, 30, 12, 0, 0, TimeSpan.Zero));
-        var parsed = new LmuParsedFrame
+        LmuTelemetryMapper mapper = new LmuTelemetryMapper(() => new DateTimeOffset(2026, 6, 30, 12, 0, 0, TimeSpan.Zero));
+        LmuParsedFrame parsed = new LmuParsedFrame
         {
             ScoringInfo = new LmuScoringInfo
             {
@@ -537,7 +681,7 @@ public sealed class LeMansUltimateTelemetryTests
             PlayerIndex = 3
         };
 
-        var frame = mapper.Map(parsed);
+        TelemetryFrame frame = mapper.Map(parsed);
 
         Assert.Equal(new DateTimeOffset(2026, 6, 30, 12, 0, 0, TimeSpan.Zero), frame.Timestamp);
         Assert.Equal("LeMansUltimate", frame.Session.Game);
@@ -551,8 +695,8 @@ public sealed class LeMansUltimateTelemetryTests
     [Fact]
     public void Lmu_mapper_maps_core_car_lap_tyre_race_and_energy_fields()
     {
-        var mapper = new LmuTelemetryMapper(() => new DateTimeOffset(2026, 6, 30, 12, 0, 0, TimeSpan.Zero));
-        var parsed = new LmuParsedFrame
+        LmuTelemetryMapper mapper = new LmuTelemetryMapper(() => new DateTimeOffset(2026, 6, 30, 12, 0, 0, TimeSpan.Zero));
+        LmuParsedFrame parsed = new LmuParsedFrame
         {
             ScoringInfo = new LmuScoringInfo
             {
@@ -606,7 +750,12 @@ public sealed class LeMansUltimateTelemetryTests
                 GapBehind = 0.9f,
                 Wheels =
                 [
-                    new LmuWheel { TempInnerKelvin = 363.15, TempMiddleKelvin = 365.15, TempOuterKelvin = 367.15, CarcassTempKelvin = 360.15, PressureKPa = 190, WearFraction = .12 },
+                    new LmuWheel
+                    {
+                        TempInnerKelvin = 363.15, TempMiddleKelvin = 365.15, TempOuterKelvin = 367.15, CarcassTempKelvin = 360.15, PressureKPa = 190, WearFraction = .12,
+                        RotationRadiansPerSecond = 2.5, LongitudinalPatchVelocity = -61.0, GripFraction = 0.75, LoadNewtons = 4200,
+                        SurfaceType = 4, Flat = true, RadiusCentimeters = 34
+                    },
                     new LmuWheel { TempInnerKelvin = 363.15, TempMiddleKelvin = 365.15, TempOuterKelvin = 367.15, CarcassTempKelvin = 360.15, PressureKPa = 191, WearFraction = .13 },
                     new LmuWheel { TempInnerKelvin = 363.15, TempMiddleKelvin = 365.15, TempOuterKelvin = 367.15, CarcassTempKelvin = 360.15, PressureKPa = 192, WearFraction = .14 },
                     new LmuWheel { TempInnerKelvin = 363.15, TempMiddleKelvin = 365.15, TempOuterKelvin = 367.15, CarcassTempKelvin = 360.15, PressureKPa = 193, WearFraction = .15 }
@@ -627,7 +776,7 @@ public sealed class LeMansUltimateTelemetryTests
             }
         };
 
-        var frame = mapper.Map(parsed);
+        TelemetryFrame frame = mapper.Map(parsed);
 
         Assert.True(frame.Session.InCar);
         Assert.Equal("Spa", frame.Session.Track);
@@ -653,6 +802,15 @@ public sealed class LeMansUltimateTelemetryTests
         Assert.Equal(12, frame.Tires[0].WearPercent, precision: 1);
         Assert.Equal("Medium", frame.Tires[0].Compound);
         Assert.Equal("Soft", frame.Tires[2].Compound);
+        // A locked front-left: barely turning while the patch slides 61 m/s backwards, beached in gravel.
+        Assert.Equal(2.5f, frame.Tires[0].RotationRadiansPerSecond);
+        Assert.Equal(-61f, frame.Tires[0].LongitudinalPatchVelocity);
+        Assert.Equal(0.75f, frame.Tires[0].PatchSlidingFraction);
+        Assert.Equal(4200f, frame.Tires[0].LoadNewtons);
+        Assert.Equal(TireSurface.Gravel, frame.Tires[0].Surface);
+        Assert.True(frame.Tires[0].Flat);
+        Assert.Equal(0.34f, frame.Tires[0].RadiusMeters, precision: 3);
+        Assert.Equal(TireSurface.Dry, frame.Tires[1].Surface);
         // Surface is the tread average (90/92/94 °C) and must be populated: consumers
         // that read it were previously getting 0 and falling back to the carcass value.
         Assert.Equal(92, frame.Tires[0].TempSurfaceCelsius, precision: 1);
@@ -662,12 +820,12 @@ public sealed class LeMansUltimateTelemetryTests
     [Fact]
     public void Lmu_mapper_reports_absent_tyre_temperatures_as_zero_not_minus_273()
     {
-        var mapper = new LmuTelemetryMapper(() => new DateTimeOffset(2026, 6, 30, 12, 0, 0, TimeSpan.Zero));
-        var parsed = CreateInCarParsedFrame(lapNumber: 7);
+        LmuTelemetryMapper mapper = new LmuTelemetryMapper(() => new DateTimeOffset(2026, 6, 30, 12, 0, 0, TimeSpan.Zero));
+        LmuParsedFrame parsed = CreateInCarParsedFrame(lapNumber: 7);
 
         // Out of the car (or on a build that does not fill a channel) LMU reports 0 K.
         // Converting that blindly yields -273 °C, which reads as a real, very cold tyre.
-        var frame = mapper.Map(parsed with
+        TelemetryFrame frame = mapper.Map(parsed with
         {
             Telemetry = parsed.Telemetry! with
             {
@@ -675,7 +833,7 @@ public sealed class LeMansUltimateTelemetryTests
             },
         });
 
-        var tire = frame.Tires[0];
+        TireState tire = frame.Tires[0];
         Assert.Equal(0, tire.TempInnerCelsius);
         Assert.Equal(0, tire.TempMiddleCelsius);
         Assert.Equal(0, tire.TempOuterCelsius);
@@ -686,10 +844,10 @@ public sealed class LeMansUltimateTelemetryTests
     [Fact]
     public void Lmu_mapper_averages_only_the_tread_sensors_that_report()
     {
-        var mapper = new LmuTelemetryMapper(() => new DateTimeOffset(2026, 6, 30, 12, 0, 0, TimeSpan.Zero));
-        var parsed = CreateInCarParsedFrame(lapNumber: 7);
+        LmuTelemetryMapper mapper = new LmuTelemetryMapper(() => new DateTimeOffset(2026, 6, 30, 12, 0, 0, TimeSpan.Zero));
+        LmuParsedFrame parsed = CreateInCarParsedFrame(lapNumber: 7);
 
-        var frame = mapper.Map(parsed with
+        TelemetryFrame frame = mapper.Map(parsed with
         {
             Telemetry = parsed.Telemetry! with
             {
@@ -710,15 +868,15 @@ public sealed class LeMansUltimateTelemetryTests
     [Fact]
     public void Lmu_mapper_requires_decoded_payload_when_player_is_realtime()
     {
-        var mapper = new LmuTelemetryMapper(() => new DateTimeOffset(2026, 6, 30, 12, 0, 0, TimeSpan.Zero));
-        var missingTelemetry = new LmuParsedFrame
+        LmuTelemetryMapper mapper = new LmuTelemetryMapper(() => new DateTimeOffset(2026, 6, 30, 12, 0, 0, TimeSpan.Zero));
+        LmuParsedFrame missingTelemetry = new LmuParsedFrame
         {
             ScoringInfo = new LmuScoringInfo { InRealtime = true },
             PlayerHasVehicle = true,
             PlayerIndex = 2,
             Scoring = new LmuVehicleScoring()
         };
-        var missingScoring = new LmuParsedFrame
+        LmuParsedFrame missingScoring = new LmuParsedFrame
         {
             ScoringInfo = new LmuScoringInfo { InRealtime = true },
             PlayerHasVehicle = true,
@@ -733,15 +891,15 @@ public sealed class LeMansUltimateTelemetryTests
     [Fact]
     public void Lmu_mapper_uses_lower_lap_time_source_when_new_lap_starts()
     {
-        var mapper = new LmuTelemetryMapper(() => new DateTimeOffset(2026, 6, 30, 12, 0, 0, TimeSpan.Zero));
+        LmuTelemetryMapper mapper = new LmuTelemetryMapper(() => new DateTimeOffset(2026, 6, 30, 12, 0, 0, TimeSpan.Zero));
 
-        var previousLap = mapper.Map(CreateInCarParsedFrame(
+        TelemetryFrame previousLap = mapper.Map(CreateInCarParsedFrame(
             lapNumber: 3,
             elapsedTime: 150.0,
             lapStartElapsedTime: 60.0,
             sessionTime: 150.0,
             scoringLapTime: 90.0));
-        var newLap = mapper.Map(CreateInCarParsedFrame(
+        TelemetryFrame newLap = mapper.Map(CreateInCarParsedFrame(
             lapNumber: 4,
             elapsedTime: 151.5,
             lapStartElapsedTime: 150.0,
@@ -755,11 +913,11 @@ public sealed class LeMansUltimateTelemetryTests
     [Fact]
     public void Lmu_mapper_tracks_rolling_fuel_per_lap_from_completed_laps()
     {
-        var mapper = new LmuTelemetryMapper(() => new DateTimeOffset(2026, 6, 30, 12, 0, 0, TimeSpan.Zero));
+        LmuTelemetryMapper mapper = new LmuTelemetryMapper(() => new DateTimeOffset(2026, 6, 30, 12, 0, 0, TimeSpan.Zero));
 
-        var firstLap = mapper.Map(CreateInCarParsedFrame(lapNumber: 1, fuelLiters: 50.0));
-        var secondLap = mapper.Map(CreateInCarParsedFrame(lapNumber: 2, fuelLiters: 47.5));
-        var thirdLap = mapper.Map(CreateInCarParsedFrame(lapNumber: 3, fuelLiters: 44.0));
+        TelemetryFrame firstLap = mapper.Map(CreateInCarParsedFrame(lapNumber: 1, fuelLiters: 50.0));
+        TelemetryFrame secondLap = mapper.Map(CreateInCarParsedFrame(lapNumber: 2, fuelLiters: 47.5));
+        TelemetryFrame thirdLap = mapper.Map(CreateInCarParsedFrame(lapNumber: 3, fuelLiters: 44.0));
 
         Assert.Equal(0, firstLap.Car.FuelPerLapLiters);
         Assert.Equal(2.5f, secondLap.Car.FuelPerLapLiters);
@@ -769,11 +927,11 @@ public sealed class LeMansUltimateTelemetryTests
     [Fact]
     public void Lmu_mapper_tracks_rolling_virtual_energy_per_lap_from_completed_laps()
     {
-        var mapper = new LmuTelemetryMapper(() => new DateTimeOffset(2026, 6, 30, 12, 0, 0, TimeSpan.Zero));
+        LmuTelemetryMapper mapper = new LmuTelemetryMapper(() => new DateTimeOffset(2026, 6, 30, 12, 0, 0, TimeSpan.Zero));
 
-        var firstLap = mapper.Map(CreateInCarParsedFrame(lapNumber: 1, virtualEnergy: 80f));
-        var secondLap = mapper.Map(CreateInCarParsedFrame(lapNumber: 2, virtualEnergy: 76.5f));
-        var thirdLap = mapper.Map(CreateInCarParsedFrame(lapNumber: 3, virtualEnergy: 72.5f));
+        TelemetryFrame firstLap = mapper.Map(CreateInCarParsedFrame(lapNumber: 1, virtualEnergy: 80f));
+        TelemetryFrame secondLap = mapper.Map(CreateInCarParsedFrame(lapNumber: 2, virtualEnergy: 76.5f));
+        TelemetryFrame thirdLap = mapper.Map(CreateInCarParsedFrame(lapNumber: 3, virtualEnergy: 72.5f));
 
         Assert.Equal(0, firstLap.Energy.VirtualEnergyPerLap);
         Assert.Equal(3.5f, secondLap.Energy.VirtualEnergyPerLap, precision: 3);
@@ -842,6 +1000,184 @@ public sealed class LeMansUltimateTelemetryTests
         TelemetryFrame frame = mapper.Map(CreateInCarParsedFrame(lapNumber: 3));
 
         Assert.Null(frame.Car.Pose);
+    }
+
+    [Fact]
+    public void Lmu_source_reads_the_cockpit_settings_and_the_pit_state()
+    {
+        byte[] buffer = InCarBuffer(playerIndex: 0);
+        int telemetry = LmuBinary.TelemetryInfoBase;
+        // TelemInfoV01 under pack(4): mSpeedLimiter@604, then the LMU block mTC@750 … mRearAntiSwayMax@765,
+        // the same walk that lands the struct on 1888 bytes.
+        buffer[telemetry + 604] = 1;
+        byte[] settings = [4, 12, 2, 6, 3, 8, 7, 12, 3, 8, 5, 10, 2, 9, 6, 9];
+        settings.CopyTo(buffer, telemetry + 750);
+        int scoring = LmuBinary.VehicleScoringBase;
+        // VehicleScoringInfoV01: mInPits@198, mPitState@457.
+        WriteBool(buffer, scoring + 198, true);
+        buffer[scoring + 457] = 2;
+        using LeMansUltimateTelemetrySource source = new(new InMemoryLmuSnapshotProvider(buffer));
+        source.Connect();
+
+        Assert.True(source.TryRead(out TelemetryFrame frame));
+
+        ElectronicsState electronics = frame.Electronics;
+        Assert.Equal((4, 12), (electronics.TractionControl, electronics.TractionControlMax));
+        Assert.Equal((2, 6), (electronics.TractionControlSlip, electronics.TractionControlSlipMax));
+        Assert.Equal((3, 8), (electronics.TractionControlCut, electronics.TractionControlCutMax));
+        Assert.Equal((7, 12), (electronics.Abs, electronics.AbsMax));
+        Assert.Equal((3, 8), (electronics.MotorMap, electronics.MotorMapMax));
+        Assert.Equal((5, 10), (electronics.Migration, electronics.MigrationMax));
+        Assert.Equal((2, 9), (electronics.FrontAntiRollBar, electronics.FrontAntiRollBarMax));
+        Assert.Equal((6, 9), (electronics.RearAntiRollBar, electronics.RearAntiRollBarMax));
+        Assert.True(frame.Car.PitLimiter);
+        Assert.True(frame.Car.InPitLane);
+        Assert.Equal(PitState.Entering, frame.Car.PitState);
+    }
+
+    [Fact]
+    public void Lmu_source_reports_every_scored_car_for_the_timing_table_and_map()
+    {
+        byte[] buffer = InCarBuffer(playerIndex: 1);
+        WriteInt32(buffer, LmuBinary.ScoringStart + 104, 3);
+        WriteVehicle(buffer, 0, id: 7, driver: "A. Leader", car: "Toyota #7", carClass: "Hyper", place: 1);
+        WriteVehicle(buffer, 1, id: 3, driver: "Alex", car: "Oreca #22", carClass: "LMP2", place: 2);
+        WriteVehicle(buffer, 2, id: 9, driver: "C. Third", car: "Oreca #30", carClass: "LMP2", place: 3);
+        int player = LmuBinary.VehicleScoringBase + LmuBinary.VehicleScoringSize;
+        WriteBool(buffer, player + 196, true);
+        // mTotalLaps@100, mSector@102 (2 = sector 2), mFinishStatus@103, mLapDist@104.
+        BitConverter.TryWriteBytes(buffer.AsSpan(player + 100, sizeof(short)), (short)12);
+        buffer[player + 102] = 2;
+        buffer[player + 103] = 2;
+        WriteDouble(buffer, player + 104, 1234.5);
+        // mBestLapTime@144, mLastSector1/2@152/160, mLastLapTime@168, mCurSector1/2@176/184.
+        WriteDouble(buffer, player + 144, 120.0);
+        WriteDouble(buffer, player + 152, 30.0);
+        WriteDouble(buffer, player + 160, 70.0);
+        WriteDouble(buffer, player + 168, 121.0);
+        WriteDouble(buffer, player + 176, 29.5);
+        WriteDouble(buffer, player + 184, 69.0);
+        // mNumPitstops@192, mInPits@198, mTimeBehindNext@232, mLapsBehindNext@240,
+        // mTimeBehindLeader@244, mLapsBehindLeader@252, mPos@264 (x, y, z).
+        BitConverter.TryWriteBytes(buffer.AsSpan(player + 192, sizeof(short)), (short)2);
+        WriteBool(buffer, player + 198, true);
+        WriteDouble(buffer, player + 232, 1.5);
+        WriteInt32(buffer, player + 240, 0);
+        WriteDouble(buffer, player + 244, 3.25);
+        WriteInt32(buffer, player + 252, 1);
+        WriteDouble(buffer, player + 264, 100.0);
+        WriteDouble(buffer, player + 280, -50.0);
+        // mPitState@457 (3 = stopped), mInGarageStall@507.
+        buffer[player + 457] = 3;
+        WriteBool(buffer, player + 507, true);
+        using LeMansUltimateTelemetrySource source = new(new InMemoryLmuSnapshotProvider(buffer));
+        source.Connect();
+
+        Assert.True(source.TryRead(out TelemetryFrame frame));
+
+        IReadOnlyList<FieldCar> field = Assert.IsAssignableFrom<IReadOnlyList<FieldCar>>(frame.Field);
+        Assert.Equal<int>([7, 3, 9], field.Select(car => car.Id));
+        Assert.Equal<int>([1, 1, 2], field.Select(car => car.ClassPlace));
+        Assert.Equal(
+            new FieldCar
+            {
+                Id = 3,
+                Driver = "Alex",
+                Car = "Oreca #22",
+                CarClass = "LMP2",
+                IsPlayer = true,
+                Place = 2,
+                ClassPlace = 1,
+                LapsCompleted = 12,
+                LapDistanceMeters = 1234.5,
+                Sector = 2,
+                BestLapTime = 120.0,
+                LastLapTime = 121.0,
+                LastLapSector1 = 30.0,
+                LastLapSector2 = 40.0,
+                LastLapSector3 = 51.0,
+                CurrentLapSector1 = 29.5,
+                // Still in sector 2, so its mark is the previous lap's and does not count yet.
+                CurrentLapSector2 = null,
+                GapToLeader = 3.25,
+                LapsToLeader = 1,
+                GapToNext = 1.5,
+                LapsToNext = 0,
+                InPitLane = true,
+                InGarage = true,
+                PitState = PitState.Stopped,
+                PitStops = 2,
+                FinishStatus = FinishStatus.Dnf,
+                // Mirrored on X like the player's pose, so the field shares the lap traces' map.
+                PositionX = -100f,
+                PositionZ = -50f
+            },
+            field[1]);
+    }
+
+    [Fact]
+    public void Lmu_source_reads_the_session_phase_sector_yellows_and_each_cars_blue_flag_and_penalties()
+    {
+        byte[] buffer = InCarBuffer(playerIndex: 1);
+        WriteInt32(buffer, LmuBinary.ScoringStart + 104, 2);
+        WriteVehicle(buffer, 0, id: 7, driver: "A. Leader", car: "Toyota #7", carClass: "Hyper", place: 1);
+        WriteVehicle(buffer, 1, id: 3, driver: "E. Varga", car: "Oreca #63", carClass: "LMP2", place: 2);
+        WriteBool(buffer, LmuBinary.VehicleScoringBase + LmuBinary.VehicleScoringSize + 196, true);
+        // mGamePhase@108 (6 = full course yellow), mSectorFlag[3]@110 in mSector's order: index 0 is sector 3.
+        buffer[LmuBinary.ScoringStart + 108] = 6;
+        buffer[LmuBinary.ScoringStart + 110] = 1;
+        buffer[LmuBinary.ScoringStart + 112] = 1;
+        // The leader: mNumPenalties@194 and mFlag@504 (6 = blue).
+        BitConverter.TryWriteBytes(buffer.AsSpan(LmuBinary.VehicleScoringBase + 194, sizeof(short)), (short)2);
+        buffer[LmuBinary.VehicleScoringBase + 504] = 6;
+        using LeMansUltimateTelemetrySource source = new(new InMemoryLmuSnapshotProvider(buffer));
+        source.Connect();
+
+        Assert.True(source.TryRead(out TelemetryFrame frame));
+
+        Assert.Equal(SessionPhase.FullCourseYellow, frame.Session.Phase);
+        Assert.Equal((false, true, true), (frame.Flags.Sector1Yellow, frame.Flags.Sector2Yellow, frame.Flags.Sector3Yellow));
+        IReadOnlyList<FieldCar> field = Assert.IsAssignableFrom<IReadOnlyList<FieldCar>>(frame.Field);
+        Assert.Equal<(int, int, bool)>([(7, 2, true), (3, 0, false)], field.Select(car => (car.Id, car.Penalties, car.BlueFlag)));
+    }
+
+    [Fact]
+    public void Lmu_mapper_hands_out_the_same_field_until_scoring_changes()
+    {
+        LmuTelemetryMapper mapper = new(() => DateTimeOffset.UnixEpoch);
+        LmuVehicleScoring car = new() { Id = 1, DriverName = "Alex", Place = 1, VehicleClass = "LMP2" };
+        LmuParsedFrame parsed = CreateInCarParsedFrame(lapNumber: 3) with { Vehicles = [car] };
+
+        IReadOnlyList<FieldCar>? first = mapper.Map(parsed).Field;
+        IReadOnlyList<FieldCar>? again = mapper.Map(parsed with { Vehicles = [car with { }] }).Field;
+        IReadOnlyList<FieldCar>? moved = mapper.Map(parsed with { Vehicles = [car with { LapDistance = 10 }] }).Field;
+
+        Assert.Same(first, again);
+        Assert.NotSame(first, moved);
+        Assert.Equal(10, Assert.Single(Assert.IsAssignableFrom<IReadOnlyList<FieldCar>>(moved)).LapDistanceMeters);
+    }
+
+    /// <summary>A buffer with the player in the car at <paramref name="playerIndex"/>, on track at Spa.</summary>
+    private static byte[] InCarBuffer(int playerIndex)
+    {
+        byte[] buffer = EmptyLmuBuffer();
+        WriteString(buffer, LmuBinary.ScoringStart, 64, "Spa");
+        WriteInt32(buffer, LmuBinary.ScoringStart + 104, playerIndex + 1);
+        WriteBool(buffer, LmuBinary.ScoringStart + 115, true);
+        buffer[LmuBinary.PlayerIndexOffset] = (byte)playerIndex;
+        WriteBool(buffer, LmuBinary.PlayerHasVehicleOffset, true);
+        return buffer;
+    }
+
+    /// <summary>Writes a vehicle scoring entry's identity: mID@0, mDriverName@4, mVehicleName@36, mPlace@199, mVehicleClass@200.</summary>
+    private static void WriteVehicle(byte[] buffer, int index, int id, string driver, string car, string carClass, byte place)
+    {
+        int offset = LmuBinary.VehicleScoringBase + index * LmuBinary.VehicleScoringSize;
+        WriteInt32(buffer, offset, id);
+        WriteString(buffer, offset + 4, 32, driver);
+        WriteString(buffer, offset + 36, 64, car);
+        buffer[offset + 199] = place;
+        WriteString(buffer, offset + 200, 32, carClass);
     }
 
     private static LmuParsedFrame CreateInCarParsedFrame(

@@ -32,7 +32,7 @@ const args = new Set(process.argv.slice(2))
 
 if (!args.has('--skip-build')) {
   const vite = path.join(desktopRoot, 'node_modules', 'vite', 'bin', 'vite.js')
-  const build = spawnSync(process.execPath, [vite, 'build', '--outDir', dist, '--emptyOutDir'], { cwd: desktopRoot, stdio: 'inherit' })
+  const build = spawnSync(process.execPath, [vite, 'build', '--mode', 'preview', '--outDir', dist, '--emptyOutDir'], { cwd: desktopRoot, stdio: 'inherit' })
   if (build.status !== 0) process.exit(build.status ?? 1)
 }
 

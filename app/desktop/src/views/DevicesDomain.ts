@@ -75,6 +75,8 @@ export type CaptureRegion = { x: number; y: number; width: number; height: numbe
 export type Device = {
   id: string
   name: string
+  /** The catalog entry it was added from; '' for devices saved before the host recorded it. */
+  presetId: string
   driver: string
   type: string
   vid: number
@@ -91,12 +93,16 @@ export type Device = {
   disabled: boolean
   captureRegion: CaptureRegion | null
   bindingCount: number
+  /** Browser displays only: the page's background is transparent instead of black. */
+  transparent: boolean
 }
 
 export type CatalogEntry = {
   id: string
   name: string
   description: string
+  /** Who makes it ("BavarianSimTec", "VoCore"), for the Add device dialog's brand filter. */
+  brand: string
   type: string
   driver: string
   vid: number
@@ -105,14 +111,58 @@ export type CatalogEntry = {
   height: number
 }
 
-export const isGenericCatalogEntry = (entry: CatalogEntry): boolean => entry.vid === 0 && entry.pid === 0
-
 // A device can publish pixels either because it is a standalone screen or a
 // wheel with a known integrated screen transport — DeviceCapabilities.HasScreen.
 export const deviceHasScreen = (device: Device): boolean =>
   device.width > 0 &&
   device.height > 0 &&
   (device.type.toLowerCase() === 'screen' || device.driver.toLowerCase() === 'vocore' || device.driver.toLowerCase() === 'usbd480')
+
+// ── Browser / VR displays ────────────────────────────────────────────────────
+//
+// Hand-mirrored from app/Sprint.Desktop.Core/Features/Devices/BrowserDisplays.cs: a dash device
+// with no USB link that any browser on this PC shows at its address. Its resolution is its own
+// width × height (the host keeps the orientation to match), and it has no orientation, offset or
+// margin to set.
+
+export const BROWSER_DISPLAY_DRIVER = 'browser'
+export const BROWSER_DISPLAY_PORT = 28780
+export const BROWSER_DISPLAY_MIN_SIZE = 100
+export const BROWSER_DISPLAY_MAX_WIDTH = 1920
+export const BROWSER_DISPLAY_MAX_HEIGHT = 1080
+
+export const isBrowserDisplay = (device: Pick<Device, 'driver'>): boolean => device.driver.toLowerCase() === BROWSER_DISPLAY_DRIVER
+
+/** Where a browser shows the device's dash (`BrowserDisplays.Address`). */
+export const browserDisplayAddress = (deviceId: string): string => `http://127.0.0.1:${BROWSER_DISPLAY_PORT}/dash/${encodeURIComponent(deviceId)}`
+
+/** One setting on a device's Screen tab. */
+export type ScreenSetting = 'frameRate' | 'orientation' | 'offset' | 'margin' | 'address' | 'resolution' | 'background'
+
+/**
+ * The Screen tab's settings for a device: a panel's frame rate and mounting, or a browser
+ * display's address and picture. A browser display is sent every frame and is no panel, so it gets
+ * none of the panel's (rather than controls that would do nothing).
+ */
+export const screenSettings = (device: Pick<Device, 'driver'>): readonly ScreenSetting[] =>
+  isBrowserDisplay(device) ? ['address', 'resolution', 'background'] : ['frameRate', 'orientation', 'offset', 'margin']
+
+/** The purposes the Output tab offers: a browser display cannot mirror the desktop. */
+export const purposesFor = (device: Pick<Device, 'driver'>): readonly DevicePurpose[] =>
+  isBrowserDisplay(device) ? PURPOSES.filter((purpose) => !purpose.needsCaptureRegion) : PURPOSES
+
+export const buildBrowserDisplaySize = (device: Pick<Device, 'id'>, width: number, height: number): SprintCommand => ({
+  type: 'devices.resolution',
+  deviceId: device.id,
+  width,
+  height,
+})
+
+export const buildBrowserDisplayBackground = (device: Pick<Device, 'id'>, transparent: boolean): SprintCommand => ({
+  type: 'devices.transparent',
+  deviceId: device.id,
+  transparent,
+})
 
 // DeviceOrientations.Transform, without the pixel-rotation component: the
 // short/long native edge swaps into the logical width/height a landscape
@@ -171,6 +221,7 @@ export const parseDevice = (row: Record<string, unknown>): Device | null => {
   return {
     id,
     name: str(row, 'name', id),
+    presetId: str(row, 'presetId'),
     driver: str(row, 'driver'),
     type: str(row, 'type', 'screen'),
     vid: num(row, 'vid'),
@@ -187,11 +238,18 @@ export const parseDevice = (row: Record<string, unknown>): Device | null => {
     disabled: bool(row, 'disabled'),
     captureRegion: parseCaptureRegion(row.captureRegion),
     bindingCount: Array.isArray(bindings) ? bindings.length : 0,
+    transparent: bool(row, 'transparent'),
   }
 }
 
 export const parseDevices = (rows: ReadonlyArray<Record<string, unknown>>): Device[] =>
   rows.map(parseDevice).filter((device): device is Device => device !== null)
+
+/** The user's screens at their logical (rotated) size, by name: what a dash screen size "Fits". */
+export const deviceScreenSizes = (rows: ReadonlyArray<Record<string, unknown>>): Array<{ name: string; width: number; height: number }> =>
+  parseDevices(rows)
+    .filter(deviceHasScreen)
+    .map((device) => ({ name: device.name, ...logicalSize(device) }))
 
 /** Parses one raw `catalog[]` row. Returns `null` for a row with no id. */
 export const parseCatalogEntry = (row: Record<string, unknown>): CatalogEntry | null => {
@@ -201,6 +259,7 @@ export const parseCatalogEntry = (row: Record<string, unknown>): CatalogEntry | 
     id,
     name: str(row, 'name', id),
     description: str(row, 'description'),
+    brand: str(row, 'brand'),
     type: str(row, 'type', 'screen'),
     driver: str(row, 'driver'),
     vid: num(row, 'vid'),
@@ -238,7 +297,8 @@ export const buildDeviceUpdate = (device: Device, overrides: Partial<DeviceUpdat
   dashId: overrides.dashId ?? device.dashId,
 })
 
-export const OFFSET_MIN = 0
+// Offsets are signed: negative moves the image left or up (Rgb565Composer).
+export const OFFSET_MIN = -2000
 export const OFFSET_MAX = 2000
 export const MARGIN_MIN = 0
 export const MARGIN_MAX = 400
@@ -264,10 +324,11 @@ export type ScreenConnectionState =
   | 'DeviceConflict'
   | 'Unsupported'
   | 'Faulted'
+  | 'WaitingForViewer'
 
 const SCREEN_CONNECTION_STATES: readonly ScreenConnectionState[] = [
   'Disconnected', 'Connecting', 'Connected', 'ConfigurationRequired',
-  'PermissionDenied', 'DeviceBusy', 'DeviceConflict', 'Unsupported', 'Faulted',
+  'PermissionDenied', 'DeviceBusy', 'DeviceConflict', 'Unsupported', 'Faulted', 'WaitingForViewer',
 ]
 
 const isScreenConnectionState = (value: unknown): value is ScreenConnectionState =>
@@ -288,10 +349,8 @@ export type ScreenHardwarePerformance = {
   hasSamples: boolean
 }
 
-export type ScreenHardware = { status: ScreenHardwareStatus; performance: ScreenHardwarePerformance }
-
-/** Electron's offscreen-browser frame delivery stats (FrameStore) — separate from `hardware.performance`, which is the real USB delivery. */
-export type ScreenDelivery = { sequence: number; bytes: number; receivedAt: string | null }
+/** `viewers` is a browser display's count of pages showing it; null for a USB screen. */
+export type ScreenHardware = { status: ScreenHardwareStatus; performance: ScreenHardwarePerformance; viewers: number | null }
 
 export type ScreenOutput = {
   deviceId: string
@@ -301,7 +360,6 @@ export type ScreenOutput = {
   layout: DashLayout | null
   pageId: string
   idle: boolean
-  delivery: ScreenDelivery | null
   hardware: ScreenHardware | null
 }
 
@@ -343,12 +401,8 @@ const parseScreenHardware = (value: unknown): ScreenHardware | null => {
   if (!isRecord(value)) return null
   const status = parseScreenHardwareStatus(value.status)
   const performance = parseScreenHardwarePerformance(value.performance)
-  return status && performance ? { status, performance } : null
-}
-
-const parseScreenDelivery = (value: unknown): ScreenDelivery | null => {
-  if (!isRecord(value)) return null
-  return { sequence: num(value, 'sequence'), bytes: num(value, 'bytes'), receivedAt: optionalStr(value.receivedAt) }
+  const viewers = typeof value.viewers === 'number' && Number.isInteger(value.viewers) && value.viewers >= 0 ? value.viewers : null
+  return status && performance ? { status, performance, viewers } : null
 }
 
 /** Parses one raw `screens[]` row. Returns `null` for a row with no device id — never a fabricated entry. */
@@ -362,7 +416,6 @@ export const parseScreen = (value: unknown): ScreenOutput | null => {
     layout: isRecord(value.layout) ? parseDashLayout(value.layout) : null,
     pageId: str(value, 'pageId'),
     idle: bool(value, 'idle'),
-    delivery: parseScreenDelivery(value.performance),
     hardware: parseScreenHardware(value.hardware),
   }
 }
@@ -425,6 +478,8 @@ const describeScreenStatus = (status: ScreenHardwareStatus): ScreenStatusPresent
           detail: 'The USB operation failed. Open the diagnostics log for the native error and attempted step.',
           tone: 'danger',
         }
+      case 'WaitingForViewer':
+        return { label: 'Waiting for a viewer', detail: 'Sprint serves this display, and no page is showing it yet.', tone: 'info' }
       default:
         return { label: 'Not found', detail: 'No matching screen was found. Check the USB connection and configured VID/PID.', tone: 'neutral' }
     }
@@ -436,7 +491,7 @@ const describeScreenStatus = (status: ScreenHardwareStatus): ScreenStatusPresent
 /** Mirrors `DeviceStatusView` (the deleted Avalonia client's `MainWindow.cs`). Only meaningful for `deviceHasScreen(device)`. */
 export const describeDeviceStatus = (device: Device, screen: ScreenOutput | undefined): ScreenStatusPresentation => {
   if (device.disabled) {
-    return { label: 'Disabled', detail: 'This screen is disabled. Enable it to start output.', tone: 'neutral' }
+    return { label: 'Off', detail: "Sprint isn't sending anything to this screen.", tone: 'neutral' }
   }
 
   const purpose = resolvePurpose(device.purpose)
@@ -444,7 +499,32 @@ export const describeDeviceStatus = (device: Device, screen: ScreenOutput | unde
     return { label: 'Setup needed', detail: 'Select the desktop area to mirror before Sprint starts output.', tone: 'warning' }
   }
 
+  if (isBrowserDisplay(device)) return describeBrowserDisplayStatus(screen?.hardware ?? null)
   return describeScreenStatus(screen?.hardware?.status ?? NO_ACTIVE_OUTPUT_STATUS)
+}
+
+/** "1 page", "2 pages": how many are showing a browser display. */
+export const viewerCount = (viewers: number): string => (viewers === 1 ? '1 page' : `${viewers} pages`)
+
+/**
+ * A browser display's status in its own words: it is served, not plugged in, so "Showing" rather
+ * than "Connected", and its fault is the host's own reason (the port is taken), not a USB one.
+ */
+const describeBrowserDisplayStatus = (hardware: ScreenHardware | null): ScreenStatusPresentation => {
+  switch (hardware?.status.state) {
+    case 'Connected': {
+      const viewers = hardware.viewers ?? 1
+      return { label: 'Showing', detail: `${viewerCount(viewers)} showing this display now.`, tone: 'success' }
+    }
+    case 'WaitingForViewer':
+      return { label: 'Waiting for a viewer', detail: 'Open its address in your VR tool or a browser to show it.', tone: 'info' }
+    case 'Connecting':
+      return { label: 'Starting', detail: 'Sprint is opening its address.', tone: 'info' }
+    case 'Faulted':
+      return { label: "Can't serve it", detail: hardware.status.detail ?? 'Sprint could not open its address.', tone: 'danger' }
+    default:
+      return { label: 'Not served', detail: 'There is no dash for it to show. Create one on the Dashes page.', tone: 'neutral' }
+  }
 }
 
 export const formatFramesPerSecond = (performance: ScreenHardwarePerformance): string =>
@@ -452,37 +532,9 @@ export const formatFramesPerSecond = (performance: ScreenHardwarePerformance): s
 
 export const formatDurationMs = (ms: number | null): string => (ms === null ? '—' : `${ms.toFixed(ms < 10 ? 2 : 1)} ms`)
 
-// ── Live dash preview (device detail + gallery card) ────────────────────────
-
-export type DevicePreviewSource = { layout: DashLayout; pageId?: string; idle: boolean }
-
-/**
- * The dash a device's live preview should render, matching what the hardware actually shows
- * when known. `screens[]` publishes the host's already-resolved layout/page/idle for an active
- * dash output; a device with no active output (disabled, not yet reconciled) falls back to the
- * locally-assigned dash so the preview still has something to show. Returns `null` only when
- * there is no dash to render at all (an empty runtime).
- */
-export const resolveDevicePreview = (
-  device: Device,
-  screen: ScreenOutput | undefined,
-  dashLayouts: readonly DashLayout[],
-): DevicePreviewSource | null => {
-  if (screen?.layout) {
-    return { layout: screen.layout, pageId: screen.pageId.length > 0 ? screen.pageId : undefined, idle: screen.idle }
-  }
-
-  const assigned = dashLayouts.find((layout) => layout.id === device.dashId)
-  const fallback = assigned ?? dashLayouts.find((layout) => layout.default) ?? dashLayouts[0]
-  return fallback ? { layout: fallback, idle: false } : null
-}
-
-// ── Gallery / list view mode (Settings.DevicesUI.ViewMode) ──────────────────
+// ── Tiles / list (Settings.DevicesUI.ViewMode) ──────────────────────────────
 //
-// `settings.update` (RuntimeCoordinator.cs) has no field to persist this choice — it only
-// accepts sidebarCollapsed/updateChannel/driverName/driverNumber — so the view mode is read
-// once from the published settings snapshot as the initial value and then kept in local state
-// only. See the DevicesView report for the missing command field this would need.
+// Persisted through `settings.update`'s `devicesUiViewMode`; the wire name of tiles is "gallery".
 
 export type DevicesViewMode = 'gallery' | 'list'
 
@@ -491,7 +543,119 @@ export const parseDevicesViewMode = (settings: Record<string, unknown>): Devices
   return isRecord(devicesUI) && devicesUI.viewMode === 'list' ? 'list' : 'gallery'
 }
 
-// ── Custom wheel ("Generic" tab) ─────────────────────────────────────────────
+export const buildDevicesViewMode = (mode: DevicesViewMode): SprintCommand => ({ type: 'settings.update', devicesUiViewMode: mode })
+
+// ── Kinds, pictures and the overview filter ─────────────────────────────────
+
+/** How the overview groups devices: anything sold as a wheel (custom wheels too), or a screen. */
+export type DeviceKind = 'wheel' | 'screen'
+
+export const deviceKind = (device: Pick<Device, 'type'>): DeviceKind => (device.type.toLowerCase() === 'wheel' ? 'wheel' : 'screen')
+
+/** The pictures the app ships (src/assets/devices), named after the preset id they belong to. */
+export type DeviceImageKey = 'bavarian-omega-v2-pro' | 'generic-vocore' | 'generic-usbd480' | 'generic-wheel' | 'browser-display'
+
+const PRESET_IMAGES: readonly DeviceImageKey[] = ['bavarian-omega-v2-pro', 'browser-display']
+const isPresetImage = (id: string): id is DeviceImageKey => PRESET_IMAGES.some((key) => key === id)
+
+/**
+ * The picture a device shows: its preset's own, else the generic one for a wheel or for its
+ * screen driver. A device saved before the host recorded `presetId` counts as its preset while
+ * it still carries the preset's name, type and driver. Null when nothing fits.
+ */
+export const deviceImageKey = (device: Device, catalog: readonly CatalogEntry[]): DeviceImageKey | null =>
+  imageKey(
+    device.presetId ||
+      (catalog.find((entry) => entry.name === device.name && entry.type === device.type && entry.driver === device.driver)?.id ?? ''),
+    device,
+  )
+
+/** The picture a catalog entry shows in the Add device dialog — the one the device gets once added. */
+export const catalogImageKey = (entry: CatalogEntry): DeviceImageKey | null => imageKey(entry.id, entry)
+
+const imageKey = (presetId: string, hardware: Pick<Device, 'type' | 'driver'>): DeviceImageKey | null => {
+  if (isPresetImage(presetId)) return presetId
+  if (deviceKind(hardware) === 'wheel') return 'generic-wheel'
+  const driver = hardware.driver.toLowerCase()
+  if (driver === BROWSER_DISPLAY_DRIVER) return 'browser-display'
+  if (driver === 'vocore') return 'generic-vocore'
+  if (driver.includes('usbd')) return 'generic-usbd480'
+  return null
+}
+
+/** The overview's filter chips, one at a time. */
+export type DevicesFilter = 'all' | 'wheel' | 'screen' | 'connected' | 'attention'
+
+/**
+ * A screen that should be working and is not (not found, in use, failing, needs setup). A
+ * device turned off, or one without a screen, never needs attention.
+ */
+export const needsAttention = (device: Device, screen: ScreenOutput | undefined): boolean => {
+  if (device.disabled || !deviceHasScreen(device)) return false
+  const tone = describeDeviceStatus(device, screen).tone
+  return tone !== 'success' && tone !== 'info'
+}
+
+export const matchesDevicesFilter = (filter: DevicesFilter, device: Device, screen: ScreenOutput | undefined): boolean => {
+  switch (filter) {
+    case 'all':
+      return true
+    case 'wheel':
+    case 'screen':
+      return deviceKind(device) === filter
+    case 'connected':
+      return screen?.hardware?.status.isConnected === true && !device.disabled
+    case 'attention':
+      return needsAttention(device, screen)
+  }
+}
+
+/** One quiet line about the hardware: "VoCore · 800 × 480 landscape", or "Buttons only". */
+export const deviceSummary = (device: Device): string => {
+  if (!deviceHasScreen(device)) return 'Buttons only'
+  if (isBrowserDisplay(device)) return `Browser · ${device.width} × ${device.height}`
+  const size = logicalSize(device)
+  return `${driverLabel(device.driver)} · ${size.width} × ${size.height} ${orientationLabel(device.rotation).toLowerCase()}`
+}
+
+const driverLabel = (driver: string): string => (driver.toLowerCase() === 'vocore' ? 'VoCore' : driver.toUpperCase())
+
+// ── Add device dialog ────────────────────────────────────────────────────────
+
+/** The dialog's filters, all applied together. `brand` null means any brand. */
+export type CatalogFilter = { query: string; kind: 'all' | DeviceKind; brand: string | null }
+
+export const NO_CATALOG_FILTER: CatalogFilter = { query: '', kind: 'all', brand: null }
+
+/** The brands the catalog offers, in catalog order. */
+export const catalogBrands = (catalog: readonly CatalogEntry[]): string[] => [...new Set(catalog.map((entry) => entry.brand).filter((brand) => brand !== ''))]
+
+const matchesQuery = (query: string, fields: readonly string[]): boolean => {
+  const needle = query.trim().toLowerCase()
+  return needle === '' || fields.some((field) => field.toLowerCase().includes(needle))
+}
+
+export const matchesCatalogFilter = (filter: CatalogFilter, entry: CatalogEntry): boolean =>
+  (filter.kind === 'all' || deviceKind(entry) === filter.kind) &&
+  (filter.brand === null || entry.brand === filter.brand) &&
+  matchesQuery(filter.query, [entry.name, entry.brand, entry.description])
+
+/** "Your own wheel" is a wheel of no brand, so a brand filter hides it. */
+export const ownWheelMatchesFilter = (filter: CatalogFilter): boolean =>
+  filter.kind !== 'screen' && filter.brand === null && matchesQuery(filter.query, ['Your own wheel', 'custom'])
+
+/** The quiet line under a catalog entry: "VoCore screen · buttons", a screen's size, or that it is read on connect. */
+export const catalogLine = (entry: CatalogEntry): string => {
+  if (deviceKind(entry) === 'wheel') return entry.driver ? `${driverLabel(entry.driver)} screen · buttons` : 'Buttons'
+  if (isBrowserDisplay(entry)) return 'In a browser or VR overlay'
+  return entry.width > 0 && entry.height > 0 ? `${entry.width} × ${entry.height}` : 'Any size, read when it connects'
+}
+
+/** The catalog entries `SprintState.foundDevices` names, once per device plugged in; unknown ids are dropped. */
+export const foundEntries = (found: readonly string[], catalog: readonly CatalogEntry[]): CatalogEntry[] =>
+  found.flatMap((id) => catalog.find((entry) => entry.id === id) ?? [])
+
+// ── Custom wheel ("Your own wheel" in the Add device dialog) ────────────────
 //
 // Hand-mirrored from app/Sprint.Desktop.Core/Features/Devices/CustomWheelBuilder.cs, the same
 // convention as the hardware catalogs above. `devices.addCustom` (RuntimeCoordinator.cs) builds

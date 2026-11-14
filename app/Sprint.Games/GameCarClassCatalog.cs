@@ -40,9 +40,9 @@ public static partial class GameCarClassCatalog
     public static IReadOnlyList<GameCarClass> Classes(string? game, IEnumerable<string> observedRawClasses)
     {
         ArgumentNullException.ThrowIfNull(observedRawClasses);
-        var known = KnownClasses(game);
-        var result = new List<GameCarClass>(known);
-        foreach (var raw in observedRawClasses
+        IReadOnlyList<GameCarClass> known = KnownClasses(game);
+        List<GameCarClass> result = new List<GameCarClass>(known);
+        foreach (string? raw in observedRawClasses
                      .Where(value => !string.IsNullOrWhiteSpace(value))
                      .Distinct(StringComparer.Ordinal)
                      .Order(StringComparer.Ordinal))
@@ -70,21 +70,16 @@ public static partial class GameCarClassCatalog
             || Matches(definition, classId))?.Name
         ?? Humanize(classId);
 
-    private static IReadOnlyList<GameCarClass> KnownClasses(string? game) => IsLeMansUltimate(game)
+    private static IReadOnlyList<GameCarClass> KnownClasses(string? game) => GameNames.IsLeMansUltimate(game)
         ? LeMansUltimateClasses
         : [];
-
-    private static bool IsLeMansUltimate(string? game) =>
-        string.Equals(game, "Le Mans Ultimate", StringComparison.OrdinalIgnoreCase)
-        || string.Equals(game, "LeMansUltimate", StringComparison.OrdinalIgnoreCase)
-        || string.Equals(game, "LMU", StringComparison.OrdinalIgnoreCase);
 
     private static bool Matches(GameCarClass definition, string rawClass) =>
         definition.Aliases.Contains(rawClass, StringComparer.OrdinalIgnoreCase);
 
     private static string Humanize(string raw)
     {
-        var separated = SeparatorRegex().Replace(raw.Trim(), " ");
+        string separated = SeparatorRegex().Replace(raw.Trim(), " ");
         return string.Join(
             ' ',
             separated.Split(' ', StringSplitOptions.RemoveEmptyEntries).Select(word =>

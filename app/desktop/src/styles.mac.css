@@ -104,21 +104,15 @@
   }
 }
 
-:where([data-platform="mac"]) .titlebar-sidebar-toggle,
-:where([data-platform="mac"]) .titlebar-back {
+:where([data-platform="mac"]) .titlebar-sidebar-toggle {
   width: 32px;
   border-radius: var(--radius-pill);
   background: var(--control-fill);
   color: var(--label);
 }
 
-:where([data-platform="mac"]) .titlebar-sidebar-toggle:hover,
-:where([data-platform="mac"]) .titlebar-back:hover:not(:disabled) {
+:where([data-platform="mac"]) .titlebar-sidebar-toggle:hover {
   background: var(--control-fill-hover);
-}
-
-:where([data-platform="mac"]) .titlebar-back:disabled {
-  background: transparent;
 }
 
 :where([data-platform="mac"]) .titlebar-title {
@@ -421,12 +415,6 @@
   color: inherit;
 }
 
-/* Home's telemetry bar is informational and not actionable: the toolbar indicator says it
-   (HIG: an indicator, not a banner, as Mail's offline state). Help & diagnostics keeps it. */
-:where([data-platform="mac"]) .overview > .telemetry-infobar {
-  display: none;
-}
-
 /* ── Glass: menus, command palette, notifications, dialogs ───────────────── */
 
 :where([data-platform="mac"]) .menu-flyout,
@@ -505,12 +493,26 @@
   border-radius: var(--radius-pill);
 }
 
-/* Dialog: a glass alert. */
+/* Dialog: a glass alert (its 16px corner is macos.css's --radius-dialog). */
 :where([data-platform="mac"]) .content-dialog {
-  border-radius: 16px;
   box-shadow: var(--shadow-dialog);
 }
 
 :where([data-platform="mac"]) .content-dialog-title {
   font: 700 17px/22px var(--font-display);
+}
+
+/* Dash designer window: the traffic lights sit at its top left (electron/main.ts
+   TRAFFIC_LIGHT_POSITION), so the name pill starts after them. */
+:where([data-platform="mac"]) .designer-pill {
+  left: 88px;
+}
+
+/* ── Debug window (debug/DebugWindow.tsx, dev runs only) ─────────────────────
+   Its bar is the window's title bar: the toolbar's height, and the traffic lights keep their band.
+   Two classes deep, because the window's own CSS lands after this file. */
+
+:where([data-platform="mac"]) .debug-root > .debug-bar {
+  height: 52px;
+  padding-left: 88px;
 }

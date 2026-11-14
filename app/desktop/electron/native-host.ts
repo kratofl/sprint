@@ -2,7 +2,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
 import { createInterface } from 'node:readline'
 import { once } from 'node:events'
-import { isRecord, type PixelFrame } from './frames.js'
+import { isRecord } from './frames.js'
 
 export class NativeHost {
   private readonly token = randomBytes(32).toString('hex')
@@ -12,7 +12,10 @@ export class NativeHost {
   async start(command: string, args: string[], cwd: string): Promise<void> {
     const child = spawn(command, args, {
       cwd, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'],
-      env: { ...process.env, SPRINT_DESKTOP_TOKEN: this.token },
+      // The host stops by itself once this process is gone, however it went: in dev `child` is
+      // `dotnet run`, and killing it, or Electron dying, would otherwise leave the host holding
+      // the wheel screen.
+      env: { ...process.env, SPRINT_DESKTOP_TOKEN: this.token, SPRINT_DESKTOP_PARENT_PID: String(process.pid) },
     })
     this.child = child
     child.stderr.on('data', (data: Buffer) => process.stderr.write(data))
@@ -50,6 +53,25 @@ export class NativeHost {
     return this.json(`/api/analysis/trace/${encodeURIComponent(sessionId)}/${encodeURIComponent(String(lapNumber))}`)
   }
 
+  /**
+   * The game's setups. The first call after launch reads every setup file the game stores —
+   * hundreds — so it gets a minute rather than the default bound; later calls read only changes.
+   */
+  async setups(): Promise<unknown> {
+    return this.json('/api/setups', undefined, 60_000)
+  }
+
+  /** One setup's values, as the file holds them now or as `version` held them. */
+  async setupSheet(id: string, version: string | null): Promise<unknown> {
+    const query = new URLSearchParams({ id })
+    if (version) query.set('version', version)
+    return this.json(`/api/setups/sheet?${query.toString()}`, undefined, 60_000)
+  }
+
+  async setupDriven(id: string): Promise<unknown> {
+    return this.json(`/api/setups/driven?${new URLSearchParams({ id }).toString()}`, undefined, 60_000)
+  }
+
   async diagnosticsLogs(minLevel: string, text: string): Promise<unknown> {
     const query = new URLSearchParams()
     if (minLevel) query.set('minLevel', minLevel)
@@ -58,9 +80,19 @@ export class NativeHost {
     return this.json(`/api/diagnostics/logs${suffix}`)
   }
 
-  /** The New plan dialog's prefill and recorded game/car/track choices; reads every lap-history file's context. */
+  /** The plan dialogs' prefill, recorded game/car/track choices and Quick plan's detection; reads every lap-history file's context. */
   async planContext(): Promise<unknown> {
     return this.json('/api/planner/context', undefined, 30_000)
+  }
+
+  /** What a plan's targets can be, from its car and track's lap history; reads every lap-history file. */
+  async planTargets(planId: string): Promise<unknown> {
+    return this.json(`/api/planner/targets?planId=${encodeURIComponent(planId)}`, undefined, 30_000)
+  }
+
+  /** The plan dialogs' fuel calculator: the lap history for a car and track, and the race from what is typed. */
+  async planFuelEstimate(request: Record<string, unknown>): Promise<unknown> {
+    return this.json('/api/planner/fuel-estimate', { method: 'POST', body: JSON.stringify(request), headers: { 'content-type': 'application/json' } }, 30_000)
   }
 
   /**
@@ -133,56 +165,34 @@ export class NativeHost {
     await this.request('/api/account/sign-out', { method: 'POST' })
   }
 
-  async checkUpdates(force: boolean): Promise<unknown> {
-    return this.json(`/api/updates/check?force=${force ? 'true' : 'false'}`, { method: 'POST' })
-  }
-
-  /**
-   * Downloads and stages a release, then launches the self-replace helper (see
-   * `Program.cs`'s `POST /api/updates/install`). A download can take a while on a slow
-   * connection, so this gets a far more generous bound than the default 5s request
-   * timeout; `signal` lets the caller still abort earlier if it wants to.
-   */
-  async installUpdate(target: { pid: number; installDir: string; exeName: string }, signal?: AbortSignal): Promise<unknown> {
-    return this.json(
-      '/api/updates/install',
-      { method: 'POST', body: JSON.stringify(target), headers: { 'content-type': 'application/json' }, signal },
-      5 * 60_000,
-    )
-  }
   async telemetry(): Promise<unknown> { return this.json('/api/telemetry') }
 
-  /**
-   * The driving guide's pose feed: newline-delimited JSON for as long as `signal` stays open.
-   * No timeout; the caller owns the stream's lifetime.
-   */
-  async guideStream(signal: AbortSignal): Promise<ReadableStream<Uint8Array>> {
-    if (!this.address) throw new Error('Native runtime is not ready.')
-    const response = await fetch(`${this.address}/api/guide/stream`, { headers: { authorization: `Bearer ${this.token}` }, signal })
-    if (!response.ok || !response.body) throw new Error(`Runtime ${response.status} on the guide stream.`)
-    return response.body
+  /** A lap of the linked driver's, gathered on this (the engineer's) PC; too large for the polled state. */
+  async pitWallTrace(lap: 'current' | 'last' | 'best' | 'target'): Promise<unknown> {
+    return this.json(`/api/pitwall/trace?lap=${lap}`)
   }
+
+  /** `GET /api/debug`, the dev debug window's snapshot; a Debug host only (a Release one answers 404). */
+  async debug(): Promise<unknown> { return this.json('/api/debug', undefined, 2000) }
+
+  /** The training HUD's newest snapshot, or null when there is no lap to train against. */
+  async compareFrame(): Promise<unknown> { return this.json('/api/compare/frame', undefined, 2000) }
+
+  /** Where each training HUD window opens on these displays (primary first). */
+  async hudWindows(displays: readonly { x: number; y: number; width: number; height: number }[]): Promise<unknown> {
+    return this.json('/api/compare/hud/windows', { method: 'POST', body: JSON.stringify({ screens: displays }), headers: { 'content-type': 'application/json' } })
+  }
+
   async command(command: unknown): Promise<unknown> {
     if (!isRecord(command) || typeof command.type !== 'string') throw new Error('A typed command is required.')
     return this.json('/api/commands', { method: 'POST', body: JSON.stringify(command), headers: { 'content-type': 'application/json' } })
-  }
-
-  async frame(deviceId: string, frame: PixelFrame, signal: AbortSignal): Promise<void> {
-    await this.request(`/api/screens/${encodeURIComponent(deviceId)}/frame`, {
-      method: 'POST', body: frame.bytes, signal,
-      headers: {
-        'content-type': 'application/octet-stream',
-        'x-frame-width': String(frame.width), 'x-frame-height': String(frame.height),
-        'x-frame-sequence': String(frame.sequence),
-      },
-    })
   }
 
   /**
    * A lap as `.sprintlap` bytes, or the host's reason it cannot be shared (a lap with only a
    * time, one that was deleted). The filename is a suggestion for the save dialog.
    */
-  async lapFile(sessionId: string, lapNumber: number): Promise<{ ok: true; bytes: Uint8Array; fileName: string; hasPositions: boolean } | { ok: false; error: string }> {
+  async lapFile(sessionId: string, lapNumber: number): Promise<{ ok: true; bytes: Uint8Array; fileName: string } | { ok: false; error: string }> {
     if (!this.address) throw new Error('Native runtime is not ready.')
     const response = await fetch(`${this.address}/api/laps/${encodeURIComponent(sessionId)}/${encodeURIComponent(String(lapNumber))}/file`, {
       headers: { authorization: `Bearer ${this.token}` },
@@ -196,8 +206,12 @@ export class NativeHost {
       ok: true,
       bytes: new Uint8Array(await response.arrayBuffer()),
       fileName: decodeURIComponent(response.headers.get('x-lap-filename') ?? 'lap.sprintlap'),
-      hasPositions: response.headers.get('x-lap-has-positions') === 'true',
     }
+  }
+
+  /** Reads a `.sprintlap` without filing it: what it holds and whether it is already here, or why it cannot be read. */
+  async previewLap(bytes: Uint8Array<ArrayBuffer>): Promise<unknown> {
+    return this.json('/api/laps/import/preview', { method: 'POST', body: bytes, headers: { 'content-type': 'application/octet-stream' } }, 60_000)
   }
 
   /** Files a `.sprintlap` into the corpus; the host answers with what it was, or why not. */

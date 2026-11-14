@@ -69,18 +69,16 @@ short, current, and tool-agnostic. Deeper material lives in `docs/` (index:
 ## Repo Layout
 
 - `app/desktop/`: the desktop app — Electron main process + a Vite/React
-  renderer. Owns windows, the frameless title bar, native-host lifetime, and one
-  offscreen browser per active dash output.
+  renderer. Owns windows, the frameless title bar and native-host lifetime. It
+  never draws the wheel.
 - `app/Sprint.Desktop.Host/`: headless .NET host the desktop app launches as a
-  child process. Loopback HTTP with a per-launch bearer token; ships the presets.
+  child process. Loopback HTTP with a per-launch bearer token; ships the presets;
+  draws the wheel screens and serves browser displays.
 - `app/Sprint.Desktop.Core/`: all native desktop logic — runtime persistence,
   telemetry engine, session planning, analysis, dash layout model, devices,
   hardware/USB, input, diagnostics, updates.
 - `app/Sprint.Desktop.Api`, `app/Sprint.Contracts`, `app/Sprint.Games`: shared
   contracts and game adapters (see Source Of Truth).
-- `app/Sprint.OpenXrLayer/`: the driving guide's OpenXR API layer, a native
-  Windows DLL that draws into the headset. Reads the host's shared memory
-  (`docs/internals/driving-guide.md`).
 - There is no native desktop UI. The Avalonia app and the Go/Wails app before it
   are both retired — do not reintroduce either.
 - `api/`: .NET 10 (ASP.NET Core + HotChocolate) GraphQL API server. Persists to
@@ -89,8 +87,11 @@ short, current, and tool-agnostic. Deeper material lives in `docs/` (index:
 - `packages/types/`: shared TypeScript contracts.
 - `packages/tokens/`: design tokens — `desktop.css` (desktop, the brand look),
   `macos.css` (desktop on macOS, overlaid on `desktop.css`) and `web.css` (web).
-- `packages/dashboard/`: the HTML/CSS/SVG dash renderer. One component drives
-  the editor preview, the on-screen display, and the USB panel output.
+- `packages/dashboard/renderer/`: the dash renderer, a Rust crate. It draws every
+  dash picture: natively in the host for USB screens, as WebAssembly for the
+  editor, dash stills and browser displays.
+- `packages/dashboard/`: the editor's side of the dash and `DashCanvas`, which
+  draws through the WebAssembly build.
 
 ## Source Of Truth
 
@@ -107,11 +108,13 @@ short, current, and tool-agnostic. Deeper material lives in `docs/` (index:
 - `app/Sprint.Desktop.Core/RuntimeCoordinator.cs`: the command surface the desktop
   UI drives. Every user action is a validated command here; the host serves it.
 - `app/Sprint.Desktop.Host/Program.cs`: the HTTP surface (`/api/state`,
-  `/api/commands`, frame intake, traces, logs, update checks).
+  `/api/commands`, traces, logs). Self-update lives in Electron
+  (`app/desktop/electron/updates.ts`).
 - `app/desktop/src/bridge.ts`: the renderer's only data access. Narrows host
   JSON once; views never fetch.
-- `packages/dashboard`: dash widget catalog, bindings, formatting, palette,
-  alert types. The desktop editor reads these; it keeps no copies.
+- `packages/dashboard/renderer`: everything that decides dash pixels (bindings,
+  formatting, widgets, chrome, alerts). `packages/dashboard` keeps only what the
+  editor reads: widget type list, palette, alert types, grid math, groups.
 
 ## Platform
 
@@ -122,8 +125,12 @@ short, current, and tool-agnostic. Deeper material lives in `docs/` (index:
   shells or name the one they need.
 - The product is Windows-only where it touches the game or hardware: LMU
   telemetry, USB screens, raw input, desktop capture, the HUD overlay and the
-  self-update script. On macOS the host builds, tests and runs; telemetry and
+  installer and self-update. On macOS the host builds, tests and runs; telemetry and
   USB screens report `Unsupported`. See `docs/operations/development.md`.
+- Building the host or the desktop app needs the Rust toolchain (rustup) with
+  the `wasm32-unknown-unknown` target and the native target of the process the
+  host builds as (`i686-pc-windows-msvc` under the x86 SDK below). See
+  `docs/operations/development.md#rust-toolchain`.
 - Do not set NuGet/dotnet caches to repo-local paths. Use the normal user-level caches.
 - Windows only: if `dotnet` resolves to `C:\Program Files\dotnet\dotnet.exe` and
   reports no SDKs, use the installed x86 SDK at
@@ -136,7 +143,18 @@ short, current, and tool-agnostic. Deeper material lives in `docs/` (index:
 - Start API: `make dev-api`
 - Start web: `make dev-web`
 - Start desktop: `make dev-app` (Vite + Electron; Electron launches the native host)
+- An agent's own run of the app, hidden and on fresh data: `make agent-app` (`DATA=<dir>` copies
+  data in, `FILE=<recording>` replays telemetry); drive it with `app/desktop/scripts/cdp.mjs`, stop
+  it with `node app/desktop/scripts/agent-app.mjs stop <run folder>`
+- Smoke test the real app (CI runs it on Windows): `make smoke-app` — hidden run on a replayed
+  race, every sidebar page, fails on any uncaught exception or console error
 - Start the native host alone: `make dev-host` (no UI)
+- Dev runs keep their data in the checkout's `app/desktop/.dev/data`, never the
+  installed app's; wipe it with `make reset-dev-data`
+- Record a driven session: `make record-app` (every telemetry frame, one file per
+  session, into `app/recordings`, committed through Git LFS, no real names). Run
+  the app on one instead of the game, looping: `make replay-app FILE=<recording>`
+  (Debug builds only)
 - Build API: `make build-api`
 - Build web: `make build-web`
 - Build desktop: `make build-app`
@@ -153,8 +171,12 @@ short, current, and tool-agnostic. Deeper material lives in `docs/` (index:
 - Preview / screenshot a desktop view without the app or host (from `app/desktop`):
   `node scripts/preview/build-preview.mjs`, then
   `node scripts/preview/screenshot.mjs --view Devices --theme dark --out <abs.png>`
-- Type-check / test the dash renderer: `pnpm --filter @sprint/dashboard type-check`,
+- Type-check / test the dashboard package: `pnpm --filter @sprint/dashboard type-check`,
   `pnpm --filter @sprint/dashboard test`
+- The dash renderer crate, from `packages/dashboard/renderer`: `cargo test`,
+  `cargo clippy --all-targets -- -D warnings`, `cargo fmt --check`; render a dash
+  to a PNG with `cargo run --release --example render -- --dash <layout.json> <out.png>`
+  (`--page <id>`, `--style panels|grid|bars`, `--size 800x480`)
 - Native host tests: `dotnet test app/Sprint.Desktop.Host/Tests/Sprint.Desktop.Host.Tests.csproj`
 - Lint: `make lint`
 - Format: `make fmt`
@@ -162,8 +184,9 @@ short, current, and tool-agnostic. Deeper material lives in `docs/` (index:
 Run the smallest relevant checks for your change set. Do not claim checks you
 did not run.
 
-`make lint-app` builds the desktop solution with warnings as errors and
-type-checks both desktop TypeScript packages.
+`make lint-app` builds the desktop solution with warnings as errors, runs clippy
+and rustfmt on the renderer crate and type-checks both desktop TypeScript
+packages; `make test-app` runs the crate's tests with the others.
 
 ## Browser And Desktop Checks
 
@@ -173,16 +196,35 @@ type-checks both desktop TypeScript packages.
   stubbed `window.sprint` (real or sample state), light or dark, in the Windows
   or the macOS look (`platform=mac`), and screenshots it with Electron (see its
   `README.md`).
-- For dash rendering changes, render a preset with
-  `packages/dashboard/scripts/render-check.tsx` at the panel size, screenshot it,
-  and check it against `docs/internals/dash-rendering.md`: layout, alignment,
-  clip direction, weights and colour — not the telemetry values.
+- For dash rendering changes, render a preset with the crate's `--dash` example
+  at the panel size, look at the PNG and check it against
+  `docs/internals/dash-rendering.md`: layout, alignment, clip direction, weights
+  and colour — not the telemetry values.
 - Before calling desktop UI work done, run the `test-sprint-desktop` skill
   (`.agents/skills/test-sprint-desktop/`). Real-app traps are in
   `docs/operations/development.md`.
 - Launching the full app (`make dev-app`) starts Electron, Vite and the .NET host.
   Say so before running it, and make sure every one of those processes is gone
   afterwards.
+
+## Review
+
+Agent review is cheap, but every round costs a commit, a re-check and usually
+more code. Review should converge, not just find more.
+
+- Before opening a PR, have the diff reviewed in a fresh context (a new agent,
+  not the one that wrote it) for bugs and for simplification, and fix what holds
+  up.
+- For each finding, decide one thing: can it be ignored? Fix real defects; drop
+  style-only and taste findings, and anything about code the change did not
+  touch (note it instead).
+- After the first round, review only the new diff. Never raise a finding again
+  once it was fixed or dismissed with a reason.
+- After three rounds, stop fixing and step back: the approach is likely wrong.
+  Say so rather than starting a fourth.
+- When an agent keeps making the same mistake, fix it at the source, in this
+  order: the code (structure that makes the mistake hard), then a check (type,
+  analyzer, lint, test), and only if both fail, a line here or in a skill.
 
 ## Module Boundaries
 
@@ -201,9 +243,11 @@ type-checks both desktop TypeScript packages.
   `send(command)`; they hold local UI state (selection, drafts, open dialogs) but
   no business rules, and they never fetch. State arrives from one subscription
   in `App.tsx`.
-- `packages/dashboard` is host-independent. It renders at an explicit pixel size
-  (no viewport units), with HTML/CSS/SVG only (no canvas), and no continuously
-  repainting animation — its output is captured and pushed to USB hardware.
+- `packages/dashboard/renderer` is host-independent and pure: explicit pixel
+  geometry, no clock (time comes in as `now_ms`), no I/O, and no continuously
+  repainting animation — its output is pushed to USB hardware. Its C ABI
+  (`src/ffi.rs`) is the only way in, for the host and the WebAssembly glue alike.
+  `packages/dashboard` draws only through that WebAssembly build.
 - `app/Sprint.Desktop.Tests` owns behaviour tests at stable seams: contracts,
   runtime persistence, LMU parsing/mapping/source, telemetry engine, dash layout
   model, hardware fakes/RGB565, input binding, updates, session planning and
@@ -222,9 +266,13 @@ type-checks both desktop TypeScript packages.
   behaviour, a validated `RuntimeCoordinator` command (or a focused host endpoint
   for large or async payloads), then the view that sends it. A button whose
   command the host does not handle is a bug, not a placeholder.
-- The frame path is telemetry → dash DOM → Electron offscreen paint → raw BGRA →
-  host → RGB565 → USB. No PNG/JPEG/base64 on that path; a busy consumer keeps
-  only the latest frame.
+- The wheel frame path is telemetry → host → Rust renderer on the screen's
+  publisher thread → RGB565 → USB. Nothing on it goes through Electron, HTTP or
+  the app's state poll; no PNG/JPEG/base64; a busy consumer keeps only the latest
+  frame. A browser display gets the same scene from the host and draws it with
+  the WebAssembly build. The renderer reads the host's telemetry JSON, not the
+  `@sprint/types` mirror; `packages/dashboard/renderer/tests/fixtures/host-frame.json`
+  pins the names (see `docs/internals/dash-rendering.md`).
 - Enums cross the wire as names. When a host enum gains a member, the matching
   TypeScript union in `app/desktop/src/bridge.ts` must gain it too.
 
@@ -236,8 +284,8 @@ type-checks both desktop TypeScript packages.
   app's system: full-height 224px sidebar with the Sprint mark (a 56px icon rail
   when collapsed), a 48px toolbar
   carrying the page title and actions (the OS caption buttons at its right end),
-  hairline-edged cards on a calm canvas, flat fills, glass only on small floating
-  layers, 6px controls, 10px cards, bundled Figtree; tokens
+  hairline-edged cards on a calm canvas over the web's light trails (glass sidebar and
+  toolbar), flat fills, otherwise glass only on small floating layers, 6px controls, 10px cards, bundled Figtree; tokens
   `@sprint/tokens/desktop.css`. On macOS it wears the native look (macOS 27
   HIG): the same layout on a translucent sidebar, a 52px toolbar, 8px buttons,
   14px cards, tokens `@sprint/tokens/macos.css` overlaid on `desktop.css` under
@@ -275,6 +323,16 @@ type-checks both desktop TypeScript packages.
 - `packages/dashboard` is hardware output, not app UI; it keeps its own palette.
 - Keep screens dense, scannable, keyboard-operable, and explicit about focus,
   hover, selected, disabled, loading, empty, and destructive states.
+- A design mockup is always three options, A, B and C, in the real design
+  system, shown where it will live. Desktop: build them as components in
+  `app/desktop/src/mockups/` and shoot them with
+  `node scripts/preview/mockup.mjs <name>`, which renders each option inside the
+  real app shell (or its window) in light and dark and writes a sheet for
+  `html_render` (`app/desktop/scripts/preview/README.md` → Design mockups). Web:
+  `web/mockups/<name>.tsx` from `web/components/ui` and `web/components/app`, shot
+  with `node scripts/mockup.mjs <name>` from `web/`, inside the real web shell,
+  wide and at phone width (`web/mockups/README.md`). Never a hand-drawn look with
+  its own CSS.
 
 ### Typography
 
@@ -288,15 +346,14 @@ second opinion. If the two ever disagree, `docs/design/DESIGN.md` wins.
   titles, 11px semibold column heads.
 - Web UI is the bundled Figtree on every platform (`--font-sans` in
   `web/app/globals.css`); the sign-in page keeps its own stack.
-- Inter is **not** an app UI face. The desktop bundles and declares it in
-  `app/desktop/src/styles.css` only because the dash renderer names it for
-  wheel labels.
-- Saira Semi Condensed is used **only** for numeric values on the rendered wheel
-  instrument.
+- Inter (wheel labels) and Saira Semi Condensed (wheel numerics) are dash faces,
+  **not** app UI faces. They are compiled into the renderer from
+  `packages/dashboard/renderer/fonts/`; the desktop app does not declare them.
 - Brand lettering is artwork, not a font choice.
 - Continuously changing values use tabular figures (`.tabular`).
-- The dash faces live in `app/desktop/src/fonts/`; without their `@font-face`
-  rules every dash readout silently falls back to `system-ui`.
+- Ratios measured from the dash faces are constants in the renderer
+  (`text.rs`, `primitives.rs`); replacing a face file without re-measuring them
+  silently moves value sizing, clipping and the "fit" squeeze.
 
 ## Docs
 

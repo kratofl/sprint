@@ -4,144 +4,110 @@ using Xunit;
 namespace Sprint.Desktop.Tests;
 
 /// <summary>
-/// Acceptance-criteria tests for trace retention (#194). Traces are written for every valid
-/// lap, so the corpus is bounded by a disk budget rather than by refusing to record. What the
-/// budget must never delete is a reference lap.
+/// Trace retention (#194). Traces are written for every lap and kept for good: nothing is
+/// deleted for size, and for age only once the driver opts into a limit. What a limit must never
+/// delete is a reference lap.
 /// </summary>
 public sealed class LapTraceRetentionTests
 {
     private static readonly DateTimeOffset Now = new(2026, 8, 2, 12, 0, 0, TimeSpan.Zero);
+    private static readonly DateTimeOffset LongAgo = Now.AddDays(-200);
 
     [Fact]
-    public void NothingIsPrunedWhileTheCorpusIsInsideItsBudget()
+    public void WithoutAnAgeLimitEveryTraceStaysHoweverOldOrLargeTheCorpusIs()
     {
-        var (traces, history) = Corpus(lapCount: 5);
+        (FakeTraceStore? traces, FakeHistoryStore? history) = Corpus(lapCount: 5, sessionStartedAt: Now.AddYears(-6));
+        foreach (string id in traces.All.Keys.ToList())
+        {
+            traces.All[id] = 50L * 1024 * 1024 * 1024;
+        }
 
-        var result = Retention(traces, history).Prune(Budget(maxTotalBytes: 10_000), Now);
+        LapTracePruneResult result = Retention(traces, history).Prune(Budget(), Now);
 
         Assert.Equal(0, result.Deleted);
         Assert.Equal(5, traces.All.Count);
+        Assert.Empty(history.Rewritten);
     }
 
     [Fact]
-    public void TheOldestUnprotectedTracesGoUntilTheBudgetIsMet()
+    public void TracesPastTheAgeLimitGoOnceTheDriverSetsOne()
     {
-        // Five traces of 100 bytes; a 250-byte budget leaves room for two.
-        var (traces, history) = Corpus(lapCount: 5);
+        (FakeTraceStore? traces, FakeHistoryStore? history) = Corpus(lapCount: 5, sessionStartedAt: LongAgo);
 
-        var result = Retention(traces, history)
-            .Prune(Budget(maxTotalBytes: 250, protectedPerContext: 1), Now);
+        LapTracePruneResult result = Retention(traces, history)
+            .Prune(Budget(protectedPerContext: 1, maxAgeDays: 90), Now);
 
-        // Through the interface: TotalBytes is a default interface member, so the fake's own
-        // type does not expose it.
-        Assert.True(((ILapTraceStore)traces).TotalBytes() <= 250);
-        Assert.True(result.Deleted > 0);
-        Assert.Equal(result.Deleted * 100, result.BytesFreed);
-    }
-
-    [Fact]
-    public void TheBestLapsPerContextAreNeverPruned()
-    {
-        // Lap 1 is both the fastest and the oldest, so oldest-first must not reach it.
-        var (traces, history) = Corpus(lapCount: 5);
-
-        Retention(traces, history).Prune(Budget(maxTotalBytes: 100, protectedPerContext: 1), Now);
-
+        // Protection outranks age: the reference lap survives even at 200 days old.
+        Assert.Single(traces.All);
         Assert.True(traces.All.ContainsKey(LapTraceId.For("hs-1", 1)));
+        Assert.Equal(4, result.Deleted);
+        Assert.Equal(400, result.BytesFreed);
     }
 
     [Fact]
     public void ProtectionIsPerContextSoASecondTrackKeepsItsOwnBest()
     {
-        var traces = new FakeTraceStore();
-        var history = new FakeHistoryStore();
-        history.Saved.Add(Session("hs-spa", "Spa-Francorchamps", traces, lapCount: 3));
-        history.Saved.Add(Session("hs-lm", "Le Mans", traces, lapCount: 3));
+        FakeTraceStore traces = new FakeTraceStore();
+        FakeHistoryStore history = new FakeHistoryStore();
+        history.Saved.Add(Session("hs-spa", "Spa-Francorchamps", traces, lapCount: 3, LongAgo));
+        history.Saved.Add(Session("hs-lm", "Le Mans", traces, lapCount: 3, LongAgo));
 
-        Retention(traces, history).Prune(Budget(maxTotalBytes: 200, protectedPerContext: 1), Now);
+        Retention(traces, history).Prune(Budget(protectedPerContext: 1, maxAgeDays: 90), Now);
 
-        Assert.True(traces.All.ContainsKey(LapTraceId.For("hs-spa", 1)));
-        Assert.True(traces.All.ContainsKey(LapTraceId.For("hs-lm", 1)));
+        Assert.Equal(
+            [LapTraceId.For("hs-lm", 1), LapTraceId.For("hs-spa", 1)],
+            traces.All.Keys.Order(StringComparer.Ordinal));
     }
 
     [Fact]
     public void AnInvalidLapIsNeverWhatProtectionSpendsItselfOn()
     {
-        var traces = new FakeTraceStore();
-        var history = new FakeHistoryStore();
-        var session = Session("hs-1", "Spa-Francorchamps", traces, lapCount: 3);
+        FakeTraceStore traces = new FakeTraceStore();
+        FakeHistoryStore history = new FakeHistoryStore();
+        LapHistorySession session = Session("hs-1", "Spa-Francorchamps", traces, lapCount: 3, LongAgo);
         // The fastest of the three is invalid — a lap set by cutting a corner is not a
         // reference lap, and it must not occupy the one protection slot.
         session.Laps[0].IsValid = false;
         history.Saved.Add(session);
 
-        Retention(traces, history).Prune(Budget(maxTotalBytes: 100, protectedPerContext: 1), Now);
+        Retention(traces, history).Prune(Budget(protectedPerContext: 1, maxAgeDays: 90), Now);
 
         Assert.False(traces.All.ContainsKey(LapTraceId.For("hs-1", 1)));
         Assert.True(traces.All.ContainsKey(LapTraceId.For("hs-1", 2)));
     }
 
     [Fact]
-    public void PruningALapClearsItsPointerSoTheStoredTierNeverLies()
+    public void ALapThatLosesItsTraceKeepsItsReferenceCurveAndSaysItHasNoTrace()
     {
-        var (traces, history) = Corpus(lapCount: 5);
+        (FakeTraceStore? traces, FakeHistoryStore? history) = Corpus(lapCount: 5, sessionStartedAt: LongAgo);
 
-        Retention(traces, history).Prune(Budget(maxTotalBytes: 100, protectedPerContext: 1), Now);
+        Retention(traces, history).Prune(Budget(protectedPerContext: 1, maxAgeDays: 90), Now);
 
-        foreach (var lap in history.Saved.SelectMany(session => session.Laps))
-        {
-            Assert.Equal(
-                lap.HasChannelTrace,
-                lap.TraceId is not null && traces.All.ContainsKey(lap.TraceId));
-        }
+        List<LapHistoryRecord> laps = history.Saved.SelectMany(session => session.Laps).ToList();
+        Assert.All(laps, lap => Assert.Equal(
+            lap.HasChannelTrace,
+            lap.TraceId is not null && traces.All.ContainsKey(lap.TraceId)));
+        Assert.Equal(4, laps.Count(lap => !lap.HasChannelTrace));
+        Assert.All(laps, lap => Assert.True(lap.HasReferenceCurve));
     }
 
     [Fact]
-    public void APrunedLapDegradesToTheReferenceCurveTierRatherThanVanishing()
+    public void ATraceNoLapPointsAtIsDeletedWhateverTheAgeLimit()
     {
-        var (traces, history) = Corpus(lapCount: 5);
-
-        Retention(traces, history).Prune(Budget(maxTotalBytes: 100, protectedPerContext: 1), Now);
-
-        var pruned = history.Saved
-            .SelectMany(session => session.Laps)
-            .Where(lap => !lap.HasChannelTrace)
-            .ToList();
-
-        Assert.NotEmpty(pruned);
-        Assert.All(pruned, lap => Assert.True(lap.HasReferenceCurve));
-    }
-
-    [Fact]
-    public void OrphanTracesAreDeletedBeforeAnyLapLosesItsOwn()
-    {
-        var (traces, history) = Corpus(lapCount: 2);
+        (FakeTraceStore? traces, FakeHistoryStore? history) = Corpus(lapCount: 2);
         // No lap points at this one, so no reader can ever reach it: pure cost.
         traces.All["hs-gone-9"] = 100;
 
-        Retention(traces, history).Prune(Budget(maxTotalBytes: 200, protectedPerContext: 1), Now);
+        Retention(traces, history).Prune(Budget(), Now);
 
         Assert.False(traces.All.ContainsKey("hs-gone-9"));
         Assert.Equal(2, traces.All.Count);
     }
 
     [Fact]
-    public void TracesPastTheAgeLimitGoEvenWhenTheBudgetHasRoom()
-    {
-        var (traces, history) = Corpus(lapCount: 5, sessionStartedAt: Now.AddDays(-200));
-
-        Retention(traces, history)
-            .Prune(Budget(maxTotalBytes: long.MaxValue, protectedPerContext: 1, maxAgeDays: 90), Now);
-
-        // Protection outranks age: the reference lap survives even at 200 days old.
-        Assert.Single(traces.All);
-        Assert.True(traces.All.ContainsKey(LapTraceId.For("hs-1", 1)));
-    }
-
-    [Fact]
     public void AnEmptyCorpusPrunesToNothingWithoutFailing()
     {
-        var result = Retention(new FakeTraceStore(), new FakeHistoryStore()).Prune(Budget(), Now);
+        LapTracePruneResult result = Retention(new FakeTraceStore(), new FakeHistoryStore()).Prune(Budget(maxAgeDays: 90), Now);
 
         Assert.Equal(0, result.Deleted);
         Assert.Equal(0, result.BytesFreed);
@@ -152,40 +118,37 @@ public sealed class LapTraceRetentionTests
     {
         // Pruning rewrites history documents to clear pointers; rewriting one that lost
         // nothing would be disk churn on every start.
-        var traces = new FakeTraceStore();
-        var history = new FakeHistoryStore();
-        history.Saved.Add(Session("hs-1", "Spa-Francorchamps", traces, lapCount: 4));
-        history.Saved.Add(Session("hs-2", "Le Mans", traces, lapCount: 1));
+        FakeTraceStore traces = new FakeTraceStore();
+        FakeHistoryStore history = new FakeHistoryStore();
+        history.Saved.Add(Session("hs-old", "Spa-Francorchamps", traces, lapCount: 4, LongAgo));
+        history.Saved.Add(Session("hs-new", "Spa-Francorchamps", traces, lapCount: 3));
 
-        Retention(traces, history).Prune(Budget(maxTotalBytes: 200, protectedPerContext: 1), Now);
+        Retention(traces, history).Prune(Budget(protectedPerContext: 1, maxAgeDays: 90), Now);
 
-        // hs-2's single lap is its context's best, so it is protected and untouched.
-        Assert.DoesNotContain("hs-2", history.Rewritten);
-        Assert.Contains("hs-1", history.Rewritten);
+        Assert.Equal(["hs-old"], history.Rewritten);
+        Assert.Equal(3, traces.All.Keys.Count(id => id.StartsWith("hs-new", StringComparison.Ordinal)));
     }
 
     private static LapTraceRetention Retention(ILapTraceStore traces, ILapHistoryStore history) =>
         new(traces, history);
 
     private static LapTraceBudget Budget(
-        long maxTotalBytes = long.MaxValue,
         int protectedPerContext = 3,
-        int? maxAgeDays = null) => new(maxTotalBytes, protectedPerContext, maxAgeDays);
+        int? maxAgeDays = null) => new(protectedPerContext, maxAgeDays);
 
     private static (FakeTraceStore Traces, FakeHistoryStore History) Corpus(
         int lapCount,
         DateTimeOffset? sessionStartedAt = null)
     {
-        var traces = new FakeTraceStore();
-        var history = new FakeHistoryStore();
+        FakeTraceStore traces = new FakeTraceStore();
+        FakeHistoryStore history = new FakeHistoryStore();
         history.Saved.Add(Session("hs-1", "Spa-Francorchamps", traces, lapCount, sessionStartedAt));
         return (traces, history);
     }
 
     /// <summary>
     /// One session of <paramref name="lapCount"/> laps, each with a 100-byte trace and a
-    /// reference curve. Lap 1 is the fastest and lap N the slowest, so "oldest" and "best"
-    /// point at the same lap and protection has to win against oldest-first.
+    /// reference curve. Lap 1 is the fastest and lap N the slowest.
     /// </summary>
     private static LapHistorySession Session(
         string id,
@@ -194,7 +157,7 @@ public sealed class LapTraceRetentionTests
         int lapCount,
         DateTimeOffset? startedAt = null)
     {
-        var session = new LapHistorySession
+        LapHistorySession session = new LapHistorySession
         {
             Id = id,
             StartedAt = startedAt ?? Now.AddHours(-1),
@@ -206,9 +169,9 @@ public sealed class LapTraceRetentionTests
             },
         };
 
-        for (var lap = 1; lap <= lapCount; lap++)
+        for (int lap = 1; lap <= lapCount; lap++)
         {
-            var traceId = LapTraceId.For(id, lap);
+            string traceId = LapTraceId.For(id, lap);
             traces.All[traceId] = 100;
             session.Laps.Add(new LapHistoryRecord
             {
@@ -227,14 +190,14 @@ public sealed class LapTraceRetentionTests
     {
         public Dictionary<string, long> All { get; } = new(StringComparer.Ordinal);
 
-        public void Save(string traceId, LapChannelTrace trace) => All[traceId] = 100;
+        public void Save(string traceId, LapChannelTrace trace) => this.All[traceId] = 100;
 
         public LapChannelTrace? Load(string traceId) => null;
 
-        public void Delete(string traceId) => All.Remove(traceId);
+        public void Delete(string traceId) => this.All.Remove(traceId);
 
         public IReadOnlyList<LapTraceInfo> List() =>
-            [.. All.Select(pair => new LapTraceInfo(pair.Key, pair.Value, Now.AddHours(-1)))];
+            [.. this.All.Select(pair => new LapTraceInfo(pair.Key, pair.Value, Now.AddHours(-1)))];
     }
 
     private sealed class FakeHistoryStore : ILapHistoryStore
@@ -244,15 +207,15 @@ public sealed class LapTraceRetentionTests
         /// <summary>Ids of sessions written back, so churn is observable.</summary>
         public List<string> Rewritten { get; } = [];
 
-        public IReadOnlyList<LapHistorySession> LoadAll() => Saved;
+        public IReadOnlyList<LapHistorySession> LoadAll() => this.Saved;
 
         public void Save(LapHistorySession session)
         {
-            Rewritten.Add(session.Id);
-            Saved.RemoveAll(existing => existing.Id == session.Id);
-            Saved.Add(session);
+            this.Rewritten.Add(session.Id);
+            this.Saved.RemoveAll(existing => existing.Id == session.Id);
+            this.Saved.Add(session);
         }
 
-        public void Delete(string sessionId) => Saved.RemoveAll(session => session.Id == sessionId);
+        public void Delete(string sessionId) => this.Saved.RemoveAll(session => session.Id == sessionId);
     }
 }

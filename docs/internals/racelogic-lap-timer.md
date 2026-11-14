@@ -3,8 +3,8 @@
 Research date: 2026-07-30
 
 > Written for the retired SkiaSharp painter. The lap-timer design and the VoCore firmware facts
-> still hold; the SkiaSharp-specific rendering steps do not — the dash now renders in an offscreen
-> browser (see [overview.md](overview.md#the-frame-path)). The built result is the `lap-times`
+> still hold; the SkiaSharp-specific rendering steps do not — the dash now renders with the Rust dash
+> renderer in the host (see [overview.md](overview.md#the-frame-path)). The built result is the `lap-times`
 > screen purpose (`RaceLogicLapTimerPresenter`).
 
 ## Decision summary

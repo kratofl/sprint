@@ -23,7 +23,7 @@ public static class AnalysisLapList
     {
         ArgumentNullException.ThrowIfNull(laps);
 
-        var filtered = filter switch
+        IEnumerable<CorpusLap> filtered = filter switch
         {
             AnalysisLapFilter.WithChannels => laps.Where(lap => lap.HasChannels),
             AnalysisLapFilter.TimeOnly => laps.Where(lap => !lap.HasChannels),

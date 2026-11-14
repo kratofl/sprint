@@ -1,12 +1,14 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import { Copy } from 'lucide-react'
-import type { LinkReachability, LinkSample, LinkSession, LiveLink, SprintCommand } from '../bridge'
+import type { AppView, LinkPeer, LinkReachability, LinkRole, LinkSample, LinkSession, LiveLink, SprintCommand } from '../bridge'
 import type { RuntimeState } from '../shell/runtime'
 import { PageHeader } from '../shell/PageHeader'
+import { EngineerTabs } from './EngineerTabs'
 import { Status } from '../shell/Status'
 import { commandErrorMessage } from './DevicesDomain'
 import { formatGap, formatLapSeconds } from './AnalysisDomain'
-import { formatGear, healthParts, linkStatus, reachabilityWarning } from './LiveLinkDomain'
+import { formatGear, healthParts, linkStatus, reachabilityWarning, versionNotice } from './LiveLinkDomain'
+import { Switch } from '../shell/Switch'
 import './LiveLinkView.css'
 
 /**
@@ -14,7 +16,15 @@ import './LiveLinkView.css'
  * pasted codes. Renders the host's `link` state and sends `link.*` commands; the host owns
  * every phase change. Local state is only the paste fields and their errors.
  */
-export function LiveLinkView({ runtime, send }: { runtime: RuntimeState; send: (command: SprintCommand) => Promise<void> }) {
+export function LiveLinkView({
+  runtime,
+  send,
+  onNavigate,
+}: {
+  runtime: RuntimeState
+  send: (command: SprintCommand) => Promise<void>
+  onNavigate: (view: AppView) => void
+}) {
   const link: LiveLink = runtime.kind === 'ready' ? runtime.sprint.link : { phase: 'Off' }
   const status = linkStatus(link)
   const close = () => void send({ type: 'link.close' })
@@ -37,6 +47,7 @@ export function LiveLinkView({ runtime, send }: { runtime: RuntimeState; send: (
         <span className="command-spacer" />
         <Status tone={status.tone}>{status.label}</Status>
       </PageHeader>
+      <EngineerTabs current="LiveLink" onNavigate={onNavigate} />
       <div className="live-link-body">
         {runtime.kind === 'loading' ? <div className="card skeleton live-link-skeleton" /> : <LinkBody link={link} send={send} />}
       </div>
@@ -106,6 +117,7 @@ function LinkBody({ link, send }: { link: LiveLink; send: (command: SprintComman
               <span className="infobar-message">Trying to get it back. The link ends after a minute without contact.</span>
             </div>
           )}
+          <VersionNotice role={link.role} peer={link.peer} />
           <div className="live-link-health">
             {healthParts(link.health).map((part) => (
               <span key={part} className="chip tabular">
@@ -113,7 +125,11 @@ function LinkBody({ link, send }: { link: LiveLink; send: (command: SprintComman
               </span>
             ))}
           </div>
-          {link.role === 'Driver' ? <Sharing session={link.session} /> : <Watching session={link.session} latest={link.latest} />}
+          {link.role === 'Driver' ? (
+            <Sharing session={link.session} sharingPlan={link.sharingPlan} sharedPlan={link.sharedPlan} send={send} />
+          ) : (
+            <Watching session={link.session} latest={link.latest} />
+          )}
         </>
       )
     case 'Failed':
@@ -262,10 +278,41 @@ function Reachability({ reachability }: { reachability: LinkReachability }) {
   )
 }
 
+/** Shown on both sides when one of them runs a Sprint whose link carries less. */
+function VersionNotice({ role, peer }: { role: LinkRole; peer: LinkPeer | null }) {
+  const notice = versionNotice(role, peer)
+  if (!notice) return null
+  return (
+    <div className="infobar warning" role="status">
+      <span className="infobar-icon" aria-hidden="true">
+        !
+      </span>
+      <strong className="infobar-title">{notice.title}</strong>
+      <span className="infobar-message">{notice.message}</span>
+    </div>
+  )
+}
+
 const describeSession = (session: LinkSession): string => [session.track, session.car, session.sessionType].filter((part) => part.length > 0).join(' · ')
 
-/** The driver's side: what the engineer is getting. */
-function Sharing({ session }: { session: LinkSession | null }) {
+/**
+ * The driver's side: what the engineer is getting, and the one switch the driver decides on —
+ * whether the session plan goes too (the plan the planner tracks or has armed). Off, the engineer
+ * gets the live data only.
+ */
+function Sharing({
+  session,
+  sharingPlan,
+  sharedPlan,
+  send,
+}: {
+  session: LinkSession | null
+  sharingPlan: boolean
+  sharedPlan: { id: string; name: string } | null
+  send: (command: SprintCommand) => Promise<void>
+}) {
+  const titleId = useId()
+  const hintId = useId()
   return (
     <section className="card live-link-card">
       <h2 className="card-title">Sharing with your engineer</h2>
@@ -274,6 +321,19 @@ function Sharing({ session }: { session: LinkSession | null }) {
       ) : (
         <p className="live-link-text">You are not on track. Your engineer sees your telemetry as soon as you drive.</p>
       )}
+      <div className="live-link-share">
+        <div className="live-link-share-text">
+          <span id={titleId} className="live-link-share-title">
+            Share the session plan
+          </span>
+          <span id={hintId} className="live-link-text">
+            {sharedPlan
+              ? `${sharedPlan.name} — stints, targets, practice laps. Follows practice, qualifying and race.`
+              : 'No plan is armed. Arm one in the Session planner and it goes to your engineer with its stints and targets.'}
+          </span>
+        </div>
+        <Switch checked={sharingPlan} onChange={(share) => void send({ type: 'link.sharePlan', share })} aria-labelledby={titleId} aria-describedby={hintId} />
+      </div>
     </section>
   )
 }

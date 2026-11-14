@@ -8,7 +8,7 @@ public sealed class DashWidgetCatalogTests
     [Fact]
     public void CatalogContainsDefaultPresetAndCriticalWidgetTypes()
     {
-        var expected = new[]
+        string[] expected = new[]
         {
             "header",
             "text",
@@ -24,12 +24,12 @@ public sealed class DashWidgetCatalogTests
             "tc"
         };
 
-        foreach (var type in expected)
+        foreach (string? type in expected)
         {
             Assert.True(DashWidgetCatalog.IsKnown(type), $"Expected widget catalog to include '{type}'.");
         }
 
-        var gearSpeed = DashWidgetCatalog.Get("gear_speed");
+        DashWidgetDefinition gearSpeed = DashWidgetCatalog.Get("gear_speed");
         Assert.Equal("Gear + Speed", gearSpeed.Name);
         Assert.Contains("car.gear", gearSpeed.Bindings);
         Assert.Contains("car.speed", gearSpeed.Bindings);
@@ -39,7 +39,7 @@ public sealed class DashWidgetCatalogTests
     public void CatalogIncludesExpandedRealDashboardWidgets()
     {
         // US30: race context + hybrid readouts real dashboards expose.
-        foreach (var type in new[] { "position", "gaps", "predictive_lap", "tyre_pressure", "virtual_energy" })
+        foreach (string? type in new[] { "position", "gaps", "predictive_lap", "tyre_pressure", "virtual_energy" })
         {
             Assert.True(DashWidgetCatalog.IsKnown(type), $"Expected expanded catalog to include '{type}'.");
         }
@@ -54,7 +54,7 @@ public sealed class DashWidgetCatalogTests
     {
         // #189: the widget used to read car.fuelPerLapLiters, which is what the car is
         // burning — a "target" nobody set and nobody can miss.
-        var fuelTarget = DashWidgetCatalog.Get("fuel_target");
+        DashWidgetDefinition fuelTarget = DashWidgetCatalog.Get("fuel_target");
 
         Assert.Contains("target.fuelPerLapLiters", fuelTarget.Bindings);
         Assert.DoesNotContain("car.fuelPerLapLiters", fuelTarget.Bindings);
@@ -70,7 +70,7 @@ public sealed class DashWidgetCatalogTests
     [Fact]
     public void LayoutValidationRejectsUnknownWidgetTypes()
     {
-        var layout = new DashLayout
+        DashLayout layout = new DashLayout
         {
             Id = "invalid-widget",
             Pages =

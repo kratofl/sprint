@@ -15,21 +15,21 @@ public sealed class SessionPlannerTests
     [Fact]
     public void APlanRemembersWhetherItWasCreatedQuicklyOrPlanned()
     {
-        var root = TestEnv.NewTempDataRoot();
+        string root = TestEnv.NewTempDataRoot();
         try
         {
-            var store = new LocalSessionPlanStore(root);
-            var service = new SessionPlannerService(store, clock: () => new DateTimeOffset(2026, 8, 1, 12, 0, 0, TimeSpan.Zero));
+            LocalSessionPlanStore store = new LocalSessionPlanStore(root);
+            SessionPlannerService service = new SessionPlannerService(store, clock: () => new DateTimeOffset(2026, 8, 1, 12, 0, 0, TimeSpan.Zero));
 
-            var quick = service.CreatePlan(new CreatePlanRequest { Name = "Quick", Mode = PlanMode.Quick });
-            var planned = service.CreatePlan(new CreatePlanRequest { Name = "Planned" });
+            SessionPlan quick = service.CreatePlan(new CreatePlanRequest { Name = "Quick", Mode = PlanMode.Quick });
+            SessionPlan planned = service.CreatePlan(new CreatePlanRequest { Name = "Planned" });
 
             Assert.Equal(PlanMode.Quick, quick.Mode);
             // Default is Planned, so a request that says nothing keeps the old meaning.
             Assert.Equal(PlanMode.Planned, planned.Mode);
 
             // The mode has to survive the modal closing — #102 shows confidence from it.
-            var reloaded = new LocalSessionPlanStore(root).LoadAll();
+            IReadOnlyList<SessionPlan> reloaded = new LocalSessionPlanStore(root).LoadAll();
             Assert.Equal(PlanMode.Quick, reloaded.Single(plan => plan.Name == "Quick").Mode);
             Assert.Equal(PlanMode.Planned, reloaded.Single(plan => plan.Name == "Planned").Mode);
         }
@@ -42,7 +42,7 @@ public sealed class SessionPlannerTests
     [Fact]
     public void APlanFileWrittenBeforeModesExistedReadsAsPlanned()
     {
-        var root = TestEnv.NewTempDataRoot();
+        string root = TestEnv.NewTempDataRoot();
         try
         {
             // A pre-existing file has no "mode" key at all; an upgrade must not silently
@@ -51,7 +51,7 @@ public sealed class SessionPlannerTests
                 Path.Combine(root, "old.json"),
                 """{"id":"old","name":"Last season","raceLengthFormat":"TimeBased","raceLengthValue":60}""");
 
-            var plan = Assert.Single(new LocalSessionPlanStore(root).LoadAll());
+            SessionPlan plan = Assert.Single(new LocalSessionPlanStore(root).LoadAll());
 
             Assert.Equal(PlanMode.Planned, plan.Mode);
         }
@@ -66,16 +66,16 @@ public sealed class SessionPlannerTests
     [Fact]
     public void LocalStoreRoundTripsPlansAndActivePointerAndIgnoresPointerInLoadAll()
     {
-        var root = TestEnv.NewTempDataRoot();
+        string root = TestEnv.NewTempDataRoot();
         try
         {
-            var store = new LocalSessionPlanStore(root);
-            var plan = new SessionPlan { Id = "plan-1", Name = "Spa 6h", Game = "lmu", CreatedAt = Now };
+            LocalSessionPlanStore store = new LocalSessionPlanStore(root);
+            SessionPlan plan = new SessionPlan { Id = "plan-1", Name = "Spa 6h", Game = "lmu", CreatedAt = Now };
             store.Save(plan);
             store.SaveActivePlanId("plan-1");
 
-            var reloaded = new LocalSessionPlanStore(root);
-            var all = reloaded.LoadAll();
+            LocalSessionPlanStore reloaded = new LocalSessionPlanStore(root);
+            IReadOnlyList<SessionPlan> all = reloaded.LoadAll();
 
             Assert.Single(all);
             Assert.Equal("Spa 6h", all[0].Name);
@@ -90,10 +90,10 @@ public sealed class SessionPlannerTests
     [Fact]
     public void LocalStoreDeleteRemovesPlanAndClearsActivePointer()
     {
-        var root = TestEnv.NewTempDataRoot();
+        string root = TestEnv.NewTempDataRoot();
         try
         {
-            var store = new LocalSessionPlanStore(root);
+            LocalSessionPlanStore store = new LocalSessionPlanStore(root);
             store.Save(new SessionPlan { Id = "plan-1", CreatedAt = Now });
             store.SaveActivePlanId("plan-1");
 
@@ -111,14 +111,14 @@ public sealed class SessionPlannerTests
     [Fact]
     public void LocalStoreSkipsCorruptPlanFileButKeepsOthers()
     {
-        var root = TestEnv.NewTempDataRoot();
+        string root = TestEnv.NewTempDataRoot();
         try
         {
-            var store = new LocalSessionPlanStore(root);
+            LocalSessionPlanStore store = new LocalSessionPlanStore(root);
             store.Save(new SessionPlan { Id = "good", Name = "Keep", CreatedAt = Now });
             File.WriteAllText(Path.Combine(root, "corrupt.json"), "{ not valid json");
 
-            var all = store.LoadAll();
+            IReadOnlyList<SessionPlan> all = store.LoadAll();
 
             Assert.Single(all);
             Assert.Equal("good", all[0].Id);
@@ -134,8 +134,8 @@ public sealed class SessionPlannerTests
     {
         Run((service, _) =>
         {
-            var first = service.CreatePlan(new CreatePlanRequest { Name = "First" });
-            var second = service.CreatePlan(new CreatePlanRequest { Name = "Second" });
+            SessionPlan first = service.CreatePlan(new CreatePlanRequest { Name = "First" });
+            SessionPlan second = service.CreatePlan(new CreatePlanRequest { Name = "Second" });
 
             Assert.Equal(new[] { second.Id, first.Id }, service.Plans.Select(plan => plan.Id));
             Assert.Equal(PlanStatus.Draft, first.Status);
@@ -145,17 +145,17 @@ public sealed class SessionPlannerTests
     [Fact]
     public void CompletedPlansSurviveReloadAsHistory()
     {
-        var root = TestEnv.NewTempDataRoot();
+        string root = TestEnv.NewTempDataRoot();
         try
         {
-            var service = NewService(root, out _);
-            var plan = service.CreatePlan(new CreatePlanRequest { Name = "History" });
+            SessionPlannerService service = NewService(root, out _);
+            SessionPlan plan = service.CreatePlan(new CreatePlanRequest { Name = "History" });
             service.StartTracking(plan.Id, SegmentKind.Race);
             service.StopTracking(plan.Id);
 
-            var reloaded = NewService(root, out _);
+            SessionPlannerService reloaded = NewService(root, out _);
 
-            var restored = Assert.Single(reloaded.Plans);
+            SessionPlan restored = Assert.Single(reloaded.Plans);
             Assert.Equal(PlanStatus.Completed, restored.Status);
             Assert.Null(reloaded.ActivePlan);
         }
@@ -170,12 +170,12 @@ public sealed class SessionPlannerTests
     {
         Run((service, _) =>
         {
-            var a = service.CreatePlan(new CreatePlanRequest { Name = "A" });
-            var b = service.CreatePlan(new CreatePlanRequest { Name = "B" });
+            SessionPlan a = service.CreatePlan(new CreatePlanRequest { Name = "A" });
+            SessionPlan b = service.CreatePlan(new CreatePlanRequest { Name = "B" });
 
             service.StartTracking(a.Id, SegmentKind.Qualifying);
 
-            var ex = Assert.Throws<InvalidOperationException>(() => service.Arm(b.Id));
+            InvalidOperationException ex = Assert.Throws<InvalidOperationException>(() => service.Arm(b.Id));
             Assert.Contains("only one plan can be active", ex.Message, StringComparison.OrdinalIgnoreCase);
             Assert.Equal(a.Id, service.ActivePlan?.Id);
         });
@@ -186,9 +186,9 @@ public sealed class SessionPlannerTests
     {
         Run((service, _) =>
         {
-            var plan = service.CreatePlan(new CreatePlanRequest { Name = "Race" });
+            SessionPlan plan = service.CreatePlan(new CreatePlanRequest { Name = "Race" });
 
-            var segment = service.StartTracking(plan.Id, SegmentKind.Race);
+            PlanSegment segment = service.StartTracking(plan.Id, SegmentKind.Race);
             Assert.Equal(PlanStatus.Tracking, plan.Status);
             Assert.NotNull(segment.ActualStart);
             Assert.Null(segment.ActualEnd);
@@ -200,7 +200,7 @@ public sealed class SessionPlannerTests
             Assert.Null(service.ActivePlan);
 
             // Slot released: a second plan can now be tracked.
-            var next = service.CreatePlan(new CreatePlanRequest { Name = "Next" });
+            SessionPlan next = service.CreatePlan(new CreatePlanRequest { Name = "Next" });
             service.StartTracking(next.Id, SegmentKind.Race);
             Assert.Equal(next.Id, service.ActivePlan?.Id);
         });
@@ -211,13 +211,13 @@ public sealed class SessionPlannerTests
     {
         Run((service, _) =>
         {
-            var plan = service.CreatePlan(new CreatePlanRequest { Name = "Race" });
-            var segment = service.StartTracking(plan.Id, SegmentKind.Race);
+            SessionPlan plan = service.CreatePlan(new CreatePlanRequest { Name = "Race" });
+            PlanSegment segment = service.StartTracking(plan.Id, SegmentKind.Race);
 
             service.Ingest(Frame(lap: 1, lastLapTime: 0));      // establishes baseline, no lap yet
             service.Ingest(Frame(lap: 2, lastLapTime: 92.5, fuel: 40f)); // lap 1 completed
 
-            var summary = Assert.Single(segment.Laps);
+            LapSummary summary = Assert.Single(segment.Laps);
             Assert.Equal(1, summary.LapNumber);
             Assert.Equal(92.5, summary.LapTimeSeconds);
             Assert.Equal(40d, summary.FuelRemainingLiters);
@@ -244,7 +244,7 @@ public sealed class SessionPlannerTests
     {
         Run((service, _) =>
         {
-            var plan = service.CreatePlan(new CreatePlanRequest
+            SessionPlan plan = service.CreatePlan(new CreatePlanRequest
             {
                 Name = "Race",
                 RaceLengthFormat = RaceLengthFormat.TimeBased,
@@ -255,8 +255,67 @@ public sealed class SessionPlannerTests
             service.Ingest(Frame(lap: 1, lastLapTime: 0, maxLaps: 20));
             service.Ingest(Frame(lap: 1, lastLapTime: 0, maxLaps: 20));
 
-            var warning = Assert.Single(plan.Warnings);
+            PlanWarning warning = Assert.Single(plan.Warnings);
             Assert.Equal("race-format-mismatch", warning.Kind);
+        });
+    }
+
+    [Fact]
+    public void TheMismatchWarningHonoursTheSettingButTheGamesFormatIsAlwaysRecorded()
+    {
+        string root = TestEnv.NewTempDataRoot();
+        try
+        {
+            bool warn = false;
+            SessionPlannerService service = new SessionPlannerService(
+                new LocalSessionPlanStore(root),
+                clock: () => Now,
+                warnOnRaceFormatMismatch: () => warn);
+            SessionPlan plan = service.CreatePlan(new CreatePlanRequest { Name = "Race", RaceLengthFormat = RaceLengthFormat.TimeBased });
+            PlanSegment segment = service.StartTracking(plan.Id, SegmentKind.Race);
+
+            service.Ingest(Frame(lap: 1, lastLapTime: 0, maxLaps: 20));
+
+            // Off: no warning, but the race card still shows what the game runs.
+            Assert.Empty(plan.Warnings);
+            Assert.Equal(RaceLengthFormat.LapBased, segment.DetectedRaceFormat);
+
+            warn = true;
+            service.Ingest(Frame(lap: 1, lastLapTime: 0, maxLaps: 20));
+            Assert.Single(plan.Warnings);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void ARaceWithoutAPlannedFormatStillRecordsTheGamesFormat()
+    {
+        Run((service, _) =>
+        {
+            SessionPlan plan = service.CreatePlan(new CreatePlanRequest { Name = "Race" });
+            PlanSegment segment = service.StartTracking(plan.Id, SegmentKind.Race);
+
+            service.Ingest(Frame(lap: 1, lastLapTime: 0, maxLaps: 0));
+
+            Assert.Equal(RaceLengthFormat.TimeBased, segment.DetectedRaceFormat);
+            Assert.Empty(plan.Warnings);
+        });
+    }
+
+    [Theory]
+    [InlineData("", "Spa-Francorchamps", "Porsche 963", "Spa-Francorchamps – Porsche 963")]
+    [InlineData("  ", "", "", "New Session Plan")]
+    [InlineData(" Sunday race ", "Spa-Francorchamps", "Porsche 963", "Sunday race")]
+    public void AnUnnamedPlanGetsTheDerivedName(string name, string track, string car, string expected)
+    {
+        Run((service, _) =>
+        {
+            SessionPlan plan = service.CreatePlan(new CreatePlanRequest { Name = name, Track = track, Car = car });
+
+            Assert.Equal(expected, plan.Name);
         });
     }
 
@@ -265,7 +324,7 @@ public sealed class SessionPlannerTests
     {
         Run((service, _) =>
         {
-            var plan = service.CreatePlan(new CreatePlanRequest { Name = "Idle" });
+            SessionPlan plan = service.CreatePlan(new CreatePlanRequest { Name = "Idle" });
             service.Ingest(Frame(lap: 5, lastLapTime: 90));
             Assert.Empty(plan.Segments);
         });
@@ -274,17 +333,17 @@ public sealed class SessionPlannerTests
     [Fact]
     public void ReconcileDemotesACrashLeftTrackingPlanToAbandonedOnReload()
     {
-        var root = TestEnv.NewTempDataRoot();
+        string root = TestEnv.NewTempDataRoot();
         try
         {
-            var service = NewService(root, out _);
-            var plan = service.CreatePlan(new CreatePlanRequest { Name = "Crashed" });
+            SessionPlannerService service = NewService(root, out _);
+            SessionPlan plan = service.CreatePlan(new CreatePlanRequest { Name = "Crashed" });
             service.StartTracking(plan.Id, SegmentKind.Race);
             // Simulate a crash: process dies with the plan still Tracking and slot held.
 
-            var reloaded = NewService(root, out _);
+            SessionPlannerService reloaded = NewService(root, out _);
 
-            var restored = Assert.Single(reloaded.Plans);
+            SessionPlan restored = Assert.Single(reloaded.Plans);
             Assert.Equal(PlanStatus.Abandoned, restored.Status);
             Assert.NotNull(restored.Segments[0].ActualEnd);
             Assert.Null(reloaded.ActivePlan);
@@ -298,10 +357,10 @@ public sealed class SessionPlannerTests
     [Fact]
     public void CreatePlanPersistsManualFuelFallbackValues()
     {
-        var root = TestEnv.NewTempDataRoot();
+        string root = TestEnv.NewTempDataRoot();
         try
         {
-            var service = NewService(root, out _);
+            SessionPlannerService service = NewService(root, out _);
             service.CreatePlan(new CreatePlanRequest
             {
                 Name = "Spa",
@@ -309,9 +368,9 @@ public sealed class SessionPlannerTests
                 FuelPerLapLiters = 3.4,
             });
 
-            var reloaded = NewService(root, out _);
+            SessionPlannerService reloaded = NewService(root, out _);
 
-            var restored = Assert.Single(reloaded.Plans);
+            SessionPlan restored = Assert.Single(reloaded.Plans);
             Assert.Equal(125.4, restored.AvgLapTimeSeconds);
             Assert.Equal(3.4, restored.FuelPerLapLiters);
         }
@@ -324,16 +383,16 @@ public sealed class SessionPlannerTests
     [Fact]
     public void PlanFilesWrittenBeforeTheFuelFieldsExistedStillLoad()
     {
-        var root = TestEnv.NewTempDataRoot();
+        string root = TestEnv.NewTempDataRoot();
         try
         {
             File.WriteAllText(
                 Path.Combine(root, "old.json"),
                 """{"id":"old","name":"Legacy","createdAt":"2026-01-01T00:00:00+00:00"}""");
 
-            var service = NewService(root, out _);
+            SessionPlannerService service = NewService(root, out _);
 
-            var restored = Assert.Single(service.Plans);
+            SessionPlan restored = Assert.Single(service.Plans);
             Assert.Equal("Legacy", restored.Name);
             Assert.Null(restored.AvgLapTimeSeconds);
             Assert.Null(restored.FuelPerLapLiters);
@@ -349,7 +408,7 @@ public sealed class SessionPlannerTests
     {
         Run((service, _) =>
         {
-            var plan = service.CreatePlan(new CreatePlanRequest { Name = "Armed" });
+            SessionPlan plan = service.CreatePlan(new CreatePlanRequest { Name = "Armed" });
             service.Arm(plan.Id);
             Assert.Equal(PlanStatus.Armed, plan.Status);
 
@@ -360,7 +419,7 @@ public sealed class SessionPlannerTests
             Assert.Empty(plan.Segments);
 
             // The slot is genuinely free: another plan can claim it.
-            var other = service.CreatePlan(new CreatePlanRequest { Name = "Other" });
+            SessionPlan other = service.CreatePlan(new CreatePlanRequest { Name = "Other" });
             service.Arm(other.Id);
             Assert.Equal(other.Id, service.ActivePlan?.Id);
         });
@@ -371,7 +430,7 @@ public sealed class SessionPlannerTests
     {
         Run((service, _) =>
         {
-            var plan = service.CreatePlan(new CreatePlanRequest { Name = "Tracking" });
+            SessionPlan plan = service.CreatePlan(new CreatePlanRequest { Name = "Tracking" });
             service.StartTracking(plan.Id, SegmentKind.Race);
 
             service.Disarm(plan.Id);
@@ -386,13 +445,13 @@ public sealed class SessionPlannerTests
     {
         Run((service, _) =>
         {
-            var armed = service.CreatePlan(new CreatePlanRequest { Name = "Armed" });
+            SessionPlan armed = service.CreatePlan(new CreatePlanRequest { Name = "Armed" });
             service.Arm(armed.Id);
             service.ReleaseActiveSlot();
             Assert.Equal(PlanStatus.Draft, armed.Status);
             Assert.Null(service.ActivePlan);
 
-            var tracking = service.CreatePlan(new CreatePlanRequest { Name = "Tracking" });
+            SessionPlan tracking = service.CreatePlan(new CreatePlanRequest { Name = "Tracking" });
             service.StartTracking(tracking.Id, SegmentKind.Race);
             service.ReleaseActiveSlot();
             Assert.Equal(PlanStatus.Completed, tracking.Status);
@@ -407,12 +466,12 @@ public sealed class SessionPlannerTests
     [Fact]
     public void ArmedPlanAutoStartsOnceTheReportedSessionTypeHoldsForASecond()
     {
-        var root = TestEnv.NewTempDataRoot();
+        string root = TestEnv.NewTempDataRoot();
         try
         {
-            var now = Now;
-            var service = NewServiceWithClock(root, () => now);
-            var plan = service.CreatePlan(new CreatePlanRequest { Name = "Race" });
+            DateTimeOffset now = Now;
+            SessionPlannerService service = NewServiceWithClock(root, () => now);
+            SessionPlan plan = service.CreatePlan(new CreatePlanRequest { Name = "Race" });
             service.Arm(plan.Id);
 
             // First sighting only starts the hold.
@@ -430,7 +489,7 @@ public sealed class SessionPlannerTests
             service.Ingest(SessionFrame(SessionType.Race));
 
             Assert.Equal(PlanStatus.Tracking, plan.Status);
-            var segment = Assert.Single(plan.Segments);
+            PlanSegment segment = Assert.Single(plan.Segments);
             Assert.Equal(SegmentKind.Race, segment.Kind);
             Assert.Equal(SegmentSource.Detected, segment.Source);
             Assert.Equal(DetectionConfidence.Medium, segment.SourceConfidence);
@@ -444,12 +503,12 @@ public sealed class SessionPlannerTests
     [Fact]
     public void AFlickeringSessionTypeRestartsTheAutoStartHold()
     {
-        var root = TestEnv.NewTempDataRoot();
+        string root = TestEnv.NewTempDataRoot();
         try
         {
-            var now = Now;
-            var service = NewServiceWithClock(root, () => now);
-            var plan = service.CreatePlan(new CreatePlanRequest { Name = "Race" });
+            DateTimeOffset now = Now;
+            SessionPlannerService service = NewServiceWithClock(root, () => now);
+            SessionPlan plan = service.CreatePlan(new CreatePlanRequest { Name = "Race" });
             service.Arm(plan.Id);
 
             service.Ingest(SessionFrame(SessionType.Race));
@@ -470,12 +529,12 @@ public sealed class SessionPlannerTests
     [Fact]
     public void AutoStartIgnoresQualifyingWhenThePlanSkipsIt()
     {
-        var root = TestEnv.NewTempDataRoot();
+        string root = TestEnv.NewTempDataRoot();
         try
         {
-            var now = Now;
-            var service = NewServiceWithClock(root, () => now);
-            var plan = service.CreatePlan(new CreatePlanRequest
+            DateTimeOffset now = Now;
+            SessionPlannerService service = NewServiceWithClock(root, () => now);
+            SessionPlan plan = service.CreatePlan(new CreatePlanRequest
             {
                 Name = "Race only",
                 QualifyingIncluded = false,
@@ -505,12 +564,12 @@ public sealed class SessionPlannerTests
     [Fact]
     public void AutoStartStartsQualifyingWhenThePlanIncludesIt()
     {
-        var root = TestEnv.NewTempDataRoot();
+        string root = TestEnv.NewTempDataRoot();
         try
         {
-            var now = Now;
-            var service = NewServiceWithClock(root, () => now);
-            var plan = service.CreatePlan(new CreatePlanRequest { Name = "Weekend" });
+            DateTimeOffset now = Now;
+            SessionPlannerService service = NewServiceWithClock(root, () => now);
+            SessionPlan plan = service.CreatePlan(new CreatePlanRequest { Name = "Weekend" });
             service.Arm(plan.Id);
 
             service.Ingest(SessionFrame(SessionType.Qualify));
@@ -526,14 +585,55 @@ public sealed class SessionPlannerTests
     }
 
     [Fact]
-    public void ADraftPlanNeverAutoStarts()
+    public void ATrackedQualifyingFollowsTheGameIntoTheRaceButNeverBack()
     {
-        var root = TestEnv.NewTempDataRoot();
+        string root = TestEnv.NewTempDataRoot();
         try
         {
-            var now = Now;
-            var service = NewServiceWithClock(root, () => now);
-            var plan = service.CreatePlan(new CreatePlanRequest { Name = "Draft" });
+            DateTimeOffset now = Now;
+            SessionPlannerService service = NewServiceWithClock(root, () => now);
+            SessionPlan plan = service.CreatePlan(new CreatePlanRequest { Name = "Weekend" });
+            service.Arm(plan.Id);
+            service.Ingest(SessionFrame(SessionType.Qualify));
+            now = Now.AddSeconds(2);
+            service.Ingest(SessionFrame(SessionType.Qualify));
+
+            now = Now.AddSeconds(10);
+            service.Ingest(SessionFrame(SessionType.Race));
+            now = Now.AddSeconds(12);
+            service.Ingest(SessionFrame(SessionType.Race));
+
+            Assert.Equal(PlanStatus.Tracking, plan.Status);
+            Assert.Collection(
+                plan.Segments,
+                qualifying => Assert.NotNull(qualifying.ActualEnd),
+                race =>
+                {
+                    Assert.Equal(SegmentKind.Race, race.Kind);
+                    Assert.Equal(SegmentSource.Detected, race.Source);
+                });
+
+            now = Now.AddSeconds(20);
+            service.Ingest(SessionFrame(SessionType.Qualify));
+            now = Now.AddSeconds(25);
+            service.Ingest(SessionFrame(SessionType.Qualify));
+            Assert.Equal(2, plan.Segments.Count);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void ADraftPlanNeverAutoStarts()
+    {
+        string root = TestEnv.NewTempDataRoot();
+        try
+        {
+            DateTimeOffset now = Now;
+            SessionPlannerService service = NewServiceWithClock(root, () => now);
+            SessionPlan plan = service.CreatePlan(new CreatePlanRequest { Name = "Draft" });
 
             service.Ingest(SessionFrame(SessionType.Race));
             now = Now.AddSeconds(5);
@@ -562,10 +662,10 @@ public sealed class SessionPlannerTests
 
     private static void Run(Action<SessionPlannerService, string> body)
     {
-        var root = TestEnv.NewTempDataRoot();
+        string root = TestEnv.NewTempDataRoot();
         try
         {
-            var service = NewService(root, out var storeRoot);
+            SessionPlannerService service = NewService(root, out string? storeRoot);
             body(service, storeRoot);
         }
         finally
@@ -577,7 +677,7 @@ public sealed class SessionPlannerTests
     /// <summary>A service whose clock the test drives, for time-dependent behaviour.</summary>
     private static SessionPlannerService NewServiceWithClock(string root, Func<DateTimeOffset> clock)
     {
-        var counter = 0;
+        int counter = 0;
         return new SessionPlannerService(
             new LocalSessionPlanStore(root),
             clock: clock,
@@ -593,8 +693,8 @@ public sealed class SessionPlannerTests
     private static SessionPlannerService NewService(string root, out string storeRoot)
     {
         storeRoot = root;
-        var store = new LocalSessionPlanStore(root);
-        var counter = 0;
+        LocalSessionPlanStore store = new LocalSessionPlanStore(root);
+        int counter = 0;
         return new SessionPlannerService(
             store,
             clock: () => Now,

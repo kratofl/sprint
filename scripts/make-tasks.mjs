@@ -6,11 +6,15 @@
 //   node scripts/make-tasks.mjs version           latest git tag without its leading "v", or "dev"
 //   node scripts/make-tasks.mjs rid               default .NET runtime identifier for this machine
 //   node scripts/make-tasks.mjs clean [--dry-run] delete the fixed list of build outputs below
-//   node scripts/make-tasks.mjs build-xr-layer    build the OpenXR layer (Windows) into app/desktop/resources/openxr-layer
-import { execFileSync } from 'node:child_process'
-import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs'
+//   node scripts/make-tasks.mjs dev-host          run the native host under dotnet watch on this checkout's dev data
+//   node scripts/make-tasks.mjs record-app        run the desktop app, recording every telemetry frame
+//   node scripts/make-tasks.mjs replay-app [file] run the desktop app on a recording instead of the game
+//   node scripts/make-tasks.mjs reset-dev-data    delete this checkout's dev data, so the next dev run starts fresh
+import { execFileSync, spawnSync } from 'node:child_process'
+import { existsSync, readdirSync, readFileSync, rmSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { devDataRoot, recordingsRoot } from '../app/desktop/scripts/dev-data.mjs'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
@@ -28,8 +32,8 @@ const cleanPaths = [
   'app/desktop/dist',
   'app/desktop/dist-electron',
   'app/desktop/resources/host',
-  'app/desktop/resources/openxr-layer',
-  'app/Sprint.OpenXrLayer/build',
+  'packages/dashboard/renderer/target',
+  'packages/dashboard/generated',
   'app/Sprint.Desktop.Api/bin',
   'app/Sprint.Desktop.Api/obj',
   'app/Sprint.Contracts/bin',
@@ -77,14 +81,19 @@ function rid() {
   console.log(os === 'win' ? 'win-x64' : `${os}-${arch}`)
 }
 
+// Exits unless target is strictly inside the repo: the last check before anything is deleted.
+function assertInsideRepo(target) {
+  const inside = path.relative(repoRoot, target)
+  if (!inside || inside.startsWith('..') || path.isAbsolute(inside)) {
+    console.error(`Refusing to delete ${target}: not inside ${repoRoot}`)
+    process.exit(1)
+  }
+}
+
 function clean(dryRun) {
   for (const relative of cleanPaths) {
     const target = path.resolve(repoRoot, relative)
-    const inside = path.relative(repoRoot, target)
-    if (!inside || inside.startsWith('..') || path.isAbsolute(inside)) {
-      console.error(`Refusing to delete ${target}: not inside ${repoRoot}`)
-      process.exit(1)
-    }
+    assertInsideRepo(target)
     if (!existsSync(target)) continue
     if (dryRun) {
       console.log(`would remove ${relative}`)
@@ -95,26 +104,70 @@ function clean(dryRun) {
   }
 }
 
-// Configures and builds the layer (Release, x64) with CMake, then copies the DLL and its manifest
-// next to each other into resources/openxr-layer, which the desktop packager ships unpacked.
-function buildXrLayer() {
-  if (process.platform !== 'win32') {
-    console.error('The OpenXR layer builds on Windows only.')
+// The host alone, on the same per-checkout data as `make dev-app` (app/desktop/scripts/dev-data.mjs).
+function devHost() {
+  const env = { ...process.env, SPRINT_DESKTOP_DATA_ROOT: process.env.SPRINT_DESKTOP_DATA_ROOT ?? devDataRoot }
+  console.log(`[sprint] dev data: ${env.SPRINT_DESKTOP_DATA_ROOT} (make reset-dev-data clears it)`)
+  const project = path.join(repoRoot, 'app', 'Sprint.Desktop.Host', 'Sprint.Desktop.Host.csproj')
+  const result = spawnSync('dotnet', ['watch', '--project', project], { cwd: repoRoot, env, stdio: 'inherit' })
+  process.exit(result.status ?? 1)
+}
+
+// `make dev-app` with extra environment for the native host Electron starts.
+function devApp(extraEnv) {
+  const result = spawnSync('pnpm', ['--filter', '@sprint/desktop', 'dev'], {
+    cwd: repoRoot,
+    env: { ...process.env, ...extraEnv },
+    stdio: 'inherit',
+    // pnpm is a .cmd shim on Windows, which only a shell can start.
+    shell: process.platform === 'win32',
+  })
+  process.exit(result.status ?? 1)
+}
+
+function recordApp() {
+  console.log(`[sprint] recording telemetry into ${path.relative(repoRoot, recordingsRoot)} (one file per session)`)
+  devApp({ SPRINT_TELEMETRY_RECORD: recordingsRoot })
+}
+
+function replayApp(file) {
+  if (!file) {
+    const recordings = existsSync(recordingsRoot)
+      ? readdirSync(recordingsRoot).filter((name) => name.endsWith('.jsonl.gz')).sort()
+      : []
+    console.error('usage: make replay-app FILE=<recording>')
+    console.error(recordings.length > 0
+      ? `recordings in ${path.relative(repoRoot, recordingsRoot)}:\n  ${recordings.join('\n  ')}`
+      : 'no recordings yet; make record-app makes them')
     process.exit(1)
   }
-  const source = path.join(repoRoot, 'app', 'Sprint.OpenXrLayer')
-  const build = path.join(source, 'build')
-  const run = (args) => execFileSync('cmake', args, { cwd: repoRoot, stdio: 'inherit' })
-  run(['-S', source, '-B', build, '-A', 'x64'])
-  run(['--build', build, '--config', 'Release', '--target', 'sprint_xr_layer'])
-
-  const output = path.join(build, 'Release')
-  const target = path.join(repoRoot, 'app', 'desktop', 'resources', 'openxr-layer')
-  mkdirSync(target, { recursive: true })
-  for (const file of ['XR_APILAYER_SPRINT_driving_guide.dll', 'XR_APILAYER_SPRINT_driving_guide.json']) {
-    copyFileSync(path.join(output, file), path.join(target, file))
+  // A bare file name means one of this checkout's recordings.
+  const candidates = [path.resolve(file), path.join(recordingsRoot, file)]
+  const recording = candidates.find((candidate) => existsSync(candidate))
+  if (!recording) {
+    console.error(`no recording at ${file}`)
+    process.exit(1)
   }
-  console.log(`OpenXR layer copied to ${path.relative(repoRoot, target)}`)
+  console.log(`[sprint] replaying ${recording} instead of the game`)
+  devApp({ SPRINT_TELEMETRY_REPLAY: recording })
+}
+
+// Deletes the dev data of this checkout only. The installed app's data is never touched.
+function resetDevData() {
+  assertInsideRepo(devDataRoot)
+  const relative = path.relative(repoRoot, devDataRoot)
+  if (!existsSync(devDataRoot)) {
+    console.log(`nothing to reset: ${relative} does not exist`)
+    return
+  }
+  try {
+    rmSync(devDataRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
+  } catch (error) {
+    // The dev app or host holds its logs and profile open while it runs.
+    console.error(`Could not delete ${relative} (${error.code ?? error.message}). Close the dev app and host, then run it again.`)
+    process.exit(1)
+  }
+  console.log(`removed ${relative}; the next dev run starts like a first launch`)
 }
 
 const [command, ...rest] = process.argv.slice(2)
@@ -131,10 +184,19 @@ switch (command) {
   case 'clean':
     clean(rest.includes('--dry-run'))
     break
-  case 'build-xr-layer':
-    buildXrLayer()
+  case 'dev-host':
+    devHost()
+    break
+  case 'reset-dev-data':
+    resetDevData()
+    break
+  case 'record-app':
+    recordApp()
+    break
+  case 'replay-app':
+    replayApp(rest[0])
     break
   default:
-    console.error('usage: node scripts/make-tasks.mjs help|version|rid|clean [--dry-run]|build-xr-layer')
+    console.error('usage: node scripts/make-tasks.mjs help|version|rid|clean [--dry-run]|dev-host|record-app|replay-app [file]|reset-dev-data')
     process.exit(1)
 }

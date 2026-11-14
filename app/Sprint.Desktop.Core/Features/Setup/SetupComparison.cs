@@ -38,23 +38,23 @@ public static class SetupComparison
         ArgumentNullException.ThrowIfNull(baseline);
         ArgumentNullException.ThrowIfNull(candidate);
 
-        var keys = baseline.Values.Keys
+        IOrderedEnumerable<string> keys = baseline.Values.Keys
             .Union(candidate.Values.Keys, StringComparer.OrdinalIgnoreCase)
             .OrderBy(key => key, StringComparer.OrdinalIgnoreCase);
 
-        var contributions = new List<SetupParameterDelta>();
+        List<SetupParameterDelta> contributions = new List<SetupParameterDelta>();
         double total = 0;
-        foreach (var key in keys)
+        foreach (string key in keys)
         {
-            baseline.Values.TryGetValue(key, out var a);
-            candidate.Values.TryGetValue(key, out var b);
-            var difference = b - a;
+            baseline.Values.TryGetValue(key, out double a);
+            candidate.Values.TryGetValue(key, out double b);
+            double difference = b - a;
             if (Math.Abs(difference) < 1e-9)
             {
                 continue;
             }
 
-            var contribution = Math.Round(difference * Weight(key), 3);
+            double contribution = Math.Round(difference * Weight(key), 3);
             total += contribution;
             contributions.Add(new SetupParameterDelta(key, difference, contribution));
         }

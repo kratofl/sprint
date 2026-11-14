@@ -6,8 +6,7 @@ Migrated from the original Go HTTP/WebSocket service. Built with
 
 ## Responsibilities
 
-- GraphQL API (`/graphql`) for auth, sessions, setups, dash layouts, shared laps and
-  race engineers
+- GraphQL API (`/graphql`) for auth, sessions, setups, dash layouts and race engineers
 - Discord sign-in (`/api/auth/discord/start`, `/api/auth/discord/callback`) for the web
   and the desktop
 - Live telemetry: WebSocket ingest from the desktop (`/api/live/ingest`) and an SSE
@@ -27,7 +26,7 @@ api/
 │   ├── Data/                  ← EF Core entities + SprintDbContext (Postgres)
 │   ├── Live/                  ← live hub, ingest socket, SSE stream
 │   ├── Telemetry/             ← ITelemetryStore + InfluxDB implementation
-│   ├── Services/              ← users, catalog, lap sharing, race engineers
+│   ├── Services/              ← users, catalog, race engineers
 │   └── GraphQL/               ← Query / Mutation
 ├── Sprint.Api.Tests/          ← xunit tests
 └── Sprint.Api.slnx            ← solution (server + tests + shared contracts)
@@ -64,9 +63,8 @@ Open the GraphQL IDE (Nitro) at <http://localhost:8080/graphql>.
 - **Anonymous:** `health`, `serverSettings`, `engineerInvite`; `register`, `login`,
   `redeemSignInTicket`
 - **Account and data:** `me`, `sessions`/`session`, `setups`/`setup`,
-  `layouts`/`layout`, `sharedLap`, `mySharedLaps`; `setDisplayName`, `changePassword`,
-  `updateServerSettings`, `createSession`, `saveSession`, `saveSetup`, `saveLayout`,
-  `shareLap`, `revokeSharedLap`
+  `layouts`/`layout`; `setDisplayName`, `changePassword`, `updateServerSettings`,
+  `createSession`, `saveSession`, `saveSetup`, `saveLayout`
 - **Race engineers:** `myEngineerInvites`, `myEngineers`, `myDrivers`,
   `visibleSessions`/`visibleSession`, `liveSessions`, `sessionTelemetry`;
   `createEngineerInvite`, `revokeEngineerInvite`, `acceptEngineerInvite`,

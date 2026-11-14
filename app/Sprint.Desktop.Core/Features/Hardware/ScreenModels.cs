@@ -47,6 +47,9 @@ public enum ScreenConnectionState
     DeviceConflict,
     Unsupported,
     Faulted,
+
+    /// <summary>A browser display that is served, with no page showing it right now.</summary>
+    WaitingForViewer,
 }
 
 public sealed record ScreenStatus
@@ -55,14 +58,14 @@ public sealed record ScreenStatus
 
     public string? Detail { get; init; }
 
-    public bool IsConnected => State == ScreenConnectionState.Connected;
+    public bool IsConnected => this.State == ScreenConnectionState.Connected;
 
     public static ScreenStatus Disconnected(string? detail = null) => new() { State = ScreenConnectionState.Disconnected, Detail = detail };
 }
 
 public readonly record struct ScreenNativeSize(int Width, int Height)
 {
-    public bool IsValid => Width > 0 && Height > 0;
+    public bool IsValid => this.Width > 0 && this.Height > 0;
 }
 
 /// <summary>
@@ -74,7 +77,7 @@ public readonly record struct ScreenFrameTiming(
     TimeSpan SourceTime,
     TimeSpan PixelTransformTime)
 {
-    public TimeSpan FrameTime => SourceTime + PixelTransformTime;
+    public TimeSpan FrameTime => this.SourceTime + this.PixelTransformTime;
 }
 
 /// <summary>
@@ -104,7 +107,7 @@ public sealed record ScreenPerformanceSnapshot(
             0,
             0);
 
-    public bool HasSamples => FramesSent > 0;
+    public bool HasSamples => this.FramesSent > 0;
 }
 
 internal static class ScreenTransferFailure
@@ -162,12 +165,12 @@ public sealed record ScreenUsbIdentity(ushort Vid, ushort Pid)
 
     public bool MatchesDevicePath(string path)
     {
-        if (Vid != 0 && !path.Contains($"vid_{Vid:x4}", StringComparison.OrdinalIgnoreCase))
+        if (this.Vid != 0 && !path.Contains($"vid_{this.Vid:x4}", StringComparison.OrdinalIgnoreCase))
         {
             return false;
         }
 
-        return Pid == 0 || path.Contains($"pid_{Pid:x4}", StringComparison.OrdinalIgnoreCase);
+        return this.Pid == 0 || path.Contains($"pid_{this.Pid:x4}", StringComparison.OrdinalIgnoreCase);
     }
 }
 
@@ -180,7 +183,7 @@ public static class ScreenStatusPresentation
 {
     public static ScreenStatusView Describe(ScreenStatus status)
     {
-        var presentation = status.State switch
+        ScreenStatusView presentation = status.State switch
         {
             ScreenConnectionState.Connected =>
                 new ScreenStatusView("Connected", "Sprint owns the screen and can send frames.", ScreenStatusTone.Success),
@@ -206,6 +209,8 @@ public static class ScreenStatusPresentation
                 new ScreenStatusView("Unsupported", "This screen transport is not supported on the current operating system."),
             ScreenConnectionState.Faulted =>
                 new ScreenStatusView("Connection failed", "The USB operation failed. Open the diagnostics log for the native error and attempted step.", ScreenStatusTone.Error),
+            ScreenConnectionState.WaitingForViewer =>
+                new ScreenStatusView("Waiting for a viewer", "Sprint serves this display, and no page is showing it yet.", ScreenStatusTone.Info),
             _ =>
                 new ScreenStatusView("Not found", "No matching screen was found. Check the USB connection and configured VID/PID."),
         };
@@ -232,7 +237,7 @@ public static class ScreenOpenFailureStatus
         ushort vid,
         ushort pid)
     {
-        var identity = $"VID=0x{vid:X4} PID={(pid == 0 ? "any" : $"0x{pid:X4}")}";
+        string identity = $"VID=0x{vid:X4} PID={(pid == 0 ? "any" : $"0x{pid:X4}")}";
         if (stage == ScreenOpenFailureStage.CreateFile && nativeError is 5 or 32)
         {
             return new ScreenStatus
@@ -294,7 +299,12 @@ public interface IScreenDriver : IDisposable
     void Disconnect();
 }
 
-/// <summary>Produces native-format RGB565 frames for a telemetry frame (the WS7 bridge onto the WS6 painter).</summary>
+/// <summary>
+/// Produces native-format RGB565 frames for a telemetry frame: the host's dash renderer or a
+/// desktop capture. Called only from its <see cref="ScreenPublisher"/>'s thread. A throw is a
+/// visible failure, never a frozen picture: the publisher reports Faulted with the exception's
+/// message and shows its failure pattern until a later call succeeds.
+/// </summary>
 public interface IDashFrameSource : IDisposable
 {
     /// <summary>Native screen width in pixels (post-rotation).</summary>

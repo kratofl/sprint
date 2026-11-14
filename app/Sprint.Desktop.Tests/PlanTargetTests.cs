@@ -25,15 +25,15 @@ public sealed class PlanTargetTests
     [Fact]
     public void TargetsAreStoredPerSegmentKindAndRoundTripThroughThePlanStore()
     {
-        var root = TestEnv.NewTempDataRoot();
+        string root = TestEnv.NewTempDataRoot();
         try
         {
-            var planId = "";
+            string planId = "";
             WithController(root, Corpus(), controller =>
             {
                 planId = controller.CreatePlan(NewRequest()).Id;
 
-                var choices = controller.TargetChoices();
+                PlanTargetChoices choices = controller.TargetChoices();
                 controller.SetTarget(
                     SegmentKind.Qualifying,
                     choices.Scope(PlanTargetScope.CurrentQualifying)!.Option(PlanTargetStatistic.Fastest)!);
@@ -44,11 +44,11 @@ public sealed class PlanTargetTests
 
             // A brand-new service over the same files: targets are plain persisted plan data,
             // so a future remote store can carry them without the planner changing.
-            var reloaded = new SessionPlannerService(new LocalSessionPlanStore(root)).Find(planId);
+            SessionPlan? reloaded = new SessionPlannerService(new LocalSessionPlanStore(root)).Find(planId);
 
             Assert.NotNull(reloaded);
-            var qualifying = reloaded!.TargetsFor(SegmentKind.Qualifying)?.LapTime;
-            var race = reloaded.TargetsFor(SegmentKind.Race)?.LapTime;
+            PlanTarget? qualifying = reloaded!.TargetsFor(SegmentKind.Qualifying)?.LapTime;
+            PlanTarget? race = reloaded.TargetsFor(SegmentKind.Race)?.LapTime;
             Assert.Equal(131, qualifying?.LapTimeSeconds);
             Assert.Equal(PlanTargetScope.CurrentQualifying, qualifying?.Scope);
             // Hand-worked: practice laps sorted [136, 140, 145, 150] have no single middle
@@ -67,7 +67,7 @@ public sealed class PlanTargetTests
     {
         WithChoices(Corpus(), choices =>
         {
-            var current = choices.Scope(PlanTargetScope.CurrentQualifying);
+            PlanTargetScopeGroup? current = choices.Scope(PlanTargetScope.CurrentQualifying);
 
             Assert.NotNull(current);
             // Only the 31 Jul session's three laps, not the 24 Jul session's two.
@@ -86,7 +86,7 @@ public sealed class PlanTargetTests
     {
         WithChoices(Corpus(), choices =>
         {
-            var allTime = choices.Scope(PlanTargetScope.Qualifying);
+            PlanTargetScopeGroup? allTime = choices.Scope(PlanTargetScope.Qualifying);
 
             Assert.NotNull(allTime);
             Assert.Equal("Quali", allTime!.Label);
@@ -104,7 +104,7 @@ public sealed class PlanTargetTests
     {
         WithChoices(Corpus(), choices =>
         {
-            var practice = choices.Scope(PlanTargetScope.Practice);
+            PlanTargetScopeGroup? practice = choices.Scope(PlanTargetScope.Practice);
 
             Assert.NotNull(practice);
             Assert.Equal("Practice", practice!.Label);
@@ -121,7 +121,7 @@ public sealed class PlanTargetTests
     {
         WithChoices(Corpus(), choices =>
         {
-            var current = choices.Scope(PlanTargetScope.CurrentQualifying)!;
+            PlanTargetScopeGroup current = choices.Scope(PlanTargetScope.CurrentQualifying)!;
 
             // Hand-worked over [131, 133, 138]: the middle lap is 133 and it is a lap that was
             // driven, never an interpolated 134.
@@ -137,7 +137,7 @@ public sealed class PlanTargetTests
     {
         WithChoices(Corpus(), choices =>
         {
-            var current = choices.Scope(PlanTargetScope.CurrentQualifying)!;
+            PlanTargetScopeGroup current = choices.Scope(PlanTargetScope.CurrentQualifying)!;
 
             // 133 s = 2:13.0. A statistic is never shown without the sample size behind it,
             // because a median of three laps and a median of forty-seven read the same
@@ -151,13 +151,13 @@ public sealed class PlanTargetTests
     [Fact]
     public void ChoosingASpecificLapListsTheScopeFastestToSlowestAndPointsAtTheLapPicked()
     {
-        var root = TestEnv.NewTempDataRoot();
+        string root = TestEnv.NewTempDataRoot();
         try
         {
             WithController(root, Corpus(), controller =>
             {
                 controller.CreatePlan(NewRequest());
-                var quali = controller.TargetChoices().Scope(PlanTargetScope.Qualifying)!;
+                PlanTargetScopeGroup quali = controller.TargetChoices().Scope(PlanTargetScope.Qualifying)!;
 
                 // Hand-worked: both qualifying sessions interleaved, fastest first.
                 Assert.Equal(
@@ -166,13 +166,13 @@ public sealed class PlanTargetTests
                 Assert.All(quali.Laps, lap => Assert.Equal(PlanTargetStatistic.Custom, lap.Statistic));
 
                 // The 133 lap: lap 2 of the 31 Jul session, fourth in the ordered list.
-                var picked = quali.Laps[3];
+                PlanTargetOption picked = quali.Laps[3];
                 Assert.Equal("Lap 2", picked.Label);
                 Assert.Equal("2:13.0 · #4 of 5 laps", picked.Detail);
 
                 controller.SetTarget(SegmentKind.Race, picked);
 
-                var target = controller.TargetFor(SegmentKind.Race);
+                PlanTarget? target = controller.TargetFor(SegmentKind.Race);
                 Assert.NotNull(target);
                 Assert.Equal(PlanTargetStatistic.Custom, target!.Statistic);
                 Assert.Equal(133, target.LapTimeSeconds);
@@ -194,28 +194,28 @@ public sealed class PlanTargetTests
         // An imported session can never have a position trace, so a target picked from it can
         // only ever be a scalar; a recorded one can drive a position-accurate delta. The
         // selector has to say which tier the driver just chose.
-        var imported = Session("hs-q-imported", HistorySessionKind.Qualifying, CurrentQualiAt, 131);
+        LapHistorySession imported = Session("hs-q-imported", HistorySessionKind.Qualifying, CurrentQualiAt, 131);
         imported.Origin = LapHistoryOrigin.Imported;
-        foreach (var lap in imported.Laps)
+        foreach (LapHistoryRecord lap in imported.Laps)
         {
             lap.ReferenceCurve = null;
         }
 
-        var recorded = Session("hs-practice", HistorySessionKind.Practice, PracticeAt, 140);
-        var root = TestEnv.NewTempDataRoot();
+        LapHistorySession recorded = Session("hs-practice", HistorySessionKind.Practice, PracticeAt, 140);
+        string root = TestEnv.NewTempDataRoot();
         try
         {
             WithController(root, new FakeLapHistoryStore([imported, recorded]), controller =>
             {
                 controller.CreatePlan(NewRequest());
-                var choices = controller.TargetChoices();
+                PlanTargetChoices choices = controller.TargetChoices();
 
-                var scalar = choices.Scope(PlanTargetScope.CurrentQualifying)!
+                PlanTargetOption scalar = choices.Scope(PlanTargetScope.CurrentQualifying)!
                     .Option(PlanTargetStatistic.Fastest)!;
                 Assert.False(scalar.HasReferenceCurve);
                 Assert.Equal("time only", scalar.TierNote);
 
-                var curve = choices.Scope(PlanTargetScope.Practice)!
+                PlanTargetOption curve = choices.Scope(PlanTargetScope.Practice)!
                     .Option(PlanTargetStatistic.Fastest)!;
                 Assert.True(curve.HasReferenceCurve);
                 Assert.Equal("reference curve", curve.TierNote);
@@ -241,17 +241,17 @@ public sealed class PlanTargetTests
         // than a scope resolving to someone else's pace, and no zero-second placeholder. There
         // is no typed fallback either — a lap time is something a car did, so the section
         // stays empty until a session is driven or imported.
-        var otherCar = Session("hs-other", HistorySessionKind.Qualifying, CurrentQualiAt, 131, 133);
+        LapHistorySession otherCar = Session("hs-other", HistorySessionKind.Qualifying, CurrentQualiAt, 131, 133);
         otherCar.Context.CarModel = "Peugeot 9X8";
 
-        var root = TestEnv.NewTempDataRoot();
+        string root = TestEnv.NewTempDataRoot();
         try
         {
             WithController(root, new FakeLapHistoryStore([otherCar]), controller =>
             {
                 controller.CreatePlan(NewRequest());
 
-                var choices = controller.TargetChoices();
+                PlanTargetChoices choices = controller.TargetChoices();
                 Assert.True(choices.IsEmpty);
                 Assert.Empty(choices.Scopes);
                 Assert.Null(controller.TargetFor(SegmentKind.Race));
@@ -280,15 +280,15 @@ public sealed class PlanTargetTests
     [Fact]
     public void PracticeProgramScopesAppearOnlyForProgramTypesTheCorpusActuallyContains()
     {
-        var root = TestEnv.NewTempDataRoot();
+        string root = TestEnv.NewTempDataRoot();
         try
         {
             WithController(root, new FakeLapHistoryStore([ProgramPractice()]), controller =>
             {
                 controller.CreatePlan(NewRequest());
-                var choices = controller.TargetChoices();
+                PlanTargetChoices choices = controller.TargetChoices();
 
-                var quali = choices.Scope(PlanTargetScope.PracticeProgram, "QUALI");
+                PlanTargetScopeGroup? quali = choices.Scope(PlanTargetScope.PracticeProgram, "QUALI");
                 Assert.NotNull(quali);
                 Assert.Equal("Practice program · QUALI", quali!.Label);
                 // Hand-worked: only the two QUALI-tagged laps [140, 145].
@@ -314,13 +314,13 @@ public sealed class PlanTargetTests
     [Fact]
     public void PracticeProgramScopesAreHiddenInQuickMode()
     {
-        var root = TestEnv.NewTempDataRoot();
+        string root = TestEnv.NewTempDataRoot();
         try
         {
             WithController(root, new FakeLapHistoryStore([ProgramPractice()]), controller =>
             {
                 controller.CreatePlan(NewRequest() with { Mode = PlanMode.Quick });
-                var choices = controller.TargetChoices();
+                PlanTargetChoices choices = controller.TargetChoices();
 
                 // Quick mode is the minute before joining a server; program scopes are the
                 // deliberate, unhurried choice and stay out of it.
@@ -340,7 +340,7 @@ public sealed class PlanTargetTests
     /// <summary>Practice laps [136 untagged, 140 QUALI, 145 QUALI, 150 PACE].</summary>
     private static LapHistorySession ProgramPractice()
     {
-        var session = Session("hs-programs", HistorySessionKind.Practice, PracticeAt, 136, 140, 145, 150);
+        LapHistorySession session = Session("hs-programs", HistorySessionKind.Practice, PracticeAt, 136, 140, 145, 150);
         session.Laps[1].ProgramType = "QUALI";
         session.Laps[2].ProgramType = "QUALI";
         session.Laps[3].ProgramType = "PACE";
@@ -350,7 +350,7 @@ public sealed class PlanTargetTests
     [Fact]
     public void APlanFileWrittenBeforeTargetsExistedStillLoadsAndSimplyHasNone()
     {
-        var root = TestEnv.NewTempDataRoot();
+        string root = TestEnv.NewTempDataRoot();
         try
         {
             // Exactly the shape the store wrote before this issue: no "targets" key at all.
@@ -372,7 +372,7 @@ public sealed class PlanTargetTests
                 }
                 """);
 
-            var plan = new SessionPlannerService(new LocalSessionPlanStore(root)).Find("legacy");
+            SessionPlan? plan = new SessionPlannerService(new LocalSessionPlanStore(root)).Find("legacy");
 
             Assert.NotNull(plan);
             Assert.Equal("Spa 6h", plan!.Name);
@@ -389,7 +389,7 @@ public sealed class PlanTargetTests
     [Fact]
     public void AStoredTargetIsPlainSerialisableDataOnThePlanFile()
     {
-        var root = TestEnv.NewTempDataRoot();
+        string root = TestEnv.NewTempDataRoot();
         try
         {
             WithController(root, Corpus(), controller =>
@@ -402,7 +402,7 @@ public sealed class PlanTargetTests
                         .Option(PlanTargetStatistic.Fastest)!);
             });
 
-            var json = File.ReadAllText(Path.Combine(root, "id-1.json"));
+            string json = File.ReadAllText(Path.Combine(root, "id-1.json"));
 
             // Nothing but data: no ids into another store, no sync bookkeeping. Enums are
             // written by name, so reordering a member cannot silently change stored plans.
@@ -423,13 +423,13 @@ public sealed class PlanTargetTests
     [Fact]
     public void TargetsAreEditableBeforeAnythingStartsAndTheTwoKindsStayIndependent()
     {
-        var root = TestEnv.NewTempDataRoot();
+        string root = TestEnv.NewTempDataRoot();
         try
         {
             WithController(root, Corpus(), controller =>
             {
-                var plan = controller.CreatePlan(NewRequest());
-                var choices = controller.TargetChoices();
+                SessionPlan plan = controller.CreatePlan(NewRequest());
+                PlanTargetChoices choices = controller.TargetChoices();
 
                 controller.SetTarget(
                     SegmentKind.Qualifying,
@@ -467,13 +467,13 @@ public sealed class PlanTargetTests
     [Fact]
     public void TheSelectorShowsTheFirstScopeUntilOneIsPickedAndFallsBackIfItDisappears()
     {
-        var root = TestEnv.NewTempDataRoot();
+        string root = TestEnv.NewTempDataRoot();
         try
         {
             WithController(root, Corpus(), controller =>
             {
                 controller.CreatePlan(NewRequest());
-                var choices = controller.TargetChoices();
+                PlanTargetChoices choices = controller.TargetChoices();
 
                 // Current Quali first: the session right before the race is the common answer.
                 Assert.Equal(PlanTargetScope.CurrentQualifying, controller.SelectedTargetScope(choices)?.Scope);
@@ -497,13 +497,13 @@ public sealed class PlanTargetTests
     [Fact]
     public void AStoredTargetDescribesItsTimeItsProvenanceItsSampleSizeAndItsTier()
     {
-        var root = TestEnv.NewTempDataRoot();
+        string root = TestEnv.NewTempDataRoot();
         try
         {
             WithController(root, Corpus(), controller =>
             {
                 controller.CreatePlan(NewRequest());
-                var choices = controller.TargetChoices();
+                PlanTargetChoices choices = controller.TargetChoices();
 
                 controller.SetTarget(
                     SegmentKind.Qualifying,
@@ -532,11 +532,11 @@ public sealed class PlanTargetTests
         // A plan may be created before the driver is in a car. There is no corpus bucket for
         // "unknown", so an empty key must not match laps that were recorded without a context
         // either — that would aim a Porsche plan at whatever those laps happen to be.
-        var unknown = Session("hs-unknown", HistorySessionKind.Qualifying, CurrentQualiAt, 131, 133);
+        LapHistorySession unknown = Session("hs-unknown", HistorySessionKind.Qualifying, CurrentQualiAt, 131, 133);
         unknown.Context.TrackCourse = "";
         unknown.Context.CarModel = "";
 
-        var root = TestEnv.NewTempDataRoot();
+        string root = TestEnv.NewTempDataRoot();
         try
         {
             WithController(root, new FakeLapHistoryStore([unknown]), controller =>
@@ -610,7 +610,7 @@ public sealed class PlanTargetTests
     /// <summary>Creates one plan for the corpus's context and hands over its target choices.</summary>
     private static void WithChoices(ILapHistoryStore corpus, Action<PlanTargetChoices> assert)
     {
-        var root = TestEnv.NewTempDataRoot();
+        string root = TestEnv.NewTempDataRoot();
         try
         {
             WithController(root, corpus, controller =>
@@ -630,8 +630,8 @@ public sealed class PlanTargetTests
         ILapHistoryStore corpus,
         Action<SessionPlannerController> body)
     {
-        var counter = 0;
-        var service = new SessionPlannerService(
+        int counter = 0;
+        SessionPlannerService service = new SessionPlannerService(
             new LocalSessionPlanStore(root),
             clock: () => Now,
             idFactory: () => $"id-{++counter}");
@@ -681,7 +681,7 @@ public sealed class PlanTargetTests
     [Fact]
     public void TheTierIsCarriedOntoTheStoredTarget()
     {
-        var stored = TierOption(curve: true, trace: true).ToTarget(Now);
+        PlanTarget stored = TierOption(curve: true, trace: true).ToTarget(Now);
 
         Assert.True(stored.HasReferenceCurve);
         Assert.True(stored.HasChannelTrace);
@@ -692,10 +692,10 @@ public sealed class PlanTargetTests
     {
         // End to end through the resolver, so the flag is actually read off the corpus rather
         // than only being carried by a hand-built option.
-        var store = new FakeLapHistoryStore([TracedSession()]);
+        FakeLapHistoryStore store = new FakeLapHistoryStore([TracedSession()]);
 
-        var choices = PlanTargetResolver.Choices(store, TracedContext(), PlanMode.Planned);
-        var best = choices.Scope(PlanTargetScope.Practice)!.Option(PlanTargetStatistic.Fastest)!;
+        PlanTargetChoices choices = PlanTargetResolver.Choices(store, TracedContext(), PlanMode.Planned);
+        PlanTargetOption best = choices.Scope(PlanTargetScope.Practice)!.Option(PlanTargetStatistic.Fastest)!;
 
         Assert.Equal(LapTargetTier.FullTrace, best.Tier);
         Assert.Equal("full trace", best.TierNote);

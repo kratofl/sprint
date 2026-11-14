@@ -16,7 +16,7 @@ public sealed class LapTraceChartsTests
     [Fact]
     public void TheDistanceDomainReadsInMetres()
     {
-        var domain = ChartDomain.TrackDistance(-200, 600);
+        ChartDomain domain = ChartDomain.TrackDistance(-200, 600);
 
         Assert.Equal(ChartDomainKind.TrackDistance, domain.Kind);
         Assert.Equal("Distance", domain.AxisLabel);
@@ -29,7 +29,7 @@ public sealed class LapTraceChartsTests
     [Fact]
     public void OneLapIsDrawnInEmberAndTheComparisonInBlue()
     {
-        var stack = LapTraceCharts.Build(
+        ChartStack stack = LapTraceCharts.Build(
             LapChartPanels.HudDefaults,
             ChartDomain.TrackPosition(),
             [Source("You", ChartSeriesRole.Current), Source("Target", ChartSeriesRole.Comparison)]);
@@ -38,7 +38,7 @@ public sealed class LapTraceChartsTests
         // its own chart because the HUD gives each one its own window.
         Assert.Equal(["Throttle", "Brake", "Speed"], stack.Charts.Select(chart => chart.Title));
 
-        var speed = stack.Charts.Single(chart => chart.Title == "Speed");
+        ChartPanel speed = stack.Charts.Single(chart => chart.Title == "Speed");
         Assert.Equal(2, speed.Series.Count);
         Assert.Equal(ChartSeriesRole.Current, speed.Series[0].Role);
         Assert.Equal(ChartSeriesRole.Comparison, speed.Series[1].Role);
@@ -47,11 +47,11 @@ public sealed class LapTraceChartsTests
     [Fact]
     public void TwoLapsNameTheirSeriesAndOneLapDoesNot()
     {
-        var pair = LapTraceCharts.Build(
+        ChartStack pair = LapTraceCharts.Build(
             [LapChartPanels.Speed],
             ChartDomain.TrackPosition(),
             [Source("You", ChartSeriesRole.Current), Source("Lap 7", ChartSeriesRole.Comparison)]);
-        var single = LapTraceCharts.Build(
+        ChartStack single = LapTraceCharts.Build(
             [LapChartPanels.Speed],
             ChartDomain.TrackPosition(),
             [Source("You", ChartSeriesRole.Current)]);
@@ -65,12 +65,12 @@ public sealed class LapTraceChartsTests
     [Fact]
     public void OnlyBrakeIsFilledSoColourStaysFreeToMeanWhoseLapItIs()
     {
-        var stack = LapTraceCharts.Build(
+        ChartStack stack = LapTraceCharts.Build(
             [LapChartPanels.Pedals],
             ChartDomain.TrackPosition(),
             [Source("You", ChartSeriesRole.Current)]);
 
-        var pedals = stack.Charts[0];
+        ChartPanel pedals = stack.Charts[0];
         Assert.Equal("Brake", pedals.Series[0].Name);
         Assert.True(pedals.Series[0].FillArea);
         Assert.Equal("Throttle", pedals.Series[1].Name);
@@ -83,12 +83,12 @@ public sealed class LapTraceChartsTests
     public void PedalsAreShownAsPercentagesNotAsFractions()
     {
         // Stored 0–1 because that is what the game reports; a driver reads a percentage.
-        var stack = LapTraceCharts.Build(
+        ChartStack stack = LapTraceCharts.Build(
             [LapChartPanels.Pedals],
             ChartDomain.TrackPosition(),
             [Source("You", ChartSeriesRole.Current)]);
 
-        var brake = stack.Charts[0].Series[0];
+        ChartSeries brake = stack.Charts[0].Series[0];
         Assert.All(brake.Samples, sample => Assert.InRange(sample.Y, 0, 100));
         Assert.Contains(brake.Samples, sample => sample.Y > 1.5);
     }
@@ -97,8 +97,8 @@ public sealed class LapTraceChartsTests
     public void YourLineStopsAtTheCarWhileTheTargetRunsOnAhead()
     {
         // The asymmetry the HUD is built around: you cannot draw a future you have not driven.
-        var domain = ChartDomain.TrackDistance(1000, 2000);
-        var stack = LapTraceCharts.Build(
+        ChartDomain domain = ChartDomain.TrackDistance(1000, 2000);
+        ChartStack stack = LapTraceCharts.Build(
             [LapChartPanels.Speed],
             domain,
             [
@@ -106,8 +106,8 @@ public sealed class LapTraceChartsTests
                 Source("Target", ChartSeriesRole.Comparison),
             ]);
 
-        var you = stack.Charts[0].Series[0];
-        var target = stack.Charts[0].Series[1];
+        ChartSeries you = stack.Charts[0].Series[0];
+        ChartSeries target = stack.Charts[0].Series[1];
         Assert.True(you.Samples[^1].X <= 1400);
         Assert.True(target.Samples[^1].X >= 1990);
     }
@@ -117,13 +117,13 @@ public sealed class LapTraceChartsTests
     {
         // 300 m short of the line, looking 600 m ahead: the far half of the window is the next
         // lap's opening metres, and the target has them on disk.
-        var domain = ChartDomain.TrackDistance(TrackLength - 300, TrackLength + 300);
-        var stack = LapTraceCharts.Build(
+        ChartDomain domain = ChartDomain.TrackDistance(TrackLength - 300, TrackLength + 300);
+        ChartStack stack = LapTraceCharts.Build(
             [LapChartPanels.Speed],
             domain,
             [Source("Target", ChartSeriesRole.Comparison)]);
 
-        var target = stack.Charts[0].Series[0];
+        ChartSeries target = stack.Charts[0].Series[0];
         Assert.Contains(target.Samples, sample => sample.X > TrackLength);
         // Unwrapped X, so the line is continuous across the line rather than jumping back.
         Assert.Equal(target.Samples.OrderBy(sample => sample.X), target.Samples);
@@ -132,7 +132,7 @@ public sealed class LapTraceChartsTests
     [Fact]
     public void AChannelTheTraceNeverCarriedYieldsAnEmptyPanelNotAFlatZeroLine()
     {
-        var bare = new LapChannelTrace
+        LapChannelTrace bare = new LapChannelTrace
         {
             PositionStep = 0.001,
             TrackLengthMeters = TrackLength,
@@ -142,7 +142,7 @@ public sealed class LapTraceChartsTests
             },
         };
 
-        var stack = LapTraceCharts.Build(
+        ChartStack stack = LapTraceCharts.Build(
             [LapChartPanels.Speed, LapChartPanels.Gear],
             ChartDomain.TrackPosition(),
             [new LapTraceSeriesSource(bare, TrackLength, "You", ChartSeriesRole.Current)]);
@@ -155,7 +155,7 @@ public sealed class LapTraceChartsTests
     [Fact]
     public void GearIsSteppedBecauseTheCarHasNoRatioBetweenThirdAndFourth()
     {
-        var stack = LapTraceCharts.Build(
+        ChartStack stack = LapTraceCharts.Build(
             [LapChartPanels.Gear],
             ChartDomain.TrackPosition(),
             [Source("You", ChartSeriesRole.Current)]);
@@ -184,15 +184,15 @@ public sealed class LapTraceChartsTests
     /// </summary>
     private static LapChannelTrace Trace()
     {
-        const int Count = 5001;
-        var speed = new float[Count];
-        var brake = new float[Count];
-        var throttle = new float[Count];
-        var steering = new float[Count];
-        var gear = new float[Count];
-        for (var i = 0; i < Count; i++)
+        const int count = 5001;
+        float[] speed = new float[count];
+        float[] brake = new float[count];
+        float[] throttle = new float[count];
+        float[] steering = new float[count];
+        float[] gear = new float[count];
+        for (int i = 0; i < count; i++)
         {
-            var t = i / (double)(Count - 1);
+            double t = i / (double)(count - 1);
             speed[i] = (float)(100 + (200 * t));
             brake[i] = (float)t;
             throttle[i] = (float)(1 - t);
@@ -202,7 +202,7 @@ public sealed class LapTraceChartsTests
 
         return new LapChannelTrace
         {
-            PositionStep = 1.0 / (Count - 1),
+            PositionStep = 1.0 / (count - 1),
             TrackLengthMeters = TrackLength,
             Channels = new Dictionary<string, float[]>(StringComparer.Ordinal)
             {

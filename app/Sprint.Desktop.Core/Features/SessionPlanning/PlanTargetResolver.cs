@@ -55,7 +55,7 @@ public sealed record PlanTargetOption(
     /// exists to prevent.
     /// </para>
     /// </summary>
-    public LapTargetTier Tier => (HasReferenceCurve, HasChannelTrace) switch
+    public LapTargetTier Tier => (this.HasReferenceCurve, this.HasChannelTrace) switch
     {
         (true, true) => LapTargetTier.FullTrace,
         (true, false) => LapTargetTier.ReferenceCurve,
@@ -63,7 +63,7 @@ public sealed record PlanTargetOption(
     };
 
     /// <summary>The tier in the driver's words.</summary>
-    public string TierNote => Tier switch
+    public string TierNote => this.Tier switch
     {
         LapTargetTier.FullTrace => "full trace",
         LapTargetTier.ReferenceCurve => "reference curve",
@@ -73,16 +73,16 @@ public sealed record PlanTargetOption(
     /// <summary>The stored form of this choice, for <paramref name="now"/>'s write.</summary>
     public PlanTarget ToTarget(DateTimeOffset now) => new()
     {
-        Scope = Scope,
-        Statistic = Statistic,
-        ProgramType = ProgramType,
-        LapTimeSeconds = LapTimeSeconds,
-        SampleSize = SampleSize,
-        LapSessionId = LapSessionId,
-        LapNumber = LapNumber,
-        LapSessionStartedAt = LapSessionStartedAt,
-        HasReferenceCurve = HasReferenceCurve,
-        HasChannelTrace = HasChannelTrace,
+        Scope = this.Scope,
+        Statistic = this.Statistic,
+        ProgramType = this.ProgramType,
+        LapTimeSeconds = this.LapTimeSeconds,
+        SampleSize = this.SampleSize,
+        LapSessionId = this.LapSessionId,
+        LapNumber = this.LapNumber,
+        LapSessionStartedAt = this.LapSessionStartedAt,
+        HasReferenceCurve = this.HasReferenceCurve,
+        HasChannelTrace = this.HasChannelTrace,
         UpdatedAt = now,
     };
 }
@@ -100,7 +100,7 @@ public sealed record PlanTargetScopeGroup(
     IReadOnlyList<PlanTargetOption> Laps)
 {
     public PlanTargetOption? Option(PlanTargetStatistic statistic) =>
-        Options.FirstOrDefault(option => option.Statistic == statistic);
+        this.Options.FirstOrDefault(option => option.Statistic == statistic);
 }
 
 /// <summary>
@@ -116,12 +116,33 @@ public sealed record PlanTargetChoices(IReadOnlyList<PlanTargetScopeGroup> Scope
     public const string NoHistoryMessage =
         "No laps recorded for this car and track yet. Drive or import a session to unlock targets.";
 
-    public bool IsEmpty => Scopes.Count == 0;
+    public bool IsEmpty => this.Scopes.Count == 0;
 
     public PlanTargetScopeGroup? Scope(PlanTargetScope scope, string? programType = null) =>
-        Scopes.FirstOrDefault(group =>
+        this.Scopes.FirstOrDefault(group =>
             group.Scope == scope
             && string.Equals(group.ProgramType, programType, StringComparison.Ordinal));
+
+    /// <summary>
+    /// The option a driver picked: a statistic of a scope, or for <see cref="PlanTargetStatistic.Custom"/>
+    /// one lap of it. Null when the corpus no longer offers it.
+    /// </summary>
+    public PlanTargetOption? Find(
+        PlanTargetScope scope,
+        string? programType,
+        PlanTargetStatistic statistic,
+        string? lapSessionId,
+        int? lapNumber)
+    {
+        if (this.Scope(scope, programType) is not { } group)
+        {
+            return null;
+        }
+
+        return statistic == PlanTargetStatistic.Custom
+            ? group.Laps.FirstOrDefault(lap => lap.LapSessionId == lapSessionId && lap.LapNumber == lapNumber)
+            : group.Option(statistic);
+    }
 }
 
 /// <summary>
@@ -135,6 +156,13 @@ public sealed record PlanTargetChoices(IReadOnlyList<PlanTargetScopeGroup> Scope
 /// </summary>
 public static class PlanTargetResolver
 {
+    /// <summary>The choices for <paramref name="plan"/>'s own game, track and car.</summary>
+    public static PlanTargetChoices ForPlan(ILapHistoryStore store, SessionPlan plan)
+    {
+        ArgumentNullException.ThrowIfNull(plan);
+        return Choices(store, new LapHistoryContext { Game = plan.Game, TrackCourse = plan.Track, CarModel = plan.Car }, plan.Mode);
+    }
+
     /// <summary>
     /// Every scope with laps behind it, in display order. A scope the corpus cannot fill is
     /// omitted rather than shown empty.
@@ -154,12 +182,12 @@ public static class PlanTargetResolver
             return PlanTargetChoices.None;
         }
 
-        var sessions = store.LoadAll()
+        List<LapHistorySession> sessions = store.LoadAll()
             .Where(session => SameContext(session.Context, context))
             .ToList();
 
-        var practice = OfKind(sessions, HistorySessionKind.Practice);
-        var groups = new List<PlanTargetScopeGroup>();
+        List<LapHistorySession> practice = OfKind(sessions, HistorySessionKind.Practice);
+        List<PlanTargetScopeGroup> groups = new List<PlanTargetScopeGroup>();
         Add(groups, CurrentQualifying(sessions), context, PlanTargetScope.CurrentQualifying);
         Add(groups, OfKind(sessions, HistorySessionKind.Qualifying), context, PlanTargetScope.Qualifying);
         Add(groups, practice, context, PlanTargetScope.Practice);
@@ -183,7 +211,7 @@ public static class PlanTargetResolver
         IReadOnlyList<LapHistorySession> practice,
         LapHistoryContext context)
     {
-        var programTypes = practice
+        IOrderedEnumerable<string> programTypes = practice
             .SelectMany(session => session.Laps)
             .Select(lap => lap.ProgramType)
             .Where(programType => !string.IsNullOrWhiteSpace(programType))
@@ -191,7 +219,7 @@ public static class PlanTargetResolver
             .Distinct(StringComparer.Ordinal)
             .OrderBy(programType => programType, StringComparer.Ordinal);
 
-        foreach (var programType in programTypes)
+        foreach (string programType in programTypes)
         {
             Add(groups, OfProgram(practice, programType), context, PlanTargetScope.PracticeProgram, programType);
         }
@@ -204,10 +232,10 @@ public static class PlanTargetResolver
         IReadOnlyList<LapHistorySession> sessions,
         string programType)
     {
-        var narrowed = new List<LapHistorySession>();
-        foreach (var session in sessions)
+        List<LapHistorySession> narrowed = new List<LapHistorySession>();
+        foreach (LapHistorySession session in sessions)
         {
-            var laps = session.Laps
+            List<LapHistoryRecord> laps = session.Laps
                 .Where(lap => string.Equals(lap.ProgramType, programType, StringComparison.Ordinal))
                 .ToList();
             if (laps.Count == 0)
@@ -244,14 +272,14 @@ public static class PlanTargetResolver
             return;
         }
 
-        var statistics = LapHistoryStatistics.Resolve(new ScopedLapHistoryStore(sessions), context);
+        LapHistoryStatisticsResult? statistics = LapHistoryStatistics.Resolve(new ScopedLapHistoryStore(sessions), context);
         if (statistics is null)
         {
             return;
         }
 
-        var label = ScopeLabel(scope, programType, sessions);
-        var options = new List<PlanTargetOption>
+        string label = ScopeLabel(scope, programType, sessions);
+        List<PlanTargetOption> options = new List<PlanTargetOption>
         {
             Option(scope, programType, PlanTargetStatistic.Fastest, statistics.Fastest, statistics.SampleSize),
             Option(scope, programType, PlanTargetStatistic.Median, statistics.Median, statistics.SampleSize),
@@ -259,7 +287,7 @@ public static class PlanTargetResolver
         };
 
         // Already ordered fastest to slowest by #184, which is the order the driver picks from.
-        var laps = statistics.Candidates
+        List<PlanTargetOption> laps = statistics.Candidates
             .Select((candidate, index) => CustomOption(
                 scope,
                 programType,
@@ -278,7 +306,7 @@ public static class PlanTargetResolver
         int position,
         int sampleSize)
     {
-        var timeText = FormatLapTime(candidate.Lap.LapTimeSeconds);
+        string timeText = FormatLapTime(candidate.Lap.LapTimeSeconds);
         return new PlanTargetOption(
             scope,
             programType,
@@ -304,7 +332,7 @@ public static class PlanTargetResolver
         LapHistoryStatistic resolved,
         int sampleSize)
     {
-        var timeText = FormatLapTime(resolved.Lap.LapTimeSeconds);
+        string timeText = FormatLapTime(resolved.Lap.LapTimeSeconds);
         return new PlanTargetOption(
             scope,
             programType,
@@ -325,7 +353,7 @@ public static class PlanTargetResolver
     // is stable across reloads rather than depending on the store's file order.
     private static IReadOnlyList<LapHistorySession> CurrentQualifying(IReadOnlyList<LapHistorySession> sessions)
     {
-        var current = OfKind(sessions, HistorySessionKind.Qualifying)
+        LapHistorySession? current = OfKind(sessions, HistorySessionKind.Qualifying)
             .OrderByDescending(session => session.StartedAt)
             .ThenByDescending(session => session.Id, StringComparer.Ordinal)
             .FirstOrDefault();
@@ -382,7 +410,7 @@ public static class PlanTargetResolver
     {
         ArgumentNullException.ThrowIfNull(target);
 
-        var parts = new List<string> { FormatLapTime(target.LapTimeSeconds) };
+        List<string> parts = new List<string> { FormatLapTime(target.LapTimeSeconds) };
         if (target.Scope == PlanTargetScope.Manual)
         {
             // No lap, no sample, no curve — saying so is the whole point of the manual path.
@@ -400,7 +428,7 @@ public static class PlanTargetResolver
             _ => "Practice",
         });
 
-        var laps = $"{target.SampleSize} {(target.SampleSize == 1 ? "lap" : "laps")}";
+        string laps = $"{target.SampleSize} {(target.SampleSize == 1 ? "lap" : "laps")}";
         parts.Add(target.Statistic switch
         {
             PlanTargetStatistic.Custom => $"lap {target.LapNumber} of {laps}",
@@ -419,7 +447,7 @@ public static class PlanTargetResolver
             return "—";
         }
 
-        var span = TimeSpan.FromSeconds(seconds);
+        TimeSpan span = TimeSpan.FromSeconds(seconds);
         return string.Create(
             CultureInfo.InvariantCulture,
             $"{(int)span.TotalMinutes}:{span.Seconds:00}.{span.Milliseconds / 100}");

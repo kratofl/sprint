@@ -57,6 +57,13 @@ test('Discord sign-in and an engineer invite link work signed out', () => {
   }
 })
 
+test('a design mockup works signed out, but nothing else under /mockups', () => {
+  assert.deepEqual(routeDecision({ token: undefined, now, pathname: '/mockups/setup-tags', search: '?variant=A' }), { kind: 'pass' })
+  for (const pathname of ['/mockups', '/mockups/', '/mockups/a/b']) {
+    assert.equal(routeDecision({ token: undefined, now, pathname, search: '' }).kind, 'redirect', pathname)
+  }
+})
+
 test('a signed-in visit to sign-in goes on to where it was headed', () => {
   const visit = (search: string) => routeDecision({ token: valid, now, pathname: '/sign-in', search })
 

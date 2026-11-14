@@ -23,7 +23,7 @@ public interface ILapHistoryStore
     /// </para>
     /// </summary>
     IReadOnlyList<LapHistoryContext> LoadContexts() =>
-        [.. LoadAll().Select(session => session.Context)];
+        [.. this.LoadAll().Select(session => session.Context)];
 
     /// <summary>Creates or replaces the session identified by <see cref="LapHistorySession.Id"/>.</summary>
     void Save(LapHistorySession session);

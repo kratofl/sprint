@@ -19,10 +19,10 @@ public static class DatabaseUrl
         if (databaseUrl.Contains('=') && !databaseUrl.Contains("://"))
             return databaseUrl;
 
-        var uri = new Uri(databaseUrl);
-        var userInfo = uri.UserInfo.Split(':', 2);
+        Uri uri = new Uri(databaseUrl);
+        string[] userInfo = uri.UserInfo.Split(':', 2);
 
-        var builder = new NpgsqlConnectionStringBuilder
+        NpgsqlConnectionStringBuilder builder = new NpgsqlConnectionStringBuilder
         {
             Host = uri.Host,
             Port = uri.IsDefaultPort ? 5432 : uri.Port,
@@ -31,9 +31,9 @@ public static class DatabaseUrl
             Password = userInfo.Length > 1 ? Uri.UnescapeDataString(userInfo[1]) : null
         };
 
-        foreach (var pair in uri.Query.TrimStart('?').Split('&', StringSplitOptions.RemoveEmptyEntries))
+        foreach (string pair in uri.Query.TrimStart('?').Split('&', StringSplitOptions.RemoveEmptyEntries))
         {
-            var kv = pair.Split('=', 2);
+            string[] kv = pair.Split('=', 2);
             if (kv.Length != 2) continue;
             if (kv[0].Equals("sslmode", StringComparison.OrdinalIgnoreCase))
                 builder.SslMode = ParseSslMode(kv[1]);

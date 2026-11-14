@@ -1,12 +1,12 @@
-import type { SprintCommand } from '../bridge'
-import { dashboardWidgetTypes, isDashStyle, isDashWidgetType, styleColorTokens, dashAlertTypes, type DashAlertType } from '@sprint/dashboard'
-import type { DashAlert, DashColorSystem, DashLayout, DashStyle, DashPage, DashTheme, DashWidget, DashWidgetStack, DashWidgetStackLayer, DashWidgetStyle, DashWidgetType } from '@sprint/dashboard'
+import type { DashCategoryLists, DashRefitLosses, SprintCommand } from '../bridge'
+import { LAP_SUMMARY_SECONDS, MIN_ALERT_SECONDS, maxAlertSeconds, dashboardWidgetTypes, groupParents, isDashStyle, isDashWidgetGroup, isDashWidgetType, mayOverlap, stackLayers, styleColorTokens, dashAlertTypes, type DashAlertType } from '@sprint/dashboard'
+import type { DashAlert, DashColorSystem, DashLayout, DashStyle, DashPage, DashTheme, DashWidget, DashWidgetStyle, DashWidgetType } from '@sprint/dashboard'
 import type { TelemetryFrame } from '@sprint/types'
 
 /**
  * Dashes domain model, parsing, and layout mutators.
  *
- * The page/widget/stack mutators below are a hand-mirrored copy of
+ * The page/widget mutators below are a hand-mirrored copy of
  * `app/Sprint.Desktop.Core/Features/Dashes/DashLayoutEditor.cs` and
  * `DashEditorController.cs` — the same convention DevicesDomain.ts uses for
  * the hardware catalogs. If those files change, this file must change with
@@ -25,6 +25,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
 
 // ── Parsing (SprintState.dashLayouts -> DashLayout) ─────────────────────────
 
+/** A widget row as the host writes it: `group` and `hidden` are omitted when unset, never null. */
 function isDashWidgetRow(value: unknown): value is DashWidget {
   return (
     isRecord(value) &&
@@ -33,25 +34,9 @@ function isDashWidgetRow(value: unknown): value is DashWidget {
     typeof value.col === 'number' &&
     typeof value.row === 'number' &&
     typeof value.colSpan === 'number' &&
-    typeof value.rowSpan === 'number'
-  )
-}
-
-function isDashWidgetStackLayerRow(value: unknown): value is DashWidgetStackLayer {
-  return isRecord(value) && typeof value.id === 'string' && typeof value.name === 'string' && Array.isArray(value.widgets) && value.widgets.every(isDashWidgetRow)
-}
-
-function isDashWidgetStackRow(value: unknown): value is DashWidgetStack {
-  return (
-    isRecord(value) &&
-    typeof value.id === 'string' &&
-    typeof value.name === 'string' &&
-    typeof value.col === 'number' &&
-    typeof value.row === 'number' &&
-    typeof value.colSpan === 'number' &&
     typeof value.rowSpan === 'number' &&
-    Array.isArray(value.layers) &&
-    value.layers.every(isDashWidgetStackLayerRow)
+    (value.group === undefined || typeof value.group === 'string') &&
+    (value.hidden === undefined || typeof value.hidden === 'boolean')
   )
 }
 
@@ -60,20 +45,24 @@ function isDashPageRow(value: unknown): value is DashPage {
     return false
   }
 
-  return value.widgetStacks === undefined || (Array.isArray(value.widgetStacks) && value.widgetStacks.every(isDashWidgetStackRow))
+  return value.groups === undefined || (Array.isArray(value.groups) && value.groups.every(isDashWidgetGroup))
 }
 
-function isDashAlertRow(value: unknown): value is DashAlert {
-  return (
-    isRecord(value) &&
-    typeof value.id === 'string' &&
-    typeof value.type === 'string' &&
-    typeof value.enabled === 'boolean' &&
-    typeof value.col === 'number' &&
-    typeof value.row === 'number' &&
-    typeof value.colSpan === 'number' &&
-    typeof value.rowSpan === 'number'
-  )
+/**
+ * One raw alert row, or null when it lacks its identity or rectangle. The host writes an absent
+ * look field as null; it is dropped here, so inward code sees "absent" one way only.
+ */
+function parseDashAlert(value: unknown): DashAlert | null {
+  if (!isRecord(value)) return null
+  const { id, type, enabled, col, row, colSpan, rowSpan } = value
+  if (typeof id !== 'string' || typeof type !== 'string' || typeof enabled !== 'boolean') return null
+  if (typeof col !== 'number' || typeof row !== 'number' || typeof colSpan !== 'number' || typeof rowSpan !== 'number') return null
+  const alert: DashAlert = { id, type, enabled, col, row, colSpan, rowSpan }
+  if (value.displayMode === 'full' || value.displayMode === 'center') alert.displayMode = value.displayMode
+  if (typeof value.colorToken === 'string') alert.colorToken = value.colorToken
+  if (typeof value.durationSeconds === 'number') alert.durationSeconds = value.durationSeconds
+  if (typeof value.invertColors === 'boolean') alert.invertColors = value.invertColors
+  return alert
 }
 
 /** Parses one raw `dashLayouts[]` row. Returns `null` for a row with no id — never a fabricated dash. */
@@ -85,16 +74,16 @@ export function parseDashLayout(row: Record<string, unknown>): DashLayout | null
   const layout: DashLayout = {
     id: row.id,
     name: typeof row.name === 'string' ? row.name : row.id,
-    default: row.default === true,
     mode: typeof row.mode === 'string' ? row.mode : 'basic',
     gridCols: typeof row.gridCols === 'number' && row.gridCols > 0 ? row.gridCols : 20,
     gridRows: typeof row.gridRows === 'number' && row.gridRows > 0 ? row.gridRows : 12,
     pages: Array.isArray(row.pages) ? row.pages.filter(isDashPageRow) : [],
-    alerts: Array.isArray(row.alerts) ? row.alerts.filter(isDashAlertRow) : [],
+    alerts: Array.isArray(row.alerts) ? row.alerts.map(parseDashAlert).filter((alert): alert is DashAlert => alert !== null) : [],
   }
 
   if (isDashPageRow(row.idlePage)) layout.idlePage = row.idlePage
   if (typeof row.screenProfile === 'string') layout.screenProfile = row.screenProfile
+  if (typeof row.category === 'string' && row.category.length > 0) layout.category = row.category
   if (row.colorSystem === 'functional' || row.colorSystem === 'styled') layout.colorSystem = row.colorSystem
   if (isDashStyle(row.dashStyle)) layout.dashStyle = row.dashStyle
   if (isRecord(row.theme)) {
@@ -120,7 +109,7 @@ function isTelemetryFrame(value: unknown): value is TelemetryFrame {
   )
 }
 
-/** Narrows `SprintState.telemetry.frame` (an untyped record) for the live preview. `DashRenderer` treats a missing frame as "no data" on its own. */
+/** Narrows `SprintState.telemetry.frame` (an untyped record) for the live preview. The dash renderer treats a missing frame as "no data" on its own. */
 export const toTelemetryFrame = (value: unknown): TelemetryFrame | null => (isTelemetryFrame(value) ? value : null)
 
 // ── Screen profiles (ScreenProfile.cs / ScreenProfileCatalog) ───────────────
@@ -161,9 +150,10 @@ export const fitScreenSize = (screen: Pick<ScreenProfile, 'width' | 'height'>, m
 // ── Widget catalog (DashWidgetCatalog.cs) — type list vs. UI metadata ───────
 //
 // The widget TYPE list is not hand-mirrored here: `DashWidgetType` and
-// `dashboardWidgetTypes` come from `@sprint/dashboard` (packages/dashboard/src/widgets.tsx),
+// `dashboardWidgetTypes` come from `@sprint/dashboard` (packages/dashboard/src/widgetTypes.ts),
 // which is itself the one hand-mirrored copy of `DashWidgetCatalog.cs`'s type
-// list shared by every desktop-app consumer. `WIDGET_CATALOG` below is typed
+// list shared by every desktop-app consumer (a Rust test pins it to what the
+// renderer draws). `WIDGET_CATALOG` below is typed
 // `Record<DashWidgetType, ...>`, so adding a type in the package without adding
 // an entry here is a compile error — the two cannot silently drift apart.
 //
@@ -315,7 +305,7 @@ export const WIDGET_STYLE_COLOR_TOKENS: readonly { value: string; label: string 
 // ── Alert catalog ──
 //
 // `AlertTypeId` is `DashAlertType` from `@sprint/dashboard`, the authoritative
-// set the tracker fires on. Only the labels below are UI copy; adding an alert
+// set the renderer fires on. Only the labels below are UI copy; adding an alert
 // type to the package without labelling it here is a compile error, so the two
 // cannot drift silently.
 
@@ -347,25 +337,38 @@ export const ALERT_COLOR_TOKENS: readonly { value: string; label: string }[] = [
 
 export type GridRect = { col: number; row: number; colSpan: number; rowSpan: number }
 
-const rectsIntersect = (a: GridRect, b: GridRect): boolean => a.col < b.col + b.colSpan && a.col + a.colSpan > b.col && a.row < b.row + b.rowSpan && a.row + a.rowSpan > b.row
+export const rectsIntersect = (a: GridRect, b: GridRect): boolean => a.col < b.col + b.colSpan && a.col + a.colSpan > b.col && a.row < b.row + b.rowSpan && a.row + a.rowSpan > b.row
 
-const isValidRect = (rect: GridRect, cols: number, rows: number): boolean =>
+export const isValidRect = (rect: GridRect, cols: number, rows: number): boolean =>
   rect.col >= 0 && rect.row >= 0 && rect.colSpan > 0 && rect.rowSpan > 0 && rect.col + rect.colSpan <= cols && rect.row + rect.rowSpan <= rows
 
-function pageOverlaps(page: DashPage, candidate: GridRect, excludeWidgetId: string | null): boolean {
-  if (page.widgets.some((widget) => widget.id !== excludeWidgetId && rectsIntersect(widget, candidate))) return true
-  return (page.widgetStacks ?? []).some((stack) => rectsIntersect(stack, candidate))
+/**
+ * Whether a widget `id` in `group` (null: on the page) at `candidate` would share a cell with a
+ * widget it may not overlap. Only layers of one stack may overlap (`mayOverlap` in
+ * `@sprint/dashboard`, mirrored by `DashLayoutValidator`). Widgets in `ignore` are left out.
+ */
+export function pageOverlaps(page: DashPage, candidate: GridRect, id: string, group: string | null, ignore: ReadonlySet<string> = new Set()): boolean {
+  const parents = groupParents(page)
+  const layers = stackLayers(page, group, id, parents)
+  return page.widgets.some(
+    (widget) => widget.id !== id && !ignore.has(widget.id) && rectsIntersect(widget, candidate) && !mayOverlap(layers, stackLayers(page, widget.group ?? null, widget.id, parents)),
+  )
 }
 
-function layerOverlaps(layer: DashWidgetStackLayer, candidate: GridRect, excludeWidgetId: string | null): boolean {
-  return layer.widgets.some((widget) => widget.id !== excludeWidgetId && rectsIntersect(widget, candidate))
+/** Whether every widget on the page is inside the grid and shares cells only as `pageOverlaps` allows. */
+export function pageFits(page: DashPage, cols: number, rows: number): boolean {
+  return page.widgets.every((widget) => isValidRect(widget, cols, rows) && !pageOverlaps(page, widget, widget.id, widget.group ?? null))
 }
 
-function firstFit(cols: number, rows: number, colSpan: number, rowSpan: number, occupied: (rect: GridRect) => boolean): GridRect | null {
-  const cs = Math.max(1, Math.min(colSpan, cols))
-  const rs = Math.max(1, Math.min(rowSpan, rows))
-  for (let row = 0; row <= rows - rs; row++) {
-    for (let col = 0; col <= cols - cs; col++) {
+function firstFit(cols: number, rows: number, colSpan: number, rowSpan: number, occupied: (rect: GridRect) => boolean, within?: GridRect): GridRect | null {
+  const cs = Math.max(1, Math.min(colSpan, within?.colSpan ?? cols, cols))
+  const rs = Math.max(1, Math.min(rowSpan, within?.rowSpan ?? rows, rows))
+  const left = within?.col ?? 0
+  const top = within?.row ?? 0
+  const right = within ? within.col + within.colSpan : cols
+  const bottom = within ? within.row + within.rowSpan : rows
+  for (let row = top; row <= bottom - rs; row++) {
+    for (let col = left; col <= right - cs; col++) {
       const rect: GridRect = { col, row, colSpan: cs, rowSpan: rs }
       if (!occupied(rect)) return rect
     }
@@ -376,8 +379,6 @@ function firstFit(cols: number, rows: number, colSpan: number, rowSpan: number, 
 
 export const DEFAULT_WIDGET_COL_SPAN = 4
 export const DEFAULT_WIDGET_ROW_SPAN = 2
-const DEFAULT_STACK_COL_SPAN = 6
-const DEFAULT_STACK_ROW_SPAN = 4
 
 function slugify(value: string): string {
   const slug = value
@@ -388,7 +389,7 @@ function slugify(value: string): string {
   return slug.length > 0 ? slug : 'page'
 }
 
-function nextId(base: string, exists: (id: string) => boolean): string {
+export function nextId(base: string, exists: (id: string) => boolean): string {
   if (!exists(base)) return base
   for (let index = 2; ; index++) {
     const candidate = `${base}-${index}`
@@ -396,21 +397,16 @@ function nextId(base: string, exists: (id: string) => boolean): string {
   }
 }
 
-/** `{prefix}-1`, `{prefix}-2`, ... — mirrors `DashLayoutEditor.NextLayerId`'s scheme (distinct from `nextId`'s "append -2 to a taken base" scheme used for page/widget/stack ids). */
-function nextSequentialId(prefix: string, exists: (id: string) => boolean): string {
-  for (let index = 1; ; index++) {
-    const candidate = `${prefix}-${index}`
-    if (!exists(candidate)) return candidate
-  }
-}
-
-function nextName(base: string, exists: (name: string) => boolean): string {
+export function nextName(base: string, exists: (name: string) => boolean): string {
   if (!exists(base)) return base
   for (let index = 2; ; index++) {
     const candidate = `${base} ${index}`
     if (!exists(candidate)) return candidate
   }
 }
+
+/** Whether `id` is taken on the page: widgets and groups share one id space, since a stack's `shownFirst` names either. */
+export const pageIdTaken = (page: DashPage, id: string): boolean => page.widgets.some((widget) => widget.id === id) || (page.groups ?? []).some((group) => group.id === id)
 
 function cloneLayout(layout: DashLayout): DashLayout {
   return structuredClone(layout)
@@ -422,39 +418,8 @@ export function findPage(layout: DashLayout, pageId: string): DashPage | null {
   return layout.pages.find((page) => page.id === pageId) ?? null
 }
 
-function findStack(page: DashPage, stackId: string): DashWidgetStack | null {
-  return (page.widgetStacks ?? []).find((stack) => stack.id === stackId) ?? null
-}
-
-function findWidgetInPage(page: DashPage, widgetId: string): DashWidget | null {
-  return page.widgets.find((widget) => widget.id === widgetId) ?? null
-}
-
-/** Where a selected widget lives — a page's own grid, or a widget stack's active layer sub-grid. `DashRenderer.onWidgetSelect` fires identically for both. */
-export type WidgetLocation = { kind: 'page'; pageId: string } | { kind: 'stackLayer'; pageId: string; stackId: string; layerId: string }
-
-export function findWidgetLocation(layout: DashLayout, pageId: string, widgetId: string): WidgetLocation | null {
-  const page = findPage(layout, pageId)
-  if (!page) return null
-  if (findWidgetInPage(page, widgetId)) return { kind: 'page', pageId }
-  for (const stack of page.widgetStacks ?? []) {
-    for (const layer of stack.layers) {
-      if (layer.widgets.some((widget) => widget.id === widgetId)) {
-        return { kind: 'stackLayer', pageId, stackId: stack.id, layerId: layer.id }
-      }
-    }
-  }
-
-  return null
-}
-
-export function findWidgetAt(layout: DashLayout, location: WidgetLocation, widgetId: string): DashWidget | null {
-  const page = findPage(layout, location.pageId)
-  if (!page) return null
-  if (location.kind === 'page') return findWidgetInPage(page, widgetId)
-  const stack = findStack(page, location.stackId)
-  const layer = stack?.layers.find((item) => item.id === location.layerId)
-  return layer?.widgets.find((widget) => widget.id === widgetId) ?? null
+export function findWidget(layout: DashLayout, pageId: string, widgetId: string): DashWidget | null {
+  return findPage(layout, pageId)?.widgets.find((widget) => widget.id === widgetId) ?? null
 }
 
 // ── Page operations ──────────────────────────────────────────────────────
@@ -528,30 +493,47 @@ export function setDashStyle(layout: DashLayout, dashStyle: DashStyle): DashLayo
 
 // ── Page widgets ─────────────────────────────────────────────────────────
 
+/**
+ * Where a new widget goes: into `group` (null: on the page), placed inside `within` when it fits
+ * there (a stack's region, so a new layer widget lands where the layer is) and anywhere free on the
+ * page otherwise.
+ */
+export type WidgetTarget = { group: string | null; within?: GridRect }
+
+const ON_PAGE: WidgetTarget = { group: null }
+
+function newWidget(page: DashPage, type: DashWidgetType, rect: GridRect, group: string | null): DashWidget {
+  const widget: DashWidget = { id: nextId(slugify(type.replace(/_/g, '-')), (id) => pageIdTaken(page, id)), type, ...rect }
+  if (group !== null) widget.group = group
+  return widget
+}
+
 /** Adds a widget at the first free grid cell — mirrors `DashLayoutEditor.TryAddWidget`. */
-export function addWidget(layout: DashLayout, pageId: string, type: DashWidgetType): { layout: DashLayout; widget: DashWidget } | null {
+export function addWidget(layout: DashLayout, pageId: string, type: DashWidgetType, target: WidgetTarget = ON_PAGE): { layout: DashLayout; widget: DashWidget } | null {
   const next = cloneLayout(layout)
   const page = findPage(next, pageId)
   if (!page) return null
 
-  const rect = firstFit(next.gridCols, next.gridRows, DEFAULT_WIDGET_COL_SPAN, DEFAULT_WIDGET_ROW_SPAN, (candidate) => pageOverlaps(page, candidate, null))
+  const occupied = (candidate: GridRect): boolean => pageOverlaps(page, candidate, '', target.group)
+  const rect =
+    (target.within && firstFit(next.gridCols, next.gridRows, DEFAULT_WIDGET_COL_SPAN, DEFAULT_WIDGET_ROW_SPAN, occupied, target.within)) ||
+    firstFit(next.gridCols, next.gridRows, DEFAULT_WIDGET_COL_SPAN, DEFAULT_WIDGET_ROW_SPAN, occupied)
   if (!rect) return null
 
-  const idExists = (id: string) => page.widgets.some((widget) => widget.id === id)
-  const widget: DashWidget = { id: nextId(slugify(type.replace(/_/g, '-')), idExists), type, ...rect }
+  const widget = newWidget(page, type, rect, target.group)
   page.widgets.push(widget)
   return { layout: next, widget }
 }
 
 /** Non-mutating placement check for a not-yet-created widget (palette drag ghost) — mirrors `DashLayoutEditor.CanPlaceNewWidget`. */
-export function canPlaceNewWidget(layout: DashLayout, pageId: string, rect: GridRect): boolean {
+export function canPlaceNewWidget(layout: DashLayout, pageId: string, rect: GridRect, group: string | null = null): boolean {
   const page = findPage(layout, pageId)
   if (!page || !isValidRect(rect, layout.gridCols, layout.gridRows)) return false
-  return !pageOverlaps(page, rect, null)
+  return !pageOverlaps(page, rect, '', group)
 }
 
 /** Adds a widget at an explicit grid cell (drag-drop placement) — mirrors `DashLayoutEditor.TryAddWidgetAt`. The requested cell is clamped in-bounds; placement is rejected (no fallback) if it would overlap, so a drop onto an occupied cell fails rather than silently jumping. */
-export function addWidgetAt(layout: DashLayout, pageId: string, type: DashWidgetType, col: number, row: number): { layout: DashLayout; widget: DashWidget } | null {
+export function addWidgetAt(layout: DashLayout, pageId: string, type: DashWidgetType, col: number, row: number, group: string | null = null): { layout: DashLayout; widget: DashWidget } | null {
   const next = cloneLayout(layout)
   const page = findPage(next, pageId)
   if (!page) return null
@@ -559,27 +541,11 @@ export function addWidgetAt(layout: DashLayout, pageId: string, type: DashWidget
   const colSpan = Math.min(DEFAULT_WIDGET_COL_SPAN, next.gridCols)
   const rowSpan = Math.min(DEFAULT_WIDGET_ROW_SPAN, next.gridRows)
   const rect: GridRect = { col: Math.max(0, Math.min(col, next.gridCols - colSpan)), row: Math.max(0, Math.min(row, next.gridRows - rowSpan)), colSpan, rowSpan }
-  if (pageOverlaps(page, rect, null)) return null
+  if (pageOverlaps(page, rect, '', group)) return null
 
-  const idExists = (id: string) => page.widgets.some((widget) => widget.id === id)
-  const widget: DashWidget = { id: nextId(slugify(type.replace(/_/g, '-')), idExists), type, ...rect }
+  const widget = newWidget(page, type, rect, group)
   page.widgets.push(widget)
   return { layout: next, widget }
-}
-
-/** Non-mutating placement check for an existing widget being moved/resized (drag ghost) — mirrors `DashLayoutEditor.CanPlaceWidget`. Works for a page widget or a widget-stack layer's own widget, bounded by whichever grid it lives in. */
-export function canPlaceWidgetAt(layout: DashLayout, location: WidgetLocation, widgetId: string, rect: GridRect): boolean {
-  const page = findPage(layout, location.pageId)
-  if (!page) return false
-
-  if (location.kind === 'page') {
-    return findWidgetInPage(page, widgetId) !== null && isValidRect(rect, layout.gridCols, layout.gridRows) && !pageOverlaps(page, rect, widgetId)
-  }
-
-  const stack = findStack(page, location.stackId)
-  const layer = stack?.layers.find((item) => item.id === location.layerId)
-  if (!stack || !layer) return false
-  return isValidRect(rect, Math.max(1, stack.colSpan), Math.max(1, stack.rowSpan)) && !layerOverlaps(layer, rect, widgetId)
 }
 
 export type ResizeHandle = { hx: -1 | 0 | 1; hy: -1 | 0 | 1 }
@@ -609,12 +575,12 @@ export function previewResizeRect(start: GridRect, handle: ResizeHandle, deltaCo
   return { col, row, colSpan, rowSpan }
 }
 
-/** Sets a page widget's full geometry in one step (numeric grid inspector) — mirrors `DashLayoutEditor.TrySetWidgetGeometry`. */
+/** Sets a widget's full geometry in one step (numeric grid inspector) — mirrors `DashLayoutEditor.TrySetWidgetGeometry`. */
 export function setWidgetGeometry(layout: DashLayout, pageId: string, widgetId: string, rect: GridRect): DashLayout | null {
   const next = cloneLayout(layout)
   const page = findPage(next, pageId)
-  const widget = page && findWidgetInPage(page, widgetId)
-  if (!page || !widget || !isValidRect(rect, next.gridCols, next.gridRows) || pageOverlaps(page, rect, widgetId)) return null
+  const widget = page?.widgets.find((item) => item.id === widgetId)
+  if (!page || !widget || !isValidRect(rect, next.gridCols, next.gridRows) || pageOverlaps(page, rect, widget.id, widget.group ?? null)) return null
   Object.assign(widget, rect)
   return next
 }
@@ -624,23 +590,23 @@ export function clearPage(layout: DashLayout, pageId: string): DashLayout | null
   const page = findPage(next, pageId)
   if (!page) return null
   page.widgets = []
-  page.widgetStacks = []
+  page.groups = []
   return next
 }
 
-// ── Widget config / style (shared by page widgets and stack-layer widgets) ─
+// ── Widget config / style ────────────────────────────────────────────────
 
-function withWidget(layout: DashLayout, location: WidgetLocation, widgetId: string, mutate: (widget: DashWidget) => void): DashLayout | null {
+function withWidget(layout: DashLayout, pageId: string, widgetId: string, mutate: (widget: DashWidget) => void): DashLayout | null {
   const next = cloneLayout(layout)
-  const widget = findWidgetAt(next, location, widgetId)
+  const widget = findWidget(next, pageId, widgetId)
   if (!widget) return null
   mutate(widget)
   return next
 }
 
 /** Sets (or clears, when blank) a string config value — mirrors `DashEditorController.SetSelectedConfig`. */
-export function setWidgetConfig(layout: DashLayout, location: WidgetLocation, widgetId: string, key: string, value: string): DashLayout | null {
-  return withWidget(layout, location, widgetId, (widget) => {
+export function setWidgetConfig(layout: DashLayout, pageId: string, widgetId: string, key: string, value: string): DashLayout | null {
+  return withWidget(layout, pageId, widgetId, (widget) => {
     const config = { ...(widget.config ?? {}) }
     if (value.length === 0) delete config[key]
     else config[key] = value
@@ -648,145 +614,11 @@ export function setWidgetConfig(layout: DashLayout, location: WidgetLocation, wi
   })
 }
 
-export function setWidgetStyle(layout: DashLayout, location: WidgetLocation, widgetId: string, patch: Partial<DashWidgetStyle>): DashLayout | null {
-  return withWidget(layout, location, widgetId, (widget) => {
+export function setWidgetStyle(layout: DashLayout, pageId: string, widgetId: string, patch: Partial<DashWidgetStyle>): DashLayout | null {
+  return withWidget(layout, pageId, widgetId, (widget) => {
     const style: DashWidgetStyle = { ...(widget.style ?? {}), ...patch }
     widget.style = style.textColor || style.labelColor ? style : undefined
   })
-}
-
-/** Sets a stack-layer widget's geometry within its stack's own local sub-grid — mirrors the page-widget version, bounded by the stack instead of the page. */
-export function setStackLayerWidgetGeometry(layout: DashLayout, pageId: string, stackId: string, layerId: string, widgetId: string, rect: GridRect): DashLayout | null {
-  const next = cloneLayout(layout)
-  const page = findPage(next, pageId)
-  const stack = page && findStack(page, stackId)
-  const layer = stack?.layers.find((item) => item.id === layerId)
-  const widget = layer?.widgets.find((item) => item.id === widgetId)
-  if (!stack || !layer || !widget) return null
-  if (!isValidRect(rect, Math.max(1, stack.colSpan), Math.max(1, stack.rowSpan)) || layerOverlaps(layer, rect, widgetId)) return null
-  Object.assign(widget, rect)
-  return next
-}
-
-export function deleteWidgetAt(layout: DashLayout, location: WidgetLocation, widgetId: string): DashLayout | null {
-  const next = cloneLayout(layout)
-  const page = findPage(next, location.pageId)
-  if (!page) return null
-
-  if (location.kind === 'page') {
-    if (!findWidgetInPage(page, widgetId)) return null
-    page.widgets = page.widgets.filter((widget) => widget.id !== widgetId)
-    return next
-  }
-
-  const stack = findStack(page, location.stackId)
-  const layer = stack?.layers.find((item) => item.id === location.layerId)
-  if (!layer || !layer.widgets.some((widget) => widget.id === widgetId)) return null
-  layer.widgets = layer.widgets.filter((widget) => widget.id !== widgetId)
-  return next
-}
-
-// ── Widget stacks ────────────────────────────────────────────────────────
-
-/** Adds a stack with one empty layer at the first free page region — mirrors `DashLayoutEditor.TryAddWidgetStack`. */
-export function addWidgetStack(layout: DashLayout, pageId: string): { layout: DashLayout; stack: DashWidgetStack } | null {
-  const next = cloneLayout(layout)
-  const page = findPage(next, pageId)
-  if (!page) return null
-
-  const rect = firstFit(next.gridCols, next.gridRows, DEFAULT_STACK_COL_SPAN, DEFAULT_STACK_ROW_SPAN, (candidate) => pageOverlaps(page, candidate, null))
-  if (!rect) return null
-
-  const stackIdExists = (id: string) => (page.widgetStacks ?? []).some((stack) => stack.id === id)
-  const stack: DashWidgetStack = {
-    id: nextId('stack', stackIdExists),
-    name: `Widget Stack ${(page.widgetStacks?.length ?? 0) + 1}`,
-    ...rect,
-    defaultLayerId: 'layer-1',
-    layers: [{ id: 'layer-1', name: 'Layer 1', widgets: [] }],
-  }
-  page.widgetStacks = [...(page.widgetStacks ?? []), stack]
-  return { layout: next, stack }
-}
-
-export function deleteWidgetStack(layout: DashLayout, pageId: string, stackId: string): DashLayout | null {
-  const next = cloneLayout(layout)
-  const page = findPage(next, pageId)
-  if (!page || !findStack(page, stackId)) return null
-  page.widgetStacks = (page.widgetStacks ?? []).filter((stack) => stack.id !== stackId)
-  return next
-}
-
-export function renameWidgetStack(layout: DashLayout, pageId: string, stackId: string, name: string): DashLayout | null {
-  const trimmed = name.trim()
-  if (!trimmed) return null
-  const next = cloneLayout(layout)
-  const page = findPage(next, pageId)
-  const stack = page && findStack(page, stackId)
-  if (!stack) return null
-  stack.name = trimmed
-  return next
-}
-
-export function setWidgetStackGeometry(layout: DashLayout, pageId: string, stackId: string, rect: GridRect): DashLayout | null {
-  const next = cloneLayout(layout)
-  const page = findPage(next, pageId)
-  const stack = page && findStack(page, stackId)
-  if (!page || !stack) return null
-  if (!isValidRect(rect, next.gridCols, next.gridRows)) return null
-  const others: DashPage = { ...page, widgetStacks: (page.widgetStacks ?? []).filter((item) => item.id !== stackId) }
-  if (pageOverlaps(others, rect, null)) return null
-  Object.assign(stack, rect)
-  return next
-}
-
-export function addStackLayer(layout: DashLayout, pageId: string, stackId: string): { layout: DashLayout; layer: DashWidgetStackLayer } | null {
-  const next = cloneLayout(layout)
-  const page = findPage(next, pageId)
-  const stack = page && findStack(page, stackId)
-  if (!stack) return null
-  const id = nextSequentialId('layer', (candidate) => stack.layers.some((layer) => layer.id === candidate))
-  const layer: DashWidgetStackLayer = { id, name: `Layer ${stack.layers.length + 1}`, widgets: [] }
-  stack.layers.push(layer)
-  stack.defaultLayerId ??= id
-  return { layout: next, layer }
-}
-
-export function setDefaultStackLayer(layout: DashLayout, pageId: string, stackId: string, layerId: string): DashLayout | null {
-  const next = cloneLayout(layout)
-  const page = findPage(next, pageId)
-  const stack = page && findStack(page, stackId)
-  if (!stack || !stack.layers.some((layer) => layer.id === layerId)) return null
-  stack.defaultLayerId = layerId
-  return next
-}
-
-/** Never removes the last layer — mirrors `DashLayoutEditor.TryDeleteStackLayer`. */
-export function deleteStackLayer(layout: DashLayout, pageId: string, stackId: string, layerId: string): DashLayout | null {
-  const next = cloneLayout(layout)
-  const page = findPage(next, pageId)
-  const stack = page && findStack(page, stackId)
-  if (!stack || stack.layers.length <= 1 || !stack.layers.some((layer) => layer.id === layerId)) return null
-  stack.layers = stack.layers.filter((layer) => layer.id !== layerId)
-  if (stack.defaultLayerId === layerId) stack.defaultLayerId = stack.layers[0]?.id
-  return next
-}
-
-/** Adds a widget to a layer's own local sub-grid — mirrors `DashLayoutEditor.TryAddWidgetToStackLayer`. */
-export function addWidgetToStackLayer(layout: DashLayout, pageId: string, stackId: string, layerId: string, type: DashWidgetType): { layout: DashLayout; widget: DashWidget } | null {
-  const next = cloneLayout(layout)
-  const page = findPage(next, pageId)
-  const stack = page && findStack(page, stackId)
-  const layer = stack?.layers.find((item) => item.id === layerId)
-  if (!stack || !layer) return null
-
-  const rect = firstFit(Math.max(1, stack.colSpan), Math.max(1, stack.rowSpan), DEFAULT_WIDGET_COL_SPAN, DEFAULT_WIDGET_ROW_SPAN, (candidate) => layerOverlaps(layer, candidate, null))
-  if (!rect) return null
-
-  const idExists = (id: string) => layer.widgets.some((widget) => widget.id === id)
-  const widget: DashWidget = { id: nextId(slugify(type.replace(/_/g, '-')), idExists), type, ...rect }
-  layer.widgets.push(widget)
-  return { layout: next, widget }
 }
 
 // ── Alerts (DashEditorController alert methods) ─────────────────────────────
@@ -795,12 +627,15 @@ export function findAlert(layout: DashLayout, type: AlertTypeId): DashAlert | nu
   return layout.alerts.find((alert) => alert.type === type) ?? null
 }
 
+/** A change-alert as it is first turned on: in the default box, wearing the defaults. */
+const newAlert = (type: AlertTypeId): DashAlert => ({ id: type, type, enabled: true, col: 6, row: 3, colSpan: 8, rowSpan: 6 })
+
 /** Enables/disables a change-alert, creating it with default geometry the first time — mirrors `DashEditorController.SetAlert`. */
 export function setAlertEnabled(layout: DashLayout, type: AlertTypeId, enabled: boolean): DashLayout {
   const next = cloneLayout(layout)
   const alert = findAlert(next, type)
   if (!alert) {
-    if (enabled) next.alerts.push({ id: type, type, enabled: true, col: 6, row: 3, colSpan: 8, rowSpan: 6 })
+    if (enabled) next.alerts.push(newAlert(type))
   } else {
     alert.enabled = enabled
   }
@@ -821,25 +656,30 @@ export function setAlertGeometry(layout: DashLayout, type: AlertTypeId, rect: Gr
   return next
 }
 
-export type AlertOverride = { colorToken?: string; durationSeconds?: number; invertColors?: boolean }
+/** Where an alert shows: over the whole dash, or in its own box on it. */
+export type AlertDisplayMode = 'full' | 'center'
+
+export type AlertOverride = { displayMode?: AlertDisplayMode; colorToken?: string; durationSeconds?: number; invertColors?: boolean }
 
 export function setAlertOverride(layout: DashLayout, type: AlertTypeId, patch: AlertOverride): DashLayout | null {
   const next = cloneLayout(layout)
   const alert = findAlert(next, type)
   if (!alert) return null
+  if (patch.displayMode !== undefined) alert.displayMode = patch.displayMode
   if (patch.colorToken !== undefined) alert.colorToken = patch.colorToken
-  if (patch.durationSeconds !== undefined) alert.durationSeconds = Math.min(5, Math.max(0.5, Math.round(patch.durationSeconds * 10) / 10))
+  if (patch.durationSeconds !== undefined) alert.durationSeconds = Math.min(maxAlertSeconds(type), Math.max(MIN_ALERT_SECONDS, Math.round(patch.durationSeconds * 10) / 10))
   if (patch.invertColors !== undefined) alert.invertColors = patch.invertColors
   return next
 }
 
-/** Switches an alert between its own overrides and the layout's global alert defaults — mirrors `DashEditorController.SetAlertUseGlobal`. */
+/** Switches an alert between its own look (starting from the defaults) and the layout's global alert defaults — mirrors `DashEditorController.SetAlertUseGlobal`. */
 export function setAlertUseGlobal(layout: DashLayout, type: AlertTypeId, useGlobal: boolean): DashLayout | null {
   const next = cloneLayout(layout)
   const alert = findAlert(next, type)
   if (!alert) return null
 
   if (useGlobal) {
+    alert.displayMode = undefined
     alert.colorToken = undefined
     alert.durationSeconds = undefined
     alert.invertColors = undefined
@@ -847,13 +687,14 @@ export function setAlertUseGlobal(layout: DashLayout, type: AlertTypeId, useGlob
   }
 
   const global = globalAlertConfig(next)
+  alert.displayMode = global.displayMode
   alert.colorToken = global.colorToken
   alert.durationSeconds = global.durationSeconds
   alert.invertColors = global.invertColors
   return next
 }
 
-export type GlobalAlertConfig = { displayMode: 'full' | 'center'; durationSeconds: number; invertColors: boolean; colorToken: string }
+export type GlobalAlertConfig = { displayMode: AlertDisplayMode; durationSeconds: number; invertColors: boolean; colorToken: string }
 
 const DEFAULT_GLOBAL_ALERT_CONFIG: GlobalAlertConfig = { displayMode: 'full', durationSeconds: 1.5, invertColors: false, colorToken: 'auto' }
 
@@ -876,18 +717,232 @@ export function setGlobalAlertConfig(layout: DashLayout, patch: Partial<GlobalAl
   return next
 }
 
+/** An alert's look as it fires: `own` when it has its own, otherwise the defaults every alert shares. */
+export type AlertLook = GlobalAlertConfig & { own: boolean }
+
+/**
+ * The look `type` fires with. The lap summary has only a duration of its own: it always fills
+ * the screen in its own colours, and stays up `LAP_SUMMARY_SECONDS` unless it says otherwise.
+ */
+export function alertLook(layout: DashLayout, type: AlertTypeId): AlertLook {
+  const global = globalAlertConfig(layout)
+  const alert = findAlert(layout, type)
+  if (type === 'lap_summary') return { ...global, displayMode: 'full', durationSeconds: alert?.durationSeconds ?? LAP_SUMMARY_SECONDS, own: false }
+  if (!alert) return { ...global, own: false }
+  return {
+    displayMode: alert.displayMode ?? global.displayMode,
+    colorToken: alert.colorToken ?? global.colorToken,
+    durationSeconds: alert.durationSeconds ?? global.durationSeconds,
+    invertColors: alert.invertColors ?? global.invertColors,
+    own: alert.displayMode !== undefined || alert.colorToken !== undefined || alert.durationSeconds !== undefined || alert.invertColors !== undefined,
+  }
+}
+
+/**
+ * The alert the designer plays for a selection: that alert (or a new one in the default box
+ * while it has never been on), or for "All alerts" (null) the first setting alert that is on,
+ * stripped of any look of its own so it shows the defaults.
+ */
+export function alertToPlay(layout: DashLayout, type: AlertTypeId | null): DashAlert {
+  if (type !== null) return findAlert(layout, type) ?? newAlert(type)
+  const { id, type: firstType, enabled, col, row, colSpan, rowSpan } = layout.alerts.find((alert) => alert.enabled && alert.type !== 'lap_summary') ?? newAlert('tc_change')
+  return { id, type: firstType, enabled, col, row, colSpan, rowSpan }
+}
+
 // ── Command builders (RuntimeCoordinator: dash.*) ───────────────────────────
 
-export const buildDashCreate = (profileId?: string): SprintCommand => (profileId ? { type: 'dash.create', profileId } : { type: 'dash.create' })
+/** Where a new dash starts: empty, or a copy of an existing dash refitted to the chosen screen. */
+export type DashStart = { kind: 'blank' } | { kind: 'copy'; dashId: string }
 
-export const buildDashDuplicate = (dashId: string, profileId: string): SprintCommand => ({ type: 'dash.duplicate', dashId, profileId })
+/** A dash's category on the wire: a known category name, or null for "Other". */
+export type DashCategoryChoice = string | null
+
+/**
+ * The New dash dialog (blank) and the Duplicate dialog (a copy). Leaving `name` out lets the
+ * host pick one; leaving `category` out keeps a copy's category, none for blank.
+ */
+export function buildDashCreate(options: { start: DashStart; profileId?: string; name?: string; category?: DashCategoryChoice } = { start: { kind: 'blank' } }): SprintCommand {
+  const command: SprintCommand = { type: 'dash.create' }
+  if (options.start.kind === 'copy') command.sourceDashId = options.start.dashId
+  if (options.profileId !== undefined) command.profileId = options.profileId
+  if (options.name !== undefined) command.name = options.name
+  if (options.category !== undefined) command.category = options.category
+  return command
+}
 
 export const buildDashSave = (dashId: string, layout: DashLayout): SprintCommand => ({ type: 'dash.save', dashId, layout })
 
 export const buildDashReset = (dashId: string): SprintCommand => ({ type: 'dash.reset', dashId })
 
-export const buildDashSetDefault = (dashId: string): SprintCommand => ({ type: 'dash.setDefault', dashId })
-
 export const buildDashDelete = (dashId: string): SprintCommand => ({ type: 'dash.delete', dashId })
 
 export const buildDashSetScreenProfile = (dashId: string, profileId: string): SprintCommand => ({ type: 'dash.setScreenProfile', dashId, profileId })
+
+export const buildDashSetCategory = (dashId: string, category: DashCategoryChoice): SprintCommand => ({ type: 'dash.setCategory', dashId, category })
+
+/** Creates a custom category; with `dashId` the dash moves into it in the same command ("New category…" in a dash's menu). */
+export const buildDashCategoryCreate = (name: string, dashId?: string): SprintCommand =>
+  dashId === undefined ? { type: 'dash.category.create', name } : { type: 'dash.category.create', name, dashId }
+
+export const buildDashCategoryRename = (name: string, newName: string): SprintCommand => ({ type: 'dash.category.rename', name, newName })
+
+/** Deletes a custom category; its dashes move to "Other". */
+export const buildDashCategoryDelete = (name: string): SprintCommand => ({ type: 'dash.category.delete', name })
+
+// ── Dashes overview (DashesView.tsx) ────────────────────────────────────────
+//
+// A dash sits in at most one category (`DashLayout.category`); none groups last as "Other".
+// The host owns the category lists (`SprintState.dashCategories`) and stores a dash's
+// category in its known spelling, so names compare exactly here.
+
+/** What the overview shows: every dash, one category's, or the uncategorised ones. */
+export type DashesFilter = { kind: 'all' } | { kind: 'category'; name: string } | { kind: 'other' }
+
+export const ALL_DASHES: DashesFilter = { kind: 'all' }
+
+/** One section of the overview; `custom` marks the user's own category (it can be renamed or deleted). */
+export type DashGroup = { filter: DashesFilter; title: string; custom: boolean; dashes: DashLayout[] }
+
+/** A dash's category if the host still knows it, otherwise null ("Other"). */
+export const knownDashCategory = (layout: DashLayout, categories: DashCategoryLists): string | null => {
+  const category = layout.category ?? null
+  return category !== null && (categories.builtIn.includes(category) || categories.custom.includes(category)) ? category : null
+}
+
+/**
+ * Every category with dashes in page order — the built-ins, then the user's own, then "Other" —
+ * each with its dashes in library order. Empty categories are left out.
+ */
+export function groupDashes(layouts: readonly DashLayout[], categories: DashCategoryLists): DashGroup[] {
+  const named = [...categories.builtIn.map((name) => ({ name, custom: false })), ...categories.custom.map((name) => ({ name, custom: true }))]
+  const groups: DashGroup[] = named.map(({ name, custom }) => ({
+    filter: { kind: 'category', name },
+    title: name,
+    custom,
+    dashes: layouts.filter((layout) => knownDashCategory(layout, categories) === name),
+  }))
+  groups.push({ filter: { kind: 'other' }, title: 'Other', custom: false, dashes: layouts.filter((layout) => knownDashCategory(layout, categories) === null) })
+  return groups.filter((group) => group.dashes.length > 0)
+}
+
+export const sameDashesFilter = (a: DashesFilter, b: DashesFilter): boolean =>
+  a.kind === b.kind && (a.kind !== 'category' || (b.kind === 'category' && a.name === b.name))
+
+/**
+ * The filter in effect: the chosen one while its category still exists, otherwise All (the
+ * category was deleted or renamed underneath it). A category left empty stays chosen, so moving
+ * its last dash out does not make the page jump.
+ */
+export function resolveDashesFilter(filter: DashesFilter, categories: DashCategoryLists): DashesFilter {
+  if (filter.kind !== 'category') return filter
+  return categories.builtIn.includes(filter.name) || categories.custom.includes(filter.name) ? filter : ALL_DASHES
+}
+
+/** The groups a filter shows: all of them under All, otherwise the one it names (none once it has emptied). */
+export const visibleDashGroups = (groups: readonly DashGroup[], filter: DashesFilter): DashGroup[] =>
+  filter.kind === 'all' ? [...groups] : groups.filter((group) => sameDashesFilter(group.filter, filter))
+
+export type DashesFilterOption = { filter: DashesFilter; label: string; count: number }
+
+/**
+ * The filter bar: "All" plus each non-empty group with its count, and the current filter even
+ * after it has emptied. Null when it would offer nothing more than All: every dash in one group.
+ */
+export function dashesFilterOptions(groups: readonly DashGroup[], filter: DashesFilter): DashesFilterOption[] | null {
+  const total = groups.reduce((sum, group) => sum + group.dashes.length, 0)
+  const options: DashesFilterOption[] = groups.map((group) => ({ filter: group.filter, label: group.title, count: group.dashes.length }))
+  if (filter.kind !== 'all' && !groups.some((group) => sameDashesFilter(group.filter, filter))) {
+    options.push({ filter, label: filter.kind === 'category' ? filter.name : 'Other', count: 0 })
+  }
+  if (options.length < 2 && filter.kind === 'all') return null
+  return [{ filter: ALL_DASHES, label: 'All', count: total }, ...options]
+}
+
+/** The category a new dash starts in: the one being looked at, otherwise none ("Other"). */
+export const newDashCategory = (filter: DashesFilter): DashCategoryChoice => (filter.kind === 'category' ? filter.name : null)
+
+export const dashPageCount = (layout: DashLayout): number => layout.pages.length + (layout.idlePage ? 1 : 0)
+
+export const formatPageCount = (count: number): string => `${count} ${count === 1 ? 'page' : 'pages'}`
+
+/** The quiet line under a dash's name: "Landscape 800 × 480 · 5 pages". */
+export const dashSummary = (layout: DashLayout): string => `${layoutScreenProfile(layout).name} · ${formatPageCount(dashPageCount(layout))}`
+
+/**
+ * Whether two parsed dashes draw the same. State arrives as fresh objects on every poll, so the
+ * still pictures compare content, not identity, and redraw only when a dash really changed.
+ */
+export const sameDashContent = (a: DashLayout, b: DashLayout): boolean => a === b || JSON.stringify(a) === JSON.stringify(b)
+
+/** The name the host gives a new dash left unnamed (`DesktopRuntime.CreateBlankDashLayout` / `DuplicateDashToProfile`). */
+export const defaultDashName = (source: DashLayout | null): string => (source ? `${source.name} copy` : 'New dash')
+
+/** A screen size in the New dash and Duplicate dialogs, with the names of the user's screens that have it. */
+export type ScreenChoice = { profile: ScreenProfile; fits: string[] }
+
+/**
+ * The New dash and Duplicate dialogs' screen sizes: the ones the user's screens have first, then the rest,
+ * each part in catalog order. `screens` are the devices' logical (rotated) sizes; a size no
+ * profile matches is not offered.
+ */
+export function screenChoices(screens: ReadonlyArray<{ name: string; width: number; height: number }>): { fitting: ScreenChoice[]; other: ScreenChoice[] } {
+  const choices = SCREEN_PROFILES.map((profile) => ({
+    profile,
+    fits: [...new Set(screens.filter((screen) => screen.width === profile.width && screen.height === profile.height).map((screen) => screen.name))],
+  }))
+  return { fitting: choices.filter((choice) => choice.fits.length > 0), other: choices.filter((choice) => choice.fits.length === 0) }
+}
+
+/** The size the dialog starts on: the copied dash's own, else the first of the user's screens, else the catalog's first. */
+export const initialScreenProfile = (source: DashLayout | null, fitting: readonly ScreenChoice[]): ScreenProfile =>
+  source ? layoutScreenProfile(source) : (fitting[0]?.profile ?? SCREEN_PROFILES[0])
+
+// ── Refit losses (SprintState.dashRefitLosses) ──────────────────────────────
+//
+// Only the host knows which widgets a change of size leaves out (`DashLayoutEditor.RefitPage`);
+// it sends the count per dash and size, and these only word it.
+
+/** How many widgets refitting `dashId` to `profileId` would leave out; 0 when none (or unknown). */
+export const refitLoss = (losses: DashRefitLosses, dashId: string, profileId: string): number => losses[dashId]?.[profileId] ?? 0
+
+const widgetCount = (count: number): string => `${count} ${count === 1 ? 'widget' : 'widgets'}`
+
+/** The warning before a size is picked: "4 widgets don't fit on Portrait 480 × 800 and will be left out." */
+export const refitLossWarning = (count: number, profile: ScreenProfile): string =>
+  `${widgetCount(count)} ${count === 1 ? "doesn't" : "don't"} fit on ${profile.name} and will be left out.`
+
+/** The note once a size was picked that left widgets out; the change can be undone. */
+export const refitLossNote = (count: number, profile: ScreenProfile): string =>
+  `${widgetCount(count)} didn't fit on ${profile.name} and ${count === 1 ? 'was' : 'were'} left out. Undo brings ${count === 1 ? 'it' : 'them'} back.`
+
+/** The short line under a size in the designer: "4 widgets don't fit". */
+export const refitLossHint = (count: number): string => `${widgetCount(count)} ${count === 1 ? "doesn't" : "don't"} fit`
+
+/**
+ * What is wrong with a name for a new custom category, or for the new name of `renaming` — the
+ * client-side mirror of `DashCategories.TryValidateName`, so a dialog can say so before sending.
+ * Null when the name is fine.
+ */
+export function dashCategoryNameProblem(name: string, categories: DashCategoryLists, renaming: string | null = null): string | null {
+  const trimmed = name.trim()
+  const key = trimmed.toLowerCase()
+  if (key.length === 0) return 'Enter a name.'
+  if (key === 'all' || key === 'other') return `"${trimmed}" is already used by the page.`
+  if (categories.builtIn.some((known) => known.toLowerCase() === key)) return `${trimmed} is a built-in category.`
+  const taken = categories.custom.some((known) => known.toLowerCase() === key && known.toLowerCase() !== renaming?.toLowerCase())
+  return taken ? `You already have a category called ${trimmed}.` : null
+}
+
+// ── Tiles / list (Settings.DashesUI.ViewMode) ───────────────────────────────
+//
+// Persisted through `settings.update`'s `dashesUiViewMode`, like the Devices overview's; the
+// wire name of tiles is "gallery".
+
+export type DashesViewMode = 'gallery' | 'list'
+
+export const parseDashesViewMode = (settings: Record<string, unknown>): DashesViewMode => {
+  const dashesUI = settings.dashesUI
+  return isRecord(dashesUI) && dashesUI.viewMode === 'list' ? 'list' : 'gallery'
+}
+
+export const buildDashesViewMode = (mode: DashesViewMode): SprintCommand => ({ type: 'settings.update', dashesUiViewMode: mode })

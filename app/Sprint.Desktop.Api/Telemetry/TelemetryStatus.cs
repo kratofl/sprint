@@ -77,7 +77,7 @@ public sealed record TelemetryStatus
     public string? InvalidReason { get; init; }
 
     /// <summary>Convenience: true only when the link is <see cref="TelemetryConnectionState.Connected"/>.</summary>
-    public bool IsLive => State == TelemetryConnectionState.Connected;
+    public bool IsLive => this.State == TelemetryConnectionState.Connected;
 
     /// <summary>An idle, never-connected status for a named source.</summary>
     public static TelemetryStatus Disconnected(string sourceName, string? detail = null) =>

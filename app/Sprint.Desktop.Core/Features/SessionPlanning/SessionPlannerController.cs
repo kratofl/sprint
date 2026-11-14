@@ -16,9 +16,9 @@ public sealed record PlanContext(string Game, string Car, string Track)
     public static PlanContext Empty { get; } = new("", "", "");
 
     public bool IsEmpty =>
-        string.IsNullOrWhiteSpace(Game)
-        && string.IsNullOrWhiteSpace(Car)
-        && string.IsNullOrWhiteSpace(Track);
+        string.IsNullOrWhiteSpace(this.Game)
+        && string.IsNullOrWhiteSpace(this.Car)
+        && string.IsNullOrWhiteSpace(this.Track);
 }
 
 /// <summary>Something Quick mode could not detect and therefore has to ask for.</summary>
@@ -30,7 +30,10 @@ public enum QuickPlanField
     /// <summary>The sim has not said how long the race is.</summary>
     RaceLength,
 
-    /// <summary>No lap history for this context, so average lap time and fuel per lap are needed.</summary>
+    /// <summary>
+    /// No lap history with both a lap time and fuel for this context, so Quick plan's lap time and
+    /// fuel fields start empty rather than filled from the driver's laps.
+    /// </summary>
     Fuel,
 }
 
@@ -47,11 +50,11 @@ public sealed record PlanDetection(
 {
     /// <summary>Every part of the context is known, so none of it needs typing.</summary>
     public bool ContextComplete =>
-        !string.IsNullOrWhiteSpace(Context.Game)
-        && !string.IsNullOrWhiteSpace(Context.Car)
-        && !string.IsNullOrWhiteSpace(Context.Track);
+        !string.IsNullOrWhiteSpace(this.Context.Game)
+        && !string.IsNullOrWhiteSpace(this.Context.Car)
+        && !string.IsNullOrWhiteSpace(this.Context.Track);
 
-    public bool RaceLengthKnown => RaceLengthFormat != RaceLengthFormat.Unknown && RaceLengthValue > 0;
+    public bool RaceLengthKnown => this.RaceLengthFormat != RaceLengthFormat.Unknown && this.RaceLengthValue > 0;
 
     /// <summary>
     /// The gaps, in the order the modal shows them. Empty means Quick mode is a read-only
@@ -61,18 +64,18 @@ public sealed record PlanDetection(
     {
         get
         {
-            var missing = new List<QuickPlanField>(capacity: 3);
-            if (!ContextComplete)
+            List<QuickPlanField> missing = new List<QuickPlanField>(capacity: 3);
+            if (!this.ContextComplete)
             {
                 missing.Add(QuickPlanField.Context);
             }
 
-            if (!RaceLengthKnown)
+            if (!this.RaceLengthKnown)
             {
                 missing.Add(QuickPlanField.RaceLength);
             }
 
-            if (!HasFuelHistory)
+            if (!this.HasFuelHistory)
             {
                 missing.Add(QuickPlanField.Fuel);
             }
@@ -120,29 +123,29 @@ public sealed class SessionPlannerController
         ILapHistoryStore? lapHistory = null,
         Func<DateTimeOffset>? clock = null)
     {
-        _service = service ?? throw new ArgumentNullException(nameof(service));
-        _fuelHistory = fuelHistory ?? throw new ArgumentNullException(nameof(fuelHistory));
-        _lastSeenContext = lastSeenContext ?? throw new ArgumentNullException(nameof(lastSeenContext));
-        _lapHistory = lapHistory ?? EmptyLapHistoryStore.Instance;
-        _clock = clock ?? (() => DateTimeOffset.UtcNow);
+        this._service = service ?? throw new ArgumentNullException(nameof(service));
+        this._fuelHistory = fuelHistory ?? throw new ArgumentNullException(nameof(fuelHistory));
+        this._lastSeenContext = lastSeenContext ?? throw new ArgumentNullException(nameof(lastSeenContext));
+        this._lapHistory = lapHistory ?? EmptyLapHistoryStore.Instance;
+        this._clock = clock ?? (() => DateTimeOffset.UtcNow);
     }
 
     /// <summary>Raised after any state change, so the shell can repaint the page.</summary>
     public event EventHandler? Changed;
 
     /// <summary>Every plan, newest first, including completed history.</summary>
-    public IReadOnlyList<SessionPlan> History => _service.Plans;
+    public IReadOnlyList<SessionPlan> History => this._service.Plans;
 
-    public bool HasPlans => _service.Plans.Count > 0;
+    public bool HasPlans => this._service.Plans.Count > 0;
 
     /// <summary>The plans still ahead of or in a session, newest first — the overview's
     /// main list.</summary>
     public IReadOnlyList<SessionPlan> OpenPlans =>
-        [.. _service.Plans.Where(plan => plan.Status is not (PlanStatus.Completed or PlanStatus.Abandoned))];
+        [.. this._service.Plans.Where(plan => plan.Status is not (PlanStatus.Completed or PlanStatus.Abandoned))];
 
     /// <summary>Plans that have run their course, newest first — collapsed on the overview.</summary>
     public IReadOnlyList<SessionPlan> CompletedPlans =>
-        [.. _service.Plans.Where(plan => plan.Status is PlanStatus.Completed or PlanStatus.Abandoned)];
+        [.. this._service.Plans.Where(plan => plan.Status is PlanStatus.Completed or PlanStatus.Abandoned)];
 
     /// <summary>
     /// The plan the page is showing, or null for the overview. Only an explicit choice —
@@ -150,73 +153,73 @@ public sealed class SessionPlannerController
     /// plan is prominent in the list rather than hijacking the page.
     /// </summary>
     public SessionPlan? PlanInView =>
-        _selectedPlanId is null ? null : _service.Find(_selectedPlanId);
+        this._selectedPlanId is null ? null : this._service.Find(this._selectedPlanId);
 
-    public SessionPlan? ActivePlan => _service.ActivePlan;
+    public SessionPlan? ActivePlan => this._service.ActivePlan;
 
     /// <summary>Hidden in exactly one case: no plans exist, so there is nothing to switch.</summary>
-    public bool SegmentedControlVisible => HasPlans;
+    public bool SegmentedControlVisible => this.HasPlans;
 
     /// <summary>Qualifying stays present but unselectable when the plan skips it — segments
     /// are not removed dynamically.</summary>
-    public bool QualifyingTabEnabled => PlanInView?.QualifyingIncluded ?? false;
+    public bool QualifyingTabEnabled => this.PlanInView?.QualifyingIncluded ?? false;
 
-    public string QualifyingTabLabel => QualifyingTabEnabled ? "Qualifying" : "Skipped";
+    public string QualifyingTabLabel => this.QualifyingTabEnabled ? "Qualifying" : "Skipped";
 
     /// <summary>Defaults to Qualifying when the plan includes it, Race otherwise.</summary>
     public PlannerSegmentTab SelectedTab
     {
         get
         {
-            var fallback = QualifyingTabEnabled ? PlannerSegmentTab.Qualifying : PlannerSegmentTab.Race;
-            if (_selectedTab is not { } tab)
+            PlannerSegmentTab fallback = this.QualifyingTabEnabled ? PlannerSegmentTab.Qualifying : PlannerSegmentTab.Race;
+            if (this._selectedTab is not { } tab)
             {
                 return fallback;
             }
 
-            return tab == PlannerSegmentTab.Qualifying && !QualifyingTabEnabled ? fallback : tab;
+            return tab == PlannerSegmentTab.Qualifying && !this.QualifyingTabEnabled ? fallback : tab;
         }
     }
 
     /// <summary>The race-format mismatch message for the plan in view, or null. The service
     /// raises the warning during ingestion; the page only surfaces it.</summary>
-    public string? RaceFormatWarning => PlanInView?
+    public string? RaceFormatWarning => this.PlanInView?
         .Warnings
         .FirstOrDefault(warning => warning.Kind == "race-format-mismatch")?
         .Message;
 
     public void SelectTab(PlannerSegmentTab tab)
     {
-        if (tab == PlannerSegmentTab.Qualifying && !QualifyingTabEnabled)
+        if (tab == PlannerSegmentTab.Qualifying && !this.QualifyingTabEnabled)
         {
             return;
         }
 
-        _selectedTab = tab;
-        _specificLapPickerOpen = false;
-        RaiseChanged();
+        this._selectedTab = tab;
+        this._specificLapPickerOpen = false;
+        this.RaiseChanged();
     }
 
     public void SelectPlan(string planId)
     {
-        if (_service.Find(planId) is null)
+        if (this._service.Find(planId) is null)
         {
             return;
         }
 
-        _selectedPlanId = planId;
-        _selectedTab = null;
-        _specificLapPickerOpen = false;
-        RaiseChanged();
+        this._selectedPlanId = planId;
+        this._selectedTab = null;
+        this._specificLapPickerOpen = false;
+        this.RaiseChanged();
     }
 
     /// <summary>Returns the page to the overview.</summary>
     public void ClosePlan()
     {
-        _selectedPlanId = null;
-        _selectedTab = null;
-        _specificLapPickerOpen = false;
-        RaiseChanged();
+        this._selectedPlanId = null;
+        this._selectedTab = null;
+        this._specificLapPickerOpen = false;
+        this.RaiseChanged();
     }
 
     /// <summary>
@@ -226,45 +229,45 @@ public sealed class SessionPlannerController
     /// </summary>
     public void ResetToOverview()
     {
-        _selectedPlanId = null;
-        _selectedTab = null;
-        _specificLapPickerOpen = false;
+        this._selectedPlanId = null;
+        this._selectedTab = null;
+        this._specificLapPickerOpen = false;
     }
 
     public SessionPlan CreatePlan(CreatePlanRequest request)
     {
-        var plan = _service.CreatePlan(request);
+        SessionPlan plan = this._service.CreatePlan(request);
         // The driver lands inside the plan they just made — arming it and setting targets is
         // what creation is for — with the overview one click away.
-        _selectedPlanId = plan.Id;
-        _selectedTab = null;
-        _specificLapPickerOpen = false;
-        RaiseChanged();
+        this._selectedPlanId = plan.Id;
+        this._selectedTab = null;
+        this._specificLapPickerOpen = false;
+        this.RaiseChanged();
         return plan;
     }
 
     public void Arm(string planId)
     {
-        _service.Arm(planId);
-        RaiseChanged();
+        this._service.Arm(planId);
+        this.RaiseChanged();
     }
 
     public void StartNow(string planId, SegmentKind kind)
     {
-        _service.StartTracking(planId, kind);
-        RaiseChanged();
+        this._service.StartTracking(planId, kind);
+        this.RaiseChanged();
     }
 
     public void Stop(string planId)
     {
-        _service.StopTracking(planId);
-        RaiseChanged();
+        this._service.StopTracking(planId);
+        this.RaiseChanged();
     }
 
     public void Disarm(string planId)
     {
-        _service.Disarm(planId);
-        RaiseChanged();
+        this._service.Disarm(planId);
+        this.RaiseChanged();
     }
 
     /// <summary>
@@ -273,15 +276,15 @@ public sealed class SessionPlannerController
     /// </summary>
     public void DeletePlan(string planId)
     {
-        _service.DeletePlan(planId);
-        if (_selectedPlanId == planId)
+        this._service.DeletePlan(planId);
+        if (this._selectedPlanId == planId)
         {
-            _selectedPlanId = null;
-            _selectedTab = null;
-            _specificLapPickerOpen = false;
+            this._selectedPlanId = null;
+            this._selectedTab = null;
+            this._specificLapPickerOpen = false;
         }
 
-        RaiseChanged();
+        this.RaiseChanged();
     }
 
     /// <summary>
@@ -291,13 +294,13 @@ public sealed class SessionPlannerController
     /// </summary>
     public PlanContext Prefill()
     {
-        var lastSeen = _lastSeenContext();
+        PlanContext lastSeen = this._lastSeenContext();
         if (!lastSeen.IsEmpty)
         {
             return lastSeen;
         }
 
-        var recent = _service.Plans.FirstOrDefault();
+        SessionPlan? recent = this._service.Plans.FirstOrDefault();
         return recent is null
             ? PlanContext.Empty
             : new PlanContext(recent.Game, recent.Car, recent.Track);
@@ -308,30 +311,33 @@ public sealed class SessionPlannerController
     /// the remembered context for anything the sim has not reported yet (the car is commonly
     /// unknown until the driver has a vehicle).
     /// <para>
-    /// Race length is taken from the lap count when there is one, else from a plausible total
-    /// session time converted to minutes. An implausible or absent length is reported as
-    /// <see cref="RaceLengthFormat.Unknown"/> so the modal asks: committing a garbage number
-    /// here would quietly become a garbage fuel estimate.
+    /// Race length is taken only from a race: the lap count when there is one, else the total
+    /// session time converted to minutes, each inside <see cref="PlanLimits"/>. A practice's 90
+    /// minutes say nothing about the race, so outside a race, or with an implausible or absent
+    /// length, it is reported as <see cref="RaceLengthFormat.Unknown"/> and the modal asks:
+    /// committing a garbage number here would quietly become a garbage fuel estimate.
     /// </para>
     /// </summary>
     public PlanDetection Detect(SessionInfo session)
     {
         ArgumentNullException.ThrowIfNull(session);
 
-        var remembered = _lastSeenContext();
-        var context = new PlanContext(
+        PlanContext remembered = this._lastSeenContext();
+        // The car's name, not the game's entry name (CarNames): a plan is matched to history by it.
+        PlanContext context = new PlanContext(
             Coalesce(session.Game, remembered.Game),
-            Coalesce(session.Car, remembered.Car),
+            Coalesce(CarNames.Of(session), remembered.Car),
             Coalesce(session.Track, remembered.Track));
 
-        var (format, value) = session switch
+        (RaceLengthFormat format, double value) = session switch
         {
-            { MaxLaps: > 0 } => (RaceLengthFormat.LapBased, (double)session.MaxLaps),
-            { TotalSessionTime: > 0 } => (RaceLengthFormat.TimeBased, session.TotalSessionTime.Value / 60),
+            { SessionType: not SessionType.Race } => (RaceLengthFormat.Unknown, 0d),
+            { MaxLaps: > 0 and <= PlanLimits.MaxRaceLaps } => (RaceLengthFormat.LapBased, (double)session.MaxLaps),
+            { TotalSessionTime: > 0 and <= PlanLimits.MaxRaceMinutes * 60 } => (RaceLengthFormat.TimeBased, session.TotalSessionTime.Value / 60),
             _ => (RaceLengthFormat.Unknown, 0d),
         };
 
-        return new PlanDetection(context, format, value, HasFuelHistory(context));
+        return new PlanDetection(context, format, value, this.HasFuelHistory(context));
     }
 
     private static string Coalesce(string reported, string remembered) =>
@@ -343,12 +349,30 @@ public sealed class SessionPlannerController
     /// spellings the lap-history bucket is actually keyed on.
     /// </summary>
     public PlanContextOptions ContextOptions() =>
-        PlanContextOptions.From(_lapHistory, _lastSeenContext());
+        PlanContextOptions.From(this._lapHistory, this._lastSeenContext());
 
-    /// <summary>Whether the creation flow can skip asking for manual average lap time and
-    /// fuel per lap. False until #50 supplies a real history source.</summary>
+    /// <summary>Whether the lap history has both a lap time and fuel per lap for this context's
+    /// race (#50), so the plan dialogs' fuel fields start filled.</summary>
     public bool HasFuelHistory(PlanContext context) =>
-        _fuelHistory.HasHistory(context.Game, context.Car, context.Track);
+        this._fuelHistory.ForRace(context).IsComplete;
+
+    /// <summary>
+    /// The plan dialogs' fuel calculator: the lap history for the inputs' car and track, which
+    /// the dialogs pre-fill from, and the race worked out from the inputs. The tank of the car in
+    /// the game (<paramref name="liveTankLiters"/>) stands in for a recorded one only when the
+    /// inputs name the car and track <paramref name="session"/> reports — the session about to be
+    /// driven; another car may hold a different tank.
+    /// </summary>
+    public PlanFuelPreview PreviewFuel(PlanFuelInputs inputs, SessionInfo session, double? liveTankLiters)
+    {
+        ArgumentNullException.ThrowIfNull(inputs);
+        ArgumentNullException.ThrowIfNull(session);
+
+        FuelHistoryFigures history = this._fuelHistory.ForRace(inputs.Context);
+        PlanContext driven = new PlanContext(session.Game, CarNames.Of(session), session.Track);
+        double? tank = inputs.Context == driven ? liveTankLiters : null;
+        return new PlanFuelPreview(history, RaceFuelEstimate.ForInputs(inputs, history, tank));
+    }
 
     /// <summary>
     /// Whether <paramref name="planId"/> may claim the active slot. The UI disables the
@@ -357,13 +381,13 @@ public sealed class SessionPlannerController
     /// </summary>
     public PlanActivation CanActivate(string planId)
     {
-        var active = _service.ActivePlan;
+        SessionPlan? active = this._service.ActivePlan;
         if (active is null || active.Id == planId)
         {
             return PlanActivation.Allowed;
         }
 
-        var name = string.IsNullOrWhiteSpace(active.Name) ? "Another plan" : active.Name;
+        string name = string.IsNullOrWhiteSpace(active.Name) ? "Another plan" : active.Name;
         return new PlanActivation(false, $"{name} is active");
     }
 
@@ -387,7 +411,7 @@ public sealed class SessionPlannerController
     /// click away from a driver who meant to qualify.
     /// </summary>
     public bool StartingRaceSkipsQualifying(SessionPlan plan) =>
-        NextSegment(plan) == SegmentKind.Qualifying;
+        this.NextSegment(plan) == SegmentKind.Qualifying;
 
     /// <summary>
     /// Explicit takeover: frees whatever holds the slot — disarming an armed plan, stopping a
@@ -395,20 +419,20 @@ public sealed class SessionPlannerController
     /// </summary>
     public void TakeOver(string planId)
     {
-        if (_service.Find(planId) is null)
+        if (this._service.Find(planId) is null)
         {
             return;
         }
 
-        if (_service.ActivePlan is { } active && active.Id != planId)
+        if (this._service.ActivePlan is { } active && active.Id != planId)
         {
-            _service.ReleaseActiveSlot();
+            this._service.ReleaseActiveSlot();
         }
 
-        _service.Arm(planId);
-        _selectedPlanId = planId;
-        _selectedTab = null;
-        RaiseChanged();
+        this._service.Arm(planId);
+        this._selectedPlanId = planId;
+        this._selectedTab = null;
+        this.RaiseChanged();
     }
 
     /// <summary>
@@ -418,12 +442,12 @@ public sealed class SessionPlannerController
     /// </summary>
     public PlanTargetChoices TargetChoices()
     {
-        if (PlanInView is not { } plan)
+        if (this.PlanInView is not { } plan)
         {
             return PlanTargetChoices.None;
         }
 
-        return PlanTargetResolver.Choices(_lapHistory, HistoryContext(plan), plan.Mode);
+        return PlanTargetResolver.Choices(this._lapHistory, HistoryContext(plan), plan.Mode);
     }
 
     /// <summary>
@@ -434,7 +458,7 @@ public sealed class SessionPlannerController
     public PlanTargetScopeGroup? SelectedTargetScope(PlanTargetChoices choices)
     {
         ArgumentNullException.ThrowIfNull(choices);
-        if (_selectedTargetScope is { } selected
+        if (this._selectedTargetScope is { } selected
             && choices.Scope(selected.Scope, selected.ProgramType) is { } group)
         {
             return group;
@@ -445,11 +469,11 @@ public sealed class SessionPlannerController
 
     public void SelectTargetScope(PlanTargetScope scope, string? programType = null)
     {
-        _selectedTargetScope = (scope, programType);
+        this._selectedTargetScope = (scope, programType);
         // Another scope offers different laps; a picker left open would show the previous
         // scope's list for one paint.
-        _specificLapPickerOpen = false;
-        RaiseChanged();
+        this._specificLapPickerOpen = false;
+        this.RaiseChanged();
     }
 
     /// <summary>
@@ -457,16 +481,16 @@ public sealed class SessionPlannerController
     /// scope, so it stays out of the way until the driver asks for it by picking
     /// <c>Specific</c> on the statistic row.
     /// </summary>
-    public bool SpecificLapPickerOpen => _specificLapPickerOpen;
+    public bool SpecificLapPickerOpen => this._specificLapPickerOpen;
 
     public void OpenSpecificLapPicker()
     {
-        _specificLapPickerOpen = true;
-        RaiseChanged();
+        this._specificLapPickerOpen = true;
+        this.RaiseChanged();
     }
 
     /// <summary>The stored target for <paramref name="kind"/> on the plan in view, or null.</summary>
-    public PlanTarget? TargetFor(SegmentKind kind) => PlanInView?.TargetsFor(kind)?.LapTime;
+    public PlanTarget? TargetFor(SegmentKind kind) => this.PlanInView?.TargetsFor(kind)?.LapTime;
 
     /// <summary>
     /// Whether an edit made now would only take effect at the next start/finish line (#189).
@@ -474,37 +498,37 @@ public sealed class SessionPlannerController
     /// keeps the one it was started with, and the page has to say so rather than let a driver
     /// read the current lap's delta against a target it was never driven against.
     /// </summary>
-    public bool TargetsApplyFromNextLap => PlanInView?.Status == PlanStatus.Tracking;
+    public bool TargetsApplyFromNextLap => this.PlanInView?.Status == PlanStatus.Tracking;
 
     /// <summary>Stores <paramref name="option"/> as the lap-time target for <paramref name="kind"/>.</summary>
     public void SetTarget(SegmentKind kind, PlanTargetOption option)
     {
         ArgumentNullException.ThrowIfNull(option);
-        StoreTarget(kind, option.ToTarget(_clock()));
+        this.StoreTarget(kind, option.ToTarget(this._clock()));
     }
 
     /// <summary>Removes the lap-time target for <paramref name="kind"/>, leaving none set.</summary>
     public void ClearTarget(SegmentKind kind)
     {
-        if (PlanInView is not { } plan || plan.TargetsFor(kind) is not { } targets)
+        if (this.PlanInView is not { } plan || plan.TargetsFor(kind) is not { } targets)
         {
             return;
         }
 
         targets.LapTime = null;
-        _specificLapPickerOpen = false;
-        _service.UpdatePlan(plan);
-        RaiseChanged();
+        this._specificLapPickerOpen = false;
+        this._service.UpdatePlan(plan);
+        this.RaiseChanged();
     }
 
     private void StoreTarget(SegmentKind kind, PlanTarget target)
     {
-        if (PlanInView is not { } plan)
+        if (this.PlanInView is not { } plan)
         {
             return;
         }
 
-        var targets = plan.TargetsFor(kind);
+        PlanTargets? targets = plan.TargetsFor(kind);
         if (targets is null)
         {
             targets = new PlanTargets { Kind = kind };
@@ -513,9 +537,9 @@ public sealed class SessionPlannerController
 
         targets.LapTime = target;
         // Whatever opened the picker, a stored choice answers it.
-        _specificLapPickerOpen = false;
-        _service.UpdatePlan(plan);
-        RaiseChanged();
+        this._specificLapPickerOpen = false;
+        this._service.UpdatePlan(plan);
+        this.RaiseChanged();
     }
 
     // The corpus keys on the layout actually driven and the car model; the plan's Track and

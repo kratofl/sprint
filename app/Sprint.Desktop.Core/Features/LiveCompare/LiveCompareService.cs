@@ -1,0 +1,224 @@
+using System.Globalization;
+using Sprint.Desktop.Features.Analysis;
+using Sprint.Desktop.Features.SessionPlanning;
+using Sprint.Desktop.Runtime;
+
+namespace Sprint.Desktop.Features.LiveCompare;
+
+/// <summary>A track layout driven in one car — the set of laps it makes sense to train against.</summary>
+public sealed record LiveCompareCourse(string Game, string TrackCourse, string CarModel)
+{
+    public static LiveCompareCourse Of(LapHistoryContext context) => new(context.Game, context.TrackCourse, context.CarModel);
+}
+
+/// <summary>What the On track page shows: the courses, the laps on the chosen one, the target and the HUD.</summary>
+/// <param name="Laps">The fastest laps on the course, plus every lap a friend shared on it however slow.</param>
+/// <param name="LapCount">Every valid lap on the course.</param>
+/// <param name="HudOpen">Training: the HUD is up and chasing the target.</param>
+/// <param name="Arranging">The HUD windows are up and unlocked, to be moved, sized, added or removed on the monitor.</param>
+public sealed record LiveCompareState(
+    IReadOnlyList<LiveCompareCourse> Courses,
+    LiveCompareCourse? Course,
+    IReadOnlyList<CorpusLap> Laps,
+    int LapCount,
+    LiveCompareTarget? Target,
+    bool HudOpen,
+    bool Arranging);
+
+/// <summary>
+/// Training against an older lap (#195): which lap the HUD chases, and whether the HUD is up.
+/// The rolling window itself is <see cref="LiveCompareController"/>; this is the part the
+/// commands and the On track page drive.
+/// <para>
+/// The course the page lists defaults to the one being driven, then to the newest one with a
+/// trace, so opening the page in the car shows this track's laps without a single click.
+/// </para>
+/// </summary>
+public sealed class LiveCompareService
+{
+    /// <summary>How many laps the picker lists. The fastest ones; any other lap is a click away in Analysis.</summary>
+    public const int ListedLaps = 30;
+
+    private readonly object _gate = new();
+    private readonly LapCorpusBrowser _browser;
+    private readonly Func<LapHistoryContext?> _liveContext;
+
+    private LiveCompareCourse? _course;
+    private bool _hudOpen;
+    private bool _arranging;
+
+    /// <param name="liveContext">The course being driven right now, or null out of the game.</param>
+    public LiveCompareService(LapCorpusBrowser browser, Func<LapHistoryContext?> liveContext)
+    {
+        this._browser = browser ?? throw new ArgumentNullException(nameof(browser));
+        this._liveContext = liveContext ?? throw new ArgumentNullException(nameof(liveContext));
+    }
+
+    public LiveCompareController Controller { get; } = new();
+
+    public bool HudOpen
+    {
+        get { lock (this._gate) { return this._hudOpen; } }
+    }
+
+    /// <summary>
+    /// The HUD is being arranged. Its windows are up and take clicks until the driver is done;
+    /// otherwise they are click-through, so the game keeps every click while driving.
+    /// </summary>
+    public bool Arranging
+    {
+        get { lock (this._gate) { return this._arranging; } }
+    }
+
+    /// <summary>
+    /// Applies the driver's HUD preferences: which charts a snapshot carries, and the window around
+    /// the car. A range outside <see cref="LiveCompareSettings.IsRange"/> (a hand-edited settings
+    /// file) is held to it: the On track page sends back the range it shows, and <c>compare.range</c>
+    /// refuses one side out of bounds, so an unclamped value would lock both pickers.
+    /// </summary>
+    public void Configure(LiveCompareSettings settings)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+        this.Controller.Panels = HudWindowPlan.Panels(HudWindowPlan.Build(settings));
+        this.Controller.MetersBehind = Math.Clamp(settings.MetersBehind, LiveCompareSettings.MinMetersBehind, LiveCompareSettings.MaxMetersBehind);
+        this.Controller.MetersAhead = Math.Clamp(settings.MetersAhead, LiveCompareSettings.MinMetersAhead, LiveCompareSettings.MaxMetersAhead);
+    }
+
+    public LiveCompareState State()
+    {
+        List<LiveCompareCourse> courses = [.. this._browser.Sessions()
+            .Where(session => session.TracedLapCount > 0)
+            .Select(session => LiveCompareCourse.Of(session.Context))
+            .Distinct()];
+        LiveCompareCourse? live = this._liveContext() is { } context ? LiveCompareCourse.Of(context) : null;
+        if (live is not null && !courses.Contains(live))
+        {
+            courses.Insert(0, live);
+        }
+
+        LiveCompareCourse? course;
+        bool hudOpen;
+        bool arranging;
+        lock (this._gate)
+        {
+            course = this._course ?? live ?? courses.FirstOrDefault();
+            hudOpen = this._hudOpen;
+            arranging = this._arranging;
+        }
+
+        IReadOnlyList<CorpusLap> laps = course is null
+            ? []
+            : this._browser.LapsOn(course.Game, course.TrackCourse, course.CarModel);
+
+        return new LiveCompareState(
+            courses,
+            course,
+            Listed(laps),
+            laps.Count,
+            this.Controller.Target,
+            hudOpen,
+            arranging);
+    }
+
+    /// <summary>
+    /// The fastest <see cref="ListedLaps"/>, and every shared lap past them: a friend's lap is
+    /// picked to chase their line, not for its rank among yours. <paramref name="laps"/> is fastest first.
+    /// </summary>
+    private static IReadOnlyList<CorpusLap> Listed(IReadOnlyList<CorpusLap> laps) =>
+        [.. laps.Where((lap, index) => index < ListedLaps || lap.SharedFrom is { Length: > 0 })];
+
+    /// <summary>Lists another course's laps. Null goes back to following the car.</summary>
+    public void SelectCourse(LiveCompareCourse? course)
+    {
+        lock (this._gate)
+        {
+            this._course = course;
+        }
+    }
+
+    /// <summary>
+    /// Trains against a lap. Refused for a lap without channels: the HUD draws the target's
+    /// traces, and a lap time alone has nothing to draw.
+    /// </summary>
+    public bool SetTarget(string sessionId, int lapNumber, out string error)
+    {
+        error = "";
+        CorpusLap? lap = this._browser.Find(sessionId, lapNumber);
+        if (lap is null)
+        {
+            error = "That lap is no longer in your laps.";
+            return false;
+        }
+
+        if (!lap.HasChannels || this._browser.Trace(lap) is not { IsUsable: true } trace)
+        {
+            error = lap.UnavailableReason ?? "That lap's channels could not be read.";
+            return false;
+        }
+
+        this.Controller.SetTarget(
+            new LiveCompareTarget(lap.SessionId, lap.LapNumber, TargetLabel(lap), lap.LapTimeSeconds, lap.Context),
+            trace);
+        lock (this._gate)
+        {
+            // The page follows the target, so a lap picked in Analysis shows up selected here.
+            this._course = LiveCompareCourse.Of(lap.Context);
+        }
+
+        return true;
+    }
+
+    /// <summary>Drops the target. The HUD closes with it: there is nothing left for it to draw.</summary>
+    public void ClearTarget()
+    {
+        this.Controller.SetTarget(null, null);
+        lock (this._gate)
+        {
+            this._hudOpen = false;
+        }
+    }
+
+    /// <summary>Shows or hides the HUD. Showing it needs a target — an overlay of nothing is not training.</summary>
+    public bool SetHudOpen(bool open, out string error)
+    {
+        error = "";
+        if (open && !this.Controller.HasTarget)
+        {
+            error = "Pick a lap to train against first.";
+            return false;
+        }
+
+        lock (this._gate)
+        {
+            this._hudOpen = open;
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Opens the HUD windows unlocked to arrange them, or locks them again. Needs no target:
+    /// where a window sits does not depend on what it will draw. Done while not training closes them.
+    /// </summary>
+    public void SetArranging(bool arranging)
+    {
+        lock (this._gate)
+        {
+            this._arranging = arranging;
+        }
+    }
+
+    /// <summary>"2:05.263 · Lap 5, Sep 28" — what the delta window says it is chasing.</summary>
+    private static string TargetLabel(CorpusLap lap)
+    {
+        string time = PlanTargetResolver.FormatLapTime(lap.LapTimeSeconds);
+        if (lap.SharedFrom is { Length: > 0 } from)
+        {
+            return $"{time} · {from}";
+        }
+
+        return lap.SessionStartedAt is { } started
+            ? $"{time} · Lap {lap.LapNumber}, {started.ToLocalTime().ToString("MMM d", CultureInfo.InvariantCulture)}"
+            : $"{time} · Lap {lap.LapNumber}";
+    }
+}

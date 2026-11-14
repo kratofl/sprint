@@ -31,5 +31,5 @@ public sealed record DashTargets
     public double? FuelPerLapLiters { get; init; }
 
     /// <summary>True when no target at all is set, so the dash can say so once rather than per binding.</summary>
-    public bool IsEmpty => LapTimeSeconds is null && FuelPerLapLiters is null;
+    public bool IsEmpty => this.LapTimeSeconds is null && this.FuelPerLapLiters is null;
 }

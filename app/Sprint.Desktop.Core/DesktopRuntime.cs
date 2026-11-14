@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Sprint.Desktop.Api.Engineer;
 using Sprint.Desktop.Api.Telemetry;
 using Sprint.Desktop.Features.Dashes;
 using Sprint.Desktop.Features.Devices;
@@ -55,69 +56,69 @@ public sealed class DesktopRuntime : IDesktopRuntime
         string? legacyDataRoot = null,
         ILog? log = null)
     {
-        _log = log ?? NullLog.Instance;
+        this._log = log ?? NullLog.Instance;
 
-        var resolvedDataRoot = dataRoot ?? Path.Combine(
+        string resolvedDataRoot = dataRoot ?? Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             "Sprint");
         Directory.CreateDirectory(resolvedDataRoot);
-        _dataRoot = resolvedDataRoot;
+        this._dataRoot = resolvedDataRoot;
 
-        _presetRoot = presetRoot ?? Path.Combine(AppContext.BaseDirectory, "presets");
-        _legacyDataRoot = legacyDataRoot ?? Path.Combine(AppContext.BaseDirectory, "data");
-        _settingsPath = Path.Combine(resolvedDataRoot, "settings.json");
-        _devicesPath = Path.Combine(resolvedDataRoot, "devices.json");
-        _controlsPath = Path.Combine(resolvedDataRoot, "controls.json");
-        _setupProgramsPath = Path.Combine(resolvedDataRoot, "setup-programs.json");
-        _layoutsPath = Path.Combine(resolvedDataRoot, "dash-layouts");
-        Directory.CreateDirectory(_layoutsPath);
-        SetupTemplates = new ReadOnlyObservableCollection<SetupProgram>(_setupTemplates);
+        this._presetRoot = presetRoot ?? Path.Combine(AppContext.BaseDirectory, "presets");
+        this._legacyDataRoot = legacyDataRoot ?? Path.Combine(AppContext.BaseDirectory, "data");
+        this._settingsPath = Path.Combine(resolvedDataRoot, "settings.json");
+        this._devicesPath = Path.Combine(resolvedDataRoot, "devices.json");
+        this._controlsPath = Path.Combine(resolvedDataRoot, "controls.json");
+        this._setupProgramsPath = Path.Combine(resolvedDataRoot, "setup-programs.json");
+        this._layoutsPath = Path.Combine(resolvedDataRoot, "dash-layouts");
+        Directory.CreateDirectory(this._layoutsPath);
+        this.SetupTemplates = new ReadOnlyObservableCollection<SetupProgram>(this._setupTemplates);
 
-        MigrateLegacyDataIfNeeded();
+        this.MigrateLegacyDataIfNeeded();
 
-        Settings = LoadSettings();
-        Controls = LoadControls();
-        foreach (var device in LoadCatalog())
+        this.Settings = this.LoadSettings();
+        this.Controls = this.LoadControls();
+        foreach (CatalogDevice device in this.LoadCatalog())
         {
-            Catalog.Add(device);
+            this.Catalog.Add(device);
         }
 
-        foreach (var device in LoadDevices())
+        foreach (SavedDevice device in this.LoadDevices())
         {
-            Devices.Add(device);
+            this.Devices.Add(device);
         }
 
-        foreach (var layout in LoadLayouts())
+        foreach (DashLayout layout in this.LoadLayouts())
         {
-            DashLayouts.Add(layout);
+            this.DashLayouts.Add(layout);
         }
 
-        foreach (var setup in LoadSetupTemplates())
+        foreach (SetupProgram setup in this.LoadSetupTemplates())
         {
-            _setupTemplates.Add(setup);
-            var snapshot = Clone(setup);
-            _canonicalSetupTemplates[setup.Id] = snapshot;
-            _canonicalSetupTemplateByObject[setup] = snapshot;
+            this._setupTemplates.Add(setup);
+            SetupProgram snapshot = Clone(setup);
+            this._canonicalSetupTemplates[setup.Id] = snapshot;
+            this._canonicalSetupTemplateByObject[setup] = snapshot;
         }
 
-        foreach (var setup in LoadSetupPrograms())
+        foreach (SetupProgram setup in this.LoadSetupPrograms())
         {
-            SetupPrograms.Add(setup);
+            this.SetupPrograms.Add(setup);
         }
 
-        foreach (var control in CreateEngineerControls())
+        foreach (EngineerControl control in CreateEngineerControls())
         {
-            EngineerControls.Add(control);
+            this.EngineerControls.Add(control);
         }
 
-        RadioLog.Add(new RadioLogEntry
+        this.RadioLog.Add(new RadioLogEntry
         {
             Message = "RADIO CHECK",
             Detail = "Crew channel confirmed",
             Lap = 18,
             Status = "ACK"
         });
-        RadioLog.Add(new RadioLogEntry
+        this.RadioLog.Add(new RadioLogEntry
         {
             Message = "Dash sync",
             Detail = "Setup baseline and wheel page are aligned",
@@ -125,15 +126,15 @@ public sealed class DesktopRuntime : IDesktopRuntime
             Status = "DASH"
         });
 
-        _log.Info(
-            $"Desktop runtime ready: devices={Devices.Count} dashes={DashLayouts.Count} " +
-            $"setups={SetupPrograms.Count} catalog={Catalog.Count}.");
+        this._log.Info(
+            $"Desktop runtime ready: devices={this.Devices.Count} dashes={this.DashLayouts.Count} " +
+            $"setups={this.SetupPrograms.Count} catalog={this.Catalog.Count}.");
     }
 
     public AppSettings Settings { get; }
-    public string DataRoot => _dataRoot;
+    public string DataRoot => this._dataRoot;
     public ControlsConfig Controls { get; }
-    public RenderProfile CurrentRenderProfile => new(Settings.DriverName, Settings.DriverNumber);
+    public RenderProfile CurrentRenderProfile => new(this.Settings.DriverName, this.Settings.DriverNumber);
     public ObservableCollection<CatalogDevice> Catalog { get; } = [];
     public ObservableCollection<SavedDevice> Devices { get; } = [];
     public ObservableCollection<DashLayout> DashLayouts { get; } = [];
@@ -147,73 +148,75 @@ public sealed class DesktopRuntime : IDesktopRuntime
 
     public void SaveSettings()
     {
-        lock (SettingsGate)
+        lock (this.SettingsGate)
         {
-            SaveJson(_settingsPath, Settings);
+            SaveJson(this._settingsPath, this.Settings);
         }
 
-        _log.Debug("Settings saved.");
-        RenderProfileChanged?.Invoke(this, CurrentRenderProfile);
+        this._log.Debug("Settings saved.");
+        RenderProfileChanged?.Invoke(this, this.CurrentRenderProfile);
     }
 
     public void ResetSettingsToDefaults()
     {
-        lock (SettingsGate)
+        lock (this.SettingsGate)
         {
-            AppSettings defaults = LoadDefaultSettings();
-            Settings.SidebarCollapsed = defaults.SidebarCollapsed;
-            Settings.UpdateChannel = defaults.UpdateChannel;
-            Settings.DriverName = defaults.DriverName;
-            Settings.DriverNumber = defaults.DriverNumber;
-            Settings.DashEditorUI = defaults.DashEditorUI;
-            Settings.NewDashDefaults = defaults.NewDashDefaults;
-            SaveSettings();
+            AppSettings defaults = this.LoadDefaultSettings();
+            this.Settings.SidebarCollapsed = defaults.SidebarCollapsed;
+            this.Settings.UpdateChannel = defaults.UpdateChannel;
+            this.Settings.AutoInstallUpdates = defaults.AutoInstallUpdates;
+            this.Settings.DriverName = defaults.DriverName;
+            this.Settings.DriverNumber = defaults.DriverNumber;
+            this.Settings.DashEditorUI = defaults.DashEditorUI;
+            this.Settings.NewDashDefaults = defaults.NewDashDefaults;
+            this.SaveSettings();
         }
 
-        _log.Info("Settings reset to defaults.");
+        this._log.Info("Settings reset to defaults.");
     }
 
     public void SaveControls()
     {
-        SaveJson(_controlsPath, Controls);
-        _log.Debug("Control bindings saved.");
+        SaveJson(this._controlsPath, this.Controls);
+        this._log.Debug("Control bindings saved.");
     }
 
     public SavedDevice AddDevice(CatalogDevice catalog)
     {
         SavedDevice saved;
-        lock (DevicesGate)
+        lock (this.DevicesGate)
         {
             // Only a screen transport gets a stand-in resolution (hardware detection then
             // corrects it). A screenless device — e.g. a custom wheel with buttons only —
             // must stay at 0×0, or DeviceCapabilities would treat it as a screen.
-            var isUsbd = catalog.Driver.Contains("usbd", StringComparison.OrdinalIgnoreCase);
-            var hasScreenTransport = isUsbd
+            bool isUsbd = catalog.Driver.Contains("usbd", StringComparison.OrdinalIgnoreCase);
+            bool hasScreenTransport = isUsbd
                 || catalog.Driver.Contains("vocore", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(catalog.Type, "screen", StringComparison.OrdinalIgnoreCase);
             // USBD480 NX's documented fallback size lives with its protocol, so the stand-in
             // matches what the driver falls back to when the panel does not answer.
-            var fallback = isUsbd ? Usbd480Protocol.DefaultNativeSize : new ScreenNativeSize(800, 480);
-            var width = catalog.Width > 0 ? catalog.Width : hasScreenTransport ? fallback.Width : 0;
-            var height = catalog.Height > 0 ? catalog.Height : hasScreenTransport ? fallback.Height : 0;
+            ScreenNativeSize fallback = isUsbd ? Usbd480Protocol.DefaultNativeSize : new ScreenNativeSize(800, 480);
+            int width = catalog.Width > 0 ? catalog.Width : hasScreenTransport ? fallback.Width : 0;
+            int height = catalog.Height > 0 ? catalog.Height : hasScreenTransport ? fallback.Height : 0;
             // Find the lowest index whose composite id is not already in use, so ids
             // stay unique even after devices are removed (a plain count+1 can collide
             // with a survivor and then crash reconciliation on a duplicate key).
-            var prefix = catalog.Vid == 0 && catalog.Pid == 0 ? "SIM" : "USB";
+            string prefix = catalog.Vid == 0 && catalog.Pid == 0 ? "SIM" : "USB";
             string serial, id;
-            var nextIndex = 1;
+            int nextIndex = 1;
             do
             {
                 serial = $"{prefix}-{nextIndex:000}";
                 id = $"{catalog.Driver}-{catalog.Vid:x4}-{catalog.Pid:x4}-{serial}".ToLowerInvariant();
                 nextIndex++;
             }
-            while (Devices.Any(device => device.Id.Equals(id, StringComparison.OrdinalIgnoreCase)));
+            while (this.Devices.Any(device => device.Id.Equals(id, StringComparison.OrdinalIgnoreCase)));
 
             saved = new SavedDevice
             {
                 Id = id,
                 Name = catalog.Name,
+                PresetId = catalog.Id,
                 Driver = catalog.Driver,
                 Type = catalog.Type,
                 Vid = catalog.Vid,
@@ -226,14 +229,16 @@ public sealed class DesktopRuntime : IDesktopRuntime
                 OffsetY = catalog.OffsetY,
                 Margin = catalog.Margin,
                 Bindings = Clone(catalog.Bindings),
-                DashId = DashLayouts.FirstOrDefault(d => d.IsDefault)?.Id ?? "default"
+                // A new device shows the fallback dash until one is picked; with no dash at all it
+                // keeps an empty id and shows nothing until a dash exists.
+                DashId = DashLayoutOrder.First(this.DashLayouts)?.Id ?? ""
             };
 
-            Devices.Add(saved);
-            SaveDevices();
+            this.Devices.Add(saved);
+            this.SaveDevices();
         }
 
-        _log.Info(
+        this._log.Info(
             $"Device added: id={saved.Id} driver={saved.Driver} type={saved.Type} " +
             $"vid=0x{saved.Vid:X4} pid=0x{saved.Pid:X4}.");
         return saved;
@@ -248,7 +253,7 @@ public sealed class DesktopRuntime : IDesktopRuntime
         int margin,
         string dashId)
     {
-        lock (DevicesGate)
+        lock (this.DevicesGate)
         {
             device.Name = string.IsNullOrWhiteSpace(name) ? device.Name : name.Trim();
             device.Orientation = orientation;
@@ -256,10 +261,10 @@ public sealed class DesktopRuntime : IDesktopRuntime
             device.OffsetY = offsetY;
             device.Margin = margin;
             device.DashId = string.IsNullOrWhiteSpace(dashId) ? device.DashId : dashId.Trim();
-            SaveDevices();
+            this.SaveDevices();
         }
 
-        _log.Info(
+        this._log.Info(
             $"Device updated: id={device.Id} rotation={device.Rotation} " +
             $"offset={device.OffsetX},{device.OffsetY} margin={device.Margin} dash={device.DashId}.");
     }
@@ -270,8 +275,8 @@ public sealed class DesktopRuntime : IDesktopRuntime
     /// </summary>
     public void UpdateDevicePurpose(SavedDevice device, string purpose)
     {
-        var normalized = DevicePurposes.Normalize(purpose);
-        lock (DevicesGate)
+        string normalized = DevicePurposes.Normalize(purpose);
+        lock (this.DevicesGate)
         {
             if (string.Equals(device.Purpose, normalized, StringComparison.Ordinal))
             {
@@ -279,10 +284,10 @@ public sealed class DesktopRuntime : IDesktopRuntime
             }
 
             device.Purpose = normalized;
-            SaveDevices();
+            this.SaveDevices();
         }
 
-        _log.Info($"Device purpose changed: id={device.Id} purpose={normalized}.");
+        this._log.Info($"Device purpose changed: id={device.Id} purpose={normalized}.");
     }
 
     public void UpdateDeviceCaptureRegion(SavedDevice device, ScreenCaptureRegion region)
@@ -294,7 +299,7 @@ public sealed class DesktopRuntime : IDesktopRuntime
             throw new ArgumentOutOfRangeException(nameof(region), "A capture region needs a positive size.");
         }
 
-        lock (DevicesGate)
+        lock (this.DevicesGate)
         {
             if (Equals(device.CaptureRegion, region))
             {
@@ -302,10 +307,10 @@ public sealed class DesktopRuntime : IDesktopRuntime
             }
 
             device.CaptureRegion = region;
-            SaveDevices();
+            this.SaveDevices();
         }
 
-        _log.Info(
+        this._log.Info(
             $"Device capture region changed: id={device.Id} " +
             $"region={region.X},{region.Y},{region.Width}x{region.Height}.");
     }
@@ -316,8 +321,8 @@ public sealed class DesktopRuntime : IDesktopRuntime
     /// </summary>
     public void UpdateDeviceRefreshHz(SavedDevice device, int refreshHz)
     {
-        var normalized = DeviceRefreshRates.Normalize(refreshHz);
-        lock (DevicesGate)
+        int normalized = DeviceRefreshRates.Normalize(refreshHz);
+        lock (this.DevicesGate)
         {
             if (device.RefreshHz == normalized)
             {
@@ -325,56 +330,82 @@ public sealed class DesktopRuntime : IDesktopRuntime
             }
 
             device.RefreshHz = normalized;
-            SaveDevices();
+            this.SaveDevices();
         }
 
-        _log.Info($"Device refresh rate changed: id={device.Id} hz={normalized}.");
+        this._log.Info($"Device refresh rate changed: id={device.Id} hz={normalized}.");
+    }
+
+    /// <summary>
+    /// A browser display's resolution, already validated (<see cref="BrowserDisplays.SizeError"/>).
+    /// The orientation follows it, so the logical size is exactly what was asked for.
+    /// </summary>
+    public void UpdateBrowserDisplaySize(SavedDevice device, int width, int height)
+    {
+        lock (this.DevicesGate)
+        {
+            device.Width = width;
+            device.Height = height;
+            device.Orientation = BrowserDisplays.OrientationFor(width, height);
+            this.SaveDevices();
+        }
+
+        this._log.Info($"Browser display resized: id={device.Id} size={width}x{height}.");
+    }
+
+    public void UpdateDeviceTransparent(SavedDevice device, bool transparent)
+    {
+        lock (this.DevicesGate)
+        {
+            if (device.Transparent == transparent)
+            {
+                return;
+            }
+
+            device.Transparent = transparent;
+            this.SaveDevices();
+        }
+
+        this._log.Info($"Device background changed: id={device.Id} transparent={transparent}.");
     }
 
     public void RemoveDevice(SavedDevice device)
     {
-        lock (DevicesGate)
+        lock (this.DevicesGate)
         {
-            Devices.Remove(device);
-            SaveDevices();
+            this.Devices.Remove(device);
+            this.SaveDevices();
         }
 
-        _log.Info($"Device removed: id={device.Id} driver={device.Driver}.");
+        this._log.Info($"Device removed: id={device.Id} driver={device.Driver}.");
     }
 
-    public DashLayout CreateDashLayout()
-    {
-        var source = DashLayouts.FirstOrDefault() ?? CreateFallbackDashLayout();
-        var clone = Clone(source);
-        clone.Id = $"layout-{DateTimeOffset.UtcNow:yyyyMMddHHmmss}";
-        clone.Name = "New Dash";
-        clone.IsDefault = false;
-        clone.Mode = NormalizeDashMode(Settings.NewDashDefaults.Mode);
-        clone.ColorSystem = DashColorSystem.Functional;
-        clone.Theme = null;
-        NormalizeLayoutProfile(clone);
-        DashLayouts.Add(clone);
-        SaveDashLayout(clone);
-        _log.Info($"Dash created: id={clone.Id} profile={clone.ScreenProfileId}.");
-        return clone;
-    }
-
-    public DashLayout CreateDashLayout(ScreenProfile profile)
+    /// <summary>
+    /// Creates a blank dash for <paramref name="profile"/>: one empty page, the functional colour
+    /// system and panel style, no idle page. The preset's alerts and alert settings come along so
+    /// alerts work out of the box. A blank <paramref name="name"/> becomes "New dash".
+    /// </summary>
+    public DashLayout CreateBlankDashLayout(ScreenProfile profile, string? name, string? category)
     {
         ArgumentNullException.ThrowIfNull(profile);
-        var source = DashLayouts.FirstOrDefault() ?? CreateFallbackDashLayout();
-        var clone = Clone(source);
-        clone.Id = $"layout-{DateTimeOffset.UtcNow:yyyyMMddHHmmssfff}";
-        clone.Name = "New Dash";
-        clone.IsDefault = false;
-        clone.Mode = NormalizeDashMode(Settings.NewDashDefaults.Mode);
-        clone.ColorSystem = DashColorSystem.Functional;
-        clone.Theme = null;
-        DashLayoutEditor.ApplyScreenProfile(clone, profile);
-        DashLayouts.Add(clone);
-        SaveDashLayout(clone);
-        _log.Info($"Dash created: id={clone.Id} profile={profile.Id}.");
-        return clone;
+        DashLayout preset = this.LoadPresetDashLayout();
+        DashLayout layout = new()
+        {
+            Id = this.NextDashId(),
+            Name = string.IsNullOrWhiteSpace(name) ? "New dash" : name.Trim(),
+            Category = category,
+            Mode = NormalizeDashMode(this.Settings.NewDashDefaults.Mode),
+            ColorSystem = DashColorSystem.Functional,
+            DashStyle = DashStyle.Panels,
+            Pages = [new DashPage { Id = "page-1", Name = "Page 1" }],
+            Alerts = Clone(preset.Alerts),
+            AlertConfig = Clone(preset.AlertConfig),
+        };
+        DashLayoutEditor.ApplyScreenProfile(layout, profile);
+        this.DashLayouts.Add(layout);
+        this.SaveDashLayout(layout);
+        this._log.Info($"Dash created: id={layout.Id} profile={profile.Id}.");
+        return layout;
     }
 
     /// <summary>Retarget an existing dash to a different screen size in place (US17), refitting its grid and persisting.</summary>
@@ -388,28 +419,29 @@ public sealed class DesktopRuntime : IDesktopRuntime
         }
 
         DashLayoutEditor.ApplyScreenProfile(layout, profile);
-        SaveDashLayout(layout);
-        _log.Info($"Dash screen profile changed: id={layout.Id} profile={profile.Id}.");
+        this.SaveDashLayout(layout);
+        this._log.Info($"Dash screen profile changed: id={layout.Id} profile={profile.Id}.");
     }
 
     /// <summary>
-    /// Duplicate a dash and retarget the copy to another screen size (US18): an
-    /// independent, retargeted-and-refit layout with its own id, leaving the source
-    /// untouched.
+    /// Duplicate a dash and retarget the copy to a screen size (US18): an independent,
+    /// refit layout with its own id, leaving the source untouched: the Dashes page's Duplicate
+    /// dialog and the designer's Duplicate. A blank <paramref name="name"/> becomes
+    /// "&lt;source&gt; copy"; <paramref name="category"/> is the copy's, already resolved.
     /// </summary>
-    public DashLayout DuplicateDashToProfile(DashLayout source, ScreenProfile profile)
+    public DashLayout DuplicateDashToProfile(DashLayout source, ScreenProfile profile, string? name, string? category)
     {
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(profile);
 
-        var clone = Clone(source);
-        clone.Id = $"layout-{DateTimeOffset.UtcNow:yyyyMMddHHmmssfff}";
-        clone.Name = $"{source.Name} · {profile.ResolutionLabel}";
-        clone.IsDefault = false;
+        DashLayout clone = Clone(source);
+        clone.Id = this.NextDashId();
+        clone.Name = string.IsNullOrWhiteSpace(name) ? $"{source.Name} copy" : name.Trim();
+        clone.Category = category;
         DashLayoutEditor.ApplyScreenProfile(clone, profile);
-        DashLayouts.Add(clone);
-        SaveDashLayout(clone);
-        _log.Info($"Dash duplicated: source={source.Id} copy={clone.Id} profile={profile.Id}.");
+        this.DashLayouts.Add(clone);
+        this.SaveDashLayout(clone);
+        this._log.Info($"Dash duplicated: source={source.Id} copy={clone.Id} profile={profile.Id}.");
         return clone;
     }
 
@@ -428,65 +460,159 @@ public sealed class DesktopRuntime : IDesktopRuntime
         layout.ScreenProfileId = ScreenProfileCatalog.MatchGrid(layout.GridCols, layout.GridRows).Id;
     }
 
-    /// <summary>Make <paramref name="layout"/> the sole default, persisting the demoted one too.</summary>
-    public void SetDefaultDashLayout(DashLayout layout)
-    {
-        if (layout.IsDefault)
-        {
-            return;
-        }
-
-        foreach (var other in DashLayouts)
-        {
-            if (other.IsDefault && !ReferenceEquals(other, layout))
-            {
-                other.IsDefault = false;
-                SaveDashLayout(other);
-            }
-        }
-
-        layout.IsDefault = true;
-        SaveDashLayout(layout);
-        _log.Info($"Default dash changed: id={layout.Id}.");
-    }
-
+    /// <summary>Deletes any dash, even the last one. Devices that showed it fall back to <see cref="DashLayoutOrder.First"/>.</summary>
     public void DeleteDashLayout(DashLayout layout)
     {
-        if (DashLayouts.Count <= 1 || layout.IsDefault)
-        {
-            _log.Warn($"Dash delete ignored: id={layout.Id} isDefault={layout.IsDefault} count={DashLayouts.Count}.");
-            return;
-        }
-
-        DashLayouts.Remove(layout);
-        var path = Path.Combine(_layoutsPath, $"{layout.Id}.json");
+        this.DashLayouts.Remove(layout);
+        string path = Path.Combine(this._layoutsPath, $"{layout.Id}.json");
         if (File.Exists(path))
         {
             File.Delete(path);
         }
 
-        _log.Info($"Dash deleted: id={layout.Id}.");
+        this._log.Info($"Dash deleted: id={layout.Id}.");
+    }
+
+    /// <summary>Files a dash under <paramref name="category"/> (a known spelling, see <see cref="DashCategories.Find"/>), or under "Other" when null.</summary>
+    public void SetDashCategory(DashLayout layout, string? category)
+    {
+        if (string.Equals(layout.Category, category, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        layout.Category = category;
+        this.SaveDashLayout(layout);
+        this._log.Info($"Dash category changed: id={layout.Id} category={category ?? "(none)"}.");
+    }
+
+    // The category list is replaced, never changed in place, so a state snapshot being
+    // serialized on another thread never sees it mid-change.
+
+    /// <summary>Adds a custom category; <paramref name="name"/> is already validated (<see cref="DashCategories.TryValidateName"/>).</summary>
+    public void CreateDashCategory(string name)
+    {
+        lock (this.SettingsGate)
+        {
+            this.Settings.CustomDashCategories = [.. this.Settings.CustomDashCategories, name];
+            SaveJson(this._settingsPath, this.Settings);
+        }
+
+        this._log.Info($"Dash category created: {name}.");
+    }
+
+    /// <summary>Renames a custom category and moves every dash in it along; <paramref name="newName"/> is already validated.</summary>
+    public void RenameDashCategory(string name, string newName)
+    {
+        lock (this.SettingsGate)
+        {
+            List<string> custom = [.. this.Settings.CustomDashCategories];
+            int index = custom.FindIndex(existing => string.Equals(existing, name, StringComparison.OrdinalIgnoreCase));
+            if (index < 0)
+            {
+                return;
+            }
+
+            custom[index] = newName;
+            this.Settings.CustomDashCategories = custom;
+            SaveJson(this._settingsPath, this.Settings);
+        }
+
+        foreach (DashLayout layout in this.DashLayouts.Where(layout => string.Equals(layout.Category, name, StringComparison.OrdinalIgnoreCase)).ToList())
+        {
+            layout.Category = newName;
+            this.SaveDashLayout(layout);
+        }
+
+        this._log.Info($"Dash category renamed: {name} -> {newName}.");
+    }
+
+    /// <summary>Removes a custom category; its dashes move to "Other".</summary>
+    public void DeleteDashCategory(string name)
+    {
+        lock (this.SettingsGate)
+        {
+            this.Settings.CustomDashCategories = this.Settings.CustomDashCategories
+                .Where(existing => !string.Equals(existing, name, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+            SaveJson(this._settingsPath, this.Settings);
+        }
+
+        foreach (DashLayout layout in this.DashLayouts.Where(layout => string.Equals(layout.Category, name, StringComparison.OrdinalIgnoreCase)).ToList())
+        {
+            layout.Category = null;
+            this.SaveDashLayout(layout);
+        }
+
+        this._log.Info($"Dash category deleted: {name}.");
+    }
+
+    /// <summary>
+    /// Makes a dash's category one this runtime knows: trims it, stores the known spelling, drops a
+    /// blank or reserved one, and adopts an unknown name as a custom category (a dash synced from
+    /// another PC, or hand-edited JSON). Returns whether the dash's category changed; the caller saves it.
+    /// </summary>
+    public bool AdoptDashCategory(DashLayout layout)
+    {
+        string? before = layout.Category;
+        string trimmed = before?.Trim() ?? "";
+        if (trimmed.Length == 0 || DashCategories.IsReserved(trimmed))
+        {
+            layout.Category = null;
+            return before is not null;
+        }
+
+        lock (this.SettingsGate)
+        {
+            string? known = DashCategories.Find(trimmed, this.Settings.CustomDashCategories);
+            if (known is null)
+            {
+                this.Settings.CustomDashCategories = [.. this.Settings.CustomDashCategories, trimmed];
+                SaveJson(this._settingsPath, this.Settings);
+                this._log.Info($"Dash category adopted from dash {layout.Id}: {trimmed}.");
+                known = trimmed;
+            }
+
+            layout.Category = known;
+        }
+
+        return !string.Equals(before, layout.Category, StringComparison.Ordinal);
+    }
+
+    /// <summary>A fresh, unused dash id.</summary>
+    private string NextDashId()
+    {
+        string stamp = DateTimeOffset.UtcNow.ToString("yyyyMMddHHmmssfff");
+        string id = $"layout-{stamp}";
+        int index = 2;
+        while (this.DashLayouts.Any(layout => string.Equals(layout.Id, id, StringComparison.OrdinalIgnoreCase)))
+        {
+            id = $"layout-{stamp}-{index}";
+            index++;
+        }
+
+        return id;
     }
 
     public SetupProgram DuplicateSetup(SetupProgram source)
     {
-        var sourceSnapshot = TemplateSnapshotFor(source) ?? source;
-        var copy = Clone(sourceSnapshot);
-        copy.Id = NextSetupId();
-        copy.Name = NextSetupCopyName(sourceSnapshot.Name);
+        SetupProgram sourceSnapshot = this.TemplateSnapshotFor(source) ?? source;
+        SetupProgram copy = Clone(sourceSnapshot);
+        copy.Id = this.NextSetupId();
+        copy.Name = this.NextSetupCopyName(sourceSnapshot.Name);
         copy.IsTemplate = false;
         copy.Values = new Dictionary<string, double>(sourceSnapshot.Values, StringComparer.OrdinalIgnoreCase);
 
-        SetupPrograms.Add(copy);
-        SaveSetupPrograms();
-        _log.Info($"Setup duplicated: source={source.Id} copy={copy.Id}.");
+        this.SetupPrograms.Add(copy);
+        this.SaveSetupPrograms();
+        this._log.Info($"Setup duplicated: source={source.Id} copy={copy.Id}.");
         return copy;
     }
 
     public void SaveSetupPrograms()
     {
-        SaveJson(_setupProgramsPath, SetupPrograms.Where(program => !program.IsTemplate).ToList());
-        _log.Debug($"Setup programs saved: count={SetupPrograms.Count}.");
+        SaveJson(this._setupProgramsPath, this.SetupPrograms.Where(program => !program.IsTemplate).ToList());
+        this._log.Debug($"Setup programs saved: count={this.SetupPrograms.Count}.");
     }
 
     /// <summary>
@@ -502,36 +628,36 @@ public sealed class DesktopRuntime : IDesktopRuntime
 
     public void PushEngineerChanges()
     {
-        var dirty = EngineerStageService.DirtyChanges(EngineerControls);
+        IReadOnlyList<StagedControlChange> dirty = EngineerStageService.DirtyChanges(this.EngineerControls);
         if (dirty.Count == 0)
         {
             return;
         }
 
         // Build the human-readable radio detail before applying (push mutates CarValue).
-        var dirtyKeys = dirty.Select(change => change.Key).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var detail = string.Join(" | ", EngineerControls
+        HashSet<string> dirtyKeys = dirty.Select(change => change.Key).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        string detail = string.Join(" | ", this.EngineerControls
             .Where(control => dirtyKeys.Contains(control.Key))
             .Select(control => $"{control.Label} {FormatControlValue(control, control.CarValue)} -> {FormatControlValue(control, control.StagedValue)}"));
 
-        _pendingEngineerChanges = dirty;
-        EngineerPushState = ExternalOperationState.Pending;
-        PrependRadioLog("Push staged changes", detail, "PENDING");
-        _log.Info($"Engineer changes staged for push: count={dirty.Count}.");
+        this._pendingEngineerChanges = dirty;
+        this.EngineerPushState = ExternalOperationState.Pending;
+        this.PrependRadioLog("Push staged changes", detail, "PENDING");
+        this._log.Info($"Engineer changes staged for push: count={dirty.Count}.");
     }
 
     public void AcknowledgeEngineerChanges(bool succeeded)
     {
-        if (EngineerPushState != ExternalOperationState.Pending)
+        if (this.EngineerPushState != ExternalOperationState.Pending)
         {
             return;
         }
 
         if (succeeded)
         {
-            foreach (var change in _pendingEngineerChanges)
+            foreach (StagedControlChange change in this._pendingEngineerChanges)
             {
-                var control = EngineerControls.FirstOrDefault(candidate =>
+                EngineerControl? control = this.EngineerControls.FirstOrDefault(candidate =>
                     string.Equals(candidate.Key, change.Key, StringComparison.OrdinalIgnoreCase));
                 if (control is not null)
                 {
@@ -539,37 +665,37 @@ public sealed class DesktopRuntime : IDesktopRuntime
                 }
             }
 
-            EngineerPushState = ExternalOperationState.Confirmed;
-            PrependRadioLog("Push confirmed", "The external target acknowledged the staged changes", "CONFIRMED");
-            _log.Info("Engineer changes acknowledged by target.");
+            this.EngineerPushState = ExternalOperationState.Confirmed;
+            this.PrependRadioLog("Push confirmed", "The external target acknowledged the staged changes", "CONFIRMED");
+            this._log.Info("Engineer changes acknowledged by target.");
         }
         else
         {
-            EngineerPushState = ExternalOperationState.Failed;
-            PrependRadioLog("Push failed", "Staged changes were retained for retry", "FAILED");
-            _log.Warn("Engineer changes rejected or not acknowledged by target.");
+            this.EngineerPushState = ExternalOperationState.Failed;
+            this.PrependRadioLog("Push failed", "Staged changes were retained for retry", "FAILED");
+            this._log.Warn("Engineer changes rejected or not acknowledged by target.");
         }
 
-        _pendingEngineerChanges = [];
+        this._pendingEngineerChanges = [];
     }
 
     public void RevertEngineerChanges()
     {
-        EngineerStageService.Revert(EngineerControls);
-        PrependRadioLog("Revert", "Staged car control changes cleared", "DASH");
-        _log.Info("Engineer staged changes reverted.");
+        EngineerStageService.Revert(this.EngineerControls);
+        this.PrependRadioLog("Revert", "Staged car control changes cleared", "DASH");
+        this._log.Info("Engineer staged changes reverted.");
     }
 
     public void SendQuickMessage(string message)
     {
-        PrependRadioLog(message, "Quick message staged to the driver radio", "SENT");
-        _log.Info("Quick radio message staged.");
+        this.PrependRadioLog(message, "Quick message staged to the driver radio", "SENT");
+        this._log.Info("Quick radio message staged.");
     }
 
     public static string FormatControlValue(EngineerControl control, double value)
     {
-        var decimals = control.Step < 1 ? 1 : 0;
-        var formatted = value.ToString(decimals == 0 ? "0" : "0.0");
+        int decimals = control.Step < 1 ? 1 : 0;
+        string formatted = value.ToString(decimals == 0 ? "0" : "0.0");
         return string.IsNullOrWhiteSpace(control.Unit) ? formatted : $"{formatted}{control.Unit}";
     }
 
@@ -593,31 +719,64 @@ public sealed class DesktopRuntime : IDesktopRuntime
 
     public static string FormatSetupValue(SetupParameter parameter, double value)
     {
-        var decimals = parameter.Step < 1 ? 1 : 0;
-        var formatted = value.ToString(decimals == 0 ? "0" : "0.0");
+        int decimals = parameter.Step < 1 ? 1 : 0;
+        string formatted = value.ToString(decimals == 0 ? "0" : "0.0");
         return string.IsNullOrWhiteSpace(parameter.Unit) ? formatted : $"{formatted} {parameter.Unit}";
     }
 
     private AppSettings LoadSettings()
     {
-        var fallback = LoadDefaultSettings();
-        var settings = LoadJson<AppSettings>(_settingsPath) ?? fallback;
+        AppSettings fallback = this.LoadDefaultSettings();
+        AppSettings settings = this.LoadJson<AppSettings>(this._settingsPath, setAsideWhenUnreadable: true) ?? fallback;
+        if (settings.Version > AppSettings.CurrentVersion)
+        {
+            // After a rollback. The settings this build knows still read; the rest is kept as is.
+            this._log.Warn(
+                $"settings.json was written by a newer Sprint (version {settings.Version}, " +
+                $"this build knows {AppSettings.CurrentVersion}); unknown settings are kept untouched.");
+        }
+
+        // Saved in this build's shape from now on, so a newer build migrates what this one wrote.
+        settings.Version = AppSettings.CurrentVersion;
         // Fold legacy three-channel values (beta/alpha) into the two-channel model.
         settings.UpdateChannel = AppSettings.NormalizeChannel(settings.UpdateChannel);
+        settings.CustomDashCategories = NormalizeCustomDashCategories(settings.CustomDashCategories);
+        // A hand-edited reserve outside what planner.settings accepts would make every plan seeded
+        // from it (Quick plan sends it as is) fail plan.create's check.
+        settings.SessionPlanner.FuelReserveLaps = Math.Clamp(settings.SessionPlanner.FuelReserveLaps, 0, SessionPlannerSettings.MaxFuelReserveLaps);
         return settings;
     }
 
+    /// <summary>Trimmed, unique (case-insensitive) custom category names; blanks, built-ins and reserved names dropped.</summary>
+    private static List<string> NormalizeCustomDashCategories(IEnumerable<string?>? names)
+    {
+        List<string> normalized = [];
+        foreach (string? name in names ?? [])
+        {
+            string trimmed = name?.Trim() ?? "";
+            if (trimmed.Length == 0 || DashCategories.IsBuiltIn(trimmed) || DashCategories.IsReserved(trimmed) ||
+                normalized.Contains(trimmed, StringComparer.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            normalized.Add(trimmed);
+        }
+
+        return normalized;
+    }
+
     private AppSettings LoadDefaultSettings() =>
-        LoadJson<AppSettings>(PresetPath("settings", "default.json")) ?? new AppSettings();
+        this.LoadJson<AppSettings>(this.PresetPath("settings", "default.json")) ?? new AppSettings();
 
     private IEnumerable<CatalogDevice> LoadCatalog()
     {
-        var dir = PresetPath("devices");
+        string dir = this.PresetPath("devices");
         if (Directory.Exists(dir))
         {
-            foreach (var file in Directory.EnumerateFiles(dir, "*.json").OrderBy(Path.GetFileName))
+            foreach (string? file in Directory.EnumerateFiles(dir, "*.json").OrderBy(Path.GetFileName))
             {
-                var entry = LoadJson<CatalogDevice>(file);
+                CatalogDevice? entry = this.LoadJson<CatalogDevice>(file);
                 if (entry is not null)
                 {
                     yield return entry;
@@ -625,13 +784,15 @@ public sealed class DesktopRuntime : IDesktopRuntime
             }
         }
 
-        if (Catalog.Count == 0)
+        if (this.Catalog.Count == 0)
         {
             yield return new CatalogDevice
             {
                 Id = "generic-vocore",
-                Name = "Generic VoCore Screen",
+                Name = "VoCore screen",
                 Description = "Any VoCore display",
+                Brand = "VoCore",
+                Detect = [new UsbIdPattern { Vid = 0xC872 }],
                 Driver = "vocore"
             };
         }
@@ -639,8 +800,8 @@ public sealed class DesktopRuntime : IDesktopRuntime
 
     private IEnumerable<SavedDevice> LoadDevices()
     {
-        var devices = LoadJson<List<SavedDevice>>(_devicesPath) ?? [];
-        foreach (var device in devices)
+        List<SavedDevice> devices = this.LoadJson<List<SavedDevice>>(this._devicesPath, setAsideWhenUnreadable: true) ?? [];
+        foreach (SavedDevice device in devices)
         {
             // Devices saved before purposes existed (and any unknown value) resolve to
             // dash, so an older devices.json keeps driving its screens.
@@ -653,17 +814,17 @@ public sealed class DesktopRuntime : IDesktopRuntime
 
     private ControlsConfig LoadControls()
     {
-        return LoadJson<ControlsConfig>(_controlsPath) ?? new ControlsConfig();
+        return this.LoadJson<ControlsConfig>(this._controlsPath, setAsideWhenUnreadable: true) ?? new ControlsConfig();
     }
 
     private IEnumerable<SetupProgram> LoadSetupTemplates()
     {
-        var dir = PresetPath("setups");
+        string dir = this.PresetPath("setups");
         if (Directory.Exists(dir))
         {
-            foreach (var file in Directory.EnumerateFiles(dir, "*.json").OrderBy(Path.GetFileName))
+            foreach (string? file in Directory.EnumerateFiles(dir, "*.json").OrderBy(Path.GetFileName))
             {
-                var entry = LoadJson<SetupProgram>(file);
+                SetupProgram? entry = this.LoadJson<SetupProgram>(file);
                 if (NormalizeSetupProgram(entry, isTemplate: true) is { } template)
                 {
                     yield return template;
@@ -671,9 +832,9 @@ public sealed class DesktopRuntime : IDesktopRuntime
             }
         }
 
-        if (_setupTemplates.Count == 0)
+        if (this._setupTemplates.Count == 0)
         {
-            foreach (var template in CreateSetupTemplates())
+            foreach (SetupProgram template in CreateSetupTemplates())
             {
                 if (NormalizeSetupProgram(template, isTemplate: true) is { } normalized)
                 {
@@ -685,8 +846,8 @@ public sealed class DesktopRuntime : IDesktopRuntime
 
     private IEnumerable<SetupProgram> LoadSetupPrograms()
     {
-        var programs = LoadJson<List<SetupProgram>>(_setupProgramsPath) ?? [];
-        foreach (var program in programs)
+        List<SetupProgram> programs = this.LoadJson<List<SetupProgram>>(this._setupProgramsPath, setAsideWhenUnreadable: true) ?? [];
+        foreach (SetupProgram program in programs)
         {
             if (NormalizeSetupProgram(program, isTemplate: false) is { } normalized)
             {
@@ -697,29 +858,32 @@ public sealed class DesktopRuntime : IDesktopRuntime
 
     private IEnumerable<DashLayout> LoadLayouts()
     {
-        var layouts = new List<DashLayout>();
-        if (Directory.Exists(_layoutsPath))
+        List<DashLayout> layouts = new List<DashLayout>();
+        if (Directory.Exists(this._layoutsPath))
         {
-            foreach (var file in Directory.EnumerateFiles(_layoutsPath, "*.json"))
+            foreach (string file in Directory.EnumerateFiles(this._layoutsPath, "*.json"))
             {
-                var layout = LoadJson<DashLayout>(file);
+                DashLayout? layout = this.LoadJson<DashLayout>(file);
                 if (layout is null)
                 {
                     continue;
                 }
 
-                // Rewrite renamed widget types before validation, which would otherwise
-                // reject the whole layout for an unknown (legacy) type.
-                var typesMigrated = DashWidgetTypeMigration.Apply(layout);
+                // Turn old widget stacks into groups and rewrite renamed widget types before
+                // validation, which would otherwise reject the whole layout.
+                bool contentMigrated = DashWidgetStackMigration.Apply(layout) | DashWidgetTypeMigration.Apply(layout);
                 if (DashLayoutValidator.IsValid(layout))
                 {
-                    var migrated = typesMigrated;
+                    bool migrated = contentMigrated;
                     if (layout.ColorSystem is null)
                     {
                         NormalizeLayoutColorSystem(layout);
                         migrated = true;
                     }
                     migrated |= layout.Theme?.NormalizeProtectedColors() == true;
+                    // Dashes saved before categories had a per-PC "default" flag; it is gone.
+                    migrated |= layout.ExtensionData?.Remove("default") == true;
+                    migrated |= this.AdoptDashCategory(layout);
                     if (migrated)
                     {
                         SaveJson(file, layout);
@@ -729,73 +893,85 @@ public sealed class DesktopRuntime : IDesktopRuntime
             }
         }
 
-        if (layouts.Count == 0)
+        // The preset dash is seeded once (first run, or the first run after an upgrade), marked by
+        // a file beside the dashes. After that an empty list is the user's choice (every dash can
+        // be deleted) and stays empty across restarts.
+        string seededMarker = Path.Combine(this._layoutsPath, ".preset-seeded");
+        if (!File.Exists(seededMarker))
         {
-            layouts.Add(LoadJson<DashLayout>(PresetPath("dash", "default.json")) ?? CreateFallbackDashLayout());
+            if (layouts.Count == 0)
+            {
+                DashLayout preset = this.LoadPresetDashLayout();
+                NormalizeLayoutProfile(preset);
+                this.SaveDashLayout(preset);
+                layouts.Add(preset);
+            }
+
+            File.WriteAllText(seededMarker, "");
         }
 
         // Tag any layout missing a target screen profile (legacy saves) with the
         // best-fit catalog profile so the dash↔screen model is always populated.
-        foreach (var layout in layouts)
+        foreach (DashLayout layout in layouts)
         {
             NormalizeLayoutProfile(layout);
             NormalizeLayoutColorSystem(layout);
         }
 
-        return layouts.OrderByDescending(layout => layout.IsDefault).ThenBy(layout => layout.Name);
+        return DashLayoutOrder.Sort(layouts);
     }
 
     private void MigrateLegacyDataIfNeeded()
     {
-        if (string.IsNullOrWhiteSpace(_legacyDataRoot) || !Directory.Exists(_legacyDataRoot))
+        if (string.IsNullOrWhiteSpace(this._legacyDataRoot) || !Directory.Exists(this._legacyDataRoot))
         {
             return;
         }
 
-        MigrateLegacySettingsIfNeeded();
-        MigrateLegacyDevicesIfNeeded();
-        MigrateLegacyLayoutsIfNeeded();
+        this.MigrateLegacySettingsIfNeeded();
+        this.MigrateLegacyDevicesIfNeeded();
+        this.MigrateLegacyLayoutsIfNeeded();
     }
 
     private void MigrateLegacySettingsIfNeeded()
     {
-        if (File.Exists(_settingsPath))
+        if (File.Exists(this._settingsPath))
         {
             return;
         }
 
-        var legacySettingsPath = Path.Combine(_legacyDataRoot!, "settings.json");
-        var settings = LoadJson<AppSettings>(legacySettingsPath);
+        string legacySettingsPath = Path.Combine(this._legacyDataRoot!, "settings.json");
+        AppSettings? settings = this.LoadJson<AppSettings>(legacySettingsPath);
         if (settings is not null)
         {
-            SaveJson(_settingsPath, settings);
+            SaveJson(this._settingsPath, settings);
         }
     }
 
     private void MigrateLegacyDevicesIfNeeded()
     {
-        if (File.Exists(_devicesPath))
+        if (File.Exists(this._devicesPath))
         {
             return;
         }
 
-        var legacyDevicesDir = Path.Combine(_legacyDataRoot!, "devices");
+        string legacyDevicesDir = Path.Combine(this._legacyDataRoot!, "devices");
         if (!Directory.Exists(legacyDevicesDir))
         {
             return;
         }
 
-        var saved = new List<SavedDevice>();
-        foreach (var fileName in new[] { "wheels.json", "screens.json", "buttonboxes.json" })
+        List<SavedDevice> saved = new List<SavedDevice>();
+        foreach (string? fileName in new[] { "wheels.json", "screens.json", "buttonboxes.json" })
         {
-            var path = Path.Combine(legacyDevicesDir, fileName);
-            var entries = LoadJson<List<LegacyDevice>>(path);
+            string path = Path.Combine(legacyDevicesDir, fileName);
+            List<LegacyDevice>? entries = this.LoadJson<List<LegacyDevice>>(path);
             if (entries is null)
             {
                 continue;
             }
 
-            foreach (var entry in entries)
+            foreach (LegacyDevice entry in entries)
             {
                 saved.Add(entry.ToSavedDevice(saved.Count + 1));
             }
@@ -803,44 +979,50 @@ public sealed class DesktopRuntime : IDesktopRuntime
 
         if (saved.Count > 0)
         {
-            SaveJson(_devicesPath, saved);
+            SaveJson(this._devicesPath, saved);
         }
     }
 
     private void MigrateLegacyLayoutsIfNeeded()
     {
-        if (Directory.EnumerateFiles(_layoutsPath, "*.json").Any())
+        if (Directory.EnumerateFiles(this._layoutsPath, "*.json").Any())
         {
             return;
         }
 
-        var legacyLayoutsDir = Path.Combine(_legacyDataRoot!, "layouts");
+        string legacyLayoutsDir = Path.Combine(this._legacyDataRoot!, "layouts");
         if (!Directory.Exists(legacyLayoutsDir))
         {
             return;
         }
 
-        foreach (var layoutDir in Directory.EnumerateDirectories(legacyLayoutsDir))
+        foreach (string layoutDir in Directory.EnumerateDirectories(legacyLayoutsDir))
         {
-            var legacyConfig = Path.Combine(layoutDir, "config.json");
-            var layout = LoadJson<DashLayout>(legacyConfig);
-            if (layout is null || !DashLayoutValidator.IsValid(layout))
+            string legacyConfig = Path.Combine(layoutDir, "config.json");
+            DashLayout? layout = this.LoadJson<DashLayout>(legacyConfig);
+            if (layout is null)
             {
                 continue;
             }
 
-            SaveDashLayout(layout);
+            DashWidgetStackMigration.Apply(layout);
+            if (!DashLayoutValidator.IsValid(layout))
+            {
+                continue;
+            }
+
+            this.SaveDashLayout(layout);
         }
     }
 
     public void SaveDevices()
     {
-        lock (DevicesGate)
+        lock (this.DevicesGate)
         {
-            SaveJson(_devicesPath, Devices.ToList());
+            SaveJson(this._devicesPath, this.Devices.ToList());
         }
 
-        _log.Debug($"Devices saved: count={Devices.Count}.");
+        this._log.Debug($"Devices saved: count={this.Devices.Count}.");
     }
 
     public void SaveDashLayout(DashLayout layout)
@@ -852,16 +1034,21 @@ public sealed class DesktopRuntime : IDesktopRuntime
 
         NormalizeLayoutColorSystem(layout);
         layout.Theme?.NormalizeProtectedColors();
-        SaveJson(Path.Combine(_layoutsPath, $"{layout.Id}.json"), layout);
-        _log.Debug($"Dash saved: id={layout.Id} pages={layout.Pages.Count}.");
+        SaveJson(Path.Combine(this._layoutsPath, $"{layout.Id}.json"), layout);
+        this._log.Debug($"Dash saved: id={layout.Id} pages={layout.Pages.Count}.");
     }
 
+    /// <summary>
+    /// Puts the preset's pages, alerts and look back into a dash. It keeps its id, name, category
+    /// and screen size: the preset is refitted to the dash's own screen profile.
+    /// </summary>
     public void ResetDashLayout(DashLayout layout)
     {
-        DashLayout preset = this.LoadJson<DashLayout>(this.PresetPath("dash", "default.json")) ?? CreateFallbackDashLayout();
+        DashLayout preset = this.LoadPresetDashLayout();
         string id = layout.Id;
         string name = layout.Name;
-        bool isDefault = layout.IsDefault;
+        string? category = layout.Category;
+        ScreenProfile profile = ScreenProfileCatalog.Resolve(layout.ScreenProfileId);
 
         layout.GridCols = preset.GridCols;
         layout.GridRows = preset.GridRows;
@@ -876,7 +1063,8 @@ public sealed class DesktopRuntime : IDesktopRuntime
         layout.ExtensionData = preset.ExtensionData is null ? null : Clone(preset.ExtensionData);
         layout.Id = id;
         layout.Name = name;
-        layout.IsDefault = isDefault;
+        layout.Category = category;
+        DashLayoutEditor.ApplyScreenProfile(layout, profile);
 
         this.SaveDashLayout(layout);
         this._log.Info($"Dash reset to preset content: id={layout.Id}.");
@@ -890,7 +1078,7 @@ public sealed class DesktopRuntime : IDesktopRuntime
 
     private void PrependRadioLog(string message, string detail, string status)
     {
-        RadioLog.Insert(0, new RadioLogEntry
+        this.RadioLog.Insert(0, new RadioLogEntry
         {
             Message = message,
             Detail = detail,
@@ -898,35 +1086,35 @@ public sealed class DesktopRuntime : IDesktopRuntime
             Status = status
         });
 
-        while (RadioLog.Count > 8)
+        while (this.RadioLog.Count > 8)
         {
-            RadioLog.RemoveAt(RadioLog.Count - 1);
+            this.RadioLog.RemoveAt(this.RadioLog.Count - 1);
         }
     }
 
     private string NextSetupId()
     {
-        var stamp = DateTimeOffset.UtcNow.ToString("yyyyMMddHHmmssfff");
-        var index = 1;
+        string stamp = DateTimeOffset.UtcNow.ToString("yyyyMMddHHmmssfff");
+        int index = 1;
         string id;
         do
         {
             id = $"setup-{stamp}-{index:00}";
             index++;
         }
-        while (SetupPrograms.Any(program => program.Id.Equals(id, StringComparison.OrdinalIgnoreCase)));
+        while (this.SetupPrograms.Any(program => program.Id.Equals(id, StringComparison.OrdinalIgnoreCase)));
 
         return id;
     }
 
     private SetupProgram? TemplateSnapshotFor(SetupProgram source)
     {
-        if (_canonicalSetupTemplateByObject.TryGetValue(source, out var objectTemplate))
+        if (this._canonicalSetupTemplateByObject.TryGetValue(source, out SetupProgram? objectTemplate))
         {
             return objectTemplate;
         }
 
-        if (source.IsTemplate && _canonicalSetupTemplates.TryGetValue(source.Id, out var template))
+        if (source.IsTemplate && this._canonicalSetupTemplates.TryGetValue(source.Id, out SetupProgram? template))
         {
             return template;
         }
@@ -953,20 +1141,20 @@ public sealed class DesktopRuntime : IDesktopRuntime
 
     private string NextSetupCopyName(string sourceName)
     {
-        var baseName = $"{sourceName} copy";
-        if (SetupPrograms.All(program => !program.Name.Equals(baseName, StringComparison.OrdinalIgnoreCase)))
+        string baseName = $"{sourceName} copy";
+        if (this.SetupPrograms.All(program => !program.Name.Equals(baseName, StringComparison.OrdinalIgnoreCase)))
         {
             return baseName;
         }
 
-        var index = 2;
+        int index = 2;
         string name;
         do
         {
             name = $"{baseName} {index}";
             index++;
         }
-        while (SetupPrograms.Any(program => program.Name.Equals(name, StringComparison.OrdinalIgnoreCase)));
+        while (this.SetupPrograms.Any(program => program.Name.Equals(name, StringComparison.OrdinalIgnoreCase)));
 
         return name;
     }
@@ -977,28 +1165,40 @@ public sealed class DesktopRuntime : IDesktopRuntime
         return JsonSerializer.Deserialize<T>(json, JsonOptions)!;
     }
 
-    private T? LoadJson<T>(string path)
+    /// <summary>
+    /// Reads a JSON file, or default when it is missing or unreadable. A store that keeps all its
+    /// records in one file passes <paramref name="setAsideWhenUnreadable"/>: it saves over that
+    /// file later, which would erase what it could not read (maybe a newer Sprint's file).
+    /// </summary>
+    private T? LoadJson<T>(string path, bool setAsideWhenUnreadable = false)
     {
         if (!File.Exists(path))
         {
-            _log.Debug(
+            this._log.Debug(
                 $"Configuration file not found; defaults will be used: " +
                 $"file={Path.GetFileName(path)} type={typeof(T).Name}.");
             return default;
         }
 
-        using var stream = File.OpenRead(path);
         try
         {
-            var value = JsonSerializer.Deserialize<T>(stream, JsonOptions);
-            _log.Debug($"Configuration loaded: file={Path.GetFileName(path)} type={typeof(T).Name}.");
+            T? value;
+            using (FileStream stream = File.OpenRead(path))
+            {
+                value = JsonSerializer.Deserialize<T>(stream, JsonOptions);
+            }
+
+            this._log.Debug($"Configuration loaded: file={Path.GetFileName(path)} type={typeof(T).Name}.");
             return value;
         }
         catch (JsonException ex)
         {
             // A corrupt file falls back to defaults rather than crashing, but that
             // silent reset used to be invisible — record it so it can be diagnosed.
-            _log.Warn($"Ignoring corrupt JSON at {path}; falling back to default", ex);
+            string? keptAt = setAsideWhenUnreadable ? AtomicFile.SetAside(path) : null;
+            this._log.Warn(
+                $"Ignoring unreadable JSON at {path}; falling back to default" +
+                (keptAt is null ? "" : $"; the file is kept at {keptAt}"), ex);
             return default;
         }
     }
@@ -1010,8 +1210,12 @@ public sealed class DesktopRuntime : IDesktopRuntime
 
     private string PresetPath(params string[] segments)
     {
-        return Path.Combine([_presetRoot, .. segments]);
+        return Path.Combine([this._presetRoot, .. segments]);
     }
+
+    /// <summary>The shipped preset dash (id "default"), or a minimal built-in one when the preset is missing.</summary>
+    private DashLayout LoadPresetDashLayout() =>
+        this.LoadJson<DashLayout>(this.PresetPath("dash", "default.json")) ?? CreateFallbackDashLayout();
 
     private static DashLayout CreateFallbackDashLayout()
     {
@@ -1019,7 +1223,6 @@ public sealed class DesktopRuntime : IDesktopRuntime
         {
             Id = "default",
             Name = "Default",
-            IsDefault = true,
             Pages =
             [
                 new DashPage
@@ -1162,23 +1365,23 @@ public sealed class DesktopRuntime : IDesktopRuntime
 
         public SavedDevice ToSavedDevice(int index)
         {
-            var driver = string.IsNullOrWhiteSpace(Driver) ? "unknown" : Driver;
-            var serial = $"MIGRATED-{index:000}";
+            string driver = string.IsNullOrWhiteSpace(this.Driver) ? "unknown" : this.Driver;
+            string serial = $"MIGRATED-{index:000}";
             return new SavedDevice
             {
-                Id = $"{driver}-{Vid:x4}-{Pid:x4}-{serial}".ToLowerInvariant(),
-                Name = string.IsNullOrWhiteSpace(Name) ? $"Migrated {Type}" : Name,
+                Id = $"{driver}-{this.Vid:x4}-{this.Pid:x4}-{serial}".ToLowerInvariant(),
+                Name = string.IsNullOrWhiteSpace(this.Name) ? $"Migrated {this.Type}" : this.Name,
                 Driver = driver,
-                Type = string.IsNullOrWhiteSpace(Type) ? "screen" : Type,
-                Vid = Vid,
-                Pid = Pid,
+                Type = string.IsNullOrWhiteSpace(this.Type) ? "screen" : this.Type,
+                Vid = this.Vid,
+                Pid = this.Pid,
                 Serial = serial,
-                Width = Width,
-                Height = Height,
-                Rotation = Rotation,
-                OffsetX = OffsetX,
-                OffsetY = OffsetY,
-                Margin = Margin,
+                Width = this.Width,
+                Height = this.Height,
+                Rotation = this.Rotation,
+                OffsetX = this.OffsetX,
+                OffsetY = this.OffsetY,
+                Margin = this.Margin,
                 DashId = "default"
             };
         }

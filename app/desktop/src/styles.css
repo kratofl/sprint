@@ -2,19 +2,10 @@
 
 /* Desktop UI type is Figtree, the brand face the web uses too, bundled so nothing
    loads from the internet (--font-text/--font-display in desktop.css; macos.css
-   swaps in SF on a Mac). Inter and Saira SemiCondensed exist only for the dash
-   renderer (packages/dashboard), which names Inter for wheel labels and Saira
-   SemiCondensed for wheel numerics. Without them every dash readout — in the
-   editor preview and on the USB panel — silently falls back to system-ui. App UI
+   swaps in SF on a Mac). The dash faces (Inter, Saira SemiCondensed) are not app
+   fonts: the dash renderer (packages/dashboard/renderer) compiles them in. App UI
    must never name either family. */
 @font-face { font-family: Figtree; font-style: normal; font-weight: 300 900; font-display: block; src: url('./fonts/Figtree-latin.woff2') format('woff2'); }
-@font-face { font-family: Inter; font-style: normal; font-weight: 400; font-display: block; src: url('./fonts/Inter-Regular.ttf') format('truetype'); }
-@font-face { font-family: Inter; font-style: normal; font-weight: 500; font-display: block; src: url('./fonts/Inter-Medium.ttf') format('truetype'); }
-@font-face { font-family: Inter; font-style: normal; font-weight: 600; font-display: block; src: url('./fonts/Inter-SemiBold.ttf') format('truetype'); }
-@font-face { font-family: Inter; font-style: normal; font-weight: 700; font-display: block; src: url('./fonts/Inter-Bold.ttf') format('truetype'); }
-@font-face { font-family: 'Saira SemiCondensed'; font-style: normal; font-weight: 400; font-display: block; src: url('./fonts/SairaSemiCondensed-Regular.ttf') format('truetype'); }
-@font-face { font-family: 'Saira SemiCondensed'; font-style: normal; font-weight: 500; font-display: block; src: url('./fonts/SairaSemiCondensed-Medium.ttf') format('truetype'); }
-@font-face { font-family: 'Saira SemiCondensed'; font-style: normal; font-weight: 700; font-display: block; src: url('./fonts/SairaSemiCondensed-Bold.ttf') format('truetype'); }
 
 /* ── Base ───────────────────────────────────────────────────────────────────
    The Sprint brand look, the one the web app wears: 13px/20px Figtree on a
@@ -40,10 +31,53 @@ body {
   min-width: 900px;
 }
 
+/* A dash designer window (designer/DashDesigner.tsx) lays out its own stage at any size. */
+[data-surface="designer"],
+[data-surface="designer"] body {
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* A training HUD window (hud/HudWindow.tsx) is as small as its reading and transparent around its panel. */
+[data-surface="hud"],
+[data-surface="hud"] body {
+  min-width: 0;
+  overflow: hidden;
+  background: transparent;
+}
+
 body {
   font: 400 13px/20px var(--font-text);
   color: var(--label);
   background: var(--window);
+}
+
+/* Scrollbars are chrome, so they stay as quiet as a card's hairline edge: a rounded thumb in the
+   outline tone on no track, darkening under the pointer. The 2px transparent border insets the
+   thumb inside its 10px gutter. macOS keeps its native overlay scrollbars. */
+:where(html:not([data-platform="mac"]))::-webkit-scrollbar,
+:where(html:not([data-platform="mac"])) ::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+:where(html:not([data-platform="mac"]))::-webkit-scrollbar-track,
+:where(html:not([data-platform="mac"])) ::-webkit-scrollbar-track,
+:where(html:not([data-platform="mac"]))::-webkit-scrollbar-corner,
+:where(html:not([data-platform="mac"])) ::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+:where(html:not([data-platform="mac"]))::-webkit-scrollbar-thumb,
+:where(html:not([data-platform="mac"])) ::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: var(--radius-pill);
+  background: var(--control-stroke) padding-box;
+}
+
+:where(html:not([data-platform="mac"]))::-webkit-scrollbar-thumb:hover,
+:where(html:not([data-platform="mac"])) ::-webkit-scrollbar-thumb:hover {
+  background-color: var(--label-tertiary);
 }
 
 /* Desktop controls keep the arrow cursor; only links get the hand. */
@@ -92,22 +126,6 @@ a:hover {
   color: var(--label);
 }
 
-/* The driving guide over the game (guide/GuideOverlay.tsx): nothing but the guide is painted. */
-[data-surface="guide-overlay"],
-[data-surface="guide-overlay"] body,
-[data-surface="guide-overlay"] #root {
-  width: 100%;
-  height: 100%;
-  min-width: 0;
-  overflow: hidden;
-  background: transparent;
-}
-
-.guide-overlay {
-  display: block;
-  pointer-events: none;
-}
-
 /* Pane width is restored from persisted settings after the first state load
    (App.tsx); staying invisible until then avoids painting the wrong width and
    snapping to the right one a moment later. */
@@ -133,18 +151,75 @@ a:hover {
   background: var(--layer);
 }
 
+/* ── Light trails behind the shell (Windows/Linux) ───────────────────────────
+   The web shell's look (web/app/globals.css): the ambient trails (shell/Backdrop.tsx) fill the
+   window, the sidebar and toolbar are glass over them, and the content area is a veil, so the
+   trails glow faintly between the cards. Cards and every other content element stay opaque.
+   macOS keeps its native vibrancy instead and never gets `.with-trails` (App.tsx). */
+
+.app.with-trails {
+  position: relative;
+  isolation: isolate;
+}
+
+.app.with-trails .navview {
+  background: color-mix(in srgb, var(--sidebar) var(--chrome-opacity), transparent);
+  backdrop-filter: var(--chrome-backdrop);
+}
+
+.app.with-trails .titlebar {
+  background: color-mix(in srgb, var(--toolbar) var(--chrome-opacity), transparent);
+  backdrop-filter: var(--chrome-backdrop);
+}
+
+.app.with-trails .content {
+  background: color-mix(in srgb, var(--layer) var(--veil-opacity), transparent);
+}
+
+/* Reduced transparency: the plain opaque shell, no trails. */
+@media (prefers-reduced-transparency: reduce) {
+  .app.with-trails > .backdrop { display: none; }
+  .app.with-trails .navview { background: var(--sidebar); backdrop-filter: none; }
+  .app.with-trails .titlebar { background: var(--toolbar); backdrop-filter: none; }
+  .app.with-trails .content { background: var(--layer); }
+}
+
+/* The trails layer, painted once from plain strokes (no filters). The entrance only fades and
+   slides the finished layer and does not hold its end state, so it settles into a static paint. */
+.backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  fill: none;
+  stroke-linecap: round;
+  animation: trails-in calc(var(--motion-slow) * 4) var(--ease-out);
+}
+
+/* A broken streak: a car on the brakes. */
+.backdrop-trail.broken {
+  stroke-dasharray: 0.06 0.025;
+}
+
+@keyframes trails-in {
+  from {
+    opacity: 0;
+    transform: translateX(-4%);
+  }
+}
+
 /* ── Toolbar (48px) ──────────────────────────────────────────────────────────
-   Three zones as one grid: leading (sidebar toggle while hidden, back, page
-   title) | centre (the telemetry indicator) | trailing (the page's actions,
-   then search). The centre takes what is left; its 28px minimum is the
-   indicator shrunk to its dot, and TitleBar.tsx reads it when it works out the
-   actions' room. The bar is the window's title bar: it drags the window, and
-   every control opts back out. */
+   Two zones as one grid: leading (sidebar toggle while hidden, page title) |
+   trailing (the page's actions, then search), which takes what is left. The
+   bar is the window's title bar: it drags the window, and every control opts
+   back out. */
 
 .titlebar {
   grid-area: toolbar;
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
   column-gap: 12px;
   height: 48px;
@@ -157,8 +232,7 @@ a:hover {
 }
 
 .titlebar button,
-.titlebar a,
-.titlebar .telemetry-badge {
+.titlebar a {
   -webkit-app-region: no-drag;
 }
 
@@ -170,8 +244,7 @@ a:hover {
   min-width: max-content;
 }
 
-.titlebar-sidebar-toggle,
-.titlebar-back {
+.titlebar-sidebar-toggle {
   display: grid;
   place-items: center;
   width: 28px;
@@ -184,82 +257,19 @@ a:hover {
   color: var(--label-secondary);
 }
 
-.titlebar-sidebar-toggle:hover,
-.titlebar-back:hover:not(:disabled) {
+.titlebar-sidebar-toggle:hover {
   background: var(--subtle-hover);
   color: var(--label);
 }
 
-.titlebar-sidebar-toggle:active,
-.titlebar-back:active:not(:disabled) {
+.titlebar-sidebar-toggle:active {
   background: var(--subtle-pressed);
-}
-
-.titlebar-back:disabled {
-  background: transparent;
-  color: var(--label-disabled);
 }
 
 .titlebar-title {
   flex: none;
   font: 600 17px/22px var(--font-display);
   white-space: nowrap;
-}
-
-/* Centre zone. A size container, so the indicator can fall back to its dot when the centre
-   gets narrow (below), before the actions are evicted to the content. */
-.titlebar-centre {
-  display: flex;
-  justify-content: center;
-  min-width: 28px;
-  container-type: inline-size;
-}
-
-/* The telemetry indicator: a capsule that opens Help & diagnostics (TelemetryBadge.tsx). */
-.telemetry-indicator {
-  display: flex;
-  align-items: center;
-  min-width: 0;
-  max-width: 100%;
-  height: 28px;
-  padding: 0 12px;
-  border: 0;
-  border-radius: var(--radius-pill);
-  background: var(--control-fill);
-  color: var(--label-secondary);
-}
-
-.telemetry-indicator:hover {
-  background: var(--control-fill-hover);
-  color: var(--label);
-}
-
-.telemetry-indicator:active {
-  background: var(--subtle-pressed);
-}
-
-/* The status may shrink (and ellipsize) inside the capsule. */
-.telemetry-indicator .telemetry-badge {
-  flex: 0 1 auto;
-  color: inherit;
-}
-
-@container (max-width: 180px) {
-  .telemetry-indicator {
-    justify-content: center;
-    width: 28px;
-    padding: 0;
-  }
-
-  /* The word stays for screen readers; the tooltip names it for everyone else. */
-  .telemetry-indicator .status-label {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip-path: inset(50%);
-    white-space: nowrap;
-  }
 }
 
 /* Trailing zone: the page's actions (PageHeader portals its CommandBar into the slot), then search. */
@@ -374,6 +384,7 @@ a:hover {
 }
 
 .navview-toggle {
+  position: relative;
   display: grid;
   place-items: center;
   width: 28px;
@@ -391,15 +402,59 @@ a:hover {
   flex: 1;
 }
 
+/* The build tag beside the name keeps a tag's weight, not the name's. */
+.navview-brand .chip {
+  font-weight: 600;
+}
+
+/* The running build under Help: a dev run's branch, else the version (Sidebar.tsx). */
+.navview-build {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  min-width: 0;
+  padding: 6px 8px 2px;
+  color: var(--label-secondary);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.navview-build-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Collapsed, the tag becomes a dot on the toggle's corner. */
+.navview-build-dot {
+  display: none;
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-pill);
+}
+
+.navview-build-dot.development { background: var(--yellow-500); }
+.navview-build-dot.pre-release { background: var(--blue-500); }
+
 .navview.collapsed .navview-band {
   justify-content: center;
   padding: 0;
 }
 
 .navview.collapsed .navview-brand,
+.navview.collapsed .navview-build,
 .navview.collapsed .nav-item-label,
 .navview.collapsed .account-name {
   display: none;
+}
+
+.navview.collapsed .navview-build-dot {
+  display: block;
 }
 
 .navview.collapsed .nav-item {
@@ -471,6 +526,31 @@ a:hover {
   text-overflow: ellipsis;
 }
 
+/* A section heading over a run of rows (shell/nav.ts `NavGroup`): a column-head label, quieter than the rows. */
+.nav-group {
+  flex: none;
+  padding: 12px 8px 4px;
+}
+
+.nav-group-label {
+  display: block;
+  color: var(--label-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 16px;
+}
+
+/* The rail has no room for words: the heading becomes a hairline between the runs. */
+.navview.collapsed .nav-group {
+  margin: 6px 12px;
+  padding: 0;
+  border-top: 1px solid var(--divider);
+}
+
+.navview.collapsed .nav-group-label {
+  display: none;
+}
+
 /* Update-available dot on the Settings item. */
 .nav-item-badge {
   width: 6px;
@@ -479,6 +559,35 @@ a:hover {
   margin-left: auto;
   border-radius: var(--radius-pill);
   background: var(--brand-500);
+}
+
+/* The game link first in the footer, under a hairline (TelemetryRow.tsx): a status dot in the
+   icon's place and the link in secondary text, so it reads as status, not as a page. */
+.navview-telemetry {
+  display: flex;
+  flex-direction: column;
+  flex: none;
+  margin-bottom: 4px;
+  padding-top: 4px;
+  border-top: 1px solid var(--divider);
+}
+
+.nav-item.nav-telemetry {
+  color: var(--label-secondary);
+  font-size: 12px;
+}
+
+.nav-item.nav-telemetry:hover {
+  color: var(--label);
+}
+
+.nav-item.nav-telemetry:disabled {
+  background: transparent;
+}
+
+.nav-telemetry-dot {
+  justify-content: center;
+  width: 16px;
 }
 
 /* Account last, under a hairline, below Settings and Help (web sidebar footer). */
@@ -788,6 +897,28 @@ a:hover {
   color: var(--label-disabled);
 }
 
+/* A text button: an action that reads as a link ("All in Analysis", "set the size"), in the
+   `link` colour at the size of the text around it; the hover fill keeps a hit area round it. */
+.text-button {
+  margin: 0 -4px;
+  padding: 0 4px;
+  border: 0;
+  border-radius: var(--radius-control-small);
+  background: transparent;
+  color: var(--link);
+  font: inherit;
+  cursor: pointer;
+}
+.text-button:hover {
+  background: var(--subtle-hover);
+  color: var(--link-hover);
+}
+.text-button:disabled {
+  background: transparent;
+  color: var(--label-disabled);
+  cursor: default;
+}
+
 /* ── Text helpers ─────────────────────────────────────────────────────────── */
 
 .muted {
@@ -948,7 +1079,7 @@ a:hover {
 }
 
 :where(input, select, textarea):disabled {
-  border-color: var(--control-stroke);
+  border-color: var(--input-stroke);
   background-color: var(--control-fill-disabled);
   color: var(--label-disabled);
 }
@@ -1013,33 +1144,137 @@ a:hover {
   line-height: 16px;
 }
 
+/* ── Inline name (shell/InlineName.tsx) ─────────────────────────────────────
+   A page heading renamed in place: the name and its pen, or the rename input and its save
+   button. One 32px line either way, so the header does not shift when it swaps. */
+
+.inline-name {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  min-height: 32px;
+}
+
+.inline-name-button {
+  color: var(--label-secondary);
+}
+
+.inline-name-text {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 28px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The heading's type in a text box; the border and padding sit outside the text so the name
+   stays where the heading had it. */
+.inline-name-input {
+  width: min(100%, 420px);
+  height: 32px;
+  margin-left: -9px;
+  padding: 0 8px;
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 28px;
+}
+
 /* ── Chips (tags and status labels) ───────────────────────────────────────── */
+/* DESIGN.md's tag: caption type on a 4px corner. Neutral by default; a tone is the -100 tint with
+   its -700 text (the InfoBar tints), `chip-default` the brand's, `chip-muted` only an outline. */
 
 .chip {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  height: 20px;
-  padding: 0 8px;
-  border: 1px solid var(--control-stroke);
-  border-radius: var(--radius-control);
+  gap: 4px;
+  height: 18px;
+  flex: none;
+  padding: 0 6px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-control-small);
   background: var(--subtle-selected);
-  color: var(--label);
-  font-size: 12px;
+  color: var(--label-secondary);
+  font-size: 11px;
+  font-weight: 600;
   line-height: 16px;
   white-space: nowrap;
 }
-
-.chip-muted {
-  background: transparent;
-  color: var(--label-secondary);
+.chip > svg {
+  width: 12px;
+  height: 12px;
 }
-
-/* The default/active item among several (e.g. the default dash). */
+.chip-muted {
+  border-color: var(--control-stroke);
+  background: transparent;
+  font-weight: 400;
+}
 .chip-default {
-  border-color: transparent;
   background: color-mix(in srgb, var(--brand-500) 16%, transparent);
   color: var(--link);
+}
+.chip-info {
+  background: var(--infobar-info);
+  color: var(--infobar-info-text);
+}
+.chip-success {
+  background: var(--infobar-success);
+  color: var(--infobar-success-text);
+}
+.chip-warning {
+  background: var(--infobar-warning);
+  color: var(--infobar-warning-text);
+}
+.chip-danger {
+  background: var(--infobar-error);
+  color: var(--infobar-error-text);
+}
+
+/* A filter chip (views/FilterChip.tsx): "+ Class" dashed while the list is unfiltered, solid once
+   it narrows it; also any small pill that adds or picks one of several (aria-pressed/checked). */
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  padding: 0 10px;
+  border: 1px dashed var(--slot-stroke);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--label-secondary);
+  font: inherit;
+  font-size: 12px;
+  line-height: 16px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.filter-chip svg {
+  width: 12px;
+  height: 12px;
+}
+
+.filter-chip:hover {
+  background: var(--subtle-hover);
+  color: var(--label);
+}
+
+.filter-chip.active,
+.filter-chip[aria-pressed='true'],
+.filter-chip[aria-checked='true'] {
+  border-style: solid;
+  border-color: transparent;
+  background: var(--subtle-selected);
+  color: var(--label);
+  font-weight: 600;
+}
+
+.filter-chip:disabled {
+  color: var(--label-disabled);
+  cursor: default;
 }
 
 /* ── Segmented control and tabs ───────────────────────────────────────────
@@ -1122,6 +1357,87 @@ a:hover {
   background: var(--brand-500);
 }
 
+/* ── Switch (shell/Switch.tsx): an instant on/off, "On"/"Off" beside it ────── */
+
+/* ── ToggleSwitch (Fluent: 40×20 track, 12px knob, 14px on hover) ─────────── */
+
+.switch-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.switch-state {
+  min-width: 22px;
+  text-align: right;
+}
+
+.switch {
+  position: relative;
+  width: 40px;
+  height: 20px;
+  flex: none;
+  padding: 0;
+  border: 1px solid var(--label-secondary);
+  border-radius: var(--radius-pill);
+  background: var(--control-fill);
+}
+
+.switch:hover {
+  background: var(--control-fill-hover);
+}
+
+.switch-knob {
+  position: absolute;
+  top: 50%;
+  left: 3px;
+  width: 12px;
+  height: 12px;
+  margin-top: -6px;
+  border-radius: var(--radius-pill);
+  background: var(--label-secondary);
+  transition:
+    left var(--motion-fast) var(--ease-out),
+    width var(--motion-fast) var(--ease-out),
+    height var(--motion-fast) var(--ease-out),
+    margin var(--motion-fast) var(--ease-out);
+}
+
+.switch:hover .switch-knob {
+  width: 14px;
+  height: 14px;
+  margin-top: -7px;
+}
+
+.switch[aria-checked='true'] {
+  border-color: var(--brand-500);
+  background: var(--brand-500);
+}
+
+.switch[aria-checked='true']:hover {
+  background: color-mix(in srgb, var(--brand-500) 90%, var(--window));
+}
+
+.switch[aria-checked='true'] .switch-knob {
+  left: 23px;
+  background: var(--on-brand);
+}
+
+.switch[aria-checked='true']:hover .switch-knob {
+  left: 21px;
+}
+
+/* Disabled, like a disabled primary button: the fill goes quiet, the knob greys out. */
+.switch:disabled,
+.switch:disabled:hover {
+  border-color: var(--subtle-selected);
+  background: var(--subtle-selected);
+}
+
+.switch:disabled .switch-knob {
+  background: var(--label-disabled);
+}
+
 /* ── InfoBar: an inline alert in its status tint ─────────────────────────────
    <div class="infobar warning" role="alert">
      <span class="infobar-icon">!</span><strong class="infobar-title">…</strong>
@@ -1178,6 +1494,24 @@ a:hover {
 .infobar.success .infobar-icon { background: var(--infobar-success-icon); }
 .infobar.info { background: var(--infobar-info); }
 .infobar.info .infobar-icon { background: var(--infobar-info-icon); }
+
+/* ── Dash pictures (DashCanvas in packages/dashboard) ────────────────────────
+   A dash the renderer cannot draw shows the renderer's message over its empty
+   canvas, in the error InfoBar's tint, so a broken layout is obvious. */
+
+.dash-canvas-error {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  padding: 8px 12px;
+  border-radius: var(--radius-control);
+  background: var(--infobar-error);
+  color: var(--infobar-error-text);
+  font-size: 13px;
+  text-align: center;
+}
 
 /* ── Glass: menu flyout, command palette, notifications ───────────────────── */
 
@@ -1275,6 +1609,27 @@ a:hover {
   flex: none;
   margin: 2px -4px;
   background: var(--acrylic-stroke);
+}
+
+/* Menus and popovers float on a full-window layer that catches the outside click (shell/Menu.tsx). */
+.menu-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 150;
+}
+.menu-layer > .menu-flyout {
+  position: fixed;
+}
+/* A trailing icon (a submenu's chevron) is quieter than the label; the checked item's tick is brand. */
+.menu-item > svg:last-child:not(:first-child) {
+  color: var(--label-secondary);
+}
+.menu-item.selected > svg:last-child:not(:first-child),
+.menu-item:hover > svg:last-child:not(:first-child) {
+  color: inherit;
+}
+.menu-item:not(:hover) > .menu-item-check {
+  color: var(--brand-500);
 }
 
 /* ── Lists ────────────────────────────────────────────────────────────────
@@ -1432,6 +1787,19 @@ a:hover {
   color: var(--label-secondary);
   font-size: 13px;
 }
+/* Inside a card or a tile: no page-sized height, the title at body size. */
+.empty-state.compact {
+  min-height: 0;
+  padding: 12px 16px;
+  gap: 4px;
+}
+.empty-state.compact h2 {
+  font-size: 13px;
+}
+.empty-state.compact p {
+  font-size: 12px;
+  line-height: 16px;
+}
 
 /* Loading: stable placeholder geometry, no shimmer/pulse animation. */
 .skeleton {
@@ -1466,7 +1834,7 @@ a:hover {
   max-height: calc(100vh - 48px);
   overflow: hidden;
   border: 1px solid var(--acrylic-stroke);
-  border-radius: 14px;
+  border-radius: var(--radius-dialog);
   background: var(--surface);
   box-shadow: var(--shadow-dialog);
 }
@@ -1479,9 +1847,21 @@ a:hover {
   overflow-y: auto;
 }
 
+.content-dialog-head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
 .content-dialog-title {
   margin: 0;
   font: 600 17px/22px var(--font-display);
+}
+
+/* A second step's way back sits in the title's line, its arrow on the title's left edge. */
+.content-dialog-back {
+  margin-left: -8px;
+  color: var(--label-secondary);
 }
 
 /* The dialog itself takes focus when no control asked for it; it shows no focus ring. */

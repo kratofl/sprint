@@ -32,8 +32,8 @@ public sealed class TelemetryEngineTests
     [Fact]
     public void Connects_then_reads_and_measures_real_rate_over_steps()
     {
-        var src = new ScriptedTelemetrySource { ReadFrame = n => LapFrame(0.01 * n, n, lap: 1) };
-        using var engine = new TelemetryEngine(src);
+        ScriptedTelemetrySource src = new ScriptedTelemetrySource { ReadFrame = n => LapFrame(0.01 * n, n, lap: 1) };
+        using TelemetryEngine engine = new TelemetryEngine(src);
 
         // Step 1: the source starts Disconnected ⇒ connect, no read yet (Hz 0).
         Assert.Equal(StepOutcome.JustConnected, engine.Step(T0));
@@ -46,7 +46,7 @@ public sealed class TelemetryEngineTests
         Assert.Equal(0, engine.Snapshot.Hz);
 
         // Further reads at 100ms spacing converge toward 10 Hz.
-        for (var i = 2; i <= 25; i++)
+        for (int i = 2; i <= 25; i++)
         {
             engine.Step(T0.AddMilliseconds(100 * i));
         }
@@ -58,13 +58,13 @@ public sealed class TelemetryEngineTests
     [Fact]
     public void Reconnect_loop_retries_until_a_link_is_established()
     {
-        var src = new ScriptedTelemetrySource
+        ScriptedTelemetrySource src = new ScriptedTelemetrySource
         {
             ConnectState = attempt => attempt < 3
                 ? TelemetryConnectionState.WaitingForGame
                 : TelemetryConnectionState.Connected
         };
-        using var engine = new TelemetryEngine(src);
+        using TelemetryEngine engine = new TelemetryEngine(src);
 
         Assert.Equal(StepOutcome.Reconnecting, engine.Step(T0));
         Assert.Equal(TelemetryConnectionState.WaitingForGame, engine.Snapshot.Status.State);
@@ -82,8 +82,8 @@ public sealed class TelemetryEngineTests
     [InlineData(TelemetryConnectionState.Faulted)]
     public void Degraded_link_states_are_published_unswallowed(TelemetryConnectionState state)
     {
-        var src = new ScriptedTelemetrySource { ConnectState = _ => state };
-        using var engine = new TelemetryEngine(src);
+        ScriptedTelemetrySource src = new ScriptedTelemetrySource { ConnectState = _ => state };
+        using TelemetryEngine engine = new TelemetryEngine(src);
 
         Assert.Equal(StepOutcome.Reconnecting, engine.Step(T0));
         Assert.Equal(state, engine.Snapshot.Status.State);
@@ -95,17 +95,17 @@ public sealed class TelemetryEngineTests
     {
         // Read a full reference lap + a slower lap so the held frame carries a computed
         // delta, then a read returns null (no new frame).
-        var script = BuildReferenceThenSlowLapScript();
-        var src = new ScriptedTelemetrySource { ReadFrame = n => n <= script.Count ? script[n - 1] : null };
-        using var engine = new TelemetryEngine(src);
+        List<TelemetryFrame> script = BuildReferenceThenSlowLapScript();
+        ScriptedTelemetrySource src = new ScriptedTelemetrySource { ReadFrame = n => n <= script.Count ? script[n - 1] : null };
+        using TelemetryEngine engine = new TelemetryEngine(src);
 
         engine.Step(T0); // connect
-        for (var i = 1; i <= script.Count; i++)
+        for (int i = 1; i <= script.Count; i++)
         {
             engine.Step(T0.AddMilliseconds(20 * i));
         }
 
-        var read = engine.Snapshot.Frame.Lap;
+        LapState read = engine.Snapshot.Frame.Lap;
         Assert.Equal(100, read.TargetLapTime, precision: 3);
         Assert.True(read.Delta > 4 && read.Delta < 6, $"expected ~+5 delta, got {read.Delta}");
         Assert.Equal(1, src.ConnectCount);
@@ -113,7 +113,7 @@ public sealed class TelemetryEngineTests
         // A no-new-frame tick must HOLD the augmented values, not revert to the raw
         // adapter frame's zero Delta/TargetLapTime.
         Assert.Equal(StepOutcome.NoFrame, engine.Step(T0.AddMilliseconds(20 * (script.Count + 1))));
-        var held = engine.Snapshot.Frame.Lap;
+        LapState held = engine.Snapshot.Frame.Lap;
         Assert.Equal(read.TargetLapTime, held.TargetLapTime, precision: 6);
         Assert.Equal(read.Delta, held.Delta, precision: 6);
         Assert.Equal(1, src.ConnectCount); // NoFrame is not a reconnect
@@ -124,11 +124,11 @@ public sealed class TelemetryEngineTests
     {
         // An exception type outside the adapter's narrow catch list (US17): the loop
         // must survive and publish Faulted rather than letting the reader thread die.
-        var src = new ScriptedTelemetrySource { ReadFrame = _ => throw new IndexOutOfRangeException("bad buffer") };
-        using var engine = new TelemetryEngine(src);
+        ScriptedTelemetrySource src = new ScriptedTelemetrySource { ReadFrame = _ => throw new IndexOutOfRangeException("bad buffer") };
+        using TelemetryEngine engine = new TelemetryEngine(src);
 
         engine.Step(T0); // connect ⇒ Connected
-        var outcome = engine.Step(T0.AddMilliseconds(10));
+        StepOutcome outcome = engine.Step(T0.AddMilliseconds(10));
 
         Assert.Equal(StepOutcome.Reconnecting, outcome); // did not propagate out of Step
         Assert.Equal(TelemetryConnectionState.Faulted, engine.Snapshot.Status.State);
@@ -138,12 +138,12 @@ public sealed class TelemetryEngineTests
     [Fact]
     public void Read_outcomes_pace_by_poll_interval_so_a_ready_source_cannot_busy_spin()
     {
-        var opts = new EngineOptions
+        EngineOptions opts = new EngineOptions
         {
             PollInterval = TimeSpan.FromMilliseconds(7),
             ReconnectInterval = TimeSpan.FromSeconds(9)
         };
-        using var engine = new TelemetryEngine(new ScriptedTelemetrySource(), opts);
+        using TelemetryEngine engine = new TelemetryEngine(new ScriptedTelemetrySource(), opts);
 
         Assert.Equal(opts.PollInterval, engine.WaitFor(StepOutcome.ReadFrame));
         Assert.Equal(opts.PollInterval, engine.WaitFor(StepOutcome.NoFrame));
@@ -154,16 +154,16 @@ public sealed class TelemetryEngineTests
     [Fact]
     public void Engine_injects_lap_delta_into_the_published_frame()
     {
-        var script = BuildReferenceThenSlowLapScript();
-        var src = new ScriptedTelemetrySource { ReadFrame = n => n <= script.Count ? script[n - 1] : script[^1] };
-        using var engine = new TelemetryEngine(src);
+        List<TelemetryFrame> script = BuildReferenceThenSlowLapScript();
+        ScriptedTelemetrySource src = new ScriptedTelemetrySource { ReadFrame = n => n <= script.Count ? script[n - 1] : script[^1] };
+        using TelemetryEngine engine = new TelemetryEngine(src);
 
-        for (var i = 0; i < 30; i++)
+        for (int i = 0; i < 30; i++)
         {
             engine.Step(T0.AddMilliseconds(20 * i));
         }
 
-        var lap = engine.Snapshot.Frame.Lap;
+        LapState lap = engine.Snapshot.Frame.Lap;
         Assert.Equal(100, lap.TargetLapTime, precision: 6);          // adopted reference total
         Assert.True(lap.Delta > 4 && lap.Delta < 6, $"expected ~+5s delta, got {lap.Delta}");
     }
@@ -171,29 +171,29 @@ public sealed class TelemetryEngineTests
     [Fact]
     public void Manual_reference_request_is_applied_on_the_reader_thread()
     {
-        var script = new List<TelemetryFrame>();
-        for (var i = 1; i <= 20; i++)
+        List<TelemetryFrame> script = new List<TelemetryFrame>();
+        for (int i = 1; i <= 20; i++)
         {
-            var position = (double)i / 21;
+            double position = (double)i / 21;
             script.Add(LapFrame(position, position * 100, lap: 1));
         }
 
         script.Add(LapFrame(0.001, 0, lap: 2, lastLap: 100));
-        for (var i = 1; i <= 20; i++)
+        for (int i = 1; i <= 20; i++)
         {
-            var position = (double)i / 21;
+            double position = (double)i / 21;
             script.Add(LapFrame(position, position * 90, lap: 2));
         }
 
         script.Add(LapFrame(0.001, 0, lap: 3, lastLap: 90));
 
-        var source = new ScriptedTelemetrySource
+        ScriptedTelemetrySource source = new ScriptedTelemetrySource
         {
             ReadFrame = n => n <= script.Count ? script[n - 1] : null,
         };
-        using var engine = new TelemetryEngine(source);
+        using TelemetryEngine engine = new TelemetryEngine(source);
         engine.Step(T0);
-        for (var index = 0; index < 21; index++)
+        for (int index = 0; index < 21; index++)
         {
             engine.Step(T0.AddMilliseconds(20 * (index + 1)));
         }
@@ -201,7 +201,7 @@ public sealed class TelemetryEngineTests
         Assert.Equal(100, engine.Snapshot.Frame.Lap.TargetLapTime, precision: 3);
         engine.RequestManualReference();
 
-        for (var index = 21; index < script.Count; index++)
+        for (int index = 21; index < script.Count; index++)
         {
             engine.Step(T0.AddMilliseconds(20 * (index + 1)));
         }
@@ -214,8 +214,8 @@ public sealed class TelemetryEngineTests
     {
         // A steady 55 s at half distance. Nothing in this session is a reference, so without
         // the plan target there is no delta at all.
-        var src = new ScriptedTelemetrySource { ReadFrame = _ => LapFrame(0.5, 55, lap: 1) };
-        using var engine = new TelemetryEngine(src);
+        ScriptedTelemetrySource src = new ScriptedTelemetrySource { ReadFrame = _ => LapFrame(0.5, 55, lap: 1) };
+        using TelemetryEngine engine = new TelemetryEngine(src);
 
         engine.Step(T0);
         Assert.Equal(0, engine.Snapshot.Frame.Lap.TargetLapTime);
@@ -242,14 +242,14 @@ public sealed class TelemetryEngineTests
     public void Start_is_idempotent_and_dispose_is_safe_in_every_order()
     {
         // Dispose before Start: nothing to join, must not throw, source still released.
-        var a = new ScriptedTelemetrySource();
-        var beforeStart = new TelemetryEngine(a);
+        ScriptedTelemetrySource a = new ScriptedTelemetrySource();
+        TelemetryEngine beforeStart = new TelemetryEngine(a);
         beforeStart.Dispose();
         Assert.True(a.IsDisposed);
 
         // Double Start + double Dispose: no throw, clean teardown.
-        var b = new ScriptedTelemetrySource();
-        var twice = new TelemetryEngine(b, new EngineOptions { PollInterval = TimeSpan.FromMilliseconds(1) });
+        ScriptedTelemetrySource b = new ScriptedTelemetrySource();
+        TelemetryEngine twice = new TelemetryEngine(b, new EngineOptions { PollInterval = TimeSpan.FromMilliseconds(1) });
         twice.Start();
         twice.Start();   // idempotent no-op
         twice.Dispose();
@@ -260,8 +260,8 @@ public sealed class TelemetryEngineTests
     [Fact]
     public void Background_reader_connects_on_start_and_dispose_tears_down_the_source()
     {
-        var src = new ScriptedTelemetrySource { ReadFrame = n => LapFrame(0.01 * (n % 90), n, lap: 1) };
-        var engine = new TelemetryEngine(src, new EngineOptions { PollInterval = TimeSpan.FromMilliseconds(1) });
+        ScriptedTelemetrySource src = new ScriptedTelemetrySource { ReadFrame = n => LapFrame(0.01 * (n % 90), n, lap: 1) };
+        TelemetryEngine engine = new TelemetryEngine(src, new EngineOptions { PollInterval = TimeSpan.FromMilliseconds(1) });
 
         engine.Start(); // connects synchronously before spawning the reader thread
         Assert.Equal(TelemetryConnectionState.Connected, engine.Snapshot.Status.State);
@@ -276,14 +276,14 @@ public sealed class TelemetryEngineTests
     [Fact]
     public void Engine_drives_the_real_lmu_adapter_through_a_synthetic_snapshot()
     {
-        var buffer = BuildInCarLmuBuffer();
-        using var source = new LeMansUltimateTelemetrySource(new InMemoryLmuSnapshotProvider(buffer));
-        using var engine = new TelemetryEngine(source, clock: () => T0);
+        byte[] buffer = BuildInCarLmuBuffer();
+        using LeMansUltimateTelemetrySource source = new LeMansUltimateTelemetrySource(new InMemoryLmuSnapshotProvider(buffer));
+        using TelemetryEngine engine = new TelemetryEngine(source, clock: () => T0);
 
         engine.Step(T0);                      // connect (opens the in-memory provider)
         engine.Step(T0.AddMilliseconds(10));  // read + map a real LMU frame
 
-        var snap = engine.Snapshot;
+        EngineSnapshot snap = engine.Snapshot;
         Assert.Equal(TelemetryConnectionState.Connected, snap.Status.State);
         Assert.Equal("LeMansUltimate", snap.Frame.Session.Game);
         Assert.True(snap.Frame.Session.InCar);
@@ -292,10 +292,10 @@ public sealed class TelemetryEngineTests
 
     private static List<TelemetryFrame> BuildReferenceThenSlowLapScript()
     {
-        var frames = new List<TelemetryFrame>();
-        for (var i = 1; i <= 20; i++)
+        List<TelemetryFrame> frames = new List<TelemetryFrame>();
+        for (int i = 1; i <= 20; i++)
         {
-            var p = (double)i / 21;
+            double p = (double)i / 21;
             frames.Add(LapFrame(p, p * 100, lap: 1)); // a clean 100s reference lap
         }
 
@@ -306,8 +306,8 @@ public sealed class TelemetryEngineTests
 
     private static byte[] BuildInCarLmuBuffer()
     {
-        var buffer = new byte[LmuBinary.TotalBufferSize];
-        var scoringInfo = LmuBinary.ScoringStart;
+        byte[] buffer = new byte[LmuBinary.TotalBufferSize];
+        int scoringInfo = LmuBinary.ScoringStart;
         WriteString(buffer, scoringInfo, 64, "Spa");
         WriteInt32(buffer, scoringInfo + 64, 10);      // Session = Race
         WriteDouble(buffer, scoringInfo + 68, 200.0);  // CurrentElapsedTime
@@ -318,13 +318,13 @@ public sealed class TelemetryEngineTests
         buffer[LmuBinary.PlayerIndexOffset] = 0;
         WriteBool(buffer, LmuBinary.PlayerHasVehicleOffset, true);
 
-        var telemetry = LmuBinary.TelemetryInfoBase; // player index 0
+        int telemetry = LmuBinary.TelemetryInfoBase; // player index 0
         WriteString(buffer, telemetry + 32, 64, "Peugeot 9X8");
         WriteInt32(buffer, telemetry + 20, 5);   // LapNumber
         WriteDouble(buffer, telemetry + 524, 42.0); // FuelLiters
         WriteDouble(buffer, telemetry + 532, 8000.0); // EngineMaxRpm
 
-        var vehicleScoring = LmuBinary.VehicleScoringBase; // player index 0
+        int vehicleScoring = LmuBinary.VehicleScoringBase; // player index 0
         WriteDouble(buffer, vehicleScoring + 104, 3502.0); // vehicle LapDistance
         buffer[vehicleScoring + 506] = 2;                  // CountLapFlag = 2 (lap + time count)
         return buffer;
@@ -341,7 +341,7 @@ public sealed class TelemetryEngineTests
 
     private static void WriteString(byte[] buffer, int offset, int length, string value)
     {
-        var bytes = System.Text.Encoding.UTF8.GetBytes(value);
+        byte[] bytes = System.Text.Encoding.UTF8.GetBytes(value);
         bytes.AsSpan(0, Math.Min(bytes.Length, length)).CopyTo(buffer.AsSpan(offset, length));
     }
 }
@@ -362,13 +362,13 @@ internal sealed class ScriptedTelemetrySource : ITelemetrySource
 
     public string Name => "Scripted";
 
-    public TelemetryStatus Status => Volatile.Read(ref _status);
+    public TelemetryStatus Status => Volatile.Read(ref this._status);
 
-    public TelemetryFrame Current => Volatile.Read(ref _current);
+    public TelemetryFrame Current => Volatile.Read(ref this._current);
 
-    public int ConnectCount => Volatile.Read(ref _connectCount);
+    public int ConnectCount => Volatile.Read(ref this._connectCount);
 
-    public bool IsDisposed => Volatile.Read(ref _disposed) == 1;
+    public bool IsDisposed => Volatile.Read(ref this._disposed) == 1;
 
     /// <summary>The state a connect attempt (1-based) reaches. Defaults to Connected.</summary>
     public Func<int, TelemetryConnectionState> ConnectState { get; set; } = _ => TelemetryConnectionState.Connected;
@@ -378,37 +378,37 @@ internal sealed class ScriptedTelemetrySource : ITelemetrySource
 
     public void Connect()
     {
-        ObjectDisposedException.ThrowIf(IsDisposed, this);
-        var attempt = Interlocked.Increment(ref _connectCount);
-        Volatile.Write(ref _status, new TelemetryStatus { State = ConnectState(attempt), SourceName = Name });
+        ObjectDisposedException.ThrowIf(this.IsDisposed, this);
+        int attempt = Interlocked.Increment(ref this._connectCount);
+        Volatile.Write(ref this._status, new TelemetryStatus { State = this.ConnectState(attempt), SourceName = this.Name });
     }
 
     public void Disconnect()
     {
-        if (IsDisposed)
+        if (this.IsDisposed)
         {
             return;
         }
 
-        Volatile.Write(ref _status, TelemetryStatus.Disconnected(Name));
+        Volatile.Write(ref this._status, TelemetryStatus.Disconnected(this.Name));
     }
 
     public bool TryRead(out TelemetryFrame frame)
     {
-        ObjectDisposedException.ThrowIf(IsDisposed, this);
-        var n = Interlocked.Increment(ref _tryReadCount);
-        var next = ReadFrame(n);
+        ObjectDisposedException.ThrowIf(this.IsDisposed, this);
+        int n = Interlocked.Increment(ref this._tryReadCount);
+        TelemetryFrame? next = this.ReadFrame(n);
         if (next is null)
         {
-            frame = Current;
+            frame = this.Current;
             return false;
         }
 
-        Volatile.Write(ref _current, next);
-        Volatile.Write(ref _status, Status with
+        Volatile.Write(ref this._current, next);
+        Volatile.Write(ref this._status, this.Status with
         {
             State = TelemetryConnectionState.Connected,
-            SourceName = Name,
+            SourceName = this.Name,
             LastFrameAt = next.Timestamp,
             LastFrameValid = true
         });
@@ -418,7 +418,7 @@ internal sealed class ScriptedTelemetrySource : ITelemetrySource
 
     public void Dispose()
     {
-        Volatile.Write(ref _disposed, 1);
-        Volatile.Write(ref _status, TelemetryStatus.Disconnected(Name));
+        Volatile.Write(ref this._disposed, 1);
+        Volatile.Write(ref this._status, TelemetryStatus.Disconnected(this.Name));
     }
 }

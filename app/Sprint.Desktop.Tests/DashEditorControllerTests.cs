@@ -1,3 +1,4 @@
+using Sprint.Desktop.Api.Telemetry;
 using Sprint.Desktop.Features.Dashes;
 using Xunit;
 
@@ -18,12 +19,12 @@ public sealed class DashEditorControllerTests
     [Fact]
     public void AddWidgetPlacesSelectsAndSaves()
     {
-        var saves = 0;
-        var controller = new DashEditorController(NewLayout(), _ => saves++);
+        int saves = 0;
+        DashEditorController controller = new DashEditorController(NewLayout(), _ => saves++);
 
         Assert.True(controller.AddWidget("gear_speed"));
 
-        var widget = Assert.Single(controller.ActivePage!.Widgets);
+        DashWidget widget = Assert.Single(controller.ActivePage!.Widgets);
         Assert.Equal("gear_speed", widget.Type);
         Assert.Equal(widget.Id, controller.SelectedWidgetId);
         Assert.Equal(1, saves);
@@ -32,8 +33,8 @@ public sealed class DashEditorControllerTests
     [Fact]
     public void AddWidgetRejectsUnknownTypeWithoutSaving()
     {
-        var saves = 0;
-        var controller = new DashEditorController(NewLayout(), _ => saves++);
+        int saves = 0;
+        DashEditorController controller = new DashEditorController(NewLayout(), _ => saves++);
 
         Assert.False(controller.AddWidget("does_not_exist"));
         Assert.Empty(controller.ActivePage!.Widgets);
@@ -43,13 +44,13 @@ public sealed class DashEditorControllerTests
     [Fact]
     public void MoveSelectedClampsToGridAndSaves()
     {
-        var saves = 0;
-        var controller = new DashEditorController(NewLayout(), _ => saves++);
+        int saves = 0;
+        DashEditorController controller = new DashEditorController(NewLayout(), _ => saves++);
         controller.AddWidget("fuel");
         saves = 0;
 
         Assert.True(controller.MoveSelected(100, 100)); // clamped into bounds
-        var widget = controller.SelectedWidget!;
+        DashWidget widget = controller.SelectedWidget!;
         Assert.True(widget.Col + widget.ColSpan <= 20);
         Assert.True(widget.Row + widget.RowSpan <= 12);
         Assert.Equal(1, saves);
@@ -58,8 +59,8 @@ public sealed class DashEditorControllerTests
     [Fact]
     public void SetSelectedConfigStoresAndClearsStringValues()
     {
-        var saves = 0;
-        var controller = new DashEditorController(NewLayout(), _ => saves++);
+        int saves = 0;
+        DashEditorController controller = new DashEditorController(NewLayout(), _ => saves++);
         controller.AddWidget("text");
         saves = 0;
 
@@ -77,13 +78,13 @@ public sealed class DashEditorControllerTests
     [Fact]
     public void SetTargetProfileRefitsGridPersistsAndClearsSelection()
     {
-        var saves = 0;
-        var controller = new DashEditorController(NewLayout(), _ => saves++);
+        int saves = 0;
+        DashEditorController controller = new DashEditorController(NewLayout(), _ => saves++);
         controller.AddWidget("gear_speed");
         Assert.NotNull(controller.SelectedWidgetId);
         saves = 0;
 
-        var portrait = ScreenProfileCatalog.Resolve("portrait-480x854");
+        ScreenProfile portrait = ScreenProfileCatalog.Resolve("portrait-480x854");
         Assert.True(controller.SetTargetProfile(portrait));
 
         Assert.Equal("portrait-480x854", controller.Layout.ScreenProfileId);
@@ -102,20 +103,20 @@ public sealed class DashEditorControllerTests
     [Fact]
     public void SelectPreviewStateChangesTheFrameUsedForRender()
     {
-        var controller = new DashEditorController(NewLayout(), _ => { });
-        var live = new Sprint.Desktop.Api.Telemetry.TelemetryFrame();
+        DashEditorController controller = new DashEditorController(NewLayout(), _ => { });
+        TelemetryFrame live = new Sprint.Desktop.Api.Telemetry.TelemetryFrame();
 
         // Live passes the live frame straight through.
         Assert.Same(live, controller.ResolveRenderFrame(live));
 
-        var changed = 0;
+        int changed = 0;
         controller.Changed += (_, _) => changed++;
 
         Assert.True(controller.SelectPreviewState(DashPreviewState.Redline));
         Assert.Equal(DashPreviewState.Redline, controller.PreviewState);
         Assert.Equal(1, changed);
 
-        var previewed = controller.ResolveRenderFrame(live);
+        TelemetryFrame previewed = controller.ResolveRenderFrame(live);
         Assert.NotSame(live, previewed);
         Assert.True(previewed.Car.Rpm > previewed.Car.MaxRpm * 0.95f, "Redline preview should sit near the rev limit.");
 
@@ -127,8 +128,8 @@ public sealed class DashEditorControllerTests
     [Fact]
     public void RequestApplyToScreenRaisesIntentWithTheLayout()
     {
-        var layout = NewLayout();
-        var controller = new DashEditorController(layout, _ => { });
+        DashLayout layout = NewLayout();
+        DashEditorController controller = new DashEditorController(layout, _ => { });
 
         DashLayout? applied = null;
         controller.ApplyToScreenRequested += (_, l) => applied = l;
@@ -141,11 +142,11 @@ public sealed class DashEditorControllerTests
     [Fact]
     public void ApplyToScreenIsBlockedWhenNoScreenIsAssigned()
     {
-        var layout = NewLayout();
+        DashLayout layout = NewLayout();
         // A resolver that reports the honest "no screen assigned" state (US34).
-        var controller = new DashEditorController(layout, _ => { }, () => DashApplyAvailability.None);
+        DashEditorController controller = new DashEditorController(layout, _ => { }, () => DashApplyAvailability.None);
 
-        var raised = 0;
+        int raised = 0;
         controller.ApplyToScreenRequested += (_, _) => raised++;
 
         controller.RequestApplyToScreen();
@@ -157,9 +158,9 @@ public sealed class DashEditorControllerTests
     [Fact]
     public void ApplyToScreenSurfacesTheResolvedTargetSummary()
     {
-        var layout = NewLayout();
-        var target = new DashApplyAvailability(true, "Apply to Omega Wheel");
-        var controller = new DashEditorController(layout, _ => { }, () => target);
+        DashLayout layout = NewLayout();
+        DashApplyAvailability target = new DashApplyAvailability(true, "Apply to Omega Wheel");
+        DashEditorController controller = new DashEditorController(layout, _ => { }, () => target);
 
         DashLayout? applied = null;
         controller.ApplyToScreenRequested += (_, l) => applied = l;
@@ -174,8 +175,8 @@ public sealed class DashEditorControllerTests
     [Fact]
     public void SetSelectedConfigWithoutSelectionIsNoOp()
     {
-        var saves = 0;
-        var controller = new DashEditorController(NewLayout(), _ => saves++);
+        int saves = 0;
+        DashEditorController controller = new DashEditorController(NewLayout(), _ => saves++);
 
         Assert.False(controller.SetSelectedConfig("content", "x"));
         Assert.Equal(0, saves);
@@ -184,10 +185,10 @@ public sealed class DashEditorControllerTests
     [Fact]
     public void StyleOverridesSetAndCollapseToNullWhenEmptied()
     {
-        var saves = 0;
-        var controller = new DashEditorController(NewLayout(), _ => saves++);
+        int saves = 0;
+        DashEditorController controller = new DashEditorController(NewLayout(), _ => saves++);
         controller.AddWidget("gear_speed");
-        var widget = controller.SelectedWidget!;
+        DashWidget widget = controller.SelectedWidget!;
         saves = 0;
 
         Assert.True(controller.SetSelectedTextColor("red"));
@@ -222,10 +223,10 @@ public sealed class DashEditorControllerTests
     [Fact]
     public void ThemePresetAppliesAndResetClears()
     {
-        var saves = 0;
-        var controller = new DashEditorController(NewLayout(), _ => saves++);
+        int saves = 0;
+        DashEditorController controller = new DashEditorController(NewLayout(), _ => saves++);
 
-        var ice = DashThemePresets.All.First(preset => preset.Name == "Ice").Theme;
+        DashTheme ice = DashThemePresets.All.First(preset => preset.Name == "Ice").Theme;
         controller.ApplyThemePreset(ice);
         Assert.Equal("#1F7FE6", controller.Layout.Theme!.Primary);
         Assert.Equal("Ice", DashThemePresets.MatchName(controller.Layout));
@@ -238,12 +239,12 @@ public sealed class DashEditorControllerTests
     [Fact]
     public void ThemePresetMatchingUsesTheRenderedColorSystemAndEveryPersistedCondition()
     {
-        var customStyled = NewLayout();
+        DashLayout customStyled = NewLayout();
         customStyled.ColorSystem = DashColorSystem.Styled;
         customStyled.Theme = new DashTheme { ColdLow = "#123456" };
         Assert.Null(DashThemePresets.MatchName(customStyled));
 
-        var functionalWithIgnoredOpticalTheme = NewLayout();
+        DashLayout functionalWithIgnoredOpticalTheme = NewLayout();
         functionalWithIgnoredOpticalTheme.ColorSystem = DashColorSystem.Functional;
         functionalWithIgnoredOpticalTheme.Theme = DashThemePresets.All.First(preset => preset.Name == "Ice").Theme.Clone();
         Assert.Equal("Graphite", DashThemePresets.MatchName(functionalWithIgnoredOpticalTheme));
@@ -252,7 +253,7 @@ public sealed class DashEditorControllerTests
     [Fact]
     public void SuzukiThemePresetUsesPurplePrimary()
     {
-        var suzuki = DashThemePresets.All.FirstOrDefault(preset => preset.Name == "Suzuki");
+        DashThemePresets.Preset? suzuki = DashThemePresets.All.FirstOrDefault(preset => preset.Name == "Suzuki");
 
         Assert.NotNull(suzuki);
         Assert.Equal("#7C3AED", suzuki!.Theme.Primary);
@@ -260,53 +261,13 @@ public sealed class DashEditorControllerTests
     }
 
     [Fact]
-    public void AddWidgetStackSelectsItAndClearsWidgetSelection()
-    {
-        var controller = new DashEditorController(NewLayout(), _ => { });
-        controller.AddWidget("fuel");
-        Assert.NotNull(controller.SelectedWidgetId);
-
-        Assert.True(controller.AddWidgetStack());
-        Assert.NotNull(controller.SelectedStackId);
-        Assert.Null(controller.SelectedWidgetId);       // mutually exclusive
-        Assert.NotNull(controller.ActiveLayer);          // active layer defaults to the stack's layer
-
-        // Selecting a widget clears the stack selection.
-        controller.SelectWidget(controller.ActivePage!.Widgets[0].Id);
-        Assert.Null(controller.SelectedStackId);
-    }
-
-    [Fact]
-    public void StackLayerEditingAddsWidgetsAndSwitchesActiveLayer()
-    {
-        var controller = new DashEditorController(NewLayout(), _ => { });
-        Assert.True(controller.AddWidgetStack());
-        var stack = controller.SelectedStack!;
-
-        Assert.True(controller.AddWidgetToActiveLayer("gear_speed"));
-        Assert.Single(controller.ActiveLayer!.Widgets);
-
-        // A new layer becomes the active edit target; widgets land there.
-        Assert.True(controller.AddStackLayer());
-        Assert.Equal(2, stack.Layers.Count);
-        Assert.Equal(stack.Layers[1].Id, controller.ActiveLayer!.Id);
-        Assert.True(controller.AddWidgetToActiveLayer("fuel"));
-        Assert.DoesNotContain(stack.Layers[0].Widgets, w => w.Type == "fuel"); // went to layer 2, not layer 1
-        Assert.Single(stack.Layers[1].Widgets);
-
-        Assert.True(controller.DeleteSelectedStack());
-        Assert.Null(controller.SelectedStackId);
-        Assert.Empty(controller.ActivePage!.WidgetStacks);
-    }
-
-    [Fact]
     public void MoveOntoAnotherWidgetIsRejected()
     {
-        var controller = new DashEditorController(NewLayout(), _ => { });
+        DashEditorController controller = new DashEditorController(NewLayout(), _ => { });
         controller.AddWidget("fuel");     // slot 0,0
-        var first = controller.SelectedWidget!;
+        DashWidget first = controller.SelectedWidget!;
         controller.AddWidget("lap_time"); // next free slot
-        var second = controller.SelectedWidget!;
+        DashWidget second = controller.SelectedWidget!;
 
         // Move the second widget on top of the first: rejected, so it stays put.
         Assert.False(controller.MoveSelected(first.Col, first.Row));
@@ -316,8 +277,8 @@ public sealed class DashEditorControllerTests
     [Fact]
     public void ResizeSelectedSaves()
     {
-        var saves = 0;
-        var controller = new DashEditorController(NewLayout(), _ => saves++);
+        int saves = 0;
+        DashEditorController controller = new DashEditorController(NewLayout(), _ => saves++);
         controller.AddWidget("tyre_temp");
         saves = 0;
 
@@ -330,7 +291,7 @@ public sealed class DashEditorControllerTests
     [Fact]
     public void DeleteSelectedRemovesAndClearsSelection()
     {
-        var controller = new DashEditorController(NewLayout(), _ => { });
+        DashEditorController controller = new DashEditorController(NewLayout(), _ => { });
         controller.AddWidget("delta");
 
         Assert.True(controller.DeleteSelected());
@@ -341,10 +302,10 @@ public sealed class DashEditorControllerTests
     [Fact]
     public void AddPageBecomesActiveAndClearsSelection()
     {
-        var controller = new DashEditorController(NewLayout(), _ => { });
+        DashEditorController controller = new DashEditorController(NewLayout(), _ => { });
         controller.AddWidget("fuel");
 
-        var page = controller.AddPage();
+        DashPage page = controller.AddPage();
         Assert.Equal(page.Id, controller.ActivePageId);
         Assert.Null(controller.SelectedWidgetId);
         Assert.Contains(controller.PageTabs, t => t.Id == page.Id && !t.IsIdle);
@@ -353,8 +314,8 @@ public sealed class DashEditorControllerTests
     [Fact]
     public void IdlePageIsAToggleableLockedTab()
     {
-        var controller = new DashEditorController(NewLayout(), _ => { });
-        var idle = Assert.Single(controller.PageTabs, t => t.IsIdle);
+        DashEditorController controller = new DashEditorController(NewLayout(), _ => { });
+        DashPageTab idle = Assert.Single(controller.PageTabs, t => t.IsIdle);
 
         Assert.True(controller.SelectPage(idle.Id));
         Assert.Equal(idle.Id, controller.ActivePageId);
@@ -368,10 +329,10 @@ public sealed class DashEditorControllerTests
     [Fact]
     public void DeleteActivePageReselectsAndSaves()
     {
-        var saves = 0;
-        var layout = NewLayout();
-        var controller = new DashEditorController(layout, _ => saves++);
-        var extra = controller.AddPage(); // "main" + new page
+        int saves = 0;
+        DashLayout layout = NewLayout();
+        DashEditorController controller = new DashEditorController(layout, _ => saves++);
+        DashPage extra = controller.AddPage(); // "main" + new page
         controller.SelectPage(extra.Id);
         saves = 0;
 
@@ -383,7 +344,7 @@ public sealed class DashEditorControllerTests
     [Fact]
     public void RenamePagePersists()
     {
-        var controller = new DashEditorController(NewLayout(), _ => { });
+        DashEditorController controller = new DashEditorController(NewLayout(), _ => { });
         Assert.True(controller.RenamePage("main", "Race Trim"));
         Assert.Contains(controller.PageTabs, t => t.Name == "Race Trim");
     }
@@ -391,8 +352,8 @@ public sealed class DashEditorControllerTests
     [Fact]
     public void ActivePageUsesStrictLayoutEditorLookup()
     {
-        var layout = NewLayout();
-        var controller = new DashEditorController(layout, _ => { });
+        DashLayout layout = NewLayout();
+        DashEditorController controller = new DashEditorController(layout, _ => { });
 
         Assert.Same(layout.Pages[0], DashLayoutEditor.FindPage(layout, controller.ActivePageId));
         Assert.Null(DashLayoutEditor.FindPage(layout, "missing-page"));
@@ -401,8 +362,8 @@ public sealed class DashEditorControllerTests
     [Fact]
     public void DashboardModePersistsAndNormalizes()
     {
-        var saves = 0;
-        var controller = new DashEditorController(NewLayout(), _ => saves++);
+        int saves = 0;
+        DashEditorController controller = new DashEditorController(NewLayout(), _ => saves++);
 
         controller.SetMode("advanced");
         Assert.True(controller.IsAdvancedMode);
@@ -417,9 +378,9 @@ public sealed class DashEditorControllerTests
     [Fact]
     public void FailedOptimisticPersistenceRetainsTheEditAndSupportsRetryWithoutSuccessNoise()
     {
-        var fail = true;
-        var saves = 0;
-        var controller = new DashEditorController(NewLayout(), _ =>
+        bool fail = true;
+        int saves = 0;
+        DashEditorController controller = new DashEditorController(NewLayout(), _ =>
         {
             saves++;
             if (fail)
@@ -445,21 +406,21 @@ public sealed class DashEditorControllerTests
     [Fact]
     public void AlertGeometryAndIndividualOverridesPersistIndependently()
     {
-        var saves = 0;
-        var layout = NewLayout();
+        int saves = 0;
+        DashLayout layout = NewLayout();
         layout.AlertConfig = new DashAlertConfig { ColorToken = "ember", DurationSeconds = 1.8, InvertColors = false };
-        var controller = new DashEditorController(layout, _ => saves++);
+        DashEditorController controller = new DashEditorController(layout, _ => saves++);
         controller.SetAlert("tc_change", true);
 
         Assert.True(controller.SetAlertGeometry("tc_change", 17, 10, 8, 6));
-        var alert = Assert.IsType<DashAlert>(controller.GetAlert("tc_change"));
+        DashAlert alert = Assert.IsType<DashAlert>(controller.GetAlert("tc_change"));
         Assert.Equal((12, 6, 8, 6), (alert.Col, alert.Row, alert.ColSpan, alert.RowSpan));
 
         controller.SetAlertUseGlobal("tc_change", false);
         controller.SetAlertColorToken("tc_change", "blue");
         controller.SetAlertDuration("tc_change", 2.4);
         controller.SetAlertInvertColors("tc_change", true);
-        var effective = controller.EffectiveAlertConfig("tc_change");
+        DashAlertConfig effective = controller.EffectiveAlertConfig("tc_change");
         Assert.Equal("ice", effective.ColorToken);
         Assert.Equal(2.4, effective.DurationSeconds);
         Assert.True(effective.InvertColors);
@@ -476,12 +437,12 @@ public sealed class DashEditorControllerTests
     [Fact]
     public void DisablingAlertPreservesGeometryAndIndividualSettings()
     {
-        var controller = new DashEditorController(NewLayout(), _ => { });
+        DashEditorController controller = new DashEditorController(NewLayout(), _ => { });
         controller.SetAlert("abs_change", true);
         controller.SetAlertGeometry("abs_change", 2, 4, 12, 5);
         controller.SetAlertUseGlobal("abs_change", false);
         controller.SetAlertColorToken("abs_change", "red");
-        var alert = Assert.IsType<DashAlert>(controller.GetAlert("abs_change"));
+        DashAlert alert = Assert.IsType<DashAlert>(controller.GetAlert("abs_change"));
 
         controller.SetAlert("abs_change", false);
         Assert.False(controller.IsAlertEnabled("abs_change"));

@@ -28,65 +28,93 @@ internal sealed class LmuTelemetryMapper
     private int? _energyLap;
     private float? _energyAtLapStart;
 
+    // The model and championship last read in the cockpit. Only the telemetry block carries
+    // them, and it is empty outside the car, so a garage-screen frame for the same entry borrows
+    // them: without that the car's identity would flip every time the driver steps out of it.
+    private LmuCarIdentity? _lastCar;
+
+    // The field last mapped and the scoring it came from. Scoring changes ~5 times a second while
+    // frames arrive ~60, so an unchanged vehicle array hands out the same list again: consumers
+    // and the recorder can then tell "scoring updated" from "same snapshot" cheaply.
+    private IReadOnlyList<LmuVehicleScoring> _fieldScoring = [];
+    private IReadOnlyDictionary<int, string> _fieldCompounds = new Dictionary<int, string>();
+    private IReadOnlyList<FieldCar> _field = [];
+
     public LmuTelemetryMapper(Func<DateTimeOffset>? clock = null)
     {
-        _clock = clock ?? (() => DateTimeOffset.UtcNow);
+        this._clock = clock ?? (() => DateTimeOffset.UtcNow);
     }
 
     public void Reset()
     {
-        _lapTimeValid = false;
-        _lapTimeSession = 0;
-        _lapTimeLap = 0;
-        _lapTimeMax = 0;
-        _lapTimeSessionElapsed = 0;
-        _fuelLap = null;
-        _fuelAtLapStart = null;
-        _completedLapFuelDeltas.Clear();
-        _energyLap = null;
-        _energyAtLapStart = null;
-        _completedLapEnergyDeltas.Clear();
+        this._lapTimeValid = false;
+        this._lapTimeSession = 0;
+        this._lapTimeLap = 0;
+        this._lapTimeMax = 0;
+        this._lapTimeSessionElapsed = 0;
+        this._fuelLap = null;
+        this._fuelAtLapStart = null;
+        this._completedLapFuelDeltas.Clear();
+        this._energyLap = null;
+        this._energyAtLapStart = null;
+        this._completedLapEnergyDeltas.Clear();
+        this._lastCar = null;
+        this._fieldScoring = [];
+        this._fieldCompounds = new Dictionary<int, string>();
+        this._field = [];
     }
 
     public TelemetryFrame Map(LmuParsedFrame parsed)
     {
-        var playerIsRealtime = parsed.PlayerHasVehicle && parsed.ScoringInfo.InRealtime;
+        bool playerIsRealtime = parsed.PlayerHasVehicle && parsed.ScoringInfo.InRealtime;
         if (!playerIsRealtime)
         {
-            return SessionOnlyFrame(parsed.ScoringInfo, parsed.PlayerVehicle);
+            return this.SessionOnlyFrame(parsed.ScoringInfo, parsed.PlayerVehicle, this.MapField(parsed.Vehicles, parsed.FrontCompounds));
         }
 
-        var telemetry = parsed.Telemetry ?? throw new LmuDecodeException("LMU parsed frame is in-car but telemetry is missing");
-        var scoring = parsed.Scoring ?? throw new LmuDecodeException("LMU parsed frame is in-car but scoring is missing");
+        LmuVehicleTelemetry telemetry = parsed.Telemetry ?? throw new LmuDecodeException("LMU parsed frame is in-car but telemetry is missing");
+        LmuVehicleScoring scoring = parsed.Scoring ?? throw new LmuDecodeException("LMU parsed frame is in-car but scoring is missing");
 
-        var frontCompound = telemetry.FrontCompoundName;
-        var rearCompound = telemetry.RearCompoundName;
-        var currentLapTime = MonotonicCurrentLapTime(
+        string frontCompound = telemetry.FrontCompoundName;
+        string rearCompound = telemetry.RearCompoundName;
+        double currentLapTime = this.MonotonicCurrentLapTime(
             scoring.TimeIntoLap,
             telemetry.ElapsedTime,
             telemetry.LapStartElapsedTime,
             telemetry.LapNumber,
             parsed.ScoringInfo);
-        var fuel = ToF32(telemetry.FuelLiters);
-        var virtualEnergy = Sanitize(telemetry.VirtualEnergy);
+        float fuel = ToF32(telemetry.FuelLiters);
+        float virtualEnergy = Sanitize(telemetry.VirtualEnergy);
+        LmuCarIdentity car = new(
+            telemetry.VehicleName,
+            telemetry.VehicleModel,
+            ChampionshipName(telemetry.VehicleChampionship));
+        this._lastCar = car;
 
         return new TelemetryFrame
         {
-            Timestamp = _clock(),
+            Timestamp = this._clock(),
             Session = new SessionInfo
             {
                 Game = GameName,
                 Track = parsed.ScoringInfo.TrackName,
                 Car = telemetry.VehicleName,
-                CarClass = scoring.VehicleClass,
+                // Scoring's class string and the telemetry block's class byte say the same thing;
+                // the string is what history has always stored, so the byte only fills a gap.
+                CarClass = string.IsNullOrWhiteSpace(scoring.VehicleClass)
+                    ? ClassName(telemetry.VehicleClass)
+                    : scoring.VehicleClass,
+                CarType = car.Model,
+                CarChampionship = car.Championship,
                 TrackLengthMeters = PlausibleTrackLength(parsed.ScoringInfo.LapDistance),
                 SessionType = MapSessionType(parsed.ScoringInfo.Session),
                 SessionTime = ToF64(parsed.ScoringInfo.CurrentElapsedTime),
                 TotalSessionTime = PlausibleSessionLength(parsed.ScoringInfo.EndElapsedTime),
                 SessionTimeRemaining = PlausibleTimeRemaining(parsed.ScoringInfo),
                 BestLapTime = ToF64(scoring.BestLapTime),
-                MaxLaps = parsed.ScoringInfo.MaxLaps,
-                InCar = true
+                MaxLaps = LapLimit(parsed.ScoringInfo.MaxLaps),
+                InCar = true,
+                Phase = MapPhase(parsed.ScoringInfo.GamePhase)
             },
             Car = new CarState
             {
@@ -98,12 +126,21 @@ internal sealed class LmuTelemetryMapper
                 Brake = ToF32(telemetry.UnfilteredBrake),
                 Clutch = ToF32(telemetry.UnfilteredClutch),
                 Steering = ToF32(telemetry.UnfilteredSteering),
+                ThrottleApplied = Applied(telemetry.FilteredThrottle),
+                BrakeApplied = Applied(telemetry.FilteredBrake),
                 FuelLiters = fuel,
-                FuelPerLapLiters = FuelPerLap(telemetry.LapNumber, fuel),
+                FuelPerLapLiters = this.FuelPerLap(telemetry.LapNumber, fuel),
+                FuelCapacityLiters = double.IsFinite(telemetry.FuelCapacityLiters) && telemetry.FuelCapacityLiters > 0
+                    ? (float)telemetry.FuelCapacityLiters
+                    : null,
                 PositionX = ToF32(telemetry.Position.X),
                 PositionY = ToF32(telemetry.Position.Y),
                 PositionZ = ToF32(telemetry.Position.Z),
                 BrakeBiasRear = ToF32(telemetry.RearBrakeBias),
+                InGarage = scoring.InGarageStall,
+                InPitLane = scoring.InPits,
+                PitState = MapPitState(scoring.PitState),
+                PitLimiter = telemetry.SpeedLimiter,
                 Pose = MapPose(telemetry)
             },
             Tires = MapTires(telemetry.Wheels, frontCompound, rearCompound),
@@ -123,17 +160,30 @@ internal sealed class LmuTelemetryMapper
                 Yellow = scoring.UnderYellow,
                 SafetyCar = parsed.ScoringInfo.GamePhase == 6,
                 Red = parsed.ScoringInfo.GamePhase == 7,
-                Checkered = scoring.FinishStatus == 1
+                Checkered = scoring.FinishStatus == 1,
+                Sector1Yellow = SectorYellow(parsed.ScoringInfo, 1),
+                Sector2Yellow = SectorYellow(parsed.ScoringInfo, 2),
+                Sector3Yellow = SectorYellow(parsed.ScoringInfo, 3)
             },
             Electronics = new ElectronicsState
             {
                 TractionControlActive = telemetry.TractionControlActive,
                 TractionControl = telemetry.TractionControl,
                 TractionControlMax = telemetry.TractionControlMax,
+                TractionControlSlip = telemetry.TractionControlSlip,
+                TractionControlSlipMax = telemetry.TractionControlSlipMax,
+                TractionControlCut = telemetry.TractionControlCut,
+                TractionControlCutMax = telemetry.TractionControlCutMax,
                 Abs = telemetry.Abs,
                 AbsMax = telemetry.AbsMax,
                 MotorMap = telemetry.MotorMap,
                 MotorMapMax = telemetry.MotorMapMax,
+                Migration = telemetry.Migration,
+                MigrationMax = telemetry.MigrationMax,
+                FrontAntiRollBar = telemetry.FrontAntiSway,
+                FrontAntiRollBarMax = telemetry.FrontAntiSwayMax,
+                RearAntiRollBar = telemetry.RearAntiSway,
+                RearAntiRollBarMax = telemetry.RearAntiSwayMax,
                 DrsActive = scoring.DrsState
             },
             Race = new RaceState
@@ -146,7 +196,7 @@ internal sealed class LmuTelemetryMapper
             Energy = new EnergyState
             {
                 VirtualEnergy = virtualEnergy,
-                VirtualEnergyPerLap = VirtualEnergyPerLap(telemetry.LapNumber, virtualEnergy),
+                VirtualEnergyPerLap = this.VirtualEnergyPerLap(telemetry.LapNumber, virtualEnergy),
                 StateOfCharge = Sanitize(telemetry.StateOfCharge),
                 RegenPower = Sanitize(telemetry.RegenPower)
             },
@@ -156,50 +206,225 @@ internal sealed class LmuTelemetryMapper
                 TrackLimitSteps = telemetry.TrackLimitSteps,
                 PitStops = scoring.PitStops
             },
-            Conditions = MapConditions(parsed.ScoringInfo)
+            Conditions = MapConditions(parsed.ScoringInfo),
+            Damage = MapDamage(telemetry),
+            Field = this.MapField(parsed.Vehicles, parsed.FrontCompounds)
         };
     }
 
-    private TelemetryFrame SessionOnlyFrame(LmuScoringInfo scoringInfo, LmuVehicleScoring? playerVehicle)
+    private TelemetryFrame SessionOnlyFrame(LmuScoringInfo scoringInfo, LmuVehicleScoring? playerVehicle, IReadOnlyList<FieldCar> field)
     {
+        string entry = playerVehicle?.VehicleName ?? "";
+        LmuCarIdentity? car = this._lastCar is { } last && entry.Length > 0 && last.VehicleName == entry
+            ? last
+            : null;
         return new TelemetryFrame
         {
-            Timestamp = _clock(),
+            Timestamp = this._clock(),
             Session = new SessionInfo
             {
                 Game = GameName,
                 Track = scoringInfo.TrackName,
                 // Scoring knows the driver's selection in the lobby, so prefill and history
                 // lookup work before the cockpit exists.
-                Car = playerVehicle?.VehicleName ?? "",
+                Car = entry,
                 CarClass = playerVehicle?.VehicleClass ?? "",
+                CarType = car?.Model ?? "",
+                CarChampionship = car?.Championship ?? "",
                 TrackLengthMeters = PlausibleTrackLength(scoringInfo.LapDistance),
                 SessionType = MapSessionType(scoringInfo.Session),
                 SessionTime = ToF64(scoringInfo.CurrentElapsedTime),
                 TotalSessionTime = PlausibleSessionLength(scoringInfo.EndElapsedTime),
                 SessionTimeRemaining = PlausibleTimeRemaining(scoringInfo),
-                MaxLaps = scoringInfo.MaxLaps,
-                InCar = false
+                MaxLaps = LapLimit(scoringInfo.MaxLaps),
+                InCar = false,
+                Phase = MapPhase(scoringInfo.GamePhase)
             },
-            Conditions = MapConditions(scoringInfo)
+            Conditions = MapConditions(scoringInfo),
+            Field = field
         };
     }
+
+    /// <summary>The scored field, or the previous list unchanged when neither the vehicle array nor any compound has changed since.</summary>
+    private IReadOnlyList<FieldCar> MapField(IReadOnlyList<LmuVehicleScoring> vehicles, IReadOnlyDictionary<int, string> compounds)
+    {
+        if (this._fieldScoring.SequenceEqual(vehicles) && SameCompounds(this._fieldCompounds, compounds))
+        {
+            return this._field;
+        }
+
+        FieldCar[] field = new FieldCar[vehicles.Count];
+        for (int i = 0; i < vehicles.Count; i++)
+        {
+            field[i] = MapFieldCar(vehicles[i], ClassPlace(vehicles, vehicles[i]), compounds.GetValueOrDefault(vehicles[i].Id));
+        }
+
+        this._fieldScoring = vehicles;
+        this._fieldCompounds = compounds;
+        this._field = field;
+        return field;
+    }
+
+    private static bool SameCompounds(IReadOnlyDictionary<int, string> last, IReadOnlyDictionary<int, string> next) =>
+        last.Count == next.Count
+        && next.All(entry => last.TryGetValue(entry.Key, out string? held) && string.Equals(held, entry.Value, StringComparison.Ordinal));
+
+    private static FieldCar MapFieldCar(LmuVehicleScoring vehicle, int classPlace, string? compound)
+    {
+        IReadOnlyList<double> lastSectors = SectorDurations(vehicle);
+        // mSector: 0 is sector 3, then 1 and 2. A current-lap mark only counts once the car has
+        // left that sector, since the fields can still hold the previous lap's marks before then.
+        int sector = vehicle.Sector switch
+        {
+            1 => 1,
+            2 => 2,
+            0 => 3,
+            _ => 0
+        };
+        double firstMark = ToF64(vehicle.CurrentSector1);
+        double secondMark = ToF64(vehicle.CurrentSector2);
+        bool firstDone = sector >= 2 && firstMark > 0;
+        bool secondDone = sector == 3 && firstDone && secondMark > firstMark;
+
+        return new FieldCar
+        {
+            Id = vehicle.Id,
+            Driver = vehicle.DriverName,
+            Car = vehicle.VehicleName,
+            CarClass = vehicle.VehicleClass,
+            IsPlayer = vehicle.IsPlayer,
+            Place = vehicle.Place,
+            ClassPlace = classPlace,
+            LapsCompleted = Math.Max(0, (int)vehicle.TotalLaps),
+            LapDistanceMeters = ToF64(vehicle.LapDistance),
+            Sector = sector,
+            BestLapTime = PositiveOrNull(vehicle.BestLapTime),
+            LastLapTime = PositiveOrNull(vehicle.LastLapTime),
+            LastLapSector1 = lastSectors.Count == 3 ? lastSectors[0] : null,
+            LastLapSector2 = lastSectors.Count == 3 ? lastSectors[1] : null,
+            LastLapSector3 = lastSectors.Count == 3 ? lastSectors[2] : null,
+            CurrentLapSector1 = firstDone ? firstMark : null,
+            CurrentLapSector2 = secondDone ? secondMark - firstMark : null,
+            GapToLeader = ToF64(vehicle.TimeBehindLeader),
+            LapsToLeader = vehicle.LapsBehindLeader,
+            GapToNext = ToF64(vehicle.TimeBehindNext),
+            LapsToNext = vehicle.LapsBehindNext,
+            InPitLane = vehicle.InPits,
+            InGarage = vehicle.InGarageStall,
+            PitState = MapPitState(vehicle.PitState),
+            PitStops = vehicle.PitStops,
+            Penalties = Math.Max(0, (int)vehicle.Penalties),
+            BlueFlag = vehicle.Flag == 6,
+            Compound = compound,
+            FinishStatus = vehicle.FinishStatus switch
+            {
+                1 => FinishStatus.Finished,
+                2 => FinishStatus.Dnf,
+                3 => FinishStatus.Disqualified,
+                _ => FinishStatus.None
+            },
+            // Mirrored like the player's pose, so the field and lap traces share one map.
+            PositionX = ToF32(-vehicle.Position.X),
+            PositionZ = ToF32(vehicle.Position.Z)
+        };
+    }
+
+    /// <summary>The car's place among its class, ranked by overall place; 0 when it has no place yet.</summary>
+    private static int ClassPlace(IReadOnlyList<LmuVehicleScoring> vehicles, LmuVehicleScoring vehicle)
+    {
+        if (vehicle.Place == 0)
+        {
+            return 0;
+        }
+
+        return 1 + vehicles.Count(other =>
+            other.Place > 0 && other.Place < vehicle.Place && other.VehicleClass == vehicle.VehicleClass);
+    }
+
+    /// <summary>mPitState: 0 none, 1 request, 2 entering, 3 stopped, 4 exiting.</summary>
+    private static PitState MapPitState(byte pitState) => pitState switch
+    {
+        1 => PitState.Requested,
+        2 => PitState.Entering,
+        3 => PitState.Stopped,
+        4 => PitState.Exiting,
+        _ => PitState.None
+    };
+
+    /// <summary>A lap time, or null for the sim's "none yet" (0 or negative).</summary>
+    private static double? PositiveOrNull(double seconds) =>
+        double.IsFinite(seconds) && seconds > 0 ? seconds : null;
 
     /// <summary>
     /// The conditions the sim publishes. Fuel and tyre multipliers are deliberately absent:
     /// they live in PhysicsOptionsV01, which the shared-memory layout does not expose, so
     /// claiming a value would be inventing one.
     /// </summary>
-    private static SessionConditions MapConditions(LmuScoringInfo scoringInfo) => new()
+    private static SessionConditions MapConditions(LmuScoringInfo scoringInfo)
     {
-        PathWetness = Fraction(scoringInfo.AveragePathWetness),
-        TrackGripLevel = scoringInfo.TrackGripLevel > 0 ? scoringInfo.TrackGripLevel : null,
-        FixedSetup = scoringInfo.IsFixedSetup,
+        // Both temperatures exactly zero is the empty block before a track is loaded, not weather.
+        bool temperatures = scoringInfo.AmbientTemperature != 0 || scoringInfo.TrackTemperature != 0;
+        return new SessionConditions
+        {
+            PathWetness = Fraction(scoringInfo.AveragePathWetness),
+            TrackGripLevel = scoringInfo.TrackGripLevel > 0 ? scoringInfo.TrackGripLevel : null,
+            FixedSetup = scoringInfo.IsFixedSetup,
+            AirTemperatureCelsius = temperatures ? Temperature(scoringInfo.AmbientTemperature) : null,
+            TrackTemperatureCelsius = temperatures ? Temperature(scoringInfo.TrackTemperature) : null,
+            Raining = Fraction(scoringInfo.Raining),
+        };
+    }
+
+    /// <summary>A plausible weather temperature in °C, or null.</summary>
+    private static double? Temperature(double celsius) =>
+        double.IsFinite(celsius) && celsius is > -60 and < 100 ? celsius : null;
+
+    /// <summary>The body's state from the telemetry block: dents, the last impact and the warnings.</summary>
+    private static DamageState MapDamage(LmuVehicleTelemetry telemetry) => new()
+    {
+        Dents = [.. telemetry.DentSeverity.Take(8).Select(dent => Math.Min((int)dent, 2))],
+        LastImpactSessionTime = double.IsFinite(telemetry.LastImpactElapsedTime) && telemetry.LastImpactElapsedTime > 0
+            ? telemetry.LastImpactElapsedTime
+            : null,
+        LastImpactMagnitude = ToF64(telemetry.LastImpactMagnitude),
+        Overheating = telemetry.Overheating,
+        DetachedParts = telemetry.DetachedParts,
     };
 
     /// <summary>A 0–1 reading, or null when it is not a usable fraction.</summary>
     private static double? Fraction(double value) =>
         double.IsFinite(value) && value is >= 0 and <= 1 ? value : null;
+
+    /// <summary>A filtered pedal (what reached the car), clamped to 0–1; null when the reading is not a number.</summary>
+    private static float? Applied(double value) =>
+        double.IsFinite(value) ? (float)Math.Clamp(value, 0, 1) : null;
+
+    /// <summary>The class byte in scoring's own spelling, the one history already stores; empty for the pace car or an unknown class.</summary>
+    private static string ClassName(LmuVehicleClass vehicleClass) => vehicleClass switch
+    {
+        LmuVehicleClass.Hypercar => "Hyper",
+        LmuVehicleClass.Lmp2Elms => "LMP2_ELMS",
+        LmuVehicleClass.Lmp2 => "LMP2",
+        LmuVehicleClass.Lmp3 => "LMP3",
+        LmuVehicleClass.Gte => "GTE",
+        LmuVehicleClass.Gt3 => "GT3",
+        _ => "",
+    };
+
+    /// <summary>The championship byte spelled as the results archive spells it ("WEC 2026"); empty when unknown.</summary>
+    private static string ChampionshipName(LmuVehicleChampionship championship) => championship switch
+    {
+        LmuVehicleChampionship.Wec2023 => "WEC 2023",
+        LmuVehicleChampionship.Wec2024 => "WEC 2024",
+        LmuVehicleChampionship.Wec2025 => "WEC 2025",
+        LmuVehicleChampionship.Wec2026 => "WEC 2026",
+        LmuVehicleChampionship.Elms2025 => "ELMS 2025",
+        LmuVehicleChampionship.Elms2026 => "ELMS 2026",
+        _ => "",
+    };
+
+    /// <summary>What the cockpit last said about the entry <see cref="VehicleName"/> is.</summary>
+    private sealed record LmuCarIdentity(string VehicleName, string Model, string Championship);
 
     private double MonotonicCurrentLapTime(
         double scoringRaw,
@@ -208,71 +433,71 @@ internal sealed class LmuTelemetryMapper
         int lapNumber,
         LmuScoringInfo scoringInfo)
     {
-        var scoringLapTime = ClampNonNegative(ToF64(scoringRaw));
-        var telemetryLapTime = ClampNonNegative(ToF64(telemetryElapsed - telemetryLapStart));
-        var sessionElapsed = ClampNonNegative(ToF64(scoringInfo.CurrentElapsedTime));
+        double scoringLapTime = ClampNonNegative(ToF64(scoringRaw));
+        double telemetryLapTime = ClampNonNegative(ToF64(telemetryElapsed - telemetryLapStart));
+        double sessionElapsed = ClampNonNegative(ToF64(scoringInfo.CurrentElapsedTime));
 
-        var sessionChanged = _lapTimeValid && scoringInfo.Session != _lapTimeSession;
-        var lapWentBack = _lapTimeValid && lapNumber < _lapTimeLap;
-        var sessionReset = _lapTimeValid && sessionElapsed + SessionTimeResetThreshold < _lapTimeSessionElapsed;
-        var newLap = _lapTimeValid && lapNumber != _lapTimeLap;
+        bool sessionChanged = this._lapTimeValid && scoringInfo.Session != this._lapTimeSession;
+        bool lapWentBack = this._lapTimeValid && lapNumber < this._lapTimeLap;
+        bool sessionReset = this._lapTimeValid && sessionElapsed + SessionTimeResetThreshold < this._lapTimeSessionElapsed;
+        bool newLap = this._lapTimeValid && lapNumber != this._lapTimeLap;
 
-        if (!_lapTimeValid)
+        if (!this._lapTimeValid)
         {
-            var lapTime = telemetryLapTime;
+            double lapTime = telemetryLapTime;
             if (lapTime <= 0)
             {
                 lapTime = scoringLapTime;
             }
 
-            SetLapTimeState(scoringInfo.Session, lapNumber, lapTime, sessionElapsed);
+            this.SetLapTimeState(scoringInfo.Session, lapNumber, lapTime, sessionElapsed);
             return lapTime;
         }
 
         if (sessionChanged || lapWentBack || sessionReset || newLap)
         {
-            var lapTime = TransitionLapTimeSeed(scoringLapTime, telemetryLapTime);
-            SetLapTimeState(scoringInfo.Session, lapNumber, lapTime, sessionElapsed);
+            double lapTime = TransitionLapTimeSeed(scoringLapTime, telemetryLapTime);
+            this.SetLapTimeState(scoringInfo.Session, lapNumber, lapTime, sessionElapsed);
             return lapTime;
         }
 
-        var candidate = telemetryLapTime;
+        double candidate = telemetryLapTime;
         if (candidate <= 0)
         {
             candidate = scoringLapTime;
         }
 
-        var sessionDelta = sessionElapsed - _lapTimeSessionElapsed;
+        double sessionDelta = sessionElapsed - this._lapTimeSessionElapsed;
         if (sessionDelta < 0)
         {
             sessionDelta = 0;
         }
 
-        var maxAdvance = LapTimeSpikeThreshold + sessionDelta;
-        if (telemetryLapTime > 0 && telemetryLapTime > _lapTimeMax + maxAdvance)
+        double maxAdvance = LapTimeSpikeThreshold + sessionDelta;
+        if (telemetryLapTime > 0 && telemetryLapTime > this._lapTimeMax + maxAdvance)
         {
-            if (scoringLapTime > _lapTimeMax && scoringLapTime <= _lapTimeMax + maxAdvance)
+            if (scoringLapTime > this._lapTimeMax && scoringLapTime <= this._lapTimeMax + maxAdvance)
             {
                 candidate = scoringLapTime;
             }
             else
             {
-                candidate = _lapTimeMax;
+                candidate = this._lapTimeMax;
             }
         }
 
-        if (candidate < _lapTimeMax)
+        if (candidate < this._lapTimeMax)
         {
-            candidate = _lapTimeMax;
+            candidate = this._lapTimeMax;
         }
         else
         {
-            _lapTimeMax = candidate;
+            this._lapTimeMax = candidate;
         }
 
-        if (sessionElapsed > _lapTimeSessionElapsed)
+        if (sessionElapsed > this._lapTimeSessionElapsed)
         {
-            _lapTimeSessionElapsed = sessionElapsed;
+            this._lapTimeSessionElapsed = sessionElapsed;
         }
 
         return candidate;
@@ -280,11 +505,11 @@ internal sealed class LmuTelemetryMapper
 
     private void SetLapTimeState(int session, int lapNumber, double lapTime, double sessionElapsed)
     {
-        _lapTimeValid = true;
-        _lapTimeSession = session;
-        _lapTimeLap = lapNumber;
-        _lapTimeMax = lapTime;
-        _lapTimeSessionElapsed = sessionElapsed;
+        this._lapTimeValid = true;
+        this._lapTimeSession = session;
+        this._lapTimeLap = lapNumber;
+        this._lapTimeMax = lapTime;
+        this._lapTimeSessionElapsed = sessionElapsed;
     }
 
     private static double TransitionLapTimeSeed(double scoringLapTime, double telemetryLapTime)
@@ -306,46 +531,46 @@ internal sealed class LmuTelemetryMapper
     {
         if (fuel <= 0)
         {
-            return AverageFuelDelta();
+            return this.AverageFuelDelta();
         }
 
-        if (_fuelLap is null)
+        if (this._fuelLap is null)
         {
-            _fuelLap = lapNumber;
-            _fuelAtLapStart = fuel;
-            return AverageFuelDelta();
+            this._fuelLap = lapNumber;
+            this._fuelAtLapStart = fuel;
+            return this.AverageFuelDelta();
         }
 
-        if (lapNumber != _fuelLap)
+        if (lapNumber != this._fuelLap)
         {
-            if (lapNumber > _fuelLap && _fuelAtLapStart is { } startFuel)
+            if (lapNumber > this._fuelLap && this._fuelAtLapStart is { } startFuel)
             {
-                var delta = startFuel - fuel;
+                float delta = startFuel - fuel;
                 if (delta > 0)
                 {
-                    _completedLapFuelDeltas.Enqueue(delta);
-                    while (_completedLapFuelDeltas.Count > FuelDeltaWindow)
+                    this._completedLapFuelDeltas.Enqueue(delta);
+                    while (this._completedLapFuelDeltas.Count > FuelDeltaWindow)
                     {
-                        _completedLapFuelDeltas.Dequeue();
+                        this._completedLapFuelDeltas.Dequeue();
                     }
                 }
             }
 
-            _fuelLap = lapNumber;
-            _fuelAtLapStart = fuel;
+            this._fuelLap = lapNumber;
+            this._fuelAtLapStart = fuel;
         }
 
-        return AverageFuelDelta();
+        return this.AverageFuelDelta();
     }
 
     private float AverageFuelDelta()
     {
-        if (_completedLapFuelDeltas.Count == 0)
+        if (this._completedLapFuelDeltas.Count == 0)
         {
             return 0;
         }
 
-        return _completedLapFuelDeltas.Sum() / _completedLapFuelDeltas.Count;
+        return this._completedLapFuelDeltas.Sum() / this._completedLapFuelDeltas.Count;
     }
 
     // Rolling virtual-energy burn per completed lap, mirroring FuelPerLap: track the
@@ -356,46 +581,46 @@ internal sealed class LmuTelemetryMapper
     {
         if (energy <= 0)
         {
-            return AverageEnergyDelta();
+            return this.AverageEnergyDelta();
         }
 
-        if (_energyLap is null)
+        if (this._energyLap is null)
         {
-            _energyLap = lapNumber;
-            _energyAtLapStart = energy;
-            return AverageEnergyDelta();
+            this._energyLap = lapNumber;
+            this._energyAtLapStart = energy;
+            return this.AverageEnergyDelta();
         }
 
-        if (lapNumber != _energyLap)
+        if (lapNumber != this._energyLap)
         {
-            if (lapNumber > _energyLap && _energyAtLapStart is { } startEnergy)
+            if (lapNumber > this._energyLap && this._energyAtLapStart is { } startEnergy)
             {
-                var delta = startEnergy - energy;
+                float delta = startEnergy - energy;
                 if (delta > 0)
                 {
-                    _completedLapEnergyDeltas.Enqueue(delta);
-                    while (_completedLapEnergyDeltas.Count > FuelDeltaWindow)
+                    this._completedLapEnergyDeltas.Enqueue(delta);
+                    while (this._completedLapEnergyDeltas.Count > FuelDeltaWindow)
                     {
-                        _completedLapEnergyDeltas.Dequeue();
+                        this._completedLapEnergyDeltas.Dequeue();
                     }
                 }
             }
 
-            _energyLap = lapNumber;
-            _energyAtLapStart = energy;
+            this._energyLap = lapNumber;
+            this._energyAtLapStart = energy;
         }
 
-        return AverageEnergyDelta();
+        return this.AverageEnergyDelta();
     }
 
     private float AverageEnergyDelta()
     {
-        if (_completedLapEnergyDeltas.Count == 0)
+        if (this._completedLapEnergyDeltas.Count == 0)
         {
             return 0;
         }
 
-        return _completedLapEnergyDeltas.Sum() / _completedLapEnergyDeltas.Count;
+        return this._completedLapEnergyDeltas.Sum() / this._completedLapEnergyDeltas.Count;
     }
 
     private static IReadOnlyList<TireState> MapTires(IReadOnlyList<LmuWheel> wheels, string frontCompound, string rearCompound)
@@ -416,9 +641,9 @@ internal sealed class LmuTelemetryMapper
 
     private static TireState MapTire(TirePosition position, LmuWheel wheel, string compound)
     {
-        var inner = TemperatureCelsius(wheel.TempInnerKelvin);
-        var middle = TemperatureCelsius(wheel.TempMiddleKelvin);
-        var outer = TemperatureCelsius(wheel.TempOuterKelvin);
+        float inner = TemperatureCelsius(wheel.TempInnerKelvin);
+        float middle = TemperatureCelsius(wheel.TempMiddleKelvin);
+        float outer = TemperatureCelsius(wheel.TempOuterKelvin);
 
         return new TireState
         {
@@ -433,9 +658,38 @@ internal sealed class LmuTelemetryMapper
             TempCoreCelsius = TemperatureCelsius(wheel.CarcassTempKelvin),
             PressureKPa = ToF32(wheel.PressureKPa),
             WearPercent = ToF32(wheel.WearFraction * 100),
-            Compound = compound
+            Compound = compound,
+            RotationRadiansPerSecond = ToF32(wheel.RotationRadiansPerSecond),
+            LongitudinalPatchVelocity = ToF32(wheel.LongitudinalPatchVelocity),
+            LateralPatchVelocity = ToF32(wheel.LateralPatchVelocity),
+            LongitudinalGroundVelocity = ToF32(wheel.LongitudinalGroundVelocity),
+            LateralGroundVelocity = ToF32(wheel.LateralGroundVelocity),
+            PatchSlidingFraction = ToF32(wheel.GripFraction),
+            LoadNewtons = ToF32(wheel.LoadNewtons),
+            LateralForceNewtons = ToF32(wheel.LateralForceNewtons),
+            LongitudinalForceNewtons = ToF32(wheel.LongitudinalForceNewtons),
+            CamberRadians = ToF32(wheel.CamberRadians),
+            RadiusMeters = wheel.RadiusCentimeters / 100f,
+            BrakeTempCelsius = ToF32(wheel.BrakeTempCelsius),
+            SuspensionDeflectionMeters = ToF32(wheel.SuspensionDeflectionMeters),
+            RideHeightMeters = ToF32(wheel.RideHeightMeters),
+            Surface = SurfaceOf(wheel.SurfaceType),
+            Flat = wheel.Flat,
+            Detached = wheel.Detached
         };
     }
+
+    private static TireSurface SurfaceOf(byte surfaceType) => surfaceType switch
+    {
+        0 => TireSurface.Dry,
+        1 => TireSurface.Wet,
+        2 => TireSurface.Grass,
+        3 => TireSurface.Dirt,
+        4 => TireSurface.Gravel,
+        5 => TireSurface.RumbleStrip,
+        6 => TireSurface.Special,
+        _ => TireSurface.Unknown
+    };
 
     /// <summary>
     /// Kelvin → Celsius for a channel that reports 0 K when it has no reading (out of
@@ -447,9 +701,9 @@ internal sealed class LmuTelemetryMapper
 
     private static float SurfaceAverage(float inner, float middle, float outer)
     {
-        var sum = 0f;
-        var count = 0;
-        foreach (var reading in new[] { inner, middle, outer })
+        float sum = 0f;
+        int count = 0;
+        foreach (float reading in new[] { inner, middle, outer })
         {
             if (reading > 0)
             {
@@ -460,6 +714,27 @@ internal sealed class LmuTelemetryMapper
 
         return count == 0 ? 0 : sum / count;
     }
+
+    /// <summary>
+    /// mGamePhase: 0 before the session, 1–3 reconnaissance, grid and formation, 4 the start
+    /// lights, 5 green, 6 full course yellow or safety car, 7 stopped, 8 over. 9 (paused) and
+    /// anything newer say nothing about the track.
+    /// </summary>
+    private static SessionPhase MapPhase(byte phase) => phase switch
+    {
+        0 => SessionPhase.BeforeStart,
+        1 or 2 or 3 => SessionPhase.Formation,
+        4 => SessionPhase.Countdown,
+        5 => SessionPhase.Green,
+        6 => SessionPhase.FullCourseYellow,
+        7 => SessionPhase.Stopped,
+        8 => SessionPhase.Over,
+        _ => SessionPhase.Unknown
+    };
+
+    /// <summary>Whether mSectorFlag shows a yellow in <paramref name="sector"/> (1–3); the array runs like mSector, sector 3 first.</summary>
+    private static bool SectorYellow(LmuScoringInfo scoring, int sector) =>
+        scoring.SectorFlags.Count == 3 && scoring.SectorFlags[sector % 3] > 0;
 
     private static SessionType MapSessionType(int session)
     {
@@ -476,7 +751,7 @@ internal sealed class LmuTelemetryMapper
 
     private static float Speed(LmuVector3 velocity)
     {
-        var speed = Math.Sqrt(velocity.X * velocity.X + velocity.Y * velocity.Y + velocity.Z * velocity.Z);
+        double speed = Math.Sqrt(velocity.X * velocity.X + velocity.Y * velocity.Y + velocity.Z * velocity.Z);
         return ToF32(speed);
     }
 
@@ -612,6 +887,9 @@ internal sealed class LmuTelemetryMapper
     /// </summary>
     private const double MaxPlausibleSessionSeconds = 30 * 60 * 60;
 
+    /// <summary>A 24-hour race on the shortest circuit stays well under this.</summary>
+    private const int MaxPlausibleLaps = 10_000;
+
     /// <summary>
     /// A session length only survives if it could describe a real timed session. Zero,
     /// negative, non-finite and absurd values become null (unknown) instead of a number a
@@ -634,7 +912,7 @@ internal sealed class LmuTelemetryMapper
             return null;
         }
 
-        var remaining = scoringInfo.SessionTimeRemaining;
+        float remaining = scoringInfo.SessionTimeRemaining;
         return float.IsFinite(remaining) && remaining >= 0 && remaining <= total ? remaining : null;
     }
 
@@ -647,6 +925,14 @@ internal sealed class LmuTelemetryMapper
         double.IsFinite(value) && value > 0 ? value : null;
 
     /// <summary>
+    /// The session's lap limit, or 0 when it has none. LMU reports a session without a lap
+    /// limit as int.MaxValue, which anything reading "MaxLaps > 0" would take for a
+    /// lap-based race of two billion laps.
+    /// </summary>
+    private static int LapLimit(int value) =>
+        value > 0 && value <= MaxPlausibleLaps ? value : 0;
+
+    /// <summary>
     /// Turns the sim's cumulative sector marks into per-sector durations: mLastSector1 is
     /// the S1 time, mLastSector2 is S1+S2, and the final sector is the remainder of the lap.
     /// Returns empty unless all three marks increase in order, so an out lap or a partially
@@ -654,9 +940,9 @@ internal sealed class LmuTelemetryMapper
     /// </summary>
     private static IReadOnlyList<double> SectorDurations(LmuVehicleScoring scoring)
     {
-        var firstMark = ToF64(scoring.LastSector1);
-        var secondMark = ToF64(scoring.LastSector2);
-        var lapTime = ToF64(scoring.LastLapTime);
+        double firstMark = ToF64(scoring.LastSector1);
+        double secondMark = ToF64(scoring.LastSector2);
+        double lapTime = ToF64(scoring.LastLapTime);
 
         if (firstMark <= 0 || secondMark <= firstMark || lapTime <= secondMark)
         {
@@ -677,7 +963,7 @@ internal sealed class LmuTelemetryMapper
             return 0;
         }
 
-        var converted = (float)value;
+        float converted = (float)value;
         return float.IsFinite(converted) ? converted : 0;
     }
 

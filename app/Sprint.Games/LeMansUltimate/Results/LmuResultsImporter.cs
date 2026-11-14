@@ -25,7 +25,7 @@ public sealed class LmuResultsImporter : IResultsImporter
 
     internal LmuResultsImporter(LmuResultsReader reader)
     {
-        _reader = reader;
+        this._reader = reader;
     }
 
     /// <summary>
@@ -37,7 +37,7 @@ public sealed class LmuResultsImporter : IResultsImporter
     public string SourceDescription => "the Le Mans Ultimate results folder";
 
     public IReadOnlyList<ResultsArchiveEntry> ListEntries() =>
-        [.. _reader.ListResultFiles().Select(file => new ResultsArchiveEntry(
+        [.. this._reader.ListResultFiles().Select(file => new ResultsArchiveEntry(
             file.FullName,
             file.Length,
             file.LastWriteTimeUtc))];
@@ -50,13 +50,41 @@ public sealed class LmuResultsImporter : IResultsImporter
         // anywhere else names no file here — and File.Exists answers that without throwing on an
         // id that is not a path at all.
         if (!File.Exists(entry.Id)
-            || !_reader.TryReadFile(entry.Id, out var result, out _)
+            || !this._reader.TryReadFile(entry.Id, out LmuSessionResult? result, out _)
             || result is null)
         {
             return null;
         }
 
         return Map(result);
+    }
+
+    /// <summary>
+    /// Every livery the archive names, from any driver in any session: liveries are game
+    /// content, so an AI entrant's names the same car a friend drove in that livery. Newest
+    /// file first, so a livery the game re-badged keeps its latest statement.
+    /// </summary>
+    public IReadOnlyList<ResultsCar> ListCars()
+    {
+        Dictionary<string, ResultsCar> cars = new(StringComparer.Ordinal);
+        foreach (LmuSessionResult session in this._reader.ReadAll().Sessions)
+        {
+            foreach (LmuDriverResult driver in session.Drivers)
+            {
+                if (Blank(driver.VehicleName) || Blank(driver.CarType) || cars.ContainsKey(driver.VehicleName))
+                {
+                    continue;
+                }
+
+                cars[driver.VehicleName] = new ResultsCar(
+                    driver.VehicleName,
+                    driver.CarType,
+                    Blank(driver.CarClass) ? null : driver.CarClass,
+                    ChampionshipOf(driver.Category));
+            }
+        }
+
+        return [.. cars.Values];
     }
 
     private static ImportedSession? Map(LmuSessionResult result)
@@ -92,7 +120,19 @@ public sealed class LmuResultsImporter : IResultsImporter
             // was never stated must read as unknown, not as a car with no class.
             CarClass = Blank(player.CarClass) ? null : player.CarClass,
             TrackLengthMeters = result.TrackLengthMeters,
+            Championship = ChampionshipOf(player.Category),
+            Livery = Blank(player.VehicleName) ? null : player.VehicleName,
         };
+    }
+
+    /// <summary>
+    /// The championship a category label leads with: "WEC 2026, Hypercar, BMW M Hybrid V8"
+    /// names "WEC 2026". Null when the label is missing or states no class after it.
+    /// </summary>
+    private static string? ChampionshipOf(string category)
+    {
+        string[] parts = category.Split(',', StringSplitOptions.TrimEntries);
+        return parts.Length >= 2 && !Blank(parts[0]) ? parts[0] : null;
     }
 
     private static ImportedLap MapLap(LmuLapResult lap) => new(
@@ -113,8 +153,8 @@ public sealed class LmuResultsImporter : IResultsImporter
     private static IReadOnlyList<double> Sectors(LmuLapResult lap)
     {
         double?[] stated = [lap.Sector1Seconds, lap.Sector2Seconds, lap.Sector3Seconds];
-        var sectors = new List<double>(stated.Length);
-        foreach (var sector in stated)
+        List<double> sectors = new List<double>(stated.Length);
+        foreach (double? sector in stated)
         {
             if (sector is not { } seconds)
             {

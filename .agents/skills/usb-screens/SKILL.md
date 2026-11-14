@@ -7,14 +7,16 @@ description: Use when touching the VoCore or USBD480 drivers, the WinUSB transpo
 
 Code: `app/Sprint.Desktop.Core/Features/Hardware/` — `VoCoreProtocol.cs`, `Usbd480Protocol.cs`,
 `WinUsbScreenDrivers.cs`, `WinUsbScreenTransport.cs`, `WinUsbInterop.cs`, `ScreenPublisher.cs`,
-`Rgb565.cs`. Host wiring: `app/Sprint.Desktop.Host/ScreenOutputService.cs`. Full protocol
+`Rgb565Composer.cs`. Host wiring: `app/Sprint.Desktop.Host/ScreenOutputService.cs`; the dash is
+drawn by `NativeDashFrameSource.cs` there with the Rust renderer. Full protocol
 reference and troubleshooting table: `docs/internals/screen-protocols.md`.
 
 ### Debugging: look before you change
 
 1. Read the activity log first: `%AppData%\Sprint\diagnostics\logs\sprint-YYYYMMDD.log`. Enumeration,
    open, model detection (`VoCore screen model detected`), resize (`Screen renderer resized`), first
-   frame and every state change are logged.
+   frame and every state change are logged. Red and black diagonal stripes on the panel are not a
+   USB problem: the frame source failed, and the device's `Faulted` reason says why.
 2. Match the symptom against the troubleshooting table in `screen-protocols.md`.
 3. Only then change code. Firmware behaviour is stateful; a fix that "worked" once may have just
    coincided with a replug.
@@ -28,7 +30,7 @@ reference and troubleshooting table: `docs/internals/screen-protocols.md`.
 - Never hardcode dimensions. Resolve the native size from the device, and let
   `AdoptDetectedResolutions` write it back so the Devices UI and dash sizing follow.
 - RGB565 is little-endian, `width * height * 2` bytes per frame. Rotation, margin and offset happen in
-  `Rgb565.ComposeFromBgra`, nowhere else.
+  `Rgb565Composer`, nowhere else.
 - No PNG/JPEG/base64 on the frame path; latest frame wins; identical frames are not resent.
 - Protocol logic stays in `Features/Hardware`; nothing above it knows a VID, PID or request code.
 
@@ -57,7 +59,8 @@ reference and troubleshooting table: `docs/internals/screen-protocols.md`.
 ### Verify
 
 - Run `Usbd480ProtocolTests`, `WinUsbProtocolTests`, `Rgb565Tests`, `ScreenPipelineTests`
-  (`app/Sprint.Desktop.Tests`) and `ScreenOutputServiceTests` (`app/Sprint.Desktop.Host/Tests`).
+  (`app/Sprint.Desktop.Tests`) and `ScreenOutputServiceTests`, `NativeDashFrameSourceTests`
+  (`app/Sprint.Desktop.Host/Tests`).
 - Check both the open path and the send path: many devices enumerate fine and fail only on the first
   OUT control transfer or bulk write.
 - `FakeScreenDriver` passes are not physical-screen verification. Without the panel connected, say

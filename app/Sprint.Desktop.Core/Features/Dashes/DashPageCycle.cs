@@ -23,7 +23,7 @@ public sealed class DashPageCycle
 
     /// <summary>The device's current page id, or null if it has never been cycled.</summary>
     public string? CurrentPageId(string deviceId) =>
-        _pages.TryGetValue(deviceId, out string? pageId) ? pageId : null;
+        this._pages.TryGetValue(deviceId, out string? pageId) ? pageId : null;
 
     /// <summary>
     /// Moves <paramref name="deviceId"/>'s selection by <paramref name="offset"/> pages within
@@ -41,11 +41,11 @@ public sealed class DashPageCycle
         if (layout.Pages.Count == 0)
         {
             string? idlePageId = layout.IdlePage?.Id;
-            _pages[deviceId] = idlePageId;
+            this._pages[deviceId] = idlePageId;
             return idlePageId;
         }
 
-        string? current = CurrentPageId(deviceId);
+        string? current = this.CurrentPageId(deviceId);
         int index = layout.Pages.FindIndex(page =>
             string.Equals(page.Id, current, StringComparison.OrdinalIgnoreCase));
         if (index < 0)
@@ -60,7 +60,7 @@ public sealed class DashPageCycle
         }
 
         string pageId = layout.Pages[index].Id;
-        _pages[deviceId] = pageId;
+        this._pages[deviceId] = pageId;
         return pageId;
     }
 }

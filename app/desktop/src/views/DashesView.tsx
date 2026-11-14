@@ -1,118 +1,159 @@
 import { useEffect, useRef, useState } from 'react'
 import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent } from 'react'
-import { Copy, LayoutDashboard, Pencil, Plus, Star, Trash2, X } from 'lucide-react'
-import '@sprint/dashboard/styles.css'
-import { DashRenderer } from '@sprint/dashboard'
+import { ChevronRight, LayoutDashboard, LayoutGrid, List, MoreHorizontal, Plus, X } from 'lucide-react'
 import type { DashLayout } from '@sprint/dashboard'
-import type { SprintCommand } from '../bridge'
+import type { DashCategoryLists, DashRefitLosses, SprintCommand, SprintState } from '../bridge'
 import type { RuntimeState } from '../shell/runtime'
-import { ConfirmDialog, ContentDialog } from '../shell/ContentDialog'
+import { ConfirmDialog } from '../shell/ContentDialog'
 import { CommandDivider, PageHeader } from '../shell/PageHeader'
-import { Status } from '../shell/Status'
 import {
-  SCREEN_PROFILES,
+  ALL_DASHES,
+  buildDashCategoryCreate,
+  buildDashCategoryDelete,
+  buildDashCategoryRename,
   buildDashCreate,
   buildDashDelete,
-  buildDashDuplicate,
-  buildDashSetDefault,
-  fitScreenSize,
+  buildDashSetCategory,
+  buildDashesViewMode,
+  dashPageCount,
+  dashSummary,
+  dashesFilterOptions,
+  formatPageCount,
+  groupDashes,
+  knownDashCategory,
   layoutScreenProfile,
+  newDashCategory,
   parseDashLayouts,
-  resolveScreenProfile,
-  toTelemetryFrame,
+  parseDashesViewMode,
+  resolveDashesFilter,
+  sameDashesFilter,
+  screenChoices,
+  visibleDashGroups,
 } from './DashesDomain'
-import { describeDeviceStatus, findScreen, parseDevices, parseScreens } from './DevicesDomain'
-import type { ScreenStatusTone } from './DevicesDomain'
-import { DashEditorPanel } from './DashEditorPanel'
+import type { DashGroup, DashesFilter, DashesViewMode } from './DashesDomain'
+import { deviceScreenSizes } from './DevicesDomain'
+import { CategoryMenu, DashMenu } from './DashesMenus'
+import type { MenuAnchor } from '../shell/Menu'
+import { CategoryNameDialog, DuplicateDashDialog, NewDashDialog } from './DashesDialogs'
+import type { NewDash } from './DashesDialogs'
+import { DashStill } from './DashStill'
+import { openDashDesigner } from './dashDesigner'
+import './DevicesView.css'
 import './DashesView.css'
 
-// Library thumbnails fit every screen profile into the same box, so portrait and landscape
-// dashes line up in the grid.
-const THUMB_MAX_WIDTH = 220
-const THUMB_MAX_HEIGHT = 132
+type LoadedState = {
+  layouts: DashLayout[]
+  categories: DashCategoryLists
+  /** The user's screens at their logical (rotated) size, for the New dash and Duplicate dialogs' "Fits …". */
+  screens: Array<{ name: string; width: number; height: number }>
+  /** Per dash, what each screen size would leave out of a copy (the Duplicate dialog's warning). */
+  refitLosses: DashRefitLosses
+  viewMode: DashesViewMode
+}
 
-type AssignedDevice = { id: string; name: string; status: string; tone: ScreenStatusTone }
-type MenuState = { dashId: string; x: number; y: number }
+const toLoadedState = (sprint: SprintState): LoadedState => ({
+  layouts: parseDashLayouts(sprint.dashLayouts),
+  categories: sprint.dashCategories,
+  screens: deviceScreenSizes(sprint.devices),
+  refitLosses: sprint.dashRefitLosses,
+  viewMode: parseDashesViewMode(sprint.settings),
+})
+
+/** The one dialog open over the overview, if any. */
+type Dialog =
+  | { kind: 'newDash' }
+  | { kind: 'duplicateDash'; dashId: string }
+  | { kind: 'newCategory'; dashId: string }
+  | { kind: 'renameCategory'; name: string }
+  | { kind: 'deleteCategory'; name: string }
+  | { kind: 'deleteDash'; dashId: string }
+
+type OpenMenu = { kind: 'dash'; dashId: string; anchor: MenuAnchor } | { kind: 'category'; name: string; anchor: MenuAnchor }
+
+// The picture box of a tile, and of a list row's thumbnail; every screen shape fits inside.
+const TILE_STILL = { width: 264, height: 142 }
+const ROW_STILL = { width: 60, height: 36 }
 
 /**
- * Dashes: the dash library (a Fluent GridView of live previews) and the hand-off to
- * `DashEditorPanel` for everything inside one dash. This view owns create, duplicate,
- * set-default and delete. Click or focus selects a dash, the CommandBar and the context
- * menu (right-click, Shift+F10) act on the selection, double-click or Enter opens the
- * editor, Delete asks to delete.
+ * Dashes: every dash as a still picture, in tiles or a list, grouped by category and filtered
+ * by one. Nothing here says which device shows a dash — that lives on the Devices page. A click
+ * or Enter opens the dash in the designer (`openDashDesigner`); its ⋯, a right-click or Shift+F10
+ * opens its menu, and Delete asks to delete it. This view owns creating, duplicating, filing and
+ * deleting dashes, and the user's own categories.
  */
 export function DashesView({
   runtime = { kind: 'loading' },
   send = () => Promise.resolve(),
   focusDashId,
+  openNewDash = false,
 }: {
   runtime?: RuntimeState
   send?: (command: SprintCommand) => Promise<void>
   /** A dash to open on mount (Home's dash card), applied once — see the effect below. */
   focusDashId?: string
+  /** Opens the New dash dialog on mount (the command palette's "Create dash"), applied once like `focusDashId`. */
+  openNewDash?: boolean
 } = {}) {
-  const [editingId, setEditingId] = useState<string | null>(null)
-  const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [showCreate, setShowCreate] = useState(false)
-  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
-  const [duplicatingId, setDuplicatingId] = useState<string | null>(null)
-  const [menu, setMenu] = useState<MenuState | null>(null)
+  const [chosenFilter, setChosenFilter] = useState<DashesFilter>(ALL_DASHES)
+  // The saved layout arrives with the next state poll; this shows a click at once meanwhile.
+  const [pendingViewMode, setPendingViewMode] = useState<DashesViewMode | null>(null)
+  const [dialog, setDialog] = useState<Dialog | null>(null)
+  const [menu, setMenu] = useState<OpenMenu | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
-  // The card a context menu was raised from; focus returns there when the menu closes.
+  // What raised the open menu; focus returns there when it closes.
   const menuOrigin = useRef<HTMLElement | null>(null)
+  // Set right before a create is sent; the effect below opens the dash whose id it does not
+  // know once the poll delivers it (dash.create answers with no id of its own).
+  const pendingCreateIds = useRef<Set<string> | null>(null)
 
-  const layouts = runtime.kind === 'ready' ? parseDashLayouts(runtime.sprint.dashLayouts) : null
-  const frame = runtime.kind === 'ready' ? toTelemetryFrame(runtime.sprint.telemetry.frame) : null
-  const devices = runtime.kind === 'ready' ? parseDevices(runtime.sprint.devices) : []
-  const screens = runtime.kind === 'ready' ? parseScreens(runtime.sprint.screens) : []
+  const state = runtime.kind === 'ready' ? toLoadedState(runtime.sprint) : null
+  const layouts = state?.layouts ?? null
 
   // `focusDashId` only ever names a live dash for one render (the shell clears it right
-  // after handing it off — see App.tsx), so this only ever opens the editor once; the
-  // guard also means a request for a dash that no longer exists is silently ignored.
+  // after handing it off — see App.tsx), so this opens the dash once; a request for a dash
+  // that no longer exists is ignored.
   useEffect(() => {
-    if (focusDashId && layouts?.some((layout) => layout.id === focusDashId)) {
-      setSelectedId(focusDashId)
-      setEditingId(focusDashId)
-    }
+    if (focusDashId && layouts?.some((layout) => layout.id === focusDashId)) openDashDesigner(focusDashId)
   }, [focusDashId, layouts])
 
-  if (layouts === null) {
+  useEffect(() => {
+    if (openNewDash) setDialog({ kind: 'newDash' })
+  }, [openNewDash])
+
+  useEffect(() => {
+    const known = pendingCreateIds.current
+    if (!known || layouts === null) return
+    const created = layouts.find((layout) => !known.has(layout.id))
+    if (created) {
+      pendingCreateIds.current = null
+      openDashDesigner(created.id)
+    }
+  }, [layouts])
+
+  if (state === null || layouts === null) {
     return (
-      <div className="dashes-page">
+      <div className="devices dashes">
         <PageHeader title="Dashes" />
-        <div className="dashes-grid">
-          <div className="card skeleton dashes-card dashes-card-skeleton" />
-          <div className="card skeleton dashes-card dashes-card-skeleton" />
-          <div className="card skeleton dashes-card dashes-card-skeleton" />
+        <div className="devices-grid">
+          <div className="card skeleton dashes-tile-skeleton" />
+          <div className="card skeleton dashes-tile-skeleton" />
+          <div className="card skeleton dashes-tile-skeleton" />
         </div>
       </div>
     )
   }
 
-  const editing = layouts.find((layout) => layout.id === editingId) ?? null
-  if (editing) {
-    return <DashEditorPanel layout={editing} frame={frame} send={send} onClose={() => setEditingId(null)} />
-  }
+  const { categories } = state
+  const groups = groupDashes(layouts, categories)
+  const filter = resolveDashesFilter(chosenFilter, categories)
+  const filterOptions = dashesFilterOptions(groups, filter)
+  const visible = visibleDashGroups(groups, filter)
+  // Headings name the groups under All; a custom category keeps its heading (and its ⋯) even alone.
+  const showHeading = (group: DashGroup): boolean => group.custom || (filter.kind === 'all' && groups.length > 1)
+  const viewMode = pendingViewMode ?? state.viewMode
+  const find = (dashId: string): DashLayout | null => layouts.find((layout) => layout.id === dashId) ?? null
 
-  // The selection always names a dash while the library has one: the last one picked, or the first.
-  const selected = layouts.find((layout) => layout.id === selectedId) ?? layouts[0] ?? null
-  const duplicating = layouts.find((layout) => layout.id === duplicatingId) ?? null
-  const confirmingDelete = layouts.find((layout) => layout.id === confirmDeleteId) ?? null
-  const menuLayout = menu ? layouts.find((layout) => layout.id === menu.dashId) ?? null : null
-
-  /** Why a dash cannot be deleted, or null when it can. */
-  const deleteBlockedReason = (layout: DashLayout): string | null =>
-    layout.default ? 'The default dash cannot be deleted.' : layouts.length <= 1 ? 'The only dash cannot be deleted.' : null
-
-  const assignedDevices = (layoutId: string): AssignedDevice[] =>
-    devices
-      .filter((device) => device.dashId === layoutId)
-      .map((device) => {
-        const status = describeDeviceStatus(device, findScreen(screens, device.id))
-        return { id: device.id, name: device.name, status: status.label, tone: status.tone }
-      })
-
-  const runAction = async (command: SprintCommand) => {
+  const runAction = async (command: SprintCommand): Promise<void> => {
     setActionError(null)
     try {
       await send(command)
@@ -121,60 +162,75 @@ export function DashesView({
     }
   }
 
-  const askDelete = (layout: DashLayout): void => {
-    if (deleteBlockedReason(layout) === null) setConfirmDeleteId(layout.id)
+  const chooseViewMode = (mode: DashesViewMode): void => {
+    setPendingViewMode(mode)
+    void send(buildDashesViewMode(mode)).catch(() => setPendingViewMode(null))
   }
 
-  const openMenu = (layout: DashLayout, event: ReactMouseEvent<HTMLElement>): void => {
-    event.preventDefault()
-    setSelectedId(layout.id)
-    menuOrigin.current = event.currentTarget
-    // A keyboard-raised context menu (Shift+F10, the Menu key) reports no pointer position;
-    // anchor it to the card instead.
-    const anchor = event.currentTarget.getBoundingClientRect()
-    const x = event.clientX > 0 || event.clientY > 0 ? event.clientX : anchor.left + 16
-    const y = event.clientX > 0 || event.clientY > 0 ? event.clientY : anchor.top + 16
-    setMenu({ dashId: layout.id, x: Math.min(x, window.innerWidth - 228), y: Math.min(y, window.innerHeight - 160) })
+  const createDash = async (dash: NewDash): Promise<void> => {
+    setDialog(null)
+    setActionError(null)
+    pendingCreateIds.current = new Set(layouts.map((layout) => layout.id))
+    try {
+      await send(buildDashCreate(dash))
+    } catch (error) {
+      pendingCreateIds.current = null
+      setActionError(error instanceof Error ? error.message : 'The dash could not be created.')
+    }
   }
 
-  const selectedDeleteBlocked = selected ? deleteBlockedReason(selected) : 'Select a dash first.'
+  const closeMenu = (): void => {
+    setMenu(null)
+    menuOrigin.current?.focus()
+  }
+
+  // A pointer opens the menu where it is; a keyboard (Shift+F10, the Menu key) or the ⋯ under the control.
+  const openMenuAt = (event: ReactMouseEvent<HTMLElement>, below: boolean): MenuAnchor => {
+    // A tile's menu returns focus to the tile's own button, not its (unfocusable) card.
+    menuOrigin.current = event.currentTarget.querySelector<HTMLElement>('.dashes-tile-open') ?? event.currentTarget
+    const box = event.currentTarget.getBoundingClientRect()
+    if (below) return { x: box.left, y: box.bottom + 4 }
+    return event.clientX > 0 || event.clientY > 0 ? { x: event.clientX, y: event.clientY } : { x: box.left + 16, y: box.top + 16 }
+  }
+
+  const dashActions = (layout: DashLayout) => ({
+    onOpen: () => openDashDesigner(layout.id),
+    onDelete: () => setDialog({ kind: 'deleteDash', dashId: layout.id }),
+    onMenu: (event: ReactMouseEvent<HTMLElement>, below: boolean) => {
+      event.preventDefault()
+      event.stopPropagation()
+      setMenu({ kind: 'dash', dashId: layout.id, anchor: openMenuAt(event, below) })
+    },
+  })
+
+  const menuDash = menu?.kind === 'dash' ? find(menu.dashId) : null
+  const deletingDash = dialog?.kind === 'deleteDash' ? find(dialog.dashId) : null
+  const filingDash = dialog?.kind === 'newCategory' ? find(dialog.dashId) : null
+  const copyingDash = dialog?.kind === 'duplicateDash' ? find(dialog.dashId) : null
 
   return (
-    <div className="dashes-page">
+    <div className="devices dashes">
       <PageHeader title="Dashes">
-        <button type="button" className="button primary" onClick={() => setShowCreate(true)}>
+        <button type="button" className="button primary" onClick={() => setDialog({ kind: 'newDash' })}>
           <Plus /> New dash
         </button>
-        <CommandDivider />
-        <button type="button" className="button subtle" disabled={!selected} onClick={() => selected && setEditingId(selected.id)}>
-          <Pencil /> Edit
-        </button>
-        <button type="button" className="button subtle" disabled={!selected} onClick={() => selected && setDuplicatingId(selected.id)}>
-          <Copy /> Duplicate
-        </button>
-        <button
-          type="button"
-          className="button subtle"
-          disabled={!selected || selected.default}
-          title={selected?.default ? 'This is already the default dash.' : undefined}
-          onClick={() => selected && void runAction(buildDashSetDefault(selected.id))}
-        >
-          <Star /> Set as default
-        </button>
-        <CommandDivider />
-        <button
-          type="button"
-          className="button subtle destructive"
-          disabled={selectedDeleteBlocked !== null}
-          title={selectedDeleteBlocked ?? undefined}
-          onClick={() => selected && askDelete(selected)}
-        >
-          <Trash2 /> Delete
-        </button>
+        {layouts.length > 0 && (
+          <>
+            <CommandDivider />
+            <div className="segmented devices-layout" role="radiogroup" aria-label="Layout">
+              <button type="button" role="radio" className="segmented-item" aria-checked={viewMode === 'gallery'} aria-label="Tiles" title="Tiles" onClick={() => chooseViewMode('gallery')}>
+                <LayoutGrid size={14} />
+              </button>
+              <button type="button" role="radio" className="segmented-item" aria-checked={viewMode === 'list'} aria-label="List" title="List" onClick={() => chooseViewMode('list')}>
+                <List size={14} />
+              </button>
+            </div>
+          </>
+        )}
       </PageHeader>
 
       {actionError && (
-        <div className="infobar error" role="alert">
+        <div className="infobar error dashes-infobar" role="alert">
           <span className="infobar-icon">!</span>
           <strong className="infobar-title">Dash not updated</strong>
           <span className="infobar-message">{actionError}</span>
@@ -185,325 +241,246 @@ export function DashesView({
       )}
 
       {layouts.length === 0 ? (
-        <div className="empty-state">
-          <LayoutDashboard size={28} strokeWidth={1.5} />
-          <h2>No dashes yet</h2>
-          <p>Create a dash to design a wheel-screen layout and assign it to a device.</p>
+        <div className="card">
+          <div className="empty-state">
+            <LayoutDashboard size={28} strokeWidth={1.5} />
+            <h2>No dashes yet</h2>
+            <p>Create a dash to design what your wheel screen shows.</p>
+          </div>
         </div>
       ) : (
-        <div className="dashes-grid" role="listbox" aria-label="Dashes" aria-orientation="horizontal">
-          {layouts.map((layout) => (
-            <DashCard
-              key={layout.id}
-              layout={layout}
-              frame={frame}
-              devices={assignedDevices(layout.id)}
-              selected={selected?.id === layout.id}
-              onSelect={() => setSelectedId(layout.id)}
-              onOpen={() => setEditingId(layout.id)}
-              onDelete={() => askDelete(layout)}
-              onContextMenu={(event) => openMenu(layout, event)}
-            />
+        <>
+          {filterOptions && (
+            <div className="segmented devices-filter" role="radiogroup" aria-label="Show">
+              {filterOptions.map((option) => (
+                <button
+                  key={option.filter.kind === 'category' ? `category:${option.filter.name}` : option.filter.kind}
+                  type="button"
+                  role="radio"
+                  className="segmented-item"
+                  aria-checked={sameDashesFilter(option.filter, filter)}
+                  onClick={() => setChosenFilter(option.filter)}
+                >
+                  {option.label} <span className="devices-filter-count tabular">{option.count}</span>
+                </button>
+              ))}
+            </div>
+          )}
+          {visible.length === 0 && <p className="muted devices-none">No dashes in this category.</p>}
+          {visible.map((group) => (
+            <section key={group.title} className="devices-group" aria-label={group.title}>
+              {showHeading(group) && (
+                <div className="dashes-group-head">
+                  <h2 className="devices-group-title">
+                    {group.title} <span className="muted tabular">{group.dashes.length}</span>
+                    {group.custom && <span className="dashes-group-tag">Your category</span>}
+                  </h2>
+                  {group.custom && (
+                    <button
+                      type="button"
+                      className="icon-button dashes-group-more"
+                      aria-label={`${group.title} actions`}
+                      title="Rename or delete"
+                      onClick={(event) => setMenu({ kind: 'category', name: group.title, anchor: openMenuAt(event, true) })}
+                    >
+                      <MoreHorizontal size={16} />
+                    </button>
+                  )}
+                </div>
+              )}
+              {viewMode === 'gallery' ? (
+                <div className="devices-grid">
+                  {group.dashes.map((layout) => (
+                    <DashTile key={layout.id} layout={layout} {...dashActions(layout)} />
+                  ))}
+                </div>
+              ) : (
+                <div className="card list-card">
+                  <div className="list-header dashes-columns" aria-hidden="true">
+                    <span />
+                    <span>Dash</span>
+                    <span>Screen</span>
+                    <span>Pages</span>
+                    <span />
+                  </div>
+                  <ul className="list-rows">
+                    {group.dashes.map((layout) => (
+                      <DashRow key={layout.id} layout={layout} {...dashActions(layout)} />
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </section>
           ))}
-        </div>
+        </>
       )}
 
-      {menu && menuLayout && (
+      {menu?.kind === 'dash' && menuDash && (
         <DashMenu
-          x={menu.x}
-          y={menu.y}
-          layout={menuLayout}
-          deleteBlockedReason={deleteBlockedReason(menuLayout)}
-          onClose={() => {
-            setMenu(null)
-            menuOrigin.current?.focus()
-          }}
-          onEdit={() => setEditingId(menuLayout.id)}
-          onDuplicate={() => setDuplicatingId(menuLayout.id)}
-          onSetDefault={() => void runAction(buildDashSetDefault(menuLayout.id))}
-          onDelete={() => askDelete(menuLayout)}
+          anchor={menu.anchor}
+          dashName={menuDash.name}
+          category={knownDashCategory(menuDash, categories)}
+          categories={categories}
+          onClose={closeMenu}
+          onEdit={() => openDashDesigner(menuDash.id)}
+          onDuplicate={() => setDialog({ kind: 'duplicateDash', dashId: menuDash.id })}
+          onSetCategory={(category) => void runAction(buildDashSetCategory(menuDash.id, category))}
+          onNewCategory={() => setDialog({ kind: 'newCategory', dashId: menuDash.id })}
+          onDelete={() => setDialog({ kind: 'deleteDash', dashId: menuDash.id })}
         />
       )}
 
-      {showCreate && (
-        <ScreenSizeDialog
-          title="New dash"
-          message="Choose the wheel-screen size this dash is designed for. You can change it later."
+      {menu?.kind === 'category' && (
+        <CategoryMenu
+          anchor={menu.anchor}
+          name={menu.name}
+          onClose={closeMenu}
+          onRename={() => setDialog({ kind: 'renameCategory', name: menu.name })}
+          onDelete={() => setDialog({ kind: 'deleteCategory', name: menu.name })}
+        />
+      )}
+
+      {dialog?.kind === 'newDash' && (
+        <NewDashDialog
+          categories={categories}
+          screens={screenChoices(state.screens)}
+          initialCategory={newDashCategory(filter)}
+          onCancel={() => setDialog(null)}
+          onCreate={(dash) => void createDash(dash)}
+        />
+      )}
+
+      {copyingDash && (
+        <DuplicateDashDialog
+          source={copyingDash}
+          losses={state.refitLosses[copyingDash.id] ?? {}}
+          categories={categories}
+          screens={screenChoices(state.screens)}
+          onCancel={() => setDialog(null)}
+          onCreate={(dash) => void createDash(dash)}
+        />
+      )}
+
+      {filingDash && (
+        <CategoryNameDialog
+          title="New category"
+          message={`${filingDash.name} moves into it.`}
           confirmLabel="Create"
-          defaultProfileId={SCREEN_PROFILES[0].id}
-          onCancel={() => setShowCreate(false)}
-          onConfirm={(profileId) => {
-            setShowCreate(false)
-            void runAction(buildDashCreate(profileId))
+          categories={categories}
+          onCancel={() => setDialog(null)}
+          onConfirm={(name) => {
+            setDialog(null)
+            void runAction(buildDashCategoryCreate(name, filingDash.id))
           }}
         />
       )}
 
-      {duplicating && (
-        <ScreenSizeDialog
-          title="Duplicate dash"
-          message={`Creates a copy of ${duplicating.name}, refitted to the screen size you choose.`}
-          confirmLabel="Duplicate"
-          defaultProfileId={layoutScreenProfile(duplicating).id}
-          onCancel={() => setDuplicatingId(null)}
-          onConfirm={(profileId) => {
-            setDuplicatingId(null)
-            void runAction(buildDashDuplicate(duplicating.id, profileId))
+      {dialog?.kind === 'renameCategory' && (
+        <CategoryNameDialog
+          title="Rename category"
+          confirmLabel="Rename"
+          initialName={dialog.name}
+          renaming={dialog.name}
+          categories={categories}
+          onCancel={() => setDialog(null)}
+          onConfirm={(newName) => {
+            setDialog(null)
+            // Keep looking at the category under its new name.
+            if (filter.kind === 'category' && filter.name === dialog.name) setChosenFilter({ kind: 'category', name: newName })
+            void runAction(buildDashCategoryRename(dialog.name, newName))
           }}
         />
       )}
 
-      {confirmingDelete && (
+      {dialog?.kind === 'deleteCategory' && (
         <ConfirmDialog
-          title={`Delete ${confirmingDelete.name}?`}
+          title={`Delete ${dialog.name}?`}
+          message={deleteCategoryMessage(groups.find((group) => group.custom && group.title === dialog.name)?.dashes.length ?? 0)}
+          confirmLabel="Delete"
+          destructive
+          onCancel={() => setDialog(null)}
+          onConfirm={() => {
+            setDialog(null)
+            void runAction(buildDashCategoryDelete(dialog.name))
+          }}
+        />
+      )}
+
+      {deletingDash && (
+        <ConfirmDialog
+          title={`Delete ${deletingDash.name}?`}
           message="The dash and all of its pages are removed. This cannot be undone."
           confirmLabel="Delete"
           destructive
+          onCancel={() => setDialog(null)}
           onConfirm={() => {
-            setConfirmDeleteId(null)
-            void runAction(buildDashDelete(confirmingDelete.id))
+            setDialog(null)
+            void runAction(buildDashDelete(deletingDash.id))
           }}
-          onCancel={() => setConfirmDeleteId(null)}
         />
       )}
     </div>
   )
 }
 
-/** One GridView item: a live thumbnail, the name, the screen size, and the devices showing it. */
-function DashCard({
-  layout,
-  frame,
-  devices,
-  selected,
-  onSelect,
-  onOpen,
-  onDelete,
-  onContextMenu,
-}: {
+const deleteCategoryMessage = (count: number): string =>
+  count === 0 ? 'The category is removed. No dashes are in it.' : `The category is removed; ${count === 1 ? 'its dash moves' : `its ${count} dashes move`} to Other.`
+
+type DashItemProps = {
   layout: DashLayout
-  frame: ReturnType<typeof toTelemetryFrame>
-  devices: AssignedDevice[]
-  selected: boolean
-  onSelect: () => void
   onOpen: () => void
   onDelete: () => void
-  onContextMenu: (event: ReactMouseEvent<HTMLElement>) => void
-}) {
-  const profile = layoutScreenProfile(layout)
-  const thumb = fitScreenSize(profile, THUMB_MAX_WIDTH, THUMB_MAX_HEIGHT)
-  const pageCount = layout.pages.length + (layout.idlePage ? 1 : 0)
+  /** `below` anchors the menu under the control (the ⋯) instead of at the pointer. */
+  onMenu: (event: ReactMouseEvent<HTMLElement>, below: boolean) => void
+}
 
-  // Selection follows focus (Fluent GridView); arrow keys move between cards.
-  const onKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>): void => {
-    if (event.key === 'Enter') {
-      event.preventDefault()
-      onOpen()
-    } else if (event.key === 'Delete') {
+/** Delete on a focused dash asks to delete it; Enter and Space open it (the button's own click). */
+const onItemKeyDown =
+  (onDelete: () => void) =>
+  (event: ReactKeyboardEvent<HTMLElement>): void => {
+    if (event.key === 'Delete') {
       event.preventDefault()
       onDelete()
-    } else if (event.key === 'ArrowRight' || event.key === 'ArrowDown' || event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
-      event.preventDefault()
-      const forward = event.key === 'ArrowRight' || event.key === 'ArrowDown'
-      const sibling = forward ? event.currentTarget.nextElementSibling : event.currentTarget.previousElementSibling
-      if (sibling instanceof HTMLElement) sibling.focus()
     }
   }
 
+function DashTile({ layout, onOpen, onDelete, onMenu }: DashItemProps) {
   return (
-    <div
-      className={selected ? 'card dashes-card selected' : 'card dashes-card'}
-      role="option"
-      aria-selected={selected}
-      aria-label={layout.name}
-      tabIndex={0}
-      onFocus={onSelect}
-      onClick={onSelect}
-      onDoubleClick={onOpen}
-      onKeyDown={onKeyDown}
-      onContextMenu={onContextMenu}
-    >
-      <div className="dashes-thumb">
-        <DashRenderer layout={layout} frame={frame} width={thumb.width} height={thumb.height} className="dashes-thumb-canvas" />
-      </div>
-
-      <div className="dashes-card-body">
-        <div className="dashes-card-title-row">
-          <span className="dashes-card-name">{layout.name}</span>
-          {layout.default && (
-            <span className="chip chip-default">
-              <Star size={11} /> Default
-            </span>
-          )}
-        </div>
-        <span className="muted">
-          {profile.name} · {pageCount} {pageCount === 1 ? 'page' : 'pages'}
+    <div className="card dashes-tile" onContextMenu={(event) => onMenu(event, false)}>
+      <button type="button" className="dashes-tile-open" aria-label={`${layout.name}, ${dashSummary(layout)}`} onClick={onOpen} onKeyDown={onItemKeyDown(onDelete)}>
+        <span className="dashes-tile-picture">
+          <DashStill layout={layout} maxWidth={TILE_STILL.width} maxHeight={TILE_STILL.height} />
         </span>
-
-        <div className="dashes-devices">
-          {devices.length === 0 ? (
-            <span className="muted">Not assigned to a device</span>
-          ) : (
-            devices.map((device) => (
-              <div key={device.id} className="dashes-device">
-                <span className="dashes-device-name">{device.name}</span>
-                <Status tone={device.tone} quiet>
-                  {device.status}
-                </Status>
-              </div>
-            ))
-          )}
-        </div>
-      </div>
+        <span className="devices-tile-text">
+          <span className="devices-name dashes-tile-name">{layout.name}</span>
+          <span className="muted devices-line">{dashSummary(layout)}</span>
+        </span>
+      </button>
+      <button type="button" className="icon-button dashes-tile-more" aria-label={`${layout.name} actions`} title="More" onClick={(event) => onMenu(event, true)}>
+        <MoreHorizontal size={16} />
+      </button>
     </div>
   )
 }
 
-/** Context menu for one dash (MenuFlyout): the CommandBar's actions, Delete last. */
-function DashMenu({
-  x,
-  y,
-  layout,
-  deleteBlockedReason,
-  onClose,
-  onEdit,
-  onDuplicate,
-  onSetDefault,
-  onDelete,
-}: {
-  x: number
-  y: number
-  layout: DashLayout
-  deleteBlockedReason: string | null
-  onClose: () => void
-  onEdit: () => void
-  onDuplicate: () => void
-  onSetDefault: () => void
-  onDelete: () => void
-}) {
-  const menuRef = useRef<HTMLDivElement | null>(null)
-
-  useEffect(() => {
-    menuRef.current?.querySelector<HTMLButtonElement>('.menu-item:not(:disabled)')?.focus()
-  }, [])
-
-  const run = (action: () => void) => () => {
-    onClose()
-    action()
-  }
-
-  // Up/Down move between enabled items; Escape and Tab close the menu.
-  const onKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>): void => {
-    if (event.key === 'Escape' || event.key === 'Tab') {
-      event.preventDefault()
-      onClose()
-      return
-    }
-    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return
-    event.preventDefault()
-    const items = [...(menuRef.current?.querySelectorAll<HTMLButtonElement>('.menu-item:not(:disabled)') ?? [])]
-    const index = items.findIndex((item) => item === document.activeElement)
-    const next = event.key === 'ArrowDown' ? (index + 1) % items.length : (index - 1 + items.length) % items.length
-    items[next]?.focus()
-  }
-
+function DashRow({ layout, onOpen, onDelete, onMenu }: DashItemProps) {
   return (
-    <div
-      className="dashes-menu-layer"
-      onPointerDown={onClose}
-      onContextMenu={(event) => {
-        event.preventDefault()
-        onClose()
-      }}
-    >
-      <div
-        ref={menuRef}
-        className="menu-flyout dashes-menu"
-        role="menu"
-        aria-label={`${layout.name} actions`}
-        style={{ left: x, top: y }}
-        onPointerDown={(event) => event.stopPropagation()}
-        onKeyDown={onKeyDown}
+    <li>
+      <button
+        type="button"
+        className="list-row dashes-columns dashes-row"
+        onClick={onOpen}
+        onKeyDown={onItemKeyDown(onDelete)}
+        onContextMenu={(event) => onMenu(event, false)}
       >
-        <button type="button" role="menuitem" className="menu-item" onClick={run(onEdit)}>
-          <Pencil />
-          <span className="menu-item-label">Edit</span>
-          <span className="menu-item-shortcut">Enter</span>
-        </button>
-        <button type="button" role="menuitem" className="menu-item" onClick={run(onDuplicate)}>
-          <Copy />
-          <span className="menu-item-label">Duplicate</span>
-        </button>
-        <button type="button" role="menuitem" className="menu-item" disabled={layout.default} onClick={run(onSetDefault)}>
-          <Star />
-          <span className="menu-item-label">Set as default</span>
-        </button>
-        <div className="menu-separator" role="separator" />
-        <button
-          type="button"
-          role="menuitem"
-          className="menu-item destructive"
-          disabled={deleteBlockedReason !== null}
-          title={deleteBlockedReason ?? undefined}
-          onClick={run(onDelete)}
-        >
-          <Trash2 />
-          <span className="menu-item-label">Delete</span>
-          <span className="menu-item-shortcut">Del</span>
-        </button>
-      </div>
-    </div>
-  )
-}
-
-/** ContentDialog that picks a screen size: shared by "New dash" and "Duplicate dash". */
-function ScreenSizeDialog({
-  title,
-  message,
-  confirmLabel,
-  defaultProfileId,
-  onCancel,
-  onConfirm,
-}: {
-  title: string
-  message: string
-  confirmLabel: string
-  defaultProfileId: string
-  onCancel: () => void
-  onConfirm: (profileId: string) => void
-}) {
-  const [profileId, setProfileId] = useState(defaultProfileId)
-  const profile = resolveScreenProfile(profileId)
-
-  return (
-    <ContentDialog
-      title={title}
-      onCancel={onCancel}
-      footer={
-        <>
-          <button type="button" className="button primary" onClick={() => onConfirm(profileId)}>
-            {confirmLabel}
-          </button>
-          <button type="button" className="button" onClick={onCancel}>
-            Cancel
-          </button>
-        </>
-      }
-    >
-      <p className="content-dialog-text">{message}</p>
-      <label className="field">
-        <span>Screen size</span>
-        <select value={profileId} autoFocus onChange={(event) => setProfileId(event.target.value)}>
-          {SCREEN_PROFILES.map((option) => (
-            <option key={option.id} value={option.id}>
-              {option.name}
-            </option>
-          ))}
-        </select>
-        <span className="field-hint">
-          {profile.gridCols} × {profile.gridRows} layout grid
+        <span className="dashes-row-picture">
+          <DashStill layout={layout} maxWidth={ROW_STILL.width} maxHeight={ROW_STILL.height} />
         </span>
-      </label>
-    </ContentDialog>
+        <span className="devices-name">{layout.name}</span>
+        <span className="muted devices-line">{layoutScreenProfile(layout).name}</span>
+        <span className="muted devices-line tabular">{formatPageCount(dashPageCount(layout))}</span>
+        <ChevronRight size={14} className="devices-chevron" aria-hidden="true" />
+      </button>
+    </li>
   )
 }

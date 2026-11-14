@@ -42,11 +42,11 @@ public sealed record DeltaReference
 /// marshalled onto the reader thread by the engine, never invoked cross-thread.</para>
 ///
 /// <para><b>Lap boundary.</b> The authoritative boundary is a <em>lap-number
-/// increment</em> (an integer, jitter-free) — both the LMU adapter and the demo
-/// increment it exactly when the start/finish line is crossed, which coincides with
-/// the track-position wrap. We deliberately do not also key off the float
-/// track-position wrap, which would risk a double-finalize across the one/two frames
-/// where the int and float fields tick at slightly different instants.</para>
+/// increment</em> (an integer, jitter-free). In LMU it comes from telemetry while the
+/// track position comes from scoring (~5 Hz), so the two disagree for a frame or two at
+/// the line, usually with the lap number first. We deliberately do not also key off the
+/// float track-position wrap, which would risk a double-finalize across that window;
+/// instead a new lap's trace waits for the position to reach the start of the lap.</para>
 ///
 /// <para><b>Reference total.</b> On the boundary frame the adapter has already
 /// reseeded <see cref="LapState.CurrentLapTime"/> to the <em>new</em> lap's small
@@ -99,18 +99,18 @@ public sealed class DeltaTracker
     {
         ArgumentNullException.ThrowIfNull(frame);
 
-        var lap = frame.Lap;
+        LapState lap = frame.Lap;
 
         // Off-track: end the current stint's trace (so a re-entry doesn't splice onto
         // it) but keep the reference — it is still a valid target for this session.
         if (!frame.Session.InCar)
         {
-            if (_inCar)
+            if (this._inCar)
             {
-                EndStint();
+                this.EndStint();
             }
 
-            _inCar = false;
+            this._inCar = false;
             return frame;
         }
 
@@ -120,87 +120,91 @@ public sealed class DeltaTracker
         // The venue check only fires once we actually hold state, so the very first
         // in-car frame (when _track is still "") doesn't churn. A lap number going
         // backwards is a session restart / teleport.
-        var venueChanged = (frame.Session.Track != _track || frame.Session.SessionType != _session)
-                           && (_haveLap || _reference is not null);
-        var lapWentBack = _haveLap && lap.CurrentLap < _lapNumber;
+        bool venueChanged = (frame.Session.Track != this._track || frame.Session.SessionType != this._session)
+                           && (this._haveLap || this._reference is not null);
+        bool lapWentBack = this._haveLap && lap.CurrentLap < this._lapNumber;
         if (venueChanged || lapWentBack)
         {
-            ResetAll();
+            this.ResetAll();
         }
 
-        if (!_inCar)
+        if (!this._inCar)
         {
             // Fresh stint: start a clean trace, keep any session reference.
-            EndStint();
+            this.EndStint();
         }
 
-        _inCar = true;
-        _track = frame.Session.Track;
-        _session = frame.Session.SessionType;
+        this._inCar = true;
+        this._track = frame.Session.Track;
+        this._session = frame.Session.SessionType;
 
-        var pos = Math.Clamp(lap.TrackPosition, 0.0, 1.0);
+        double pos = Math.Clamp(lap.TrackPosition, 0.0, 1.0);
 
         // The integer lap number (telemetry region) and the float track position
         // (scoring region) can disagree by a frame about whether the start/finish line
         // was just crossed. When exactly one of them says "new lap", the lap-relative
         // time and position are momentarily inconsistent and a naive delta would spike by
         // ~a whole lap. Detect that desync and hold the last delta until they agree.
-        var lapAdvanced = _haveLap && lap.CurrentLap > _lapNumber;
-        var posWrapped = _haveLap && pos + WrapJumpThreshold < _prevPos;
-        var lineSkew = _haveLap && lapAdvanced != posWrapped;
+        bool lapAdvanced = this._haveLap && lap.CurrentLap > this._lapNumber;
+        bool posWrapped = this._haveLap && pos + WrapJumpThreshold < this._prevPos;
+        bool lineSkew = this._haveLap && lapAdvanced != posWrapped;
 
-        if (!_haveLap)
+        if (!this._haveLap)
         {
-            BeginLap(lap.CurrentLap);
+            this.BeginLap(lap.CurrentLap);
         }
         else if (lapAdvanced)
         {
             // Lap boundary: finalize the just-completed lap BEFORE recording the new
             // lap's first sample (CurrentLapTime is already reseeded on this frame).
-            FinalizeLap(lap.LastLapTime);
-            BeginLap(lap.CurrentLap);
+            this.FinalizeLap(lap.LastLapTime);
+            this.BeginLap(lap.CurrentLap);
         }
 
         // Accumulate the in-progress lap. Append only on strictly-forward progress so
         // the reference stays a function of position (no duplicate/again-backwards pos).
-        _maxTime = Math.Max(_maxTime, NonNegative(lap.CurrentLapTime));
+        // A trace never starts past CompleteStartMax: such a lap could not be adopted
+        // anyway, and it keeps the old lap's ~0.99 position — still showing after the lap
+        // number has ticked over — from seeding a trace that rejects the whole new lap.
+        this._maxTime = Math.Max(this._maxTime, NonNegative(lap.CurrentLapTime));
         if (!lap.IsValid)
         {
-            _lapValid = false;
+            this._lapValid = false;
         }
 
-        if (_current.Count == 0 || pos > _current[^1].Pos + PosEpsilon)
+        bool startsTrace = this._current.Count == 0 && pos <= CompleteStartMax;
+        if (startsTrace || (this._current.Count > 0 && pos > this._current[^1].Pos + PosEpsilon))
         {
-            _current.Add((pos, NonNegative(lap.CurrentLapTime)));
+            this._current.Add((pos, NonNegative(lap.CurrentLapTime)));
         }
 
-        _prevPos = pos;
+        this._prevPos = pos;
 
         // A chosen plan target outranks the session best: it is what the driver said they
         // are driving against.
-        var reference = _planReference ?? _reference;
+        (double Pos, double Time)[]? reference = this._planReference ?? this._reference;
         if (reference is null)
         {
             return frame; // nothing to compare against yet
         }
 
-        var referenceTotal = _planReference is not null ? _planReferenceTotal : _referenceTotal;
+        double referenceTotal = this._planReference is not null ? this._planReferenceTotal : this._referenceTotal;
 
         // Hold the last delta through the 1–2 frame line desync rather than emitting a
         // ~full-lap spike; otherwise compute the position-relative gap.
         if (!lineSkew)
         {
-            _lastDelta = Sanitize(NonNegative(lap.CurrentLapTime) - ReferenceTimeAt(reference, referenceTotal, pos));
+            this._lastDelta = Sanitize(NonNegative(lap.CurrentLapTime) - ReferenceTimeAt(reference, referenceTotal, pos));
         }
 
         return frame with
         {
-            Lap = lap with { Delta = _lastDelta, TargetLapTime = referenceTotal }
+            Lap = lap with { Delta = this._lastDelta, TargetLapTime = referenceTotal }
         };
     }
 
     /// <summary>Forget all state (reference + in-progress lap). For a full restart.</summary>
-    public void Reset() => ResetAll();
+    public void Reset() => this.ResetAll();
 
     /// <summary>
     /// Pin the current reference lap as a manual target and stop auto-replacing it with
@@ -211,14 +215,14 @@ public sealed class DeltaTracker
     /// </summary>
     public void SetManualReference()
     {
-        if (_reference is not null)
+        if (this._reference is not null)
         {
-            _manualReference = true;
+            this._manualReference = true;
         }
     }
 
     /// <summary>Resume automatic best-lap reference adoption.</summary>
-    public void ClearManualReference() => _manualReference = false;
+    public void ClearManualReference() => this._manualReference = false;
 
     /// <summary>
     /// Measure against <paramref name="reference"/> — a lap chosen outside this session —
@@ -243,90 +247,90 @@ public sealed class DeltaTracker
             || reference.TimesSeconds.Count < 2
             || reference.LapTimeSeconds <= 0)
         {
-            _planReference = null;
-            _planReferenceTotal = 0;
+            this._planReference = null;
+            this._planReferenceTotal = 0;
             return;
         }
 
         // Positions are known by construction — the curve stores only the times — and a
         // positive step makes them strictly ascending, which the interpolation requires.
-        var samples = new (double Pos, double Time)[reference.TimesSeconds.Count];
-        for (var i = 0; i < samples.Length; i++)
+        (double Pos, double Time)[] samples = new (double Pos, double Time)[reference.TimesSeconds.Count];
+        for (int i = 0; i < samples.Length; i++)
         {
             samples[i] = (i * reference.PositionStep, reference.TimesSeconds[i]);
         }
 
-        _planReference = samples;
-        _planReferenceTotal = reference.LapTimeSeconds;
+        this._planReference = samples;
+        this._planReferenceTotal = reference.LapTimeSeconds;
     }
 
     private void BeginLap(int lapNumber)
     {
-        _haveLap = true;
-        _lapNumber = lapNumber;
-        _current.Clear();
-        _maxTime = 0;
-        _lapValid = true;
+        this._haveLap = true;
+        this._lapNumber = lapNumber;
+        this._current.Clear();
+        this._maxTime = 0;
+        this._lapValid = true;
     }
 
     private void FinalizeLap(double lastLapTime)
     {
-        if (_manualReference || _current.Count < CompleteMinSamples)
+        if (this._manualReference || this._current.Count < CompleteMinSamples)
         {
             return;
         }
 
-        if (!_lapValid)
+        if (!this._lapValid)
         {
             return;
         }
 
         // Require the trace to span (about) a whole lap.
-        if (_current[0].Pos > CompleteStartMax || _current[^1].Pos < CompleteEndMin)
+        if (this._current[0].Pos > CompleteStartMax || this._current[^1].Pos < CompleteEndMin)
         {
             return;
         }
 
-        var total = lastLapTime > 0 ? lastLapTime : _maxTime;
+        double total = lastLapTime > 0 ? lastLapTime : this._maxTime;
         if (total <= 0)
         {
             return;
         }
 
         // Adopt only the first reference, then only strictly-faster laps.
-        if (_reference is not null && total >= _referenceTotal)
+        if (this._reference is not null && total >= this._referenceTotal)
         {
             return;
         }
 
-        _reference = _current.ToArray();
-        _referenceTotal = total;
+        this._reference = this._current.ToArray();
+        this._referenceTotal = total;
     }
 
     private void EndStint()
     {
-        _haveLap = false;
-        _current.Clear();
-        _maxTime = 0;
-        _lapValid = true;
-        _prevPos = 0;
+        this._haveLap = false;
+        this._current.Clear();
+        this._maxTime = 0;
+        this._lapValid = true;
+        this._prevPos = 0;
     }
 
     private void ResetAll()
     {
-        EndStint();
-        _reference = null;
-        _referenceTotal = 0;
-        _lastDelta = 0;
+        this.EndStint();
+        this._reference = null;
+        this._referenceTotal = 0;
+        this._lastDelta = 0;
         // The plan reference goes too: it is a lap of the venue that just changed, so it no
         // longer describes anything about what is being driven. Its owner re-delivers it at
         // the next start/finish line if it still applies.
-        _planReference = null;
-        _planReferenceTotal = 0;
+        this._planReference = null;
+        this._planReferenceTotal = 0;
         // Manual pin and continuity markers are cleared on a true restart.
-        _manualReference = false;
-        _track = "";
-        _session = SessionType.Unknown;
+        this._manualReference = false;
+        this._track = "";
+        this._session = SessionType.Unknown;
     }
 
     private static double ReferenceTimeAt((double Pos, double Time)[] samples, double total, double pos)
@@ -342,11 +346,11 @@ public sealed class DeltaTracker
         }
 
         // Binary search for the bracketing interval (positions are strictly ascending).
-        var lo = 0;
-        var hi = samples.Length - 1;
+        int lo = 0;
+        int hi = samples.Length - 1;
         while (hi - lo > 1)
         {
-            var mid = (lo + hi) / 2;
+            int mid = (lo + hi) / 2;
             if (samples[mid].Pos <= pos)
             {
                 lo = mid;
@@ -357,9 +361,9 @@ public sealed class DeltaTracker
             }
         }
 
-        var (p0, t0) = samples[lo];
-        var (p1, t1) = samples[hi];
-        var span = p1 - p0;
+        (double p0, double t0) = samples[lo];
+        (double p1, double t1) = samples[hi];
+        double span = p1 - p0;
         if (span <= PosEpsilon)
         {
             return t0; // degenerate interval guard (should not happen post-append guard)

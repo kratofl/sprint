@@ -67,23 +67,22 @@ public sealed class DevicePurposeTests
     [Fact]
     public void PurposeLayoutsUseTheAssignedDashboardAndProvideValidZeroConfigurationDisplays()
     {
-        var assigned = new DashLayout
+        DashLayout assigned = new DashLayout
         {
             Id = "assigned",
             Name = "Assigned dashboard",
-            IsDefault = true,
             Pages = [new DashPage { Id = "assigned-page", Name = "Driving" }],
         };
-        var dashboards = new[] { assigned };
+        DashLayout[] dashboards = new[] { assigned };
 
-        var dashboard = DevicePurposeLayouts.Resolve(ScreenDevice("dash-screen"), dashboards);
-        var flags = DevicePurposeLayouts.Resolve(
+        DashLayout? dashboard = DevicePurposeLayouts.Resolve(ScreenDevice("dash-screen"), dashboards);
+        DashLayout? flags = DevicePurposeLayouts.Resolve(
             ScreenDevice("flag-screen", DevicePurposes.Flags),
             dashboards);
-        var lapTimer = DevicePurposeLayouts.Resolve(
+        DashLayout? lapTimer = DevicePurposeLayouts.Resolve(
             ScreenDevice("lap-screen", DevicePurposes.LapTimes),
             dashboards);
-        var mirror = DevicePurposeLayouts.Resolve(
+        DashLayout? mirror = DevicePurposeLayouts.Resolve(
             ScreenDevice("mirror-screen", DevicePurposes.RearViewMirror),
             dashboards);
 
@@ -102,15 +101,15 @@ public sealed class DevicePurposeTests
     [Fact]
     public void LapTimerBuildsAReferenceThenShowsPredictiveDelta()
     {
-        var presenter = new RaceLogicLapTimerPresenter();
+        RaceLogicLapTimerPresenter presenter = new RaceLogicLapTimerPresenter();
 
-        var rolling = presenter.Present(
+        RaceLogicLapTimerView rolling = presenter.Present(
             new TelemetryFrame
             {
                 Lap = new LapState { CurrentLap = 1, CurrentLapTime = 42.345 },
             },
             timestamp: 100);
-        var predictive = presenter.Present(
+        RaceLogicLapTimerView predictive = presenter.Present(
             new TelemetryFrame
             {
                 Lap = new LapState
@@ -133,7 +132,7 @@ public sealed class DevicePurposeTests
     [Fact]
     public void LapTimerFreezesTheCompletedLapAtTheLapBoundary()
     {
-        var presenter = new RaceLogicLapTimerPresenter();
+        RaceLogicLapTimerPresenter presenter = new RaceLogicLapTimerPresenter();
         presenter.Present(
             new TelemetryFrame
             {
@@ -141,7 +140,7 @@ public sealed class DevicePurposeTests
             },
             timestamp: 100);
 
-        var result = presenter.Present(
+        RaceLogicLapTimerView result = presenter.Present(
             new TelemetryFrame
             {
                 Lap = new LapState
@@ -162,11 +161,11 @@ public sealed class DevicePurposeTests
     [Fact]
     public void SupportedPurposesDriveScreenOutputButOnlyDashboardCountsAsADashAssignment()
     {
-        var dashboard = ScreenDevice("dash-screen");
-        var flags = ScreenDevice("flag-screen", DevicePurposes.Flags);
-        var lapTimer = ScreenDevice("lap-screen", DevicePurposes.LapTimes);
-        var mirror = ScreenDevice("mirror", DevicePurposes.RearViewMirror);
-        var configuredMirror = ScreenDevice("configured-mirror", DevicePurposes.RearViewMirror);
+        SavedDevice dashboard = ScreenDevice("dash-screen");
+        SavedDevice flags = ScreenDevice("flag-screen", DevicePurposes.Flags);
+        SavedDevice lapTimer = ScreenDevice("lap-screen", DevicePurposes.LapTimes);
+        SavedDevice mirror = ScreenDevice("mirror", DevicePurposes.RearViewMirror);
+        SavedDevice configuredMirror = ScreenDevice("configured-mirror", DevicePurposes.RearViewMirror);
         configuredMirror.CaptureRegion = new ScreenCaptureRegion(-1600, 0, 1600, 960);
 
         Assert.True(DeviceCapabilities.DrivesScreenOutput(dashboard));
@@ -188,10 +187,10 @@ public sealed class DevicePurposeTests
     [Fact]
     public void AssignedScreenQueryIgnoresNonDashPurposes()
     {
-        var dash = ScreenDevice("dash-screen");
-        var flags = ScreenDevice("flag-screen", DevicePurposes.Flags);
+        SavedDevice dash = ScreenDevice("dash-screen");
+        SavedDevice flags = ScreenDevice("flag-screen", DevicePurposes.Flags);
 
-        var result = DashDeviceAssignments.EnabledScreensFor(new[] { dash, flags }, "dash-1");
+        IReadOnlyList<SavedDevice> result = DashDeviceAssignments.EnabledScreensFor(new[] { dash, flags }, "dash-1");
 
         Assert.Equal(new[] { "dash-screen" }, result.Select(device => device.Id));
     }
@@ -199,18 +198,18 @@ public sealed class DevicePurposeTests
     [Fact]
     public void PurposeSurvivesAReloadAndLegacyDevicesLoadAsDash()
     {
-        var dataRoot = TestEnv.NewTempDataRoot();
+        string dataRoot = TestEnv.NewTempDataRoot();
         try
         {
-            var runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
-            var mirror = ScreenDevice("mirror");
-            var legacy = ScreenDevice("legacy");
+            DesktopRuntime runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+            SavedDevice mirror = ScreenDevice("mirror");
+            SavedDevice legacy = ScreenDevice("legacy");
             legacy.Purpose = "";
             runtime.Devices.Add(mirror);
             runtime.Devices.Add(legacy);
             runtime.UpdateDevicePurpose(mirror, DevicePurposes.RearViewMirror);
 
-            var reloaded = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+            DesktopRuntime reloaded = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
 
             Assert.Equal(
                 DevicePurposes.RearViewMirror,

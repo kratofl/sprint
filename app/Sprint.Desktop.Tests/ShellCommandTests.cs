@@ -8,7 +8,7 @@ public sealed class ShellCommandTests
     [Fact]
     public void SearchMatchesTitlesAndKeywordsCaseInsensitively()
     {
-        var registry = new ShellCommandRegistry(
+        ShellCommandRegistry registry = new ShellCommandRegistry(
         [
             new ShellCommand("nav.dashes", "Go to Dashes", "dash layouts dashboard", "Alt+2", () => { }),
             new ShellCommand("dash.create", "Create dash", "new layout", null, () => { }),
@@ -21,8 +21,8 @@ public sealed class ShellCommandTests
     [Fact]
     public void ExecuteRunsOnlyRegisteredCommands()
     {
-        var executions = 0;
-        var registry = new ShellCommandRegistry(
+        int executions = 0;
+        ShellCommandRegistry registry = new ShellCommandRegistry(
         [
             new ShellCommand("safe", "Safe action", "", null, () => executions++),
         ]);

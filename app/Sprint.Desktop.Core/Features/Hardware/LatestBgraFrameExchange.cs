@@ -35,10 +35,10 @@ public sealed class LatestBgraFrameExchange
             throw new ArgumentOutOfRangeException(nameof(height));
         }
 
-        Width = width;
-        Height = height;
-        _working = new byte[checked(width * height * 4)];
-        _published = new byte[_working.Length];
+        this.Width = width;
+        this.Height = height;
+        this._working = new byte[checked(width * height * 4)];
+        this._published = new byte[this._working.Length];
     }
 
     public int Width { get; }
@@ -46,15 +46,15 @@ public sealed class LatestBgraFrameExchange
     public int Height { get; }
 
     /// <summary>The buffer exclusively owned by the hardware capture producer.</summary>
-    public byte[] ProducerBuffer => _working;
+    public byte[] ProducerBuffer => this._working;
 
     public void Publish()
     {
-        lock (_sync)
+        lock (this._sync)
         {
-            (_working, _published) = (_published, _working);
-            _publishedAt = Stopwatch.GetTimestamp();
-            _version++;
+            (this._working, this._published) = (this._published, this._working);
+            this._publishedAt = Stopwatch.GetTimestamp();
+            this._version++;
         }
     }
 
@@ -63,7 +63,7 @@ public sealed class LatestBgraFrameExchange
         ref long observedVersion,
         TimeSpan maxAge)
     {
-        if (destination.Length < _published.Length)
+        if (destination.Length < this._published.Length)
         {
             throw new ArgumentException(
                 "Destination buffer is too small for the shared capture frame.",
@@ -75,20 +75,20 @@ public sealed class LatestBgraFrameExchange
             throw new ArgumentOutOfRangeException(nameof(maxAge));
         }
 
-        lock (_sync)
+        lock (this._sync)
         {
-            if (_version == 0 || Stopwatch.GetElapsedTime(_publishedAt) > maxAge)
+            if (this._version == 0 || Stopwatch.GetElapsedTime(this._publishedAt) > maxAge)
             {
                 return LatestFrameReadResult.Unavailable;
             }
 
-            if (_version == observedVersion)
+            if (this._version == observedVersion)
             {
                 return LatestFrameReadResult.Current;
             }
 
-            _published.CopyTo(destination);
-            observedVersion = _version;
+            this._published.CopyTo(destination);
+            observedVersion = this._version;
             return LatestFrameReadResult.Copied;
         }
     }

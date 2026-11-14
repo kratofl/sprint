@@ -73,7 +73,7 @@ public static class DevicePurposeLayouts
         ArgumentNullException.ThrowIfNull(device);
         ArgumentNullException.ThrowIfNull(dashboards);
 
-        var purpose = DevicePurposes.Resolve(device.Purpose);
+        DevicePurpose purpose = DevicePurposes.Resolve(device.Purpose);
         return purpose.Output switch
         {
             DevicePurposeOutputKind.DashboardLayout => ResolveDashboard(device, dashboards),
@@ -87,12 +87,12 @@ public static class DevicePurposeLayouts
         };
     }
 
+    /// <summary>The device's own dash, else the stable fallback (<see cref="DashLayoutOrder.First"/>); null when there are no dashes.</summary>
     private static DashLayout? ResolveDashboard(SavedDevice device, IEnumerable<DashLayout> dashboards)
     {
-        var layouts = dashboards as IReadOnlyList<DashLayout> ?? dashboards.ToList();
+        IReadOnlyList<DashLayout> layouts = dashboards as IReadOnlyList<DashLayout> ?? dashboards.ToList();
         return layouts.FirstOrDefault(layout =>
                    string.Equals(layout.Id, device.DashId, StringComparison.OrdinalIgnoreCase))
-            ?? layouts.FirstOrDefault(layout => layout.IsDefault)
-            ?? layouts.FirstOrDefault();
+            ?? DashLayoutOrder.First(layouts);
     }
 }

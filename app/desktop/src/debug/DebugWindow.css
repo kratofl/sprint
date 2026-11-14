@@ -1,0 +1,162 @@
+/* The dev debug window (debug/DebugWindow.tsx): a bar that is the window's title bar, then the
+   readings as KPI tiles and key–value cards, one column when narrow, more as it widens. Built from
+   the shared primitives; this file only sets the density and the window's own layout. Tokens only. */
+
+[data-surface="debug"],
+[data-surface="debug"] body {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.debug-root {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: var(--window);
+  color: var(--label);
+}
+
+.debug-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 48px;
+  flex: none;
+  min-width: 0;
+  padding: 0 12px 0 16px;
+  /* The OS caption buttons overlay the right edge (as `.titlebar-trail` in styles.css). */
+  padding-right: calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw) + 12px);
+  border-bottom: 1px solid var(--layer-stroke);
+  background: var(--toolbar);
+  user-select: none;
+  -webkit-app-region: drag;
+}
+
+.debug-title {
+  margin: 0;
+  flex: none;
+  font: 600 17px/22px var(--font-display);
+}
+
+.debug-on-top {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  color: var(--label-secondary);
+  font-size: 12px;
+  white-space: nowrap;
+  -webkit-app-region: no-drag;
+}
+
+.debug-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+  overflow: auto;
+  padding: 12px;
+}
+
+/* The body scrolls; its blocks keep their height rather than squeezing to fit (an infobar would). */
+.debug-body > * {
+  flex: none;
+}
+
+.debug-tiles {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.debug-tiles .kpi {
+  padding: 10px 12px;
+}
+
+/* Columns rather than a grid: cards of very different heights stack without gaps. */
+.debug-grid {
+  column-width: 340px;
+  column-gap: 12px;
+}
+
+.debug-grid > .card {
+  margin-bottom: 12px;
+  break-inside: avoid;
+}
+
+/* Dense key–value rows: a fixed label column, the value wrapping beside it. */
+.debug-row {
+  align-items: baseline;
+  min-height: 24px;
+  padding-top: 2px;
+  padding-bottom: 2px;
+}
+
+.debug-label {
+  width: 104px;
+  flex: none;
+  color: var(--label-secondary);
+  font-size: 12px;
+}
+
+.debug-value {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* A toned value wraps like any other rather than ellipsizing at the card edge. */
+.debug-value .status {
+  white-space: normal;
+}
+
+.debug-corners {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 12px;
+  padding: 0 16px 12px;
+}
+
+.debug-corner {
+  margin: 0;
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.debug-corner dd {
+  margin: 0;
+  color: var(--label-secondary);
+}
+
+.debug-corner-name {
+  color: var(--label);
+  font-weight: 600;
+}
+
+.debug-corner-compound {
+  color: var(--label-secondary);
+  font-weight: 400;
+}
+
+.debug-screen + .debug-screen {
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px solid var(--divider);
+}
+
+.debug-screen-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 16px;
+}
+
+.debug-screen-name {
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

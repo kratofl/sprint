@@ -5,7 +5,7 @@ import { IconSearch } from '@tabler/icons-react'
 import { cn } from '@/lib/utils'
 
 /**
- * A search field: a bordered surface field with the magnifier on the left, a pill
+ * A search field: a flat fill-strong field (as Input) with the magnifier on the left, a pill
  * on fill below lg. `className` sizes the wrapper; every other prop goes to the
  * input, which needs an aria-label or a <label htmlFor>.
  */
@@ -18,7 +18,7 @@ export function SearchInput({ className, ...props }: Omit<ComponentProps<'input'
       />
       <input
         type="search"
-        className="h-7 w-full rounded-sm border border-border-control bg-surface pr-3 pl-8 text-callout text-label placeholder:text-label-secondary max-lg:h-11 max-lg:rounded-full max-lg:border-0 max-lg:bg-fill max-lg:pr-4 max-lg:pl-9 [&::-webkit-search-cancel-button]:hidden"
+        className="h-7 w-full rounded-sm border border-transparent bg-fill-strong pr-3 pl-8 focus:bg-surface text-callout text-label placeholder:text-label-secondary max-lg:h-11 max-lg:rounded-full max-lg:border-0 max-lg:bg-fill max-lg:pr-4 max-lg:pl-9 [&::-webkit-search-cancel-button]:hidden"
         {...props}
       />
     </div>

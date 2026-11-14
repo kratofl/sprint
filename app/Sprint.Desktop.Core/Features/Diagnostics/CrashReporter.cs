@@ -22,11 +22,11 @@ public sealed class CrashReporter
         Func<DateTimeOffset>? clock = null,
         int retainReports = 20)
     {
-        _paths = paths;
-        _log = log;
-        _appVersion = appVersion;
-        _clock = clock ?? (() => DateTimeOffset.UtcNow);
-        _retainReports = retainReports;
+        this._paths = paths;
+        this._log = log;
+        this._appVersion = appVersion;
+        this._clock = clock ?? (() => DateTimeOffset.UtcNow);
+        this._retainReports = retainReports;
     }
 
     /// <summary>
@@ -37,16 +37,16 @@ public sealed class CrashReporter
     /// </summary>
     public string? Report(string source, Exception exception)
     {
-        var timestamp = _clock();
-        _log.Write(LogLevel.Fatal, $"Unhandled exception from {source}", exception);
+        DateTimeOffset timestamp = this._clock();
+        this._log.Write(LogLevel.Fatal, $"Unhandled exception from {source}", exception);
 
-        lock (_gate)
+        lock (this._gate)
         {
             try
             {
-                var path = _paths.CrashFileFor(timestamp);
-                File.WriteAllText(path, CrashReportFormat.Build(timestamp, _appVersion, source, exception));
-                Prune();
+                string path = this._paths.CrashFileFor(timestamp);
+                File.WriteAllText(path, CrashReportFormat.Build(timestamp, this._appVersion, source, exception));
+                this.Prune();
                 return path;
             }
             catch
@@ -60,8 +60,8 @@ public sealed class CrashReporter
     {
         try
         {
-            var existing = Directory.EnumerateFiles(_paths.CrashDirectory, "crash-*.log");
-            foreach (var stale in FileRetention.SelectForDeletion(existing, Math.Max(1, _retainReports)))
+            IEnumerable<string> existing = Directory.EnumerateFiles(this._paths.CrashDirectory, "crash-*.log");
+            foreach (string stale in FileRetention.SelectForDeletion(existing, Math.Max(1, this._retainReports)))
             {
                 File.Delete(stale);
             }

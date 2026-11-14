@@ -1,15 +1,20 @@
 using System.Text.Json;
 using Sprint.Desktop;
 using Sprint.Desktop.Features.Analysis;
+using Sprint.Desktop.Features.Charts;
 using Sprint.Desktop.Features.Dashes;
 using Sprint.Desktop.Features.Devices;
 using Sprint.Desktop.Features.Diagnostics;
 using Sprint.Desktop.Features.Engineer;
+using Sprint.Desktop.Features.FirstRun;
 using Sprint.Desktop.Features.Input;
+using Sprint.Desktop.Features.LiveCompare;
 using Sprint.Desktop.Features.Peer;
+using Sprint.Desktop.Features.PitWall;
 using Sprint.Desktop.Features.SessionPlanning;
 using Sprint.Desktop.Features.Setup;
 using Sprint.Desktop.Runtime;
+using Sprint.Games.LeMansUltimate;
 
 namespace Sprint.Desktop.Core;
 
@@ -33,6 +38,11 @@ public sealed class RuntimeCoordinator
     private readonly LiveLogStore _diagnosticsLog;
     private readonly DashPageCycle _pageCycle;
     private readonly PeerLink? _link;
+    private readonly LiveCompareService _liveCompare;
+    private readonly GameFolder _gameFolder;
+    private readonly ILapHistoryStore _lapHistory;
+    private readonly PitWallLayoutStore _pitWall;
+    private readonly LapTraceRetention? _traceRetention;
 
     /// <summary>
     /// <paramref name="planner"/>/<paramref name="analysis"/>/<paramref name="diagnosticsLog"/> default
@@ -42,7 +52,15 @@ public sealed class RuntimeCoordinator
     /// instances explicitly so command writes and <c>/api/state</c> reads agree -- <paramref
     /// name="pageCycle"/> in particular has to be the very instance <c>ScreenOutputs.Describe</c>
     /// reads, or a <c>dash.page.next</c> command would never be visible in <c>screens[]</c>.
-    /// Without <paramref name="link"/> the <c>link.*</c> commands are refused.
+    /// Without <paramref name="link"/> the <c>link.*</c> commands are refused. <paramref
+    /// name="liveCompare"/> must be the instance the host's telemetry loop feeds and its HUD reads.
+    /// <paramref name="gameFolder"/> must wrap the provider the host reads setups and results
+    /// through; without it <c>game.setFolder</c> points a private provider nobody reads.
+    /// <paramref name="lapHistory"/> is the corpus <c>plan.setTarget</c> resolves a pick against;
+    /// the host passes its one shared store. <paramref name="pitWall"/> must be the store
+    /// <c>/api/state</c> reads <c>pitWallLayout</c> from. With <paramref name="traceRetention"/>,
+    /// opting into a trace age limit deletes what is already past it at once rather than at the
+    /// next start.
     /// </summary>
     public RuntimeCoordinator(
         IDesktopRuntime runtime,
@@ -50,16 +68,31 @@ public sealed class RuntimeCoordinator
         AnalysisController? analysis = null,
         LiveLogStore? diagnosticsLog = null,
         DashPageCycle? pageCycle = null,
-        PeerLink? link = null)
+        PeerLink? link = null,
+        LiveCompareService? liveCompare = null,
+        GameFolder? gameFolder = null,
+        ILapHistoryStore? lapHistory = null,
+        PitWallLayoutStore? pitWall = null,
+        LapTraceRetention? traceRetention = null)
     {
         this._runtime = runtime ?? throw new ArgumentNullException(nameof(runtime));
         this._planner = planner ?? new SessionPlannerService(new LocalSessionPlanStore(Path.Combine(runtime.DataRoot, "session-plans")));
         this._analysis = analysis ?? new AnalysisController(new LapCorpusBrowser(
             new LocalLapHistoryStore(Path.Combine(runtime.DataRoot, "lap-history")),
-            new LocalLapTraceStore(Path.Combine(runtime.DataRoot, "lap-traces"))));
+            new LocalLapTraceStore(Path.Combine(runtime.DataRoot, "lap-traces")),
+            new LapNotes(Path.Combine(runtime.DataRoot, "lap-notes.json"))));
         this._diagnosticsLog = diagnosticsLog ?? new LiveLogStore();
         this._pageCycle = pageCycle ?? new DashPageCycle();
         this._link = link;
+        this._liveCompare = liveCompare ?? new LiveCompareService(
+            new LapCorpusBrowser(
+                new LocalLapHistoryStore(Path.Combine(runtime.DataRoot, "lap-history")),
+                new LocalLapTraceStore(Path.Combine(runtime.DataRoot, "lap-traces"))),
+            () => null);
+        this._gameFolder = gameFolder ?? new GameFolder(new LeMansUltimateGameProvider());
+        this._lapHistory = lapHistory ?? new LocalLapHistoryStore(Path.Combine(runtime.DataRoot, "lap-history"));
+        this._pitWall = pitWall ?? new PitWallLayoutStore(runtime.DataRoot);
+        this._traceRetention = traceRetention;
     }
 
     public bool Execute(JsonElement command, out string error)
@@ -69,57 +102,206 @@ public sealed class RuntimeCoordinator
         string type = typeElement.GetString() ?? "";
         switch (type)
         {
-            case "settings.save": _runtime.SaveSettings(); return true;
-            case "settings.reset": _runtime.ResetSettingsToDefaults(); return true;
-            case "settings.update": return UpdateSettings(command, out error);
-            case "guide.update": return this.UpdateDrivingGuide(command, out error);
-            case "cloud.configure": return ConfigureCloud(command, out error);
-            case "controls.save": _runtime.SaveControls(); return true;
-            case "controls.update": return UpdateControls(command, out error);
-            case "engineer.revert": _runtime.RevertEngineerChanges(); return true;
-            case "engineer.push": _runtime.PushEngineerChanges(); return true;
-            case "engineer.acknowledge": return AcknowledgeEngineer(command, out error);
-            case "engineer.stage": return StageEngineerControl(command, out error);
-            case "engineer.message": if (!TryString(command, "message", out string message)) { error = "message is required"; return false; } _runtime.SendQuickMessage(message); return true;
-            case "devices.remove": return RemoveDevice(command, out error);
-            case "devices.add": return AddDevice(command, out error);
-            case "devices.addCustom": return AddCustomDevice(command, out error);
-            case "devices.update": return UpdateDevice(command, out error);
-            case "devices.purpose": return UpdateDevicePurpose(command, out error);
-            case "devices.captureRegion": return UpdateDeviceCaptureRegion(command, out error);
-            case "devices.refreshHz": return UpdateDeviceRefreshHz(command, out error);
-            case "devices.save": return SaveDevice(command, out error);
-            case "dash.create": return CreateDash(command, out error);
-            case "dash.duplicate": return DuplicateDash(command, out error);
-            case "dash.save": return SaveDash(command, out error);
-            case "dash.reset": return ResetDash(command, out error);
-            case "dash.setDefault": return SetDefaultDash(command, out error);
-            case "dash.delete": return DeleteDash(command, out error);
-            case "dash.setScreenProfile": return SetDashScreenProfile(command, out error);
-            case SprintCommands.DashPageNext: return CycleDashPage(command, offset: 1, out error);
-            case SprintCommands.DashPagePrev: return CycleDashPage(command, offset: -1, out error);
-            case "setup.duplicate": return DuplicateSetup(command, out error);
-            case "setup.save": return SaveSetup(command, out error);
-            case "setup.delete": return DeleteSetup(command, out error);
-            case "plan.create": return CreatePlan(command, out error);
-            case "plan.update": return UpdatePlan(command, out error);
-            case "plan.delete": return DeletePlan(command, out error);
-            case "plan.arm": return ArmPlan(command, out error);
-            case "plan.disarm": return DisarmPlan(command, out error);
-            case "plan.start": return StartPlanSegment(command, out error);
-            case "plan.stop": return StopPlanSegment(command, out error);
-            case "plan.releaseActive": return ReleaseActivePlan(out error);
+            case "settings.save": this._runtime.SaveSettings(); return true;
+            case "settings.reset": this._runtime.ResetSettingsToDefaults(); return true;
+            case "settings.update": return this.UpdateSettings(command, out error);
+            case "cloud.configure": return this.ConfigureCloud(command, out error);
+            case "firstRun.complete": return this.CompleteFirstRun(command, out error);
+            case "game.setFolder": return this.SetGameFolder(command, out error);
+            case "controls.save": this._runtime.SaveControls(); return true;
+            case "controls.update": return this.UpdateControls(command, out error);
+            case "engineer.revert": this._runtime.RevertEngineerChanges(); return true;
+            case "engineer.push": this._runtime.PushEngineerChanges(); return true;
+            case "engineer.acknowledge": return this.AcknowledgeEngineer(command, out error);
+            case "engineer.stage": return this.StageEngineerControl(command, out error);
+            case "engineer.message": if (!TryString(command, "message", out string message)) { error = "message is required"; return false; } this._runtime.SendQuickMessage(message); return true;
+            case "devices.remove": return this.RemoveDevice(command, out error);
+            case "devices.add": return this.AddDevice(command, out error);
+            case "devices.addCustom": return this.AddCustomDevice(command, out error);
+            case "devices.update": return this.UpdateDevice(command, out error);
+            case "devices.purpose": return this.UpdateDevicePurpose(command, out error);
+            case "devices.captureRegion": return this.UpdateDeviceCaptureRegion(command, out error);
+            case "devices.refreshHz": return this.UpdateDeviceRefreshHz(command, out error);
+            case "devices.resolution": return this.UpdateBrowserDisplaySize(command, out error);
+            case "devices.transparent": return this.UpdateDeviceTransparent(command, out error);
+            case "devices.save": return this.SaveDevice(command, out error);
+            case "devices.multiDial": return this.UpdateMultiDial(command, out error);
+            case "dash.create": return this.CreateDash(command, out error);
+            case "dash.save": return this.SaveDash(command, out error);
+            case "dash.reset": return this.ResetDash(command, out error);
+            case "dash.delete": return this.DeleteDash(command, out error);
+            case "dash.setCategory": return this.SetDashCategory(command, out error);
+            case "dash.category.create": return this.CreateDashCategory(command, out error);
+            case "dash.category.rename": return this.RenameDashCategory(command, out error);
+            case "dash.category.delete": return this.DeleteDashCategory(command, out error);
+            case "dash.setScreenProfile": return this.SetDashScreenProfile(command, out error);
+            case SprintCommands.DashPageNext: return this.CycleDashPage(command, offset: 1, out error);
+            case SprintCommands.DashPagePrev: return this.CycleDashPage(command, offset: -1, out error);
+            case "setup.duplicate": return this.DuplicateSetup(command, out error);
+            case "setup.save": return this.SaveSetup(command, out error);
+            case "setup.delete": return this.DeleteSetup(command, out error);
+            case "plan.create": return this.CreatePlan(command, out error);
+            case "plan.update": return this.UpdatePlan(command, out error);
+            case "plan.delete": return this.DeletePlan(command, out error);
+            case "plan.arm": return this.ArmPlan(command, out error);
+            case "plan.disarm": return this.DisarmPlan(command, out error);
+            case "plan.start": return this.StartPlanSegment(command, out error);
+            case "plan.stop": return this.StopPlanSegment(command, out error);
+            case "plan.releaseActive": return this.ReleaseActivePlan(out error);
+            case "plan.setTarget": return this.SetPlanTarget(command, out error);
+            case "plan.clearTarget": return this.ClearPlanTarget(command, out error);
+            case "planner.settings": return this.UpdatePlannerSettings(command, out error);
             case "analysis.refresh": this._analysis.Load(); return true;
-            case "analysis.selectSession": return SelectAnalysisSession(command, out error);
-            case "analysis.filter": return FilterAnalysis(command, out error);
-            case "analysis.selectLap": return SelectAnalysisLap(command, out error);
-            case "diagnostics.setLogLevel": return SetLogLevel(command, out error);
+            case "analysis.selectSession": return this.SelectAnalysisSession(command, out error);
+            case "analysis.filter": return this.FilterAnalysis(command, out error);
+            case "analysis.selectLap": return this.SelectAnalysisLap(command, out error);
+            case "analysis.setRunSetup": return this.SetAnalysisRunSetup(command, out error);
+            case "lap.note.add": return this.AddLapNote(command, out error);
+            case "lap.note.update": return this.UpdateLapNote(command, out error);
+            case "lap.note.delete": return this.DeleteLapNote(command, out error);
+            case "compare.course": return this.SelectCompareCourse(command, out error);
+            case "compare.target.set": return this.SetCompareTarget(command, out error);
+            case "compare.target.clear": this._liveCompare.ClearTarget(); return true;
+            case SprintCommands.CompareHudToggle: return this._liveCompare.SetHudOpen(!this._liveCompare.HudOpen, out error);
+            case "compare.hud.arrange": return this.ArrangeCompareHud(command, out error);
+            case "compare.readings": return this.SetCompareReadings(command, out error);
+            case "compare.range": return this.SetCompareRange(command, out error);
+            case "compare.hud.layout": return this.SaveCompareHudLayout(command, out error);
+            case "diagnostics.setLogLevel": return this.SetLogLevel(command, out error);
             case "link.invite": return this.LinkInvite(out error);
             case "link.join": return this.LinkJoin(command, out error);
             case "link.complete": return this.LinkComplete(command, out error);
             case "link.close": return this.LinkClose(out error);
+            case "link.sharePlan": return this.LinkSharePlan(command, out error);
+            case "pitwall.saveLayout": return this.SavePitWallLayout(command, out error);
+            case "pitwall.placeWindow": return this.PlacePitWallWindow(command, out error);
+            case "pitwall.resetLayout": this._pitWall.Reset(); return true;
             default: error = $"unknown command type: {type}"; return false;
         }
+    }
+
+    // ── Live Compare: training against an older lap ───────────────────────────
+
+    /// <summary>Lists another course's laps on the On track page; no game/track/car follows the car again.</summary>
+    private bool SelectCompareCourse(JsonElement command, out string error)
+    {
+        error = "";
+        bool hasGame = TryString(command, "game", out string game);
+        bool hasTrack = TryString(command, "track", out string track);
+        bool hasCar = TryString(command, "car", out string car);
+        if (!hasGame && !hasTrack && !hasCar)
+        {
+            this._liveCompare.SelectCourse(null);
+            return true;
+        }
+
+        if (!hasGame || !hasTrack || !hasCar) { error = "game, track and car are required together"; return false; }
+        this._liveCompare.SelectCourse(new LiveCompareCourse(game, track, car));
+        return true;
+    }
+
+    private bool SetCompareTarget(JsonElement command, out string error)
+    {
+        if (!TryString(command, "sessionId", out string sessionId)) { error = "sessionId is required"; return false; }
+        if (!TryInt(command, "lapNumber", out int lapNumber)) { error = "lapNumber is required"; return false; }
+        return this._liveCompare.SetTarget(sessionId, lapNumber, out error);
+    }
+
+    /// <summary>Opens the HUD windows unlocked to move, size, add or remove them on the monitor; false locks them again.</summary>
+    private bool ArrangeCompareHud(JsonElement command, out string error)
+    {
+        error = "";
+        if (!TryBool(command, "arranging", out bool arranging)) { error = "arranging is required"; return false; }
+        this._liveCompare.SetArranging(arranging);
+        return true;
+    }
+
+    /// <summary>Which readings get a HUD window: chart panel ids from the catalogue, plus the delta.</summary>
+    private bool SetCompareReadings(JsonElement command, out string error)
+    {
+        error = "";
+        if (!TryBool(command, "showDelta", out bool showDelta)) { error = "showDelta is required"; return false; }
+        if (!command.TryGetProperty("panelIds", out JsonElement idsElement) || idsElement.ValueKind != JsonValueKind.Array)
+        {
+            error = "panelIds is required";
+            return false;
+        }
+
+        List<string> panelIds = [];
+        foreach (JsonElement item in idsElement.EnumerateArray())
+        {
+            string id = item.ValueKind == JsonValueKind.String ? item.GetString() ?? "" : "";
+            if (LapChartPanels.ById(id) is null) { error = $"unknown reading: {id}"; return false; }
+            if (!panelIds.Contains(id, StringComparer.Ordinal)) panelIds.Add(id);
+        }
+
+        if (panelIds.Count == 0 && !showDelta) { error = "Keep at least one reading on the HUD."; return false; }
+
+        lock (this._runtime.SettingsGate)
+        {
+            LiveCompareSettings settings = this._runtime.Settings.LiveCompare;
+            settings.PanelIds = panelIds;
+            settings.ShowDelta = showDelta;
+            this._runtime.SaveSettings();
+            this._liveCompare.Configure(settings);
+        }
+
+        return true;
+    }
+
+    /// <summary>How much track the HUD's rolling window shows behind and ahead of the car. The HUD draws the new range from its next frame.</summary>
+    private bool SetCompareRange(JsonElement command, out string error)
+    {
+        if (!TryDouble(command, "metersBehind", out double behind) || !TryDouble(command, "metersAhead", out double ahead))
+        {
+            error = "metersBehind and metersAhead are required";
+            return false;
+        }
+
+        if (!LiveCompareSettings.IsRange(behind, ahead, out error)) return false;
+
+        lock (this._runtime.SettingsGate)
+        {
+            LiveCompareSettings settings = this._runtime.Settings.LiveCompare;
+            settings.MetersBehind = behind;
+            settings.MetersAhead = ahead;
+            this._runtime.SaveSettings();
+            this._liveCompare.Configure(settings);
+        }
+
+        return true;
+    }
+
+    /// <summary>Remembers where the driver left one HUD window, keyed by the monitor it is on.</summary>
+    private bool SaveCompareHudLayout(JsonElement command, out string error)
+    {
+        error = "";
+        if (!TryString(command, "windowId", out string windowId)) { error = "windowId is required"; return false; }
+        if (windowId != HudWindowPlan.DeltaWindowId && LapChartPanels.ById(windowId) is null) { error = $"unknown HUD window: {windowId}"; return false; }
+        if (!command.TryGetProperty("screen", out JsonElement screenElement) || screenElement.ValueKind != JsonValueKind.Object ||
+            !TryInt(screenElement, "x", out int screenX) || !TryInt(screenElement, "y", out int screenY) ||
+            !TryInt(screenElement, "width", out int screenWidth) || !TryInt(screenElement, "height", out int screenHeight) ||
+            screenWidth <= 0 || screenHeight <= 0)
+        {
+            error = "screen must carry x, y and a positive width and height";
+            return false;
+        }
+
+        if (!TryInt(command, "x", out int x) || !TryInt(command, "y", out int y) ||
+            !TryInt(command, "width", out int width) || !TryInt(command, "height", out int height) ||
+            width <= 0 || height <= 0)
+        {
+            error = "x, y and a positive width and height are required";
+            return false;
+        }
+
+        lock (this._runtime.SettingsGate)
+        {
+            HudLayoutStore.Save(this._runtime.Settings.LiveCompare, windowId, new HudScreen(screenX, screenY, screenWidth, screenHeight), x, y, width, height);
+            this._runtime.SaveSettings();
+        }
+
+        return true;
     }
 
     // ── Live link (driver to engineer, no server) ─────────────────────────────
@@ -156,7 +338,62 @@ public sealed class RuntimeCoordinator
         return true;
     }
 
+    /// <summary>Whether the driver shares the session plan and its target lap. Remembered, and applied to the link at once.</summary>
+    private bool LinkSharePlan(JsonElement command, out string error)
+    {
+        error = "";
+        if (!TryBool(command, "share", out bool share)) { error = "share is required"; return false; }
+        lock (this._runtime.SettingsGate)
+        {
+            this._runtime.Settings.LiveLink.SharePlan = share;
+            this._runtime.SaveSettings();
+        }
+
+        this._link?.SetSharePlan(share);
+        return true;
+    }
+
     private const string LinkUnavailable = "the live link is not available";
+
+    // ── Pit wall layout (engineer side, per PC) ───────────────────────────────
+
+    /// <summary>Replaces the whole layout; the store validates it (pages, ids, kinds, the grid, overlaps, stack timing).</summary>
+    private bool SavePitWallLayout(JsonElement command, out string error)
+    {
+        if (!command.TryGetProperty("layout", out JsonElement layout)) { error = "layout is required"; return false; }
+        return this._pitWall.TrySave(layout, out error);
+    }
+
+    /// <summary>Remembers where Electron left a pit wall window: <c>main</c>, or a <c>page</c> or <c>tile</c> by id.</summary>
+    private bool PlacePitWallWindow(JsonElement command, out string error)
+    {
+        TryString(command, "kind", out string kindText);
+        PitWallWindow? window = kindText switch
+        {
+            "main" => PitWallWindow.Main,
+            "page" => PitWallWindow.Page,
+            "tile" => PitWallWindow.Tile,
+            _ => null,
+        };
+        if (window is not { } kind) { error = "kind must be main, page or tile"; return false; }
+
+        string? id = null;
+        if (kind != PitWallWindow.Main)
+        {
+            if (!TryString(command, "id", out string named)) { error = "id is required for a page or tile window"; return false; }
+            id = named;
+        }
+
+        if (!command.TryGetProperty("bounds", out JsonElement boundsJson)
+            || !PitWallLayouts.TryBounds(boundsJson, out PitWallBounds? bounds, out error)
+            || bounds is null)
+        {
+            error = "bounds must carry x, y and a positive width and height";
+            return false;
+        }
+
+        return this._pitWall.TryPlace(kind, id, bounds, out error);
+    }
 
     // ── Settings / controls (validated patch, never a whole-object overwrite) ──
 
@@ -164,120 +401,91 @@ public sealed class RuntimeCoordinator
     {
         error = "";
         bool applied = false;
+        LapTraceBudget? prune = null;
 
         // Mutation and save happen under the same lock the background telemetry-ingest loop's
         // last-seen-context capture also takes (DesktopRuntime.SettingsGate), so a Kestrel
         // request thread here can never race that loop's own Settings mutate-then-save.
-        lock (_runtime.SettingsGate)
+        lock (this._runtime.SettingsGate)
         {
             if (TryBool(command, "sidebarCollapsed", out bool sidebarCollapsed))
             {
-                _runtime.Settings.SidebarCollapsed = sidebarCollapsed;
+                this._runtime.Settings.SidebarCollapsed = sidebarCollapsed;
                 applied = true;
             }
 
             if (TryStringField(command, "updateChannel", out string updateChannel))
             {
-                _runtime.Settings.UpdateChannel = AppSettings.NormalizeChannel(updateChannel);
+                this._runtime.Settings.UpdateChannel = AppSettings.NormalizeChannel(updateChannel);
+                applied = true;
+            }
+
+            if (TryBool(command, "autoInstallUpdates", out bool autoInstallUpdates))
+            {
+                this._runtime.Settings.AutoInstallUpdates = autoInstallUpdates;
                 applied = true;
             }
 
             if (TryStringField(command, "driverName", out string driverName) && !string.IsNullOrWhiteSpace(driverName))
             {
-                _runtime.Settings.DriverName = driverName.Trim();
+                this._runtime.Settings.DriverName = driverName.Trim();
                 applied = true;
             }
 
             if (TryStringField(command, "driverNumber", out string driverNumber) && !string.IsNullOrWhiteSpace(driverNumber))
             {
-                _runtime.Settings.DriverNumber = driverNumber.Trim();
+                this._runtime.Settings.DriverNumber = driverNumber.Trim();
                 applied = true;
             }
 
             if (TryStringField(command, "devicesUiViewMode", out string devicesUiViewMode) && !string.IsNullOrWhiteSpace(devicesUiViewMode))
             {
-                if (!DevicesUiViewModes.Contains(devicesUiViewMode.Trim(), StringComparer.OrdinalIgnoreCase))
+                if (!OverviewViewModes.Contains(devicesUiViewMode.Trim(), StringComparer.OrdinalIgnoreCase))
                 {
                     error = $"unknown devices UI view mode: {devicesUiViewMode}";
                     return false;
                 }
 
-                _runtime.Settings.DevicesUI.ViewMode = devicesUiViewMode.Trim();
+                this._runtime.Settings.DevicesUI.ViewMode = devicesUiViewMode.Trim();
+                applied = true;
+            }
+
+            if (TryStringField(command, "dashesUiViewMode", out string dashesUiViewMode) && !string.IsNullOrWhiteSpace(dashesUiViewMode))
+            {
+                if (!OverviewViewModes.Contains(dashesUiViewMode.Trim(), StringComparer.OrdinalIgnoreCase))
+                {
+                    error = $"unknown dashes UI view mode: {dashesUiViewMode}";
+                    return false;
+                }
+
+                this._runtime.Settings.DashesUI.ViewMode = dashesUiViewMode.Trim();
+                applied = true;
+            }
+
+            if (command.TryGetProperty("traceExpiryDays", out _))
+            {
+                if (!TryInt(command, "traceExpiryDays", out int traceExpiryDays) ||
+                    traceExpiryDays < 0 || traceExpiryDays > SessionPlannerSettings.MaxTraceExpiryDays)
+                {
+                    error = $"traceExpiryDays must be 0 (keep) to {SessionPlannerSettings.MaxTraceExpiryDays}";
+                    return false;
+                }
+
+                this._runtime.Settings.SessionPlanner.TraceExpiryDays = traceExpiryDays;
+                prune = this._runtime.Settings.SessionPlanner.TraceBudget();
                 applied = true;
             }
 
             if (!applied) { error = "no recognized settings fields were provided"; return false; }
 
-            _runtime.SaveSettings();
+            this._runtime.SaveSettings();
         }
 
-        return true;
-    }
-
-    /// <summary>
-    /// Patches the driving guide's settings. Every field is optional; a number outside its range
-    /// is refused whole rather than clamped, so the UI never shows a value that was not stored.
-    /// </summary>
-    private bool UpdateDrivingGuide(JsonElement command, out string error)
-    {
-        error = "";
-        lock (this._runtime.SettingsGate)
+        // Outside the settings lock: it reads every stored session. The driver was told the old
+        // laps go now, so they go now and Settings shows the smaller total on its next poll.
+        if (prune is { MaxAgeDays: not null } budget)
         {
-            DrivingGuideSettings guide = this._runtime.Settings.DrivingGuide;
-            DrivingGuideSettings next = new()
-            {
-                ShowLine = guide.ShowLine,
-                ShowBoards = guide.ShowBoards,
-                MonitorOverlay = guide.MonitorOverlay,
-                VrHeadset = guide.VrHeadset,
-                EyeRightMeters = guide.EyeRightMeters,
-                EyeUpMeters = guide.EyeUpMeters,
-                EyeForwardMeters = guide.EyeForwardMeters,
-                YawOffsetDegrees = guide.YawOffsetDegrees,
-                PitchOffsetDegrees = guide.PitchOffsetDegrees,
-                MonitorFovDegrees = guide.MonitorFovDegrees,
-                MetersAhead = guide.MetersAhead,
-            };
-            bool applied = false;
-
-            if (TryBool(command, "showLine", out bool showLine)) { next.ShowLine = showLine; applied = true; }
-            if (TryBool(command, "showBoards", out bool showBoards)) { next.ShowBoards = showBoards; applied = true; }
-            if (TryBool(command, "monitorOverlay", out bool monitorOverlay)) { next.MonitorOverlay = monitorOverlay; applied = true; }
-            if (TryBool(command, "vrHeadset", out bool vrHeadset)) { next.VrHeadset = vrHeadset; applied = true; }
-
-            (string Field, double Min, double Max, Action<double> Apply)[] numbers =
-            [
-                ("eyeRightMeters", -3, 3, value => next.EyeRightMeters = value),
-                ("eyeUpMeters", -3, 3, value => next.EyeUpMeters = value),
-                ("eyeForwardMeters", -3, 3, value => next.EyeForwardMeters = value),
-                ("yawOffsetDegrees", -20, 20, value => next.YawOffsetDegrees = value),
-                ("pitchOffsetDegrees", -20, 20, value => next.PitchOffsetDegrees = value),
-                ("monitorFovDegrees", 10, 150, value => next.MonitorFovDegrees = value),
-                ("metersAhead", 50, 600, value => next.MetersAhead = value),
-            ];
-            foreach ((string field, double min, double max, Action<double> apply) in numbers)
-            {
-                if (!command.TryGetProperty(field, out JsonElement _))
-                {
-                    continue;
-                }
-
-                if (!TryDouble(command, field, out double value) || !double.IsFinite(value) || value < min || value > max)
-                {
-                    error = $"{field} must be a number from {min} to {max}";
-                    return false;
-                }
-
-                apply(value);
-                applied = true;
-            }
-
-            if (!applied) { error = "no recognized driving guide fields were provided"; return false; }
-
-            // Replaced whole: the guide feed reads these off the telemetry thread without the
-            // gate, and must never see half of an update.
-            this._runtime.Settings.DrivingGuide = next;
-            this._runtime.SaveSettings();
+            this._traceRetention?.Prune(budget, DateTimeOffset.UtcNow);
         }
 
         return true;
@@ -324,8 +532,80 @@ public sealed class RuntimeCoordinator
         return true;
     }
 
-    /// <summary>The Devices overview's two list modes (<see cref="DevicesUiSettings.ViewMode"/>).</summary>
-    private static readonly string[] DevicesUiViewModes = ["gallery", "list"];
+    /// <summary>
+    /// Finishes the first-run setup: the driver's name (required, and not the placeholder) and
+    /// race number (optional; when given, 1 to 3 digits). A blank number keeps the current one.
+    /// </summary>
+    private bool CompleteFirstRun(JsonElement command, out string error)
+    {
+        error = "";
+        string name = TryStringField(command, "driverName", out string nameText) ? nameText.Trim() : "";
+        if (name.Length == 0 || name.Equals(AppSettings.DefaultDriverName, StringComparison.OrdinalIgnoreCase))
+        {
+            error = "Enter your driver name.";
+            return false;
+        }
+
+        string number = TryStringField(command, "driverNumber", out string numberText) ? numberText.Trim() : "";
+        if (number.Length > 3 || !number.All(char.IsAsciiDigit))
+        {
+            error = "Your race number is 1 to 3 digits.";
+            return false;
+        }
+
+        lock (this._runtime.SettingsGate)
+        {
+            this._runtime.Settings.DriverName = name;
+            if (number.Length > 0)
+            {
+                this._runtime.Settings.DriverNumber = number;
+            }
+
+            this._runtime.Settings.FirstRunDone = true;
+            this._runtime.SaveSettings();
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Where Le Mans Ultimate is installed: a full path to an install (<see cref="LmuInstall.IsInstall"/>),
+    /// or null to find it in the Steam libraries again. Setups and results follow at once.
+    /// </summary>
+    private bool SetGameFolder(JsonElement command, out string error)
+    {
+        error = "";
+        if (!TryOptionalNullableString(command, "folder", out bool present, out string? folderText) || !present)
+        {
+            error = "folder is required (a path, or null to find the game automatically)";
+            return false;
+        }
+
+        string? folder = null;
+        if (folderText is not null)
+        {
+            string trimmed = folderText.Trim();
+            if (!Path.IsPathFullyQualified(trimmed) || !LmuInstall.IsInstall(trimmed))
+            {
+                error = "That folder isn't a Le Mans Ultimate install.";
+                return false;
+            }
+
+            folder = Path.TrimEndingDirectorySeparator(Path.GetFullPath(trimmed));
+        }
+
+        lock (this._runtime.SettingsGate)
+        {
+            this._runtime.Settings.GameFolder = folder;
+            this._runtime.SaveSettings();
+            this._gameFolder.Apply(folder);
+        }
+
+        return true;
+    }
+
+    /// <summary>The Devices and Dashes overviews' two list modes (<see cref="DevicesUiSettings.ViewMode"/>, <see cref="DashesUiSettings.ViewMode"/>).</summary>
+    private static readonly string[] OverviewViewModes = ["gallery", "list"];
 
     private bool UpdateControls(JsonElement command, out string error)
     {
@@ -350,8 +630,8 @@ public sealed class RuntimeCoordinator
             bindings.Add(new InputBinding { Input = input, Command = commandName });
         }
 
-        _runtime.Controls.Bindings = bindings;
-        _runtime.SaveControls();
+        this._runtime.Controls.Bindings = bindings;
+        this._runtime.SaveControls();
         return true;
     }
 
@@ -359,8 +639,8 @@ public sealed class RuntimeCoordinator
 
     private bool RemoveDevice(JsonElement command, out string error)
     {
-        if (!FindDevice(command, out SavedDevice device, out error)) return false;
-        _runtime.RemoveDevice(device);
+        if (!this.FindDevice(command, out SavedDevice device, out error)) return false;
+        this._runtime.RemoveDevice(device);
         return true;
     }
 
@@ -368,9 +648,9 @@ public sealed class RuntimeCoordinator
     {
         error = "";
         if (!TryString(command, "catalogId", out string catalogId)) { error = "catalogId is required"; return false; }
-        CatalogDevice? catalog = _runtime.Catalog.FirstOrDefault(item => string.Equals(item.Id, catalogId, StringComparison.OrdinalIgnoreCase));
+        CatalogDevice? catalog = this._runtime.Catalog.FirstOrDefault(item => string.Equals(item.Id, catalogId, StringComparison.OrdinalIgnoreCase));
         if (catalog is null) { error = "catalog device not found"; return false; }
-        _runtime.AddDevice(catalog);
+        this._runtime.AddDevice(catalog);
         return true;
     }
 
@@ -411,7 +691,7 @@ public sealed class RuntimeCoordinator
     private bool UpdateDevice(JsonElement command, out string error)
     {
         error = "";
-        if (!FindDevice(command, out SavedDevice device, out error)) return false;
+        if (!this.FindDevice(command, out SavedDevice device, out error)) return false;
         if (!TryStringField(command, "name", out string name)) { error = "name is required"; return false; }
         if (!TryInt(command, "rotation", out int rotation)) { error = "rotation is required"; return false; }
         if (!TryInt(command, "offsetX", out int offsetX)) { error = "offsetX is required"; return false; }
@@ -420,6 +700,14 @@ public sealed class RuntimeCoordinator
         if (!TryStringField(command, "dashId", out string dashId)) { error = "dashId is required"; return false; }
 
         DeviceOrientation orientation = DeviceOrientations.Resolve(rotation);
+        // A browser display is not a panel: its orientation follows its resolution and it has no
+        // offset or margin, so only the name and the dash can change through here.
+        if (BrowserDisplays.Is(device) && (orientation != device.Orientation || offsetX != 0 || offsetY != 0 || margin != 0))
+        {
+            error = "a browser display has no orientation, offset or margin";
+            return false;
+        }
+
         DeviceOrientation previousOrientation = device.Orientation;
         // A saved capture region describes a rectangle in the panel's own axes; a rotation that
         // flips landscape<->portrait has to swap its width/height along with it, or the region
@@ -442,16 +730,23 @@ public sealed class RuntimeCoordinator
     private bool UpdateDevicePurpose(JsonElement command, out string error)
     {
         error = "";
-        if (!FindDevice(command, out SavedDevice device, out error)) return false;
+        if (!this.FindDevice(command, out SavedDevice device, out error)) return false;
         if (!TryString(command, "purpose", out string purpose)) { error = "purpose is required"; return false; }
-        _runtime.UpdateDevicePurpose(device, purpose);
+        // A browser display shows dashes; mirroring the desktop into a browser is not built.
+        if (BrowserDisplays.Is(device) && DevicePurposes.Resolve(purpose).Output is DevicePurposeOutputKind.DesktopCaptureRegion)
+        {
+            error = "a browser display cannot mirror the desktop";
+            return false;
+        }
+
+        this._runtime.UpdateDevicePurpose(device, purpose);
         return true;
     }
 
     private bool UpdateDeviceCaptureRegion(JsonElement command, out string error)
     {
         error = "";
-        if (!FindDevice(command, out SavedDevice device, out error)) return false;
+        if (!this.FindDevice(command, out SavedDevice device, out error)) return false;
         if (!TryInt(command, "x", out int x) || !TryInt(command, "y", out int y) ||
             !TryInt(command, "width", out int width) || !TryInt(command, "height", out int height))
         {
@@ -461,16 +756,44 @@ public sealed class RuntimeCoordinator
 
         if (width <= 0 || height <= 0) { error = "a capture region needs a positive size"; return false; }
 
-        _runtime.UpdateDeviceCaptureRegion(device, new ScreenCaptureRegion(x, y, width, height));
+        this._runtime.UpdateDeviceCaptureRegion(device, new ScreenCaptureRegion(x, y, width, height));
         return true;
     }
 
     private bool UpdateDeviceRefreshHz(JsonElement command, out string error)
     {
         error = "";
-        if (!FindDevice(command, out SavedDevice device, out error)) return false;
+        if (!this.FindDevice(command, out SavedDevice device, out error)) return false;
         if (!TryInt(command, "refreshHz", out int refreshHz)) { error = "refreshHz is required"; return false; }
-        _runtime.UpdateDeviceRefreshHz(device, refreshHz);
+        this._runtime.UpdateDeviceRefreshHz(device, refreshHz);
+        return true;
+    }
+
+    /// <summary>A browser display's resolution: <c>{ deviceId, width, height }</c> within <see cref="BrowserDisplays"/>' bounds.</summary>
+    private bool UpdateBrowserDisplaySize(JsonElement command, out string error)
+    {
+        error = "";
+        if (!this.FindDevice(command, out SavedDevice device, out error)) return false;
+        if (!BrowserDisplays.Is(device)) { error = "only a browser display has a resolution to set"; return false; }
+        if (!TryInt(command, "width", out int width) || !TryInt(command, "height", out int height))
+        {
+            error = "width and height are required";
+            return false;
+        }
+
+        if (BrowserDisplays.SizeError(width, height) is { } invalid) { error = invalid; return false; }
+        this._runtime.UpdateBrowserDisplaySize(device, width, height);
+        return true;
+    }
+
+    /// <summary>A browser display's background: <c>{ deviceId, transparent }</c>.</summary>
+    private bool UpdateDeviceTransparent(JsonElement command, out string error)
+    {
+        error = "";
+        if (!this.FindDevice(command, out SavedDevice device, out error)) return false;
+        if (!BrowserDisplays.Is(device)) { error = "only a browser display has a transparent background"; return false; }
+        if (!TryBool(command, "transparent", out bool transparent)) { error = "transparent is required"; return false; }
+        this._runtime.UpdateDeviceTransparent(device, transparent);
         return true;
     }
 
@@ -482,27 +805,69 @@ public sealed class RuntimeCoordinator
     private bool SaveDevice(JsonElement command, out string error)
     {
         error = "";
-        if (!FindDevice(command, out SavedDevice device, out error)) return false;
+        if (!this.FindDevice(command, out SavedDevice device, out error)) return false;
         if (!TryBool(command, "disabled", out bool disabled)) { error = "disabled is required"; return false; }
 
         // Same gate DesktopRuntime's own device-mutating methods hold around their
         // mutate-then-save sequence (see DesktopRuntime.DevicesGate) -- this command mutates the
         // device directly rather than through one of those methods.
-        lock (_runtime.DevicesGate)
+        lock (this._runtime.DevicesGate)
         {
             device.Disabled = disabled;
-            _runtime.SaveDevices();
+            this._runtime.SaveDevices();
         }
 
         return true;
     }
+
+    /// <summary>
+    /// Renames and recolours one dial position (<c>position</c> with <c>label</c> and <c>color</c>),
+    /// and/or turns the inverted dash popup on or off (<c>invertPopup</c>). The colours only colour
+    /// the dash popup; nothing is sent to the wheel.
+    /// </summary>
+    private bool UpdateMultiDial(JsonElement command, out string error)
+    {
+        if (!this.FindDevice(command, out SavedDevice device, out error)) return false;
+        if (MultiDials.LayoutOf(device, this._runtime.Catalog) is not { } layout) { error = "device has no multi-dial"; return false; }
+
+        bool hasPosition = command.TryGetProperty("position", out _);
+        bool hasInvert = command.TryGetProperty("invertPopup", out _);
+        if (!hasPosition && !hasInvert) { error = "position or invertPopup is required"; return false; }
+
+        MultiDialLabel? label = null;
+        int index = 0;
+        if (hasPosition)
+        {
+            if (!TryInt(command, "position", out index) || index < 0 || index >= layout.Positions.Count) { error = "position is out of range"; return false; }
+            if (!TryString(command, "label", out string name)) { error = "label is required"; return false; }
+            name = name.Trim();
+            if (name.Length > MultiDials.MaxLabelLength) { error = $"label is longer than {MultiDials.MaxLabelLength} characters"; return false; }
+            if (!TryString(command, "color", out string color) || !IsHexColor(color)) { error = "color must be #RRGGBB"; return false; }
+            label = new MultiDialLabel(name, color.ToUpperInvariant());
+        }
+
+        bool invert = false;
+        if (hasInvert && !TryBool(command, "invertPopup", out invert)) { error = "invertPopup must be true or false"; return false; }
+
+        lock (this._runtime.DevicesGate)
+        {
+            MultiDialSettings settings = label is null ? device.MultiDial ?? new MultiDialSettings() : MultiDials.WithPosition(layout, device.MultiDial, index, label);
+            device.MultiDial = hasInvert ? settings with { InvertPopup = invert } : settings;
+            this._runtime.SaveDevices();
+        }
+
+        return true;
+    }
+
+    private static bool IsHexColor(string value) =>
+        value.Length == 7 && value[0] == '#' && value.Skip(1).All(Uri.IsHexDigit);
 
     private bool FindDevice(JsonElement command, out SavedDevice device, out string error)
     {
         device = null!;
         error = "";
         if (!TryString(command, "deviceId", out string id)) { error = "deviceId is required"; return false; }
-        SavedDevice? found = _runtime.Devices.FirstOrDefault(item => string.Equals(item.Id, id, StringComparison.OrdinalIgnoreCase));
+        SavedDevice? found = this._runtime.Devices.FirstOrDefault(item => string.Equals(item.Id, id, StringComparison.OrdinalIgnoreCase));
         if (found is null) { error = "device not found"; return false; }
         device = found;
         return true;
@@ -510,40 +875,60 @@ public sealed class RuntimeCoordinator
 
     // ── Dashes ──────────────────────────────────────────────────────────────
 
+    /// <summary>
+    /// The New dash and Duplicate dialogs: <c>{ profileId?, sourceDashId?, name?, category? }</c>. Without
+    /// <c>sourceDashId</c> it starts blank; with one it duplicates that dash refitted to the
+    /// profile. <c>profileId</c> defaults to the source's own size, else the default profile.
+    /// <c>name</c> defaults per start ("New dash" / "&lt;source&gt; copy"). <c>category</c> is a
+    /// known category or null for "Other"; left out, a copy keeps the source's and a blank dash has none.
+    /// </summary>
     private bool CreateDash(JsonElement command, out string error)
     {
         error = "";
-        if (command.TryGetProperty("profileId", out JsonElement profileElement) && profileElement.ValueKind == JsonValueKind.String)
+        DashLayout? source = null;
+        if (command.TryGetProperty("sourceDashId", out JsonElement sourceElement) && sourceElement.ValueKind != JsonValueKind.Null)
         {
-            ScreenProfile? profile = ScreenProfileCatalog.Find(profileElement.GetString());
-            if (profile is null) { error = "unknown screen profile"; return false; }
-            _runtime.CreateDashLayout(profile);
-            return true;
+            string sourceId = sourceElement.ValueKind == JsonValueKind.String ? sourceElement.GetString() ?? "" : "";
+            source = this._runtime.DashLayouts.FirstOrDefault(item => string.Equals(item.Id, sourceId, StringComparison.OrdinalIgnoreCase));
+            if (source is null) { error = "source dash not found"; return false; }
         }
 
-        _runtime.CreateDashLayout();
-        return true;
-    }
+        ScreenProfile profile = ScreenProfileCatalog.Resolve(source?.ScreenProfileId);
+        if (command.TryGetProperty("profileId", out JsonElement profileElement) && profileElement.ValueKind != JsonValueKind.Null)
+        {
+            ScreenProfile? requested = profileElement.ValueKind == JsonValueKind.String ? ScreenProfileCatalog.Find(profileElement.GetString()) : null;
+            if (requested is null) { error = "unknown screen profile"; return false; }
+            profile = requested;
+        }
 
-    private bool DuplicateDash(JsonElement command, out string error)
-    {
-        error = "";
-        if (!FindDash(command, out DashLayout source, out error)) return false;
-        if (!FindProfile(command, out ScreenProfile profile, out error)) return false;
-        _runtime.DuplicateDashToProfile(source, profile);
+        if (!TryOptionalNullableString(command, "name", out bool hasName, out string? name)) { error = "name must be a string"; return false; }
+        if (hasName && name is not null && string.IsNullOrWhiteSpace(name)) { error = "name must not be blank"; return false; }
+
+        if (!this.TryOptionalCategory(command, out bool hasCategory, out string? category, out error)) return false;
+        if (!hasCategory) category = source?.Category;
+
+        if (source is null)
+        {
+            this._runtime.CreateBlankDashLayout(profile, name, category);
+        }
+        else
+        {
+            this._runtime.DuplicateDashToProfile(source, profile, name, category);
+        }
+
         return true;
     }
 
     /// <summary>
-    /// Replaces a dash's content with a client-supplied layout. The dash's id and default
-    /// status are pinned to the existing record rather than trusted from the payload — id
-    /// identity and default assignment are this endpoint's boundary, not something a save
-    /// should be able to smuggle a change into.
+    /// Replaces a dash's content with a client-supplied layout. The dash's id and category are
+    /// pinned to the existing record rather than trusted from the payload — identity is this
+    /// endpoint's boundary, and the category has its own commands, so a save from a stale
+    /// editor copy can never undo a category change made elsewhere.
     /// </summary>
     private bool SaveDash(JsonElement command, out string error)
     {
         error = "";
-        if (!FindDash(command, out DashLayout existing, out error)) return false;
+        if (!this.FindDash(command, out DashLayout existing, out error)) return false;
         if (!command.TryGetProperty("layout", out JsonElement layoutElement) || layoutElement.ValueKind != JsonValueKind.Object)
         {
             error = "layout is required";
@@ -563,45 +948,115 @@ public sealed class RuntimeCoordinator
         if (candidate is null) { error = "layout is not a valid dash layout"; return false; }
 
         candidate.Id = existing.Id;
-        candidate.IsDefault = existing.IsDefault;
+        candidate.Category = existing.Category;
+        // A client from before groups may still send widget stacks.
+        DashWidgetStackMigration.Apply(candidate);
 
         if (!DashLayoutValidator.IsValid(candidate)) { error = "layout is invalid"; return false; }
 
-        int index = _runtime.DashLayouts.IndexOf(existing);
-        _runtime.DashLayouts[index] = candidate;
-        _runtime.SaveDashLayout(candidate);
+        int index = this._runtime.DashLayouts.IndexOf(existing);
+        this._runtime.DashLayouts[index] = candidate;
+        this._runtime.SaveDashLayout(candidate);
         return true;
     }
 
     private bool ResetDash(JsonElement command, out string error)
     {
-        if (!FindDash(command, out DashLayout layout, out error)) return false;
-        _runtime.ResetDashLayout(layout);
+        if (!this.FindDash(command, out DashLayout layout, out error)) return false;
+        this._runtime.ResetDashLayout(layout);
         return true;
     }
 
-    private bool SetDefaultDash(JsonElement command, out string error)
-    {
-        if (!FindDash(command, out DashLayout layout, out error)) return false;
-        _runtime.SetDefaultDashLayout(layout);
-        return true;
-    }
-
+    /// <summary>Any dash can be deleted, even the last one; devices fall back to another dash or show nothing.</summary>
     private bool DeleteDash(JsonElement command, out string error)
     {
-        if (!FindDash(command, out DashLayout layout, out error)) return false;
-        if (layout.IsDefault) { error = "cannot delete the default dash"; return false; }
-        if (_runtime.DashLayouts.Count <= 1) { error = "cannot delete the only dash"; return false; }
-        _runtime.DeleteDashLayout(layout);
+        if (!this.FindDash(command, out DashLayout layout, out error)) return false;
+        this._runtime.DeleteDashLayout(layout);
+        return true;
+    }
+
+    /// <summary><c>{ dashId, category }</c>: files a dash under a known category, or under "Other" when <c>category</c> is null.</summary>
+    private bool SetDashCategory(JsonElement command, out string error)
+    {
+        if (!this.FindDash(command, out DashLayout layout, out error)) return false;
+        if (!this.TryOptionalCategory(command, out bool hasCategory, out string? category, out error)) return false;
+        if (!hasCategory) { error = "category is required (null for none)"; return false; }
+        this._runtime.SetDashCategory(layout, category);
+        return true;
+    }
+
+    /// <summary><c>{ name, dashId? }</c>: adds a custom category and, with <c>dashId</c>, moves that dash into it.</summary>
+    private bool CreateDashCategory(JsonElement command, out string error)
+    {
+        error = "";
+        DashLayout? layout = null;
+        if (command.TryGetProperty("dashId", out JsonElement dashElement) && dashElement.ValueKind != JsonValueKind.Null)
+        {
+            if (!this.FindDash(command, out DashLayout found, out error)) return false;
+            layout = found;
+        }
+
+        if (!TryOptionalNullableString(command, "name", out _, out string? name)) { error = "name must be a string"; return false; }
+        if (!DashCategories.TryValidateName(name, this._runtime.Settings.CustomDashCategories, renaming: null, out string trimmed, out error)) return false;
+
+        this._runtime.CreateDashCategory(trimmed);
+        if (layout is not null) this._runtime.SetDashCategory(layout, trimmed);
+        return true;
+    }
+
+    /// <summary><c>{ name, newName }</c>: renames a custom category, and with it every dash filed under it.</summary>
+    private bool RenameDashCategory(JsonElement command, out string error)
+    {
+        if (!this.FindCustomCategory(command, out string name, out error)) return false;
+        if (!TryOptionalNullableString(command, "newName", out _, out string? newName)) { error = "newName must be a string"; return false; }
+        if (!DashCategories.TryValidateName(newName, this._runtime.Settings.CustomDashCategories, renaming: name, out string trimmed, out error)) return false;
+        this._runtime.RenameDashCategory(name, trimmed);
+        return true;
+    }
+
+    /// <summary><c>{ name }</c>: deletes a custom category; its dashes move to "Other".</summary>
+    private bool DeleteDashCategory(JsonElement command, out string error)
+    {
+        if (!this.FindCustomCategory(command, out string name, out error)) return false;
+        this._runtime.DeleteDashCategory(name);
+        return true;
+    }
+
+    /// <summary>Resolves <c>name</c> to an existing custom category (built-ins cannot be renamed or deleted).</summary>
+    private bool FindCustomCategory(JsonElement command, out string name, out string error)
+    {
+        name = "";
+        error = "";
+        if (!TryString(command, "name", out string requested)) { error = "name is required"; return false; }
+        if (DashCategories.IsBuiltIn(requested)) { error = "built-in categories cannot be changed"; return false; }
+        string? found = this._runtime.Settings.CustomDashCategories.FirstOrDefault(existing => string.Equals(existing, requested.Trim(), StringComparison.OrdinalIgnoreCase));
+        if (found is null) { error = "category not found"; return false; }
+        name = found;
+        return true;
+    }
+
+    /// <summary>
+    /// An optional <c>category</c> field: absent leaves <paramref name="present"/> false, JSON null
+    /// means "Other", and a string must name a known category (resolved to its known spelling).
+    /// </summary>
+    private bool TryOptionalCategory(JsonElement command, out bool present, out string? category, out string error)
+    {
+        category = null;
+        error = "";
+        if (!TryOptionalNullableString(command, "category", out present, out string? requested)) { error = "category must be a string or null"; return false; }
+        if (requested is null) return true;
+
+        category = DashCategories.Find(requested, this._runtime.Settings.CustomDashCategories);
+        if (category is null) { error = "unknown category"; return false; }
         return true;
     }
 
     private bool SetDashScreenProfile(JsonElement command, out string error)
     {
         error = "";
-        if (!FindDash(command, out DashLayout layout, out error)) return false;
+        if (!this.FindDash(command, out DashLayout layout, out error)) return false;
         if (!FindProfile(command, out ScreenProfile profile, out error)) return false;
-        _runtime.SetDashScreenProfile(layout, profile);
+        this._runtime.SetDashScreenProfile(layout, profile);
         return true;
     }
 
@@ -617,16 +1072,16 @@ public sealed class RuntimeCoordinator
     private bool CycleDashPage(JsonElement command, int offset, out string error)
     {
         error = "";
-        if (!FindDevice(command, out SavedDevice device, out error)) return false;
+        if (!this.FindDevice(command, out SavedDevice device, out error)) return false;
 
-        DashLayout? layout = DevicePurposeLayouts.Resolve(device, _runtime.DashLayouts);
+        DashLayout? layout = DevicePurposeLayouts.Resolve(device, this._runtime.DashLayouts);
         if (layout is null)
         {
             error = "device has no telemetry-backed screen layout to page through";
             return false;
         }
 
-        _pageCycle.Move(device.Id, layout, offset);
+        this._pageCycle.Move(device.Id, layout, offset);
         return true;
     }
 
@@ -635,7 +1090,7 @@ public sealed class RuntimeCoordinator
         layout = null!;
         error = "";
         if (!TryString(command, "dashId", out string id)) { error = "dashId is required"; return false; }
-        DashLayout? found = _runtime.DashLayouts.FirstOrDefault(item => string.Equals(item.Id, id, StringComparison.OrdinalIgnoreCase));
+        DashLayout? found = this._runtime.DashLayouts.FirstOrDefault(item => string.Equals(item.Id, id, StringComparison.OrdinalIgnoreCase));
         if (found is null) { error = "dash not found"; return false; }
         layout = found;
         return true;
@@ -658,10 +1113,10 @@ public sealed class RuntimeCoordinator
     {
         error = "";
         if (!TryString(command, "setupId", out string id)) { error = "setupId is required"; return false; }
-        SetupProgram? source = _runtime.SetupPrograms.FirstOrDefault(program => string.Equals(program.Id, id, StringComparison.OrdinalIgnoreCase))
-            ?? _runtime.SetupTemplates.FirstOrDefault(program => string.Equals(program.Id, id, StringComparison.OrdinalIgnoreCase));
+        SetupProgram? source = this._runtime.SetupPrograms.FirstOrDefault(program => string.Equals(program.Id, id, StringComparison.OrdinalIgnoreCase))
+            ?? this._runtime.SetupTemplates.FirstOrDefault(program => string.Equals(program.Id, id, StringComparison.OrdinalIgnoreCase));
         if (source is null) { error = "setup not found"; return false; }
-        _runtime.DuplicateSetup(source);
+        this._runtime.DuplicateSetup(source);
         return true;
     }
 
@@ -669,7 +1124,7 @@ public sealed class RuntimeCoordinator
     {
         error = "";
         if (!TryString(command, "setupId", out string id)) { error = "setupId is required"; return false; }
-        SetupProgram? program = _runtime.SetupPrograms.FirstOrDefault(candidate => string.Equals(candidate.Id, id, StringComparison.OrdinalIgnoreCase));
+        SetupProgram? program = this._runtime.SetupPrograms.FirstOrDefault(candidate => string.Equals(candidate.Id, id, StringComparison.OrdinalIgnoreCase));
         if (program is null) { error = "setup not found"; return false; }
 
         if (!command.TryGetProperty("values", out JsonElement valuesElement) || valuesElement.ValueKind != JsonValueKind.Object)
@@ -712,7 +1167,7 @@ public sealed class RuntimeCoordinator
             program.Values[pair.Key] = pair.Value;
         }
 
-        _runtime.SaveSetupPrograms();
+        this._runtime.SaveSetupPrograms();
         return true;
     }
 
@@ -770,6 +1225,7 @@ public sealed class RuntimeCoordinator
         if (!TryOptionalDouble(command, "avgLapTimeSeconds", out double? avgLapTimeSeconds, out error)) return false;
         if (!TryOptionalDouble(command, "fuelPerLapLiters", out double? fuelPerLapLiters, out error)) return false;
         if (!TryStringArray(command, "setupReferences", out List<string> setupReferences, out error)) return false;
+        if (!TryPlanFigures(raceLengthFormat, raceLengthValue ?? 0, fuelReserveLaps, avgLapTimeSeconds, fuelPerLapLiters, out error)) return false;
 
         CreatePlanRequest request = new()
         {
@@ -781,7 +1237,8 @@ public sealed class RuntimeCoordinator
             QualifyingIncluded = qualifyingIncluded,
             RaceLengthFormat = raceLengthFormat,
             RaceLengthValue = raceLengthValue ?? 0,
-            FuelReserveLaps = Math.Max(0, (int)(fuelReserveLaps ?? 1)),
+            // A plan that does not say takes the driver's default (#103): defaults seed, never lock.
+            FuelReserveLaps = fuelReserveLaps is { } reserve ? (int)reserve : this._runtime.Settings.SessionPlanner.FuelReserveLaps,
             AvgLapTimeSeconds = avgLapTimeSeconds,
             FuelPerLapLiters = fuelPerLapLiters,
             Notes = notes,
@@ -789,6 +1246,85 @@ public sealed class RuntimeCoordinator
         };
 
         this._planner.CreatePlan(request);
+        return true;
+    }
+
+    /// <summary>
+    /// A plan's race length and typed fuel figures inside <see cref="PlanLimits"/>; a figure not sent
+    /// (null) is not checked. The estimate is built from them on every state poll, so an absurd value
+    /// is refused here rather than stored.
+    /// </summary>
+    private static bool TryPlanFigures(RaceLengthFormat format, double raceLengthValue, double? fuelReserveLaps, double? avgLapTimeSeconds, double? fuelPerLapLiters, out string error)
+    {
+        error = PlanLimits.RaceLengthError(format, raceLengthValue)
+            ?? (fuelReserveLaps is { } reserve ? PlanLimits.FuelReserveError(reserve) : null)
+            ?? (avgLapTimeSeconds is { } lapTime ? PlanLimits.LapTimeError(lapTime) : null)
+            ?? (fuelPerLapLiters is { } perLap ? PlanLimits.FuelPerLapError(perLap) : null)
+            ?? "";
+        return error.Length == 0;
+    }
+
+    /// <summary>
+    /// The planner's own defaults, set behind the gear in its header (#103): the reserve new plans
+    /// start with, which laps a fuel estimate draws on, and whether a race-format mismatch warns.
+    /// Every field is optional and validated before anything is written.
+    /// </summary>
+    private bool UpdatePlannerSettings(JsonElement command, out string error)
+    {
+        error = "";
+        int? reserve = null;
+        if (command.TryGetProperty("fuelReserveLaps", out _))
+        {
+            if (!TryInt(command, "fuelReserveLaps", out int laps) || laps < 0 || laps > SessionPlannerSettings.MaxFuelReserveLaps)
+            {
+                error = $"fuelReserveLaps must be a whole number from 0 to {SessionPlannerSettings.MaxFuelReserveLaps}";
+                return false;
+            }
+
+            reserve = laps;
+        }
+
+        FuelHistorySource? source = null;
+        if (command.TryGetProperty("fuelHistorySource", out _))
+        {
+            // One member's exact name: Enum.TryParse would also take a number or "A, B" flag syntax.
+            if (!TryStringField(command, "fuelHistorySource", out string sourceText)
+                || !Enum.GetNames<FuelHistorySource>().Contains(sourceText, StringComparer.Ordinal))
+            {
+                error = "fuelHistorySource must be AllValidLaps or MatchingSessionType";
+                return false;
+            }
+
+            source = Enum.Parse<FuelHistorySource>(sourceText);
+        }
+
+        bool? warn = null;
+        if (command.TryGetProperty("warnOnRaceFormatMismatch", out _))
+        {
+            if (!TryBool(command, "warnOnRaceFormatMismatch", out bool parsedWarn))
+            {
+                error = "warnOnRaceFormatMismatch must be a boolean";
+                return false;
+            }
+
+            warn = parsedWarn;
+        }
+
+        if (reserve is null && source is null && warn is null)
+        {
+            error = "no recognized planner settings were provided";
+            return false;
+        }
+
+        lock (this._runtime.SettingsGate)
+        {
+            SessionPlannerSettings planner = this._runtime.Settings.SessionPlanner;
+            if (reserve is { } newReserve) planner.FuelReserveLaps = newReserve;
+            if (source is { } newSource) planner.FuelHistorySource = newSource;
+            if (warn is { } newWarn) planner.WarnOnRaceFormatMismatch = newWarn;
+            this._runtime.SaveSettings();
+        }
+
         return true;
     }
 
@@ -801,8 +1337,36 @@ public sealed class RuntimeCoordinator
     /// </summary>
     private bool UpdatePlan(JsonElement command, out string error)
     {
-        if (!TryPlan(command, out SessionPlan plan, out error)) return false;
+        if (!this.TryPlan(command, out SessionPlan plan, out error)) return false;
         bool applied = false;
+
+        // Every field is read and checked before any is written: a refused patch leaves the plan as it was.
+        RaceLengthFormat? format = null;
+        if (TryStringField(command, "raceLengthFormat", out string formatText) && !string.IsNullOrWhiteSpace(formatText))
+        {
+            if (!Enum.TryParse(formatText, ignoreCase: true, out RaceLengthFormat parsedFormat)) { error = $"unknown race length format: {formatText}"; return false; }
+            format = parsedFormat;
+        }
+
+        bool qualifyingSent = command.TryGetProperty("qualifyingIncluded", out _);
+        bool qualifyingIncluded = false;
+        if (qualifyingSent && !TryBool(command, "qualifyingIncluded", out qualifyingIncluded)) { error = "qualifyingIncluded must be a boolean"; return false; }
+
+        bool avgLapTimeSent = command.TryGetProperty("avgLapTimeSeconds", out _);
+        bool fuelPerLapSent = command.TryGetProperty("fuelPerLapLiters", out _);
+        bool setupReferencesSent = command.TryGetProperty("setupReferences", out _);
+        if (!TryOptionalDouble(command, "raceLengthValue", out double? raceLengthValue, out error)) return false;
+        if (!TryOptionalDouble(command, "fuelReserveLaps", out double? fuelReserveLaps, out error)) return false;
+        if (!TryOptionalDouble(command, "avgLapTimeSeconds", out double? avgLapTimeSeconds, out error)) return false;
+        if (!TryOptionalDouble(command, "fuelPerLapLiters", out double? fuelPerLapLiters, out error)) return false;
+        if (!TryStringArray(command, "setupReferences", out List<string> setupReferences, out error)) return false;
+
+        // The race length is checked as it will stand, and only when the patch touches it: a new
+        // format can make the stored length implausible.
+        bool lengthSent = format is not null || raceLengthValue is not null;
+        RaceLengthFormat checkedFormat = lengthSent ? format ?? plan.RaceLengthFormat : RaceLengthFormat.Unknown;
+        double checkedLength = lengthSent ? raceLengthValue ?? plan.RaceLengthValue : 0;
+        if (!TryPlanFigures(checkedFormat, checkedLength, fuelReserveLaps, avgLapTimeSeconds, fuelPerLapLiters, out error)) return false;
 
         if (TryStringField(command, "name", out string name) && !string.IsNullOrWhiteSpace(name))
         {
@@ -816,43 +1380,30 @@ public sealed class RuntimeCoordinator
             applied = true;
         }
 
-        if (command.TryGetProperty("qualifyingIncluded", out _))
+        if (qualifyingSent)
         {
-            if (!TryBool(command, "qualifyingIncluded", out bool qualifyingIncluded)) { error = "qualifyingIncluded must be a boolean"; return false; }
             plan.QualifyingIncluded = qualifyingIncluded;
             applied = true;
         }
 
-        if (TryStringField(command, "raceLengthFormat", out string formatText) && !string.IsNullOrWhiteSpace(formatText))
+        if (format is { } setFormat) { plan.RaceLengthFormat = setFormat; applied = true; }
+        if (raceLengthValue is { } setRaceLengthValue) { plan.RaceLengthValue = setRaceLengthValue; applied = true; }
+        if (fuelReserveLaps is { } setFuelReserveLaps) { plan.FuelReserveLaps = (int)setFuelReserveLaps; applied = true; }
+
+        if (avgLapTimeSent)
         {
-            if (!Enum.TryParse(formatText, ignoreCase: true, out RaceLengthFormat format)) { error = $"unknown race length format: {formatText}"; return false; }
-            plan.RaceLengthFormat = format;
-            applied = true;
-        }
-
-        if (!TryOptionalDouble(command, "raceLengthValue", out double? raceLengthValue, out error)) return false;
-        if (raceLengthValue is { } newRaceLengthValue) { plan.RaceLengthValue = newRaceLengthValue; applied = true; }
-
-        if (!TryOptionalDouble(command, "fuelReserveLaps", out double? fuelReserveLaps, out error)) return false;
-        if (fuelReserveLaps is { } newFuelReserveLaps) { plan.FuelReserveLaps = Math.Max(0, (int)newFuelReserveLaps); applied = true; }
-
-        if (command.TryGetProperty("avgLapTimeSeconds", out _))
-        {
-            if (!TryOptionalDouble(command, "avgLapTimeSeconds", out double? avgLapTimeSeconds, out error)) return false;
             plan.AvgLapTimeSeconds = avgLapTimeSeconds;
             applied = true;
         }
 
-        if (command.TryGetProperty("fuelPerLapLiters", out _))
+        if (fuelPerLapSent)
         {
-            if (!TryOptionalDouble(command, "fuelPerLapLiters", out double? fuelPerLapLiters, out error)) return false;
             plan.FuelPerLapLiters = fuelPerLapLiters;
             applied = true;
         }
 
-        if (command.TryGetProperty("setupReferences", out _))
+        if (setupReferencesSent)
         {
-            if (!TryStringArray(command, "setupReferences", out List<string> setupReferences, out error)) return false;
             plan.SetupReferences = setupReferences;
             applied = true;
         }
@@ -865,14 +1416,14 @@ public sealed class RuntimeCoordinator
 
     private bool DeletePlan(JsonElement command, out string error)
     {
-        if (!TryPlan(command, out SessionPlan plan, out error)) return false;
+        if (!this.TryPlan(command, out SessionPlan plan, out error)) return false;
         this._planner.DeletePlan(plan.Id);
         return true;
     }
 
     private bool ArmPlan(JsonElement command, out string error)
     {
-        if (!TryPlan(command, out SessionPlan plan, out error)) return false;
+        if (!this.TryPlan(command, out SessionPlan plan, out error)) return false;
         try
         {
             this._planner.Arm(plan.Id);
@@ -887,14 +1438,14 @@ public sealed class RuntimeCoordinator
 
     private bool DisarmPlan(JsonElement command, out string error)
     {
-        if (!TryPlan(command, out SessionPlan plan, out error)) return false;
+        if (!this.TryPlan(command, out SessionPlan plan, out error)) return false;
         this._planner.Disarm(plan.Id);
         return true;
     }
 
     private bool StartPlanSegment(JsonElement command, out string error)
     {
-        if (!TryPlan(command, out SessionPlan plan, out error)) return false;
+        if (!this.TryPlan(command, out SessionPlan plan, out error)) return false;
         if (!TryString(command, "kind", out string kindText)) { error = "kind is required"; return false; }
         if (!Enum.TryParse(kindText, ignoreCase: true, out SegmentKind kind)) { error = $"unknown segment kind: {kindText}"; return false; }
 
@@ -912,9 +1463,50 @@ public sealed class RuntimeCoordinator
 
     private bool StopPlanSegment(JsonElement command, out string error)
     {
-        if (!TryPlan(command, out SessionPlan plan, out error)) return false;
+        if (!this.TryPlan(command, out SessionPlan plan, out error)) return false;
         this._planner.StopTracking(plan.Id);
         return true;
+    }
+
+    /// <summary>
+    /// Stores a target picked from the plan's choices (<c>GET /api/planner/targets</c>): a scope's
+    /// statistic, or with <c>statistic: "Custom"</c> one of its laps (<c>lapSessionId</c>,
+    /// <c>lapNumber</c>). The pick is resolved against the corpus again, so only a lap that was
+    /// driven can become a target. It latches at the next start/finish line (PlanTargetDelivery).
+    /// </summary>
+    private bool SetPlanTarget(JsonElement command, out string error)
+    {
+        if (!this.TryPlan(command, out SessionPlan plan, out error)) return false;
+        if (!TrySegmentKind(command, out SegmentKind kind, out error)) return false;
+        if (!TryString(command, "scope", out string scopeText) || !Enum.TryParse(scopeText, ignoreCase: true, out PlanTargetScope scope)) { error = "scope is required"; return false; }
+        if (!TryString(command, "statistic", out string statisticText) || !Enum.TryParse(statisticText, ignoreCase: true, out PlanTargetStatistic statistic)) { error = "statistic is required"; return false; }
+        string? programType = TryString(command, "programType", out string program) ? program : null;
+        string? lapSessionId = TryString(command, "lapSessionId", out string session) ? session : null;
+        int? lapNumber = TryInt(command, "lapNumber", out int lap) ? lap : null;
+        if (statistic == PlanTargetStatistic.Custom && (lapSessionId is null || lapNumber is null)) { error = "a specific lap needs lapSessionId and lapNumber"; return false; }
+
+        PlanTargetOption? option = PlanTargetResolver.ForPlan(this._lapHistory, plan).Find(scope, programType, statistic, lapSessionId, lapNumber);
+        if (option is null) { error = "no such lap for this car and track"; return false; }
+
+        this._planner.SetLapTimeTarget(plan, kind, option.ToTarget(DateTimeOffset.UtcNow));
+        return true;
+    }
+
+    private bool ClearPlanTarget(JsonElement command, out string error)
+    {
+        if (!this.TryPlan(command, out SessionPlan plan, out error)) return false;
+        if (!TrySegmentKind(command, out SegmentKind kind, out error)) return false;
+        this._planner.SetLapTimeTarget(plan, kind, null);
+        return true;
+    }
+
+    private static bool TrySegmentKind(JsonElement command, out SegmentKind kind, out string error)
+    {
+        error = "";
+        kind = SegmentKind.Race;
+        if (TryString(command, "kind", out string text) && Enum.TryParse(text, ignoreCase: true, out kind)) return true;
+        error = "kind must be Qualifying or Race";
+        return false;
     }
 
     private bool ReleaseActivePlan(out string error)
@@ -950,11 +1542,9 @@ public sealed class RuntimeCoordinator
 
         if (sessionIdElement.ValueKind != JsonValueKind.String) { error = "sessionId must be a string or null"; return false; }
         string sessionId = sessionIdElement.GetString() ?? "";
-        // Looked up against the currently narrowed list (not the whole corpus): selecting a
-        // session is the last step of the same narrowing cascade the filter commands drive, so a
-        // session the current filter has excluded is correctly "not found" rather than reachable
-        // by id alone.
-        CorpusSession? session = this._analysis.Filter.Sessions.FirstOrDefault(candidate => string.Equals(candidate.Id, sessionId, StringComparison.Ordinal));
+        // Looked up in the whole corpus as it is now: the sessions list shows every session live,
+        // including one recorded since the filter was last rebuilt.
+        CorpusSession? session = this._analysis.FindSession(sessionId);
         if (session is null) { error = "session not found"; return false; }
         this._analysis.SelectSession(session);
         return true;
@@ -1037,6 +1627,64 @@ public sealed class RuntimeCoordinator
         return true;
     }
 
+    /// <summary>
+    /// Puts a setup (a Setups list id, or null to take it off) on one run of the open session.
+    /// Only ever the driver's pick: nothing proposes one.
+    /// </summary>
+    private bool SetAnalysisRunSetup(JsonElement command, out string error)
+    {
+        error = "";
+        if (!TryInt(command, "outing", out int outing)) { error = "outing must be a number"; return false; }
+        if (!command.TryGetProperty("setupId", out JsonElement setupElement)) { error = "setupId is required"; return false; }
+        if (setupElement.ValueKind is not (JsonValueKind.String or JsonValueKind.Null)) { error = "setupId must be a string or null"; return false; }
+
+        string? setupId = setupElement.ValueKind == JsonValueKind.String ? setupElement.GetString() : null;
+        if (setupId is { Length: 0 }) { error = "setupId must not be empty"; return false; }
+        return this._analysis.SetRunSetup(outing, setupId, out error);
+    }
+
+    // ── Analysis: notes on a lap ─────────────────────────────────────────────
+
+    /// <summary>A note at a place on a lap (metres from the line), signed with the driver name in Settings.</summary>
+    private bool AddLapNote(JsonElement command, out string error)
+    {
+        if (!TryLapOf(command, out string sessionId, out int lapNumber, out error)) return false;
+        if (!TryDouble(command, "distanceMeters", out double distanceMeters)) { error = "distanceMeters must be a number"; return false; }
+        if (!TryStringField(command, "text", out string text)) { error = "text is required"; return false; }
+
+        string author;
+        lock (this._runtime.SettingsGate)
+        {
+            author = this._runtime.Settings.DriverName;
+        }
+
+        return this._analysis.AddNote(sessionId, lapNumber, distanceMeters, text, author, out error);
+    }
+
+    private bool UpdateLapNote(JsonElement command, out string error)
+    {
+        if (!TryLapOf(command, out string sessionId, out int lapNumber, out error)) return false;
+        if (!TryString(command, "noteId", out string noteId)) { error = "noteId is required"; return false; }
+        if (!TryStringField(command, "text", out string text)) { error = "text is required"; return false; }
+        return this._analysis.UpdateNote(sessionId, lapNumber, noteId, text, out error);
+    }
+
+    private bool DeleteLapNote(JsonElement command, out string error)
+    {
+        if (!TryLapOf(command, out string sessionId, out int lapNumber, out error)) return false;
+        if (!TryString(command, "noteId", out string noteId)) { error = "noteId is required"; return false; }
+        return this._analysis.DeleteNote(sessionId, lapNumber, noteId, out error);
+    }
+
+    private static bool TryLapOf(JsonElement command, out string sessionId, out int lapNumber, out string error)
+    {
+        error = "";
+        lapNumber = 0;
+        if (!TryString(command, "sessionId", out sessionId)) { error = "sessionId is required"; return false; }
+        if (!TryInt(command, "lapNumber", out lapNumber)) { error = "lapNumber must be a number"; return false; }
+        return true;
+    }
+
     // ── Diagnostics ─────────────────────────────────────────────────────────
 
     private bool SetLogLevel(JsonElement command, out string error)
@@ -1054,7 +1702,7 @@ public sealed class RuntimeCoordinator
     {
         error = "";
         if (!TryBool(command, "succeeded", out bool succeeded)) { error = "succeeded is required"; return false; }
-        _runtime.AcknowledgeEngineerChanges(succeeded);
+        this._runtime.AcknowledgeEngineerChanges(succeeded);
         return true;
     }
 
@@ -1068,7 +1716,7 @@ public sealed class RuntimeCoordinator
     {
         error = "";
         if (!TryString(command, "key", out string key)) { error = "key is required"; return false; }
-        EngineerControl? control = _runtime.EngineerControls.FirstOrDefault(candidate => string.Equals(candidate.Key, key, StringComparison.OrdinalIgnoreCase));
+        EngineerControl? control = this._runtime.EngineerControls.FirstOrDefault(candidate => string.Equals(candidate.Key, key, StringComparison.OrdinalIgnoreCase));
         if (control is null) { error = "engineer control not found"; return false; }
         if (!TryDouble(command, "value", out double value)) { error = "value is required"; return false; }
         control.StagedValue = Math.Clamp(value, control.Min, control.Max);

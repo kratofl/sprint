@@ -1,0 +1,909 @@
+/* The dash designer window (DashDesigner.tsx): a stage filling the window, the live dash in a
+   device-style bezel in its middle, and the controls on small floating glass layers around it —
+   the name pill, the section tabs and undo/redo along the top, a panel on the left, one on the
+   right and a dock at the bottom (each section fills them: Layout's widget sidebar, inspector and
+   page dock; Alerts' and Theme's own panels). Settings is a calm column instead. Glass only on those
+   layers (docs/design/DESIGN.md); the stage and bezel are flat. The dash itself is hardware
+   output and keeps its own colours; only the overlays drawn on it use brand/status. */
+
+.designer {
+  position: fixed;
+  inset: 0;
+  /* clip, not hidden: focusing something near an edge must never scroll the stage. */
+  overflow: clip;
+  background: var(--window);
+}
+
+/* The frameless window is dragged by the band along its top, around the floating layers. */
+.designer-dragband {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  height: 48px;
+  -webkit-app-region: drag;
+}
+
+.designer-stage {
+  position: absolute;
+  inset: 0;
+}
+
+.designer-glass {
+  position: absolute;
+  z-index: 2;
+  border: 1px solid var(--acrylic-stroke);
+  border-radius: var(--radius-card);
+  background: var(--acrylic);
+  box-shadow: var(--shadow-flyout);
+  backdrop-filter: blur(14px);
+  -webkit-app-region: no-drag;
+}
+
+/* Reduced transparency: solid surface, same shape. */
+@media (prefers-reduced-transparency: reduce) {
+  .designer-glass {
+    background: var(--surface);
+    backdrop-filter: none;
+  }
+}
+
+.designer-row-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.designer-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 24px;
+}
+
+.designer-panel-head .icon-button {
+  margin: -4px -4px -4px 0;
+}
+
+.designer-panel-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 20px;
+}
+
+.designer-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.designer-group-title {
+  margin: 0;
+  color: var(--label-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 16px;
+}
+
+.designer-notice {
+  position: absolute;
+  top: 56px;
+  left: 50%;
+  z-index: 3;
+  width: max-content;
+  max-width: min(520px, calc(100% - 24px));
+  transform: translateX(-50%);
+}
+
+.designer-gone {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+}
+
+/* ── Top: name pill, section tabs, undo / redo ───────────────────────── */
+
+/* All three sit in the 48px title band, level with the OS caption buttons. */
+.designer-pill,
+.designer-tabs,
+.designer-tools {
+  top: 6px;
+  display: flex;
+  align-items: center;
+  height: 36px;
+}
+
+.designer-pill {
+  left: 12px;
+  gap: 8px;
+  max-width: calc(50% - 220px);
+  padding: 0 14px;
+}
+
+.designer-pill-name {
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.designer-pill-status {
+  flex: none;
+  color: var(--label-secondary);
+  font-size: 12px;
+}
+
+.designer-pill-retry {
+  flex: none;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--danger-text);
+  font: inherit;
+  font-size: 12px;
+}
+
+.designer-pill-retry:hover {
+  text-decoration: underline;
+}
+
+.designer-tabs {
+  left: 50%;
+  gap: 2px;
+  padding: 0 3px;
+  transform: translateX(-50%);
+}
+
+.designer-tab {
+  height: 28px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--label-secondary);
+  font: inherit;
+}
+
+.designer-tab:hover {
+  background: var(--subtle-hover);
+  color: var(--label);
+}
+
+.designer-tab[aria-selected='true'] {
+  background: var(--subtle-selected);
+  color: var(--label);
+  font-weight: 600;
+}
+
+/* Left of the OS caption buttons: the titlebar-area env() values describe the space left for the
+   page (as in the main window's toolbar); outside Electron they fall back to a 12px inset. */
+.designer-tools {
+  right: calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw) + 12px);
+  gap: 2px;
+  padding: 0 3px;
+}
+
+/* ── Layout: sidebar, bezel, inspector, dock ──────────────────────────── */
+
+.designer-sidebar {
+  top: 60px;
+  bottom: 76px;
+  left: 12px;
+  display: flex;
+  flex-direction: column;
+  width: 250px;
+  padding: 8px 6px;
+}
+
+.designer-sidebar-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 2px 6px 6px;
+  border-bottom: 1px solid var(--divider);
+}
+
+.designer-sidebar-group {
+  width: 26px;
+  height: 26px;
+  margin-left: auto;
+}
+
+.designer-sidebar-page {
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.designer-sidebar-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+  padding: 6px 2px 0;
+  overflow-y: auto;
+}
+
+.designer-sidebar-empty {
+  margin: 4px 6px;
+}
+
+.designer-tree {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.designer-node {
+  display: flex;
+  align-items: center;
+  height: 28px;
+  padding-right: 2px;
+  border-radius: var(--radius-control);
+}
+
+.designer-node:hover {
+  background: var(--subtle-hover);
+}
+
+.designer-node.selected {
+  background: color-mix(in srgb, var(--brand-500) 22%, transparent);
+}
+
+.designer-node-main {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  height: 28px;
+  padding: 0 6px 0 2px;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+
+.designer-node-main > svg {
+  flex: none;
+  color: var(--label-secondary);
+}
+
+.designer-node-box {
+  width: 11px;
+  height: 11px;
+  flex: none;
+  border: 1.5px solid var(--label-secondary);
+  border-radius: 2px;
+}
+
+/* A widget that is a layer of a stack wears the stack's blue. */
+.designer-node-box.is-layer {
+  border-color: var(--blue-500);
+}
+
+.designer-node-indent {
+  flex: none;
+}
+
+/* The fold chevron, or the same width of nothing, so names line up. */
+.designer-node-fold {
+  display: grid;
+  width: 18px;
+  height: 28px;
+  flex: none;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--label-secondary);
+}
+
+.designer-node-fold svg {
+  transition: transform var(--motion-fast) var(--ease-out);
+}
+
+.designer-node-fold svg.is-open {
+  transform: rotate(90deg);
+}
+
+.designer-node-main > svg.designer-node-folder {
+  color: var(--yellow-500);
+}
+
+.designer-node-main > svg.designer-node-stack {
+  color: var(--blue-500);
+}
+
+.designer-node-main > svg.designer-node-star {
+  color: var(--yellow-500);
+  fill: var(--yellow-500);
+}
+
+.designer-node-meta {
+  flex: none;
+  color: var(--label-tertiary);
+  font-size: 12px;
+}
+
+.designer-node.is-hidden .designer-node-main {
+  color: var(--label-tertiary);
+}
+
+.designer-node-rename {
+  flex: 1;
+  min-width: 0;
+  height: 24px;
+  margin-right: 4px;
+}
+
+/* Where a dragged row will land: a line above or below, or the whole group outlined. */
+.designer-node.drop-before {
+  box-shadow: inset 0 2px 0 var(--brand-500);
+}
+
+.designer-node.drop-after {
+  box-shadow: inset 0 -2px 0 var(--brand-500);
+}
+
+.designer-node.drop-into {
+  box-shadow: inset 0 0 0 1.5px var(--brand-500);
+}
+
+/* Hide and delete take the place of the count while the row is hovered or focused. */
+.designer-node-actions {
+  display: none;
+  flex: none;
+}
+
+.designer-node:hover .designer-node-actions,
+.designer-node:has(:focus-visible) .designer-node-actions {
+  display: flex;
+}
+
+.designer-node:hover .designer-node-meta,
+.designer-node:has(:focus-visible) .designer-node-meta,
+.designer-node:hover .designer-node-hidden,
+.designer-node:has(:focus-visible) .designer-node-hidden {
+  display: none;
+}
+
+.designer-node-action {
+  width: 24px;
+  height: 24px;
+}
+
+.designer-node-hidden {
+  flex: none;
+  margin-right: 6px;
+  color: var(--label-tertiary);
+}
+
+/* A stack's layers in its inspector, the shown one marked with a star. */
+.designer-layers {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.designer-layer {
+  display: flex;
+  align-items: center;
+  height: 30px;
+  padding-right: 8px;
+  border-radius: var(--radius-control);
+}
+
+.designer-layer:hover {
+  background: var(--subtle-hover);
+}
+
+.designer-layer-main {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  height: 30px;
+  padding: 0 8px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+
+.designer-layer-first {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--yellow-500);
+  font-size: 12px;
+}
+
+.designer-layer-first svg {
+  fill: var(--yellow-500);
+}
+
+.designer-layer-make {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--label-secondary);
+  font: inherit;
+  font-size: 12px;
+  visibility: hidden;
+}
+
+.designer-layer:hover .designer-layer-make,
+.designer-layer-make:focus-visible {
+  visibility: visible;
+}
+
+.designer-layer-make:hover {
+  color: var(--label);
+}
+
+.designer-button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.designer-segmented-full {
+  display: flex;
+}
+
+.designer-segmented-full > .segmented-item {
+  flex: 1;
+}
+
+.designer-group > .button.small {
+  align-self: flex-start;
+  margin-left: -8px;
+}
+
+
+/* The box the bezel is fitted into: the stage between the floating layers. */
+.designer-fit {
+  position: absolute;
+  top: 60px;
+  right: 304px;
+  bottom: 76px;
+  left: 274px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.designer-bezel {
+  border-radius: 28px;
+  background: var(--surface);
+  box-shadow: 0 0 0 1px var(--card-stroke);
+}
+
+.designer-inspector {
+  top: 60px;
+  right: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 280px;
+  max-height: calc(100% - 136px);
+  padding: 14px;
+  overflow-y: auto;
+}
+
+.designer-inspector p.field-hint {
+  margin: -8px 0 0;
+}
+
+.designer-inspector-delete {
+  align-self: flex-start;
+  margin-left: -8px;
+}
+
+.designer-geometry {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.designer-numberbox {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 28px;
+  padding: 0 2px;
+  border: 1px solid var(--input-stroke);
+  border-radius: var(--radius-control);
+  background: var(--input-fill);
+}
+
+.designer-numberbox-value {
+  flex: 1;
+  min-width: 0;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.designer-spin {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  flex: none;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-control-small);
+  background: transparent;
+  color: var(--label-secondary);
+}
+
+.designer-spin:hover:not(:disabled) {
+  background: var(--subtle-hover);
+  color: var(--label);
+}
+
+.designer-spin:disabled {
+  color: var(--label-disabled);
+}
+
+.designer-swatch-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.designer-swatch-label {
+  width: 40px;
+  flex: none;
+  color: var(--label-secondary);
+  font-size: 12px;
+}
+
+.designer-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.designer-swatch {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-pill);
+  box-shadow: inset 0 0 0 1px var(--control-stroke);
+}
+
+/* "Inherit": the dash's own colour, drawn as an empty swatch struck through. */
+.designer-swatch.inherit {
+  background: linear-gradient(135deg, transparent 44%, var(--label-secondary) 44% 56%, transparent 56%), var(--control-fill);
+}
+
+.designer-swatch[aria-checked='true'] {
+  outline: 2px solid var(--brand-500);
+  outline-offset: 2px;
+}
+
+.designer-dock {
+  bottom: 12px;
+  left: 50%;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  max-width: calc(100% - 24px);
+  padding: 5px;
+  transform: translateX(-50%);
+}
+
+.designer-pages {
+  display: flex;
+  gap: 2px;
+  min-width: 0;
+  overflow-x: auto;
+}
+
+.designer-page {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  flex: none;
+  padding: 0 12px;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--label-secondary);
+  font: inherit;
+  white-space: nowrap;
+}
+
+.designer-page:hover {
+  background: var(--subtle-hover);
+  color: var(--label);
+}
+
+.designer-page[aria-selected='true'] {
+  background: var(--subtle-selected);
+  color: var(--label);
+  font-weight: 600;
+}
+
+.designer-page-rename {
+  width: 128px;
+  height: 28px;
+  flex: none;
+}
+
+.designer-dock-sep {
+  width: 1px;
+  height: 20px;
+  flex: none;
+  margin: 0 4px;
+  background: var(--divider);
+}
+
+.designer-preview {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+  flex: none;
+  padding-left: 8px;
+  border-radius: var(--radius-control);
+  color: var(--label-secondary);
+}
+
+.designer-preview:hover {
+  background: var(--subtle-hover);
+}
+
+.designer-preview select {
+  height: 28px;
+  padding: 0 6px 0 2px;
+  border: 0;
+  background: transparent;
+  color: var(--label);
+  font: inherit;
+}
+
+.designer-toggle[aria-pressed='true'] {
+  background: var(--subtle-selected);
+  color: var(--link);
+}
+
+.designer-library {
+  top: 60px;
+  bottom: 76px;
+  left: 12px;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 250px;
+  padding: 10px 6px 8px;
+}
+
+.designer-library .designer-panel-head,
+.designer-library-hint {
+  margin: 0;
+  padding: 0 6px;
+}
+
+/* Over the sidebar, so the whole dash stays in sight to drop onto. */
+.designer-library-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.designer-library-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 28px;
+  flex: none;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--label);
+  font: inherit;
+  text-align: left;
+  cursor: grab;
+  touch-action: none;
+}
+
+.designer-library-item:hover {
+  background: var(--subtle-hover);
+}
+
+.designer-grip {
+  flex: none;
+  color: var(--label-tertiary);
+}
+
+/* ── Canvas overlays ──────────────────────────────────────────────────── */
+
+.designer-canvas {
+  position: relative;
+  touch-action: none;
+}
+
+.designer-grid-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(to right, color-mix(in srgb, var(--brand-500) 40%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in srgb, var(--brand-500) 40%, transparent) 1px, transparent 1px);
+}
+
+.designer-widget-overlay {
+  position: absolute;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  cursor: move;
+}
+
+.designer-widget-overlay:hover {
+  border-color: color-mix(in srgb, var(--brand-500) 60%, transparent);
+}
+
+/* The selection: a widget, a group's bounds, or a stack's bounds in the stack's blue. */
+.designer-selection {
+  position: absolute;
+  border: 2px solid var(--brand-500);
+  border-radius: 2px;
+  pointer-events: none;
+}
+
+.designer-selection.is-stack {
+  border-color: var(--blue-500);
+}
+
+.designer-selection.is-hidden {
+  border-style: dashed;
+}
+
+.designer-selection .designer-resize-handle {
+  pointer-events: auto;
+}
+
+.designer-selection.is-stack .designer-resize-handle {
+  border-color: var(--blue-500);
+}
+
+/* A stack's layer tabs, on its top-right corner; designer only, never on the wheel. */
+.designer-layer-tabs {
+  position: absolute;
+  z-index: 1;
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: var(--radius-control) var(--radius-control) 0 0;
+  background: var(--surface);
+  box-shadow: 0 0 0 1px var(--card-stroke);
+  transform: translate(-100%, -100%);
+}
+
+.designer-layer-tab {
+  display: grid;
+  height: 20px;
+  place-items: center;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--radius-control-small);
+  background: transparent;
+  color: var(--label-secondary);
+  font: 600 11px/16px var(--font-text);
+  white-space: nowrap;
+}
+
+.designer-layer-tab:hover {
+  background: var(--subtle-hover);
+  color: var(--label);
+}
+
+.designer-layer-tab[aria-selected='true'] {
+  background: var(--blue-500);
+  color: var(--on-status);
+}
+
+.designer-layer-tab.is-add {
+  padding: 0 5px;
+}
+
+/* The bar over a multi-selection: how many, and Group. */
+.designer-selection-bar {
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 6px 0 10px;
+  white-space: nowrap;
+  transform: translateY(calc(-100% - 8px));
+}
+
+.designer-selection-key {
+  font-size: 12px;
+}
+
+/* The selected widget's name, on a tag above its top-left corner. */
+.designer-widget-tag {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: -2px;
+  padding: 1px 6px;
+  border-radius: var(--radius-control-small);
+  background: var(--brand-500);
+  color: var(--on-brand);
+  font: 600 11px/16px var(--font-text);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.designer-resize-handle {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border: 1.5px solid var(--brand-500);
+  border-radius: 2px;
+  background: var(--surface);
+}
+
+.designer-ghost {
+  position: absolute;
+  border: 2px dashed var(--brand-500);
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--brand-500) 16%, transparent);
+  pointer-events: none;
+}
+
+.designer-ghost.is-invalid {
+  border-color: var(--red-500);
+  background: color-mix(in srgb, var(--red-500) 18%, transparent);
+}
+
+/* ── Shared by the sections' own panels (Alerts, Theme) ───────────────── */
+
+/* A panel's title with a quiet line under it. */
+.designer-panel-intro {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.designer-inspector .designer-panel-intro p.field-hint {
+  margin: 0;
+}
+
+/* A quiet note pinned to the bottom of a left panel. */
+.designer-sidebar-foot {
+  margin: 0;
+  padding: 8px 6px 0;
+  border-top: 1px solid var(--divider);
+}

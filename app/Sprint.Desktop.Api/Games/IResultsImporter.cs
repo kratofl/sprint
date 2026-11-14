@@ -55,7 +55,28 @@ public sealed record ImportedSession(
 
     /// <summary>Track length in metres when the archive states it — a cross-check against live lap distance.</summary>
     public double? TrackLengthMeters { get; init; }
+
+    /// <summary>The championship the car was entered in (e.g. "WEC 2026"), when the archive states it.</summary>
+    public string? Championship { get; init; }
+
+    /// <summary>The entry the player drove — the livery — when the archive names it apart from <see cref="CarModel"/>.</summary>
+    public string? Livery { get; init; }
 }
+
+/// <summary>
+/// One entry a results archive names: a livery and the car it is. The game's live feed can
+/// name only the livery (older recordings never stored more), and this is the lookup that
+/// says which car that was.
+/// </summary>
+/// <param name="Livery">The entry as the game names it live (e.g. "BMW M Team WRT 2026 #15:LM").</param>
+/// <param name="CarType">The car's model (e.g. "BMW M Hybrid V8").</param>
+/// <param name="CarClass">The class in the game's own spelling, or null when not stated.</param>
+/// <param name="Championship">The championship (e.g. "WEC 2026"), or null when not stated.</param>
+public sealed record ResultsCar(
+    string Livery,
+    string CarType,
+    string? CarClass,
+    string? Championship);
 
 /// <summary>
 /// One archived lap. <see cref="LapTimeSeconds"/> is null for an out/in/incomplete lap the
@@ -102,4 +123,10 @@ public interface IResultsImporter
     /// must never abort a batch import.
     /// </summary>
     ImportedSession? Read(ResultsArchiveEntry entry);
+
+    /// <summary>
+    /// Every entry the whole archive names, once per livery. Parses every entry, so it is for a
+    /// one-off pass, never a poll. Empty for an archive that does not name liveries.
+    /// </summary>
+    IReadOnlyList<ResultsCar> ListCars() => [];
 }

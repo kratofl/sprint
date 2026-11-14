@@ -9,9 +9,9 @@ namespace Sprint.Desktop.Features.SessionPlanning;
 /// <c>%AppData%/Sprint/lap-traces/</c>.
 /// <para>
 /// Binary rather than JSON because this is the largest thing Sprint stores. A Le Mans lap is
-/// ~6,800 samples across six channels; as indented JSON that is megabytes of decimal text for
-/// numbers that occupy 24 bytes in their natural form. Deflate is in-box, so this costs no
-/// dependency.
+/// ~6,800 samples across more than a hundred channels; as indented JSON that is tens of megabytes
+/// of decimal text for numbers that occupy four bytes each in their natural form. Deflate is
+/// in-box, so this costs no dependency.
 /// </para>
 /// <para>
 /// The payload itself is <see cref="LapTraceCodec"/>'s, shared with the shareable lap file and
@@ -24,15 +24,20 @@ public sealed class LocalLapTraceStore : ILapTraceStore
 
     private readonly string _root;
     private readonly ILog _log;
+    private readonly object _usageGate = new();
+
+    // Measured when first asked and forgotten on every write, so the state poll does not walk a
+    // directory of thousands of files several times a second.
+    private LapTraceUsage? _usage;
 
     public LocalLapTraceStore(string? dataRoot = null, ILog? log = null)
     {
-        _root = dataRoot ?? Path.Combine(
+        this._root = dataRoot ?? Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             "Sprint",
             "lap-traces");
-        _log = log ?? NullLog.Instance;
-        Directory.CreateDirectory(_root);
+        this._log = log ?? NullLog.Instance;
+        Directory.CreateDirectory(this._root);
     }
 
     public void Save(string traceId, LapChannelTrace trace)
@@ -47,7 +52,7 @@ public sealed class LocalLapTraceStore : ILapTraceStore
 
         try
         {
-            AtomicFile.Write(TracePath(traceId), stream =>
+            AtomicFile.Write(this.TracePath(traceId), stream =>
             {
                 // leaveOpen: true -- AtomicFile.Write owns the temp FileStream's lifetime (it
                 // flushes and closes it after this delegate returns); DeflateStream must not
@@ -55,17 +60,18 @@ public sealed class LocalLapTraceStore : ILapTraceStore
                 using DeflateStream deflate = new(stream, CompressionLevel.Fastest, leaveOpen: true);
                 LapTraceCodec.Write(deflate, trace);
             });
+            this.ForgetUsage();
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             // Losing one lap's trace must never take the lap record with it.
-            _log.Error($"Failed to persist lap trace '{traceId}'", ex);
+            this._log.Error($"Failed to persist lap trace '{traceId}'", ex);
         }
     }
 
     public LapChannelTrace? Load(string traceId)
     {
-        var path = TracePath(traceId);
+        string path = this.TracePath(traceId);
         if (!File.Exists(path))
         {
             return null;
@@ -73,12 +79,12 @@ public sealed class LocalLapTraceStore : ILapTraceStore
 
         try
         {
-            using var file = File.OpenRead(path);
-            using var deflate = new DeflateStream(file, CompressionMode.Decompress);
-            var trace = LapTraceCodec.Read(deflate);
+            using FileStream file = File.OpenRead(path);
+            using DeflateStream deflate = new DeflateStream(file, CompressionMode.Decompress);
+            LapChannelTrace? trace = LapTraceCodec.Read(deflate);
             if (trace is null)
             {
-                _log.Warn($"Ignoring lap trace '{traceId}': not a Sprint trace payload");
+                this._log.Warn($"Ignoring lap trace '{traceId}': not a trace this build can read (corrupt, or written by a newer Sprint)");
             }
 
             return trace;
@@ -86,7 +92,7 @@ public sealed class LocalLapTraceStore : ILapTraceStore
         catch (Exception ex) when (ex is IOException or InvalidDataException)
         {
             // One unreadable trace must not cost the driver every other lap they have driven.
-            _log.Warn($"Ignoring unreadable lap trace at {path}", ex);
+            this._log.Warn($"Ignoring unreadable lap trace at {path}", ex);
             return null;
         }
     }
@@ -100,24 +106,25 @@ public sealed class LocalLapTraceStore : ILapTraceStore
 
         try
         {
-            var path = TracePath(traceId);
+            string path = this.TracePath(traceId);
             if (File.Exists(path))
             {
                 File.Delete(path);
+                this.ForgetUsage();
             }
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            _log.Warn($"Failed to delete lap trace '{traceId}'", ex);
+            this._log.Warn($"Failed to delete lap trace '{traceId}'", ex);
         }
     }
 
     public IReadOnlyList<LapTraceInfo> List()
     {
-        var traces = new List<LapTraceInfo>();
-        foreach (var path in Directory.EnumerateFiles(_root, "*" + Extension))
+        List<LapTraceInfo> traces = new List<LapTraceInfo>();
+        foreach (string path in Directory.EnumerateFiles(this._root, "*" + Extension))
         {
-            var info = new FileInfo(path);
+            FileInfo info = new FileInfo(path);
             traces.Add(new LapTraceInfo(
                 Path.GetFileNameWithoutExtension(path),
                 info.Length,
@@ -127,15 +134,32 @@ public sealed class LocalLapTraceStore : ILapTraceStore
         return traces;
     }
 
-    /// <summary>
-    /// Declared rather than inherited from the interface default: a default interface member is
-    /// only reachable through the interface, so a caller holding a concrete store could not
-    /// call it at all.
-    /// </summary>
-    public long TotalBytes() => List().Sum(info => info.SizeBytes);
+    public LapTraceUsage Usage()
+    {
+        lock (this._usageGate)
+        {
+            if (this._usage is { } known)
+            {
+                return known;
+            }
+
+            IReadOnlyList<LapTraceInfo> stored = this.List();
+            LapTraceUsage measured = new(stored.Sum(info => info.SizeBytes), stored.Count);
+            this._usage = measured;
+            return measured;
+        }
+    }
+
+    private void ForgetUsage()
+    {
+        lock (this._usageGate)
+        {
+            this._usage = null;
+        }
+    }
 
     private string TracePath(string traceId) =>
-        Path.Combine(_root, SafeFileName(traceId) + Extension);
+        Path.Combine(this._root, SafeFileName(traceId) + Extension);
 
     // Ids are derived from a session id, which could carry separators from an import or a sync.
     // '.' is replaced as well as the platform's invalid characters: it is legal in a file name,
@@ -143,10 +167,10 @@ public sealed class LocalLapTraceStore : ILapTraceStore
     private static string SafeFileName(string traceId)
     {
         Span<char> buffer = stackalloc char[traceId.Length];
-        for (var i = 0; i < traceId.Length; i++)
+        for (int i = 0; i < traceId.Length; i++)
         {
-            var c = traceId[i];
-            var unsafeChar = c is '.' or '/' or '\\'
+            char c = traceId[i];
+            bool unsafeChar = c is '.' or '/' or '\\'
                 || Array.IndexOf(Path.GetInvalidFileNameChars(), c) >= 0;
             buffer[i] = unsafeChar ? '_' : c;
         }

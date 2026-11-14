@@ -26,13 +26,13 @@ internal sealed record LmuSetupFile(string? VehicleClassSetting, IReadOnlyList<L
     {
         ArgumentNullException.ThrowIfNull(text);
 
-        var entries = new List<LmuSetupEntry>();
-        var section = "";
+        List<LmuSetupEntry> entries = new List<LmuSetupEntry>();
+        string section = "";
         string? vehicleClass = null;
 
-        foreach (var raw in text.Split('\n'))
+        foreach (string raw in text.Split('\n'))
         {
-            var line = raw.Trim();
+            string line = raw.Trim();
 
             // `//` comments carry provenance (the vehicle path the sim saved from) but no
             // setup value. Dropping them keeps a diff of two versions about what the driver
@@ -49,14 +49,14 @@ internal sealed record LmuSetupFile(string? VehicleClassSetting, IReadOnlyList<L
                 continue;
             }
 
-            var separator = line.IndexOf('=', StringComparison.Ordinal);
+            int separator = line.IndexOf('=', StringComparison.Ordinal);
             if (separator <= 0)
             {
                 continue;
             }
 
-            var key = line[..separator].Trim();
-            var value = line[(separator + 1)..].Trim();
+            string key = line[..separator].Trim();
+            string value = line[(separator + 1)..].Trim();
             entries.Add(new LmuSetupEntry(section, key, value));
 
             if (vehicleClass is null && key.Equals(VehicleClassKey, StringComparison.OrdinalIgnoreCase))

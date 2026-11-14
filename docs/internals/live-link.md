@@ -40,3 +40,36 @@ The server path ([live-telemetry.md](live-telemetry.md)) is separate and untouch
 - **Windows asks for firewall access** the first time the host opens the UDP socket. Denying it
   usually still works, because replies to our own outgoing packets pass, but it is the first thing
   to check when a link never connects.
+
+## The pit wall over the link
+
+The engineer's pit wall (`Features/PitWall/`) gets more than samples: a board (session, field, car)
+twice a second, radar ten times a second, and the shared plan and its target lap.
+
+- **Anything bigger than a datagram is a blob** (`PeerBlobs`): deflated, base64url (JSON escapes
+  nothing in it), cut into numbered parts of one `version`. Base64 with `+` and `/` would be escaped
+  to six bytes each by System.Text.Json and break the 1200-byte budget.
+- **The replay rule drops a part that arrives behind a newer packet**, and a lost part loses the
+  version. So the plan and target are repeated (5 s, 10 s) under the same version until they change,
+  and the receiver keeps the parts it has; a board is not repeated, the next one replaces it.
+- **A newer version drops the one being collected.** Versions are the sender's clock in ms (or one
+  more), so they keep rising across a restart of the driver's desktop.
+- **Every ping says what its build's link carries**: `PeerLinkRules.Level`, not the version string,
+  which dev builds share. Raise the level when one side starts needing something an older peer does
+  not send; a ping without one is level 1. Both sides then say who should update, and the pit wall
+  says why it stays empty. The codes keep their own version byte, for changes that break the
+  exchange itself.
+- **Unknown message types read as null.** That is how an older build ignores `blob` and `radar`; keep
+  `PeerMessage.Deserialize` that way when adding types.
+- **The plan travels as `state.plans` writes it**, with its `state.planFuel` entry as `raceFuel`, and
+  the engineer passes the JSON through unparsed, so the pit wall reads the same shape the planner
+  does, whatever build the driver runs. The stint tile cuts the race from `raceFuel`, never from the
+  plan's own figures: the engineer has neither the driver's lap history nor their tank. A plan with no
+  `raceFuel` key comes from a driver build before it (the tile says so); a plan swapped in mid-read
+  goes out with `raceFuel: null`, so keep the key present whenever the plan is shared.
+- **Race control, stopped cars and the pit loss are the engineer's own work**
+  (`PitWallAccumulator`), from the changes between boards on the game's clock (`Elapsed`): the game
+  says none of them. So an engineer who links mid-race sees only what changed since, a stop counts
+  only when it was seen from its pit entry, and a full course yellow and a safety car stay one phase
+  because LMU reports them as one. The order of LMU's `mSectorFlag` is read like `mSector`
+  (sector 3 first); its own header is unsure, so check it the first time a yellow is live.

@@ -1,163 +1,84 @@
-import { BarChart3, ListChecks, Radio } from 'lucide-react'
-import '@sprint/dashboard/styles.css'
-import { DashRenderer } from '@sprint/dashboard'
+import type { ReactNode } from 'react'
+import { BarChart3, ChevronRight, Gamepad2, ListChecks, Plus } from 'lucide-react'
 import type { AppView } from '../bridge'
-import { CommandDivider, PageHeader } from '../shell/PageHeader'
+import { PageHeader } from '../shell/PageHeader'
 import type { RuntimeState } from '../shell/runtime'
 import { Status } from '../shell/Status'
+import type { StatusTone } from '../shell/Status'
 import type { NavigationTarget } from '../shell/ViewRouter'
-import { TELEMETRY_STATUS_TONE, describeTelemetry } from '../shell/telemetry'
-import type { TelemetryDescription } from '../shell/telemetry'
-import { toTelemetryFrame } from './DashesDomain'
-import { homeDashes, homeDevices, lapHistorySummary, openPlans, overviewPrimary } from './HomeDomain'
-import type { HomeDash, HomeDevice, OverviewPrimary } from './HomeDomain'
-import { PLAN_STATUS_TONE } from './SessionPlannerDomain'
+import { TELEMETRY_STATUS_TONE } from '../shell/telemetry'
+import { dayLabel, formatGap, formatLapSeconds } from './AnalysisDomain'
+import { DeviceImage } from './DeviceImage'
+import { homeDevices, homeGame, openPlans, overviewPrimary, planFacts, recentSessions } from './HomeDomain'
+import type { HomeDevice, HomeGame, HomeSession, OverviewPrimary, RecentSessions } from './HomeDomain'
+import { PLAN_STATUS_TONE, formatClock, formatLapTime } from './SessionPlannerDomain'
 import type { SessionPlan } from './SessionPlannerDomain'
 import './HomeView.css'
 
-// Rows per card before "Open planner" / "Manage devices" / "Manage dashes" takes over.
-const ROW_LIMIT = 6
-
 /**
- * Overview: the operational landing page. PageHeader + CommandBar (one accent
- * command for the active plan), the telemetry link as an InfoBar whenever it
- * needs attention, a KPI row of real counts, then list cards for plans,
- * devices and dashes. Every row opens its item in the owning view.
+ * Overview: "can I drive now, and how did it go?". The plan you are driving next (or a prompt to
+ * plan one), the rig as status cards — the game link, then every screen device — and the recent
+ * sessions with the newest opened up: best lap, gap to your earlier best on the same car and
+ * track, and its sectors. Every card and row opens its item on the owning page.
  */
 export function HomeView({
   runtime,
   onNavigate,
   onOpenItem,
+  onImportResults,
 }: {
   runtime: RuntimeState
   onNavigate: (view: AppView) => void
   onOpenItem: (target: NavigationTarget) => void
+  /** Opens the shell's results import dialog; absent when the game has no results archive. */
+  onImportResults?: () => void
 }) {
   if (runtime.kind === 'loading') {
     return (
       <div className="overview">
-        <OverviewHeader primary={{ kind: 'plan-session' }} onNavigate={onNavigate} onOpenItem={onOpenItem} />
-        <div className="overview-kpis">
-          {[0, 1, 2, 3].map((index) => (
-            <div key={index} className="kpi skeleton overview-kpi-skeleton" />
+        <OverviewHeader primary={{ kind: 'plan-session', draft: null }} onNavigate={onNavigate} onOpenItem={onOpenItem} />
+        <div className="card skeleton overview-plan-skeleton" />
+        <div className="overview-rig">
+          {[0, 1, 2].map((index) => (
+            <div key={index} className="card skeleton overview-rig-skeleton" />
           ))}
         </div>
-        <div className="overview-split">
-          <div className="card skeleton overview-card-skeleton" />
-          <div className="card skeleton overview-card-skeleton" />
-        </div>
+        <div className="card skeleton overview-sessions-skeleton" />
       </div>
     )
   }
 
   const { sprint } = runtime
-  const telemetry = describeTelemetry(sprint.telemetry)
-  const frame = toTelemetryFrame(sprint.telemetry.frame)
-  const devices = homeDevices(sprint)
-  const connected = devices.filter((entry) => entry.connected).length
-  const dashes = homeDashes(sprint)
-  const dashesOnScreen = dashes.filter((entry) => entry.assignedDeviceNames.length > 0).length
-  const plans = openPlans(sprint)
-  const primary = overviewPrimary(plans)
-  const history = lapHistorySummary(sprint)
+  const primary = overviewPrimary(openPlans(sprint))
+  const sessions = recentSessions(sprint)
 
   return (
     <div className="overview">
       <OverviewHeader primary={primary} onNavigate={onNavigate} onOpenItem={onOpenItem} />
 
-      <TelemetryInfoBar telemetry={telemetry} />
+      {primary.kind === 'open-plan' ? (
+        <NextUpCard plan={primary.plan} onOpen={() => onOpenItem({ view: 'SessionPlanner', planId: primary.plan.id })} />
+      ) : (
+        <NoPlanCard draft={primary.draft} onOpenDraft={(planId) => onOpenItem({ view: 'SessionPlanner', planId })} />
+      )}
 
-      <div className="overview-kpis">
-        <Kpi
-          label="Devices connected"
-          value={connected}
-          detail={devices.length === 0 ? 'No screens saved' : `of ${devices.length} saved ${devices.length === 1 ? 'screen' : 'screens'}`}
+      <Rig
+        game={homeGame(sprint.telemetry)}
+        devices={homeDevices(sprint)}
+        onOpenGame={() => onNavigate('Help')}
+        onOpenDevice={(deviceId) => onOpenItem({ view: 'Devices', deviceId })}
+        onAddDevice={() => onNavigate('Devices')}
+      />
+
+      {sessions ? (
+        <SessionsCard
+          sessions={sessions}
+          onOpen={(sessionId) => onOpenItem({ view: 'Analysis', sessionId })}
+          onOpenAll={() => onNavigate('Analysis')}
         />
-        <Kpi label="Dashes" value={dashes.length} detail={`${dashesOnScreen} on a screen`} />
-        <Kpi
-          label="Open session plans"
-          value={plans.length}
-          detail={primary.kind === 'open-plan' ? `${primary.plan.status}: ${primary.plan.name}` : 'None armed'}
-        />
-        <Kpi
-          label="Recorded sessions"
-          value={history.sessions}
-          detail={`${history.laps} ${history.laps === 1 ? 'lap' : 'laps'}`}
-        />
-      </div>
-
-      <div className="overview-split">
-        <section className="card list-card overview-plans" aria-labelledby="overview-plans-title">
-          <CardHead id="overview-plans-title" title="Session plans" link="Open planner" onLink={() => onNavigate('SessionPlanner')} />
-          {plans.length === 0 ? (
-            <p className="list-card-empty">No open plans. Create one before qualifying or joining a server.</p>
-          ) : (
-            <>
-              <div className="list-header" aria-hidden="true">
-                <span>Plan</span>
-                <span>Car</span>
-                <span>Track</span>
-                <span>Status</span>
-              </div>
-              <ul className="list-rows">
-                {plans.slice(0, ROW_LIMIT).map((plan) => (
-                  <PlanRow key={plan.id} plan={plan} onOpen={() => onOpenItem({ view: 'SessionPlanner', planId: plan.id })} />
-                ))}
-              </ul>
-            </>
-          )}
-        </section>
-
-        <section className="card list-card overview-devices" aria-labelledby="overview-devices-title">
-          <CardHead id="overview-devices-title" title="Devices" link="Manage devices" onLink={() => onNavigate('Devices')} />
-          {devices.length === 0 ? (
-            <p className="list-card-empty">Add a wheel or screen on the Devices page to drive a dash.</p>
-          ) : (
-            <>
-              <div className="list-header" aria-hidden="true">
-                <span>Device</span>
-                <span>Dash</span>
-                <span>Status</span>
-              </div>
-              <ul className="list-rows">
-                {devices.slice(0, ROW_LIMIT).map((entry) => (
-                  <DeviceRow
-                    key={entry.device.id}
-                    entry={entry}
-                    onOpen={() => onOpenItem({ view: 'Devices', deviceId: entry.device.id })}
-                  />
-                ))}
-              </ul>
-            </>
-          )}
-        </section>
-      </div>
-
-      <section className="card list-card overview-dashes" aria-labelledby="overview-dashes-title">
-        <CardHead id="overview-dashes-title" title="Dashes" link="Manage dashes" onLink={() => onNavigate('Dashes')} />
-        {dashes.length === 0 ? (
-          <p className="list-card-empty">Create your first dash to start designing for a wheel screen.</p>
-        ) : (
-          <>
-            <div className="list-header" aria-hidden="true">
-              <span />
-              <span>Name</span>
-              <span>Screen profile</span>
-              <span>Shown on</span>
-            </div>
-            <ul className="list-rows">
-              {dashes.slice(0, ROW_LIMIT).map((entry) => (
-                <DashRow
-                  key={entry.layout.id}
-                  entry={entry}
-                  frame={frame}
-                  onOpen={() => onOpenItem({ view: 'Dashes', dashId: entry.layout.id })}
-                />
-              ))}
-            </ul>
-          </>
-        )}
-      </section>
+      ) : (
+        <NoSessionsCard onImportResults={onImportResults} />
+      )}
     </div>
   )
 }
@@ -181,7 +102,7 @@ function OverviewHeader({
           title={primary.plan.name}
         >
           <ListChecks />
-          Open active plan
+          Open plan
         </button>
       ) : (
         <button type="button" className="button primary" onClick={() => onNavigate('SessionPlanner')}>
@@ -189,110 +110,270 @@ function OverviewHeader({
           Plan a session
         </button>
       )}
-      <CommandDivider />
-      <button type="button" className="button subtle" onClick={() => onNavigate('Analysis')}>
-        <BarChart3 />
-        Analyze laps
-      </button>
-      <button type="button" className="button subtle" onClick={() => onNavigate('RaceEngineer')}>
-        <Radio />
-        Race engineer
-      </button>
     </PageHeader>
   )
 }
 
-/** The telemetry link as an InfoBar whenever it is not simply live (the toolbar indicator says "live"). Help & diagnostics shows the same bar. */
-export function TelemetryInfoBar({ telemetry }: { telemetry: TelemetryDescription }) {
-  if (telemetry.tone === 'live' && !telemetry.detail) return null
+// ── Plan ─────────────────────────────────────────────────────────────────
 
-  const severity = telemetry.tone === 'fault' ? 'error' : telemetry.tone === 'idle' ? 'info' : 'warning'
-  const message = telemetry.detail ?? (telemetry.tone === 'idle' ? 'Sprint connects on its own once the game is running.' : null)
+function NextUpCard({ plan, onOpen }: { plan: SessionPlan; onOpen: () => void }) {
+  const facts = planFacts(plan)
+  const meta = [plan.car, plan.track, plan.qualifyingIncluded ? 'qualifying + race' : 'race'].filter(Boolean).join(' · ')
 
   return (
-    <div className={`infobar telemetry-infobar ${severity}`} role={severity === 'info' ? 'status' : 'alert'}>
-      <span className="infobar-icon" aria-hidden="true">
-        {severity === 'info' ? 'i' : '!'}
-      </span>
-      <strong className="infobar-title">{telemetry.label}</strong>
-      <span className="infobar-message">{message}</span>
-    </div>
-  )
-}
-
-function Kpi({ label, value, detail }: { label: string; value: number; detail: string }) {
-  return (
-    <div className="kpi">
-      <span className="kpi-label">{label}</span>
-      <span className="kpi-value">{value}</span>
-      <span className="kpi-delta">{detail}</span>
-    </div>
-  )
-}
-
-function CardHead({ id, title, link, onLink }: { id: string; title: string; link: string; onLink: () => void }) {
-  return (
-    <div className="card-header">
-      <h2 id={id} className="card-title">
-        {title}
-      </h2>
-      <button type="button" className="overview-link" onClick={onLink}>
-        {link}
-      </button>
-    </div>
-  )
-}
-
-function PlanRow({ plan, onOpen }: { plan: SessionPlan; onOpen: () => void }) {
-  return (
-    <li>
-      <button type="button" className="list-row" onClick={onOpen}>
-        <span className="overview-cell overview-name">{plan.name}</span>
-        <span className="overview-cell overview-secondary">{plan.car || '—'}</span>
-        <span className="overview-cell overview-secondary">{plan.track || '—'}</span>
+    <button type="button" className="card overview-plan" onClick={onOpen}>
+      <span className="overview-plan-head">
+        <span className="overview-plan-text">
+          <span className="overview-eyebrow">{plan.status === 'Tracking' ? 'Driving now' : 'Next up'}</span>
+          <span className="overview-plan-name">{plan.name}</span>
+          <span className="overview-secondary">{meta}</span>
+        </span>
         <Status tone={PLAN_STATUS_TONE[plan.status]}>{plan.status}</Status>
-      </button>
-    </li>
+      </span>
+      <span className="overview-facts">
+        <Fact label="Starts" value={facts.startsAt ? formatClock(facts.startsAt) : '—'} />
+        <Fact label="Race" value={facts.raceLength ?? '—'} />
+        <Fact label="Target lap" value={formatLapTime(facts.targetLapSeconds)} />
+        <Fact label="Fuel per lap" value={facts.fuelPerLapLiters === null ? '—' : `${facts.fuelPerLapLiters.toFixed(1)} L`} />
+      </span>
+    </button>
   )
 }
 
-function DeviceRow({ entry, onOpen }: { entry: HomeDevice; onOpen: () => void }) {
+function Fact({ label, value }: { label: string; value: string }) {
   return (
-    <li>
-      <button type="button" className="list-row" onClick={onOpen}>
-        <span className="overview-cell overview-name">{entry.device.name}</span>
-        <span className="overview-cell overview-secondary">{entry.dashName ?? 'No dash'}</span>
-        <Status tone={TELEMETRY_STATUS_TONE[entry.statusTone]}>{entry.statusLabel}</Status>
-      </button>
-    </li>
+    <span className="overview-fact">
+      <span className="overview-fact-label">{label}</span>
+      <span className="overview-fact-value tabular">{value}</span>
+    </span>
   )
 }
 
-// Thumbnails fit the 32px row: 24px tall, width from the dash grid's aspect.
-const PREVIEW_HEIGHT = 24
+function NoPlanCard({ draft, onOpenDraft }: { draft: SessionPlan | null; onOpenDraft: (planId: string) => void }) {
+  return (
+    <section className="card overview-empty-card" aria-label="Session plan">
+      <span className="overview-empty-icon" aria-hidden="true">
+        <ListChecks />
+      </span>
+      <span className="overview-empty-text">
+        <strong>No plan for your next session</strong>
+        <span className="overview-secondary">Fuel, stints and a target lap, worked out before you join a server.</span>
+      </span>
+      {draft && (
+        <span className="overview-secondary overview-draft">
+          {draft.name} is a draft ·{' '}
+          <button type="button" className="text-button" onClick={() => onOpenDraft(draft.id)}>
+            Continue it
+          </button>
+        </span>
+      )}
+    </section>
+  )
+}
 
-function DashRow({
-  entry,
-  frame,
+// ── Rig ──────────────────────────────────────────────────────────────────
+
+function Rig({
+  game,
+  devices,
+  onOpenGame,
+  onOpenDevice,
+  onAddDevice,
+}: {
+  game: HomeGame
+  devices: readonly HomeDevice[]
+  onOpenGame: () => void
+  onOpenDevice: (deviceId: string) => void
+  onAddDevice: () => void
+}) {
+  return (
+    <div className="overview-rig" role="list" aria-label="Rig">
+      <RigCard
+        picture={
+          <span className="overview-rig-picture" aria-hidden="true">
+            <Gamepad2 strokeWidth={1.5} />
+          </span>
+        }
+        name={game.name}
+        tone={TELEMETRY_STATUS_TONE[game.tone]}
+        status={game.statusLabel}
+        detail={game.detail}
+        onOpen={onOpenGame}
+      />
+      {devices.map((entry) => (
+        <RigCard
+          key={entry.device.id}
+          picture={<DeviceImage image={entry.image} dim={!entry.connected} className="overview-rig-picture" />}
+          name={entry.device.name}
+          tone={TELEMETRY_STATUS_TONE[entry.statusTone]}
+          status={entry.statusLabel}
+          detail={entry.connected ? entry.dashName : null}
+          onOpen={() => onOpenDevice(entry.device.id)}
+        />
+      ))}
+      {devices.length === 0 && (
+        <div role="listitem">
+          <button type="button" className="card overview-rig-card overview-rig-add" onClick={onAddDevice}>
+            <span className="overview-rig-picture" aria-hidden="true">
+              <Plus strokeWidth={1.5} />
+            </span>
+            <span className="overview-rig-text">
+              <span className="overview-rig-name">Add a wheel or screen</span>
+              <span className="overview-rig-detail">Shows your dash on it while you drive</span>
+            </span>
+            <ChevronRight className="overview-chevron" aria-hidden="true" />
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function RigCard({
+  picture,
+  name,
+  tone,
+  status,
+  detail,
   onOpen,
 }: {
-  entry: HomeDash
-  frame: ReturnType<typeof toTelemetryFrame>
+  picture: ReactNode
+  name: string
+  tone: StatusTone
+  status: string
+  detail: string | null
   onOpen: () => void
 }) {
-  const previewWidth = Math.min(48, Math.round((PREVIEW_HEIGHT / entry.layout.gridRows) * entry.layout.gridCols))
-  const shownOn = entry.assignedDeviceNames.length === 0 ? 'Not on a screen' : entry.assignedDeviceNames.join(', ')
+  return (
+    <div role="listitem">
+      <button type="button" className="card overview-rig-card" onClick={onOpen} title={detail ?? undefined}>
+        {picture}
+        <span className="overview-rig-text">
+          <span className="overview-rig-name">{name}</span>
+          <span className="overview-rig-status">
+            <Status tone={tone} quiet>
+              {status}
+            </Status>
+            {detail && <span className="overview-rig-detail">{detail}</span>}
+          </span>
+        </span>
+        <ChevronRight className="overview-chevron" aria-hidden="true" />
+      </button>
+    </div>
+  )
+}
+
+// ── Sessions ─────────────────────────────────────────────────────────────
+
+const gapClass = (gap: number) => (gap < 0 ? 'overview-gap faster' : gap > 0 ? 'overview-gap slower' : 'overview-gap')
+
+function SessionsCard({
+  sessions,
+  onOpen,
+  onOpenAll,
+}: {
+  sessions: RecentSessions
+  onOpen: (sessionId: string) => void
+  onOpenAll: () => void
+}) {
+  const { last, comparison, earlier } = sessions
+  const meta = [dayLabel(last.startedAt), last.kind, last.track, last.car, `${last.lapCount} ${last.lapCount === 1 ? 'lap' : 'laps'}`]
+    .filter(Boolean)
+    .join(' · ')
 
   return (
-    <li>
-      <button type="button" className="list-row" onClick={onOpen}>
-        <span className="overview-dash-preview" aria-hidden="true">
-          <DashRenderer layout={entry.layout} frame={frame} width={previewWidth} height={PREVIEW_HEIGHT} />
+    <section className="card list-card overview-sessions" aria-labelledby="overview-sessions-title">
+      <div className="card-header">
+        <h2 id="overview-sessions-title" className="card-title">
+          Recent sessions
+        </h2>
+        <button type="button" className="text-button" onClick={onOpenAll}>
+          All in Analysis
+        </button>
+      </div>
+
+      <button type="button" className="list-row overview-last" onClick={() => onOpen(last.id)}>
+        <span className="overview-last-main">
+          <span className="overview-secondary overview-last-meta">{meta}</span>
+          <span className="overview-last-best">
+            <span className="overview-last-time tabular">{formatLapSeconds(last.bestLapSeconds)}</span>
+            {comparison.gapSeconds !== null && (
+              <span>
+                <span className={`${gapClass(comparison.gapSeconds)} tabular`}>{formatGap(comparison.gapSeconds)}</span>{' '}
+                <span className="overview-secondary">vs your best here</span>
+              </span>
+            )}
+            {comparison.gapSeconds !== null && comparison.gapSeconds < 0 && <span className="chip">Personal best</span>}
+          </span>
         </span>
-        <span className="overview-cell overview-name">{entry.layout.name}</span>
-        <span className="overview-cell overview-secondary">{entry.profileLabel}</span>
-        <span className="overview-cell overview-secondary">{shownOn}</span>
+        <ChevronRight className="overview-chevron" aria-hidden="true" />
+        {last.bestSectors.length > 0 && (
+          <span className="overview-sectors">
+            {last.bestSectors.map((time, index) => {
+              const gap = comparison.sectorGaps[index] ?? null
+              return (
+                <span key={index} className="overview-sector">
+                  <span className="overview-fact-label">Sector {index + 1}</span>
+                  <span>
+                    <span className="overview-sector-time tabular">{time.toFixed(3)}</span>
+                    {gap !== null && <span className={`${gapClass(gap)} tabular`}> {formatGap(gap)}</span>}
+                  </span>
+                </span>
+              )
+            })}
+          </span>
+        )}
+      </button>
+
+      {earlier.length > 0 && (
+        <ul className="list-rows">
+          {earlier.map((session) => (
+            <SessionRow key={session.id} session={session} onOpen={() => onOpen(session.id)} />
+          ))}
+        </ul>
+      )}
+    </section>
+  )
+}
+
+function SessionRow({ session, onOpen }: { session: HomeSession; onOpen: () => void }) {
+  return (
+    <li>
+      <button type="button" className="list-row overview-session-columns" onClick={onOpen}>
+        <span className="overview-cell overview-secondary">{dayLabel(session.startedAt)}</span>
+        <span className="overview-cell">{session.kind}</span>
+        <span className="overview-cell">{session.track || '—'}</span>
+        <span className="overview-cell overview-secondary">{session.car || '—'}</span>
+        <span className="overview-num overview-secondary tabular">{session.lapCount}</span>
+        <span className="overview-num overview-best tabular">{formatLapSeconds(session.bestLapSeconds)}</span>
+        <ChevronRight className="overview-chevron" aria-hidden="true" />
       </button>
     </li>
+  )
+}
+
+function NoSessionsCard({ onImportResults }: { onImportResults?: () => void }) {
+  return (
+    <section className="card list-card overview-sessions" aria-labelledby="overview-sessions-title">
+      <div className="card-header">
+        <h2 id="overview-sessions-title" className="card-title">
+          Recent sessions
+        </h2>
+      </div>
+      <div className="overview-empty-card overview-sessions-empty">
+        <span className="overview-empty-icon" aria-hidden="true">
+          <BarChart3 />
+        </span>
+        <span className="overview-empty-text">
+          <strong>No laps yet</strong>
+          <span className="overview-secondary">Drive and each session shows up here with your best lap and sectors.</span>
+        </span>
+        {onImportResults && (
+          <button type="button" className="button" onClick={onImportResults}>
+            Import race results
+          </button>
+        )}
+      </div>
+    </section>
   )
 }

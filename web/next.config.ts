@@ -6,6 +6,8 @@ import type { NextConfig } from 'next'
 const nextConfig: NextConfig = {
   // Required for optimized Docker image (copies only what's needed to run)
   output: 'standalone',
+  // `.dev.tsx` pages exist only under `next dev`: the design mockups (app/mockups, lib/mockup.ts).
+  pageExtensions: process.env.NODE_ENV === 'development' ? ['dev.tsx', 'tsx', 'ts', 'jsx', 'js'] : ['tsx', 'ts', 'jsx', 'js'],
   // Bottom-left (the default) covers the account row at the foot of the sidebar.
   devIndicators: { position: 'bottom-right' },
   // `next dev` would otherwise write web/AGENTS.md and web/CLAUDE.md; the repo's

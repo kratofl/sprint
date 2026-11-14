@@ -7,19 +7,27 @@ namespace Sprint.Desktop.Features.LiveCompare;
 /// <summary>
 /// What the HUD needs to draw one moment: the stack, the lap it is chasing, and the delta.
 /// </summary>
+/// <param name="PanelIds">The catalogue id of each chart in <paramref name="Stack"/>, in order — which HUD window draws it.</param>
+/// <param name="CarMeters">Where the car is on the stack's distance axis — the HUD's "you are here" line.</param>
 public sealed record LiveCompareFrame(
     ChartStack Stack,
+    IReadOnlyList<string> PanelIds,
     string TargetName,
     double? DeltaSeconds,
-    bool HasLiveLine);
+    bool HasLiveLine,
+    double CarMeters);
 
 /// <summary>
-/// The Live Compare rolling window (#195), free of Avalonia so every rule here is a unit test.
+/// The Live Compare rolling window (#195), free of any UI so every rule here is a unit test.
 /// <para>
 /// It keeps its own live sample buffer rather than reading the lap recorder's. The recorder
 /// exists to write the corpus and its buffer is an implementation detail of that job; a second
 /// consumer would tie the HUD's lifetime to the recorder's and make "the driver is comparing"
 /// and "the driver is being recorded" the same state, which they are not.
+/// </para>
+/// <para>
+/// Thread-safe: the host's telemetry loop ingests, a command thread sets the target and the
+/// HUD poll takes snapshots, all at once. One lock, held briefly by each.
 /// </para>
 /// </summary>
 public sealed class LiveCompareController
@@ -28,6 +36,7 @@ public sealed class LiveCompareController
     // position, and a non-finite reading compares false against everything.
     private const double PositionEpsilon = 1e-6;
 
+    private readonly object _gate = new();
     private readonly List<LapTraceSample> _samples = [];
 
     private LiveCompareTarget? _target;
@@ -38,21 +47,41 @@ public sealed class LiveCompareController
     private double _position;
     private double _currentLapTime;
     private double? _trackLengthMeters;
+    private double _metersBehind = 200;
+    private double _metersAhead = 600;
+    private IReadOnlyList<LapChartPanelSpec> _panels = LapChartPanels.HudDefaults;
 
     /// <summary>Metres of already-driven track kept behind the car. Spec §2.3 proposes 200.</summary>
-    public double MetersBehind { get; set; } = 200;
+    public double MetersBehind
+    {
+        get { lock (this._gate) { return this._metersBehind; } }
+        set { lock (this._gate) { this._metersBehind = value; } }
+    }
 
     /// <summary>Metres ahead of the car, where the braking zone slides into view. Spec §2.3 proposes 600.</summary>
-    public double MetersAhead { get; set; } = 600;
+    public double MetersAhead
+    {
+        get { lock (this._gate) { return this._metersAhead; } }
+        set { lock (this._gate) { this._metersAhead = value; } }
+    }
 
-    public IReadOnlyList<LapChartPanelSpec> Panels { get; set; } = LapChartPanels.HudDefaults;
+    /// <summary>The charts a snapshot carries, in this order — one per HUD chart window.</summary>
+    public IReadOnlyList<LapChartPanelSpec> Panels
+    {
+        get { lock (this._gate) { return this._panels; } }
+        set { lock (this._gate) { this._panels = value; } }
+    }
 
-    public LiveCompareTarget? Target => _target;
+    public LiveCompareTarget? Target
+    {
+        get { lock (this._gate) { return this._target; } }
+    }
 
     /// <summary>Whether a target with usable channels is loaded.</summary>
-    public bool HasTarget => _target is not null && _targetTrace is { IsUsable: true };
-
-    public event EventHandler? Changed;
+    public bool HasTarget
+    {
+        get { lock (this._gate) { return this._target is not null && this._targetTrace is { IsUsable: true }; } }
+    }
 
     /// <summary>
     /// Points the HUD at a lap. A target whose trace is missing or unusable is refused rather
@@ -60,9 +89,11 @@ public sealed class LiveCompareController
     /// </summary>
     public void SetTarget(LiveCompareTarget? target, LapChannelTrace? trace)
     {
-        _target = trace is { IsUsable: true } ? target : null;
-        _targetTrace = _target is null ? null : trace;
-        Changed?.Invoke(this, EventArgs.Empty);
+        lock (this._gate)
+        {
+            this._target = trace is { IsUsable: true } ? target : null;
+            this._targetTrace = this._target is null ? null : trace;
+        }
     }
 
     /// <summary>Folds a live frame in. Cheap by design — this runs on the telemetry path.</summary>
@@ -70,98 +101,106 @@ public sealed class LiveCompareController
     {
         ArgumentNullException.ThrowIfNull(frame);
 
-        if (frame.Session.TrackLengthMeters is { } length && length > 0)
+        lock (this._gate)
         {
-            _trackLengthMeters = length;
-        }
+            if (frame.Session.TrackLengthMeters is { } length && length > 0)
+            {
+                this._trackLengthMeters = length;
+            }
 
-        // Out of the car the driver is in the monitor or the box. Keeping the line would splice
-        // two stints into one trace, which is the same reason the recorder starts over here.
-        if (!frame.Session.InCar)
-        {
-            Reset();
-            return;
-        }
+            // Out of the car the driver is in the monitor or the box. Keeping the line would splice
+            // two stints into one trace, which is the same reason the recorder starts over here.
+            if (!frame.Session.InCar)
+            {
+                this.ResetLocked();
+                return;
+            }
 
-        if (frame.Lap.CurrentLap != _sampledLap)
-        {
-            _sampledLap = frame.Lap.CurrentLap;
-            _samples.Clear();
-            _liveTrace = null;
-        }
+            if (frame.Lap.CurrentLap != this._sampledLap)
+            {
+                this._sampledLap = frame.Lap.CurrentLap;
+                this._samples.Clear();
+                this._liveTrace = null;
+            }
 
-        if (!float.IsFinite(frame.Lap.TrackPosition))
-        {
-            return;
-        }
+            if (!float.IsFinite(frame.Lap.TrackPosition))
+            {
+                return;
+            }
 
-        _position = Math.Clamp((double)frame.Lap.TrackPosition, 0, 1);
-        _currentLapTime = Math.Max(frame.Lap.CurrentLapTime, 0);
+            this._position = Math.Clamp((double)frame.Lap.TrackPosition, 0, 1);
+            this._currentLapTime = Math.Max(frame.Lap.CurrentLapTime, 0);
 
-        if (_samples.Count == 0 || _position > _samples[^1].Position + PositionEpsilon)
-        {
-            _samples.Add(new LapTraceSample(
-                _position,
-                frame.Car.SpeedMetersPerSecond * 3.6f,
-                frame.Car.Throttle,
-                frame.Car.Brake,
-                frame.Car.Steering,
-                frame.Car.Gear,
-                _currentLapTime));
-            _liveDirty = true;
+            if (this._samples.Count == 0 || this._position > this._samples[^1].Position + PositionEpsilon)
+            {
+                this._samples.Add(new LapTraceSample(
+                    this._position,
+                    frame.Car.SpeedMetersPerSecond * 3.6f,
+                    frame.Car.Throttle,
+                    frame.Car.Brake,
+                    frame.Car.Steering,
+                    frame.Car.Gear,
+                    this._currentLapTime));
+                this._liveDirty = true;
+            }
         }
     }
 
     /// <summary>Clears the live line but keeps the target — leaving the car ends a lap, not a session.</summary>
     public void Reset()
     {
-        _samples.Clear();
-        _liveTrace = null;
-        _liveDirty = false;
-        _sampledLap = -1;
+        lock (this._gate)
+        {
+            this.ResetLocked();
+        }
     }
 
     /// <summary>
     /// One frame for the HUD to draw, or null when there is no target to chase. Called from the
-    /// render timer rather than from <see cref="Ingest"/>: resampling the window costs real
-    /// work, and doing it per telemetry poll would be six repaints' worth per frame drawn.
+    /// HUD's poll rather than from <see cref="Ingest"/>: resampling the window costs real
+    /// work, and doing it per telemetry frame would be wasted on frames nobody draws.
     /// </summary>
     public LiveCompareFrame? Snapshot()
     {
-        if (_target is null || _targetTrace is not { IsUsable: true })
+        lock (this._gate)
         {
-            return null;
-        }
+            if (this._target is null || this._targetTrace is not { IsUsable: true })
+            {
+                return null;
+            }
 
-        var length = TrackLength();
-        var distance = _position * length;
-        var domain = ChartDomain.TrackDistance(distance - MetersBehind, distance + MetersAhead);
+            double length = this.TrackLength();
+            double distance = this._position * length;
+            ChartDomain domain = ChartDomain.TrackDistance(distance - this._metersBehind, distance + this._metersAhead);
 
-        var sources = new List<LapTraceSeriesSource>();
-        if (LiveTrace() is { } live)
-        {
+            List<LapTraceSeriesSource> sources = [];
+            if (this.LiveTrace() is { } live)
+            {
+                sources.Add(new LapTraceSeriesSource(
+                    live,
+                    length,
+                    "You",
+                    ChartSeriesRole.Current,
+                    // Your line stops at the car. Spec §3: you cannot draw a future you have not
+                    // driven, and holding the last value would paint a flat line into the corner
+                    // you are about to take.
+                    UpTo: distance));
+            }
+
             sources.Add(new LapTraceSeriesSource(
-                live,
+                this._targetTrace,
                 length,
-                "You",
-                ChartSeriesRole.Current,
-                // Your line stops at the car. Spec §3: you cannot draw a future you have not
-                // driven, and holding the last value would paint a flat line into the corner
-                // you are about to take.
-                UpTo: distance));
+                "Target",
+                ChartSeriesRole.Comparison));
+
+            return new LiveCompareFrame(
+                LapTraceCharts.Build(this._panels, domain, sources),
+                [.. this._panels.Select(panel => panel.Id)],
+                this._target.Label,
+                this.DeltaLocked(),
+                sources.Count > 1,
+                distance);
         }
-
-        sources.Add(new LapTraceSeriesSource(
-            _targetTrace,
-            length,
-            "Target",
-            ChartSeriesRole.Comparison));
-
-        return new LiveCompareFrame(
-            LapTraceCharts.Build(Panels, domain, sources),
-            _target.Label,
-            Delta(),
-            sources.Count > 1);
     }
 
     /// <summary>
@@ -171,29 +210,45 @@ public sealed class LiveCompareController
     /// </summary>
     public double? Delta()
     {
-        if (_targetTrace?.ValueAt(LapTraceChannels.ElapsedSeconds, _position) is not { } targetTime
-            || _samples.Count == 0)
+        lock (this._gate)
+        {
+            return this.DeltaLocked();
+        }
+    }
+
+    private double? DeltaLocked()
+    {
+        if (this._targetTrace?.ValueAt(LapTraceChannels.ElapsedSeconds, this._position) is not { } targetTime
+            || this._samples.Count == 0)
         {
             return null;
         }
 
-        return _currentLapTime - targetTime;
+        return this._currentLapTime - targetTime;
+    }
+
+    private void ResetLocked()
+    {
+        this._samples.Clear();
+        this._liveTrace = null;
+        this._liveDirty = false;
+        this._sampledLap = -1;
     }
 
     private double TrackLength() =>
-        _trackLengthMeters
-        ?? _targetTrace?.TrackLengthMeters
-        ?? _target?.Context.TrackLengthMeters
+        this._trackLengthMeters
+        ?? this._targetTrace?.TrackLengthMeters
+        ?? this._target?.Context.TrackLengthMeters
         ?? LapChannelTrace.FallbackTrackLengthMeters;
 
     private LapChannelTrace? LiveTrace()
     {
-        if (_liveDirty)
+        if (this._liveDirty)
         {
-            _liveTrace = LapChannelTrace.Live(_samples, TrackLength());
-            _liveDirty = false;
+            this._liveTrace = LapChannelTrace.Live(this._samples, this.TrackLength());
+            this._liveDirty = false;
         }
 
-        return _liveTrace;
+        return this._liveTrace;
     }
 }

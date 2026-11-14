@@ -1,19 +1,23 @@
-// Packages the desktop app into app/build/bin.
+// Packages the desktop app into app/build/bin with electron-builder.
 //
-// Expects `pnpm build` to have run (dist/ + dist-electron/) and the native host
-// to have been published into resources/host by `make build-app`. Packaging a
-// tree without those produces an app that launches to a blank window, so both
-// are checked up front rather than failing later at runtime.
+//   node scripts/package.mjs [version]
+//
+// Windows gets the NSIS installer (sprint-<version>-setup.exe) plus the latest.yml and blockmap
+// the in-app updater reads (electron/updates.ts); the unpacked app lands in win-unpacked/.
+// Linux gets a tar.gz, macOS an unsigned Sprint.app (development only; neither updates itself).
+// Nothing is published from here: the release workflow uploads the files.
+//
+// Expects `pnpm build` to have run (dist/ + dist-electron/) and the native host to have been
+// published into resources/host by `make build-app`. Packaging a tree without those produces an
+// app that launches to a blank window, so both are checked up front rather than failing later.
 
-import { access, mkdir, rm } from 'node:fs/promises'
+import { access, rm } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { packager } from '@electron/packager'
+import { build, Platform } from 'electron-builder'
 
 const appDir = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const outDir = resolve(appDir, '../build/bin')
-
-const platforms = { win32: 'win32', linux: 'linux', darwin: 'darwin' }
 
 const exists = async (path) => {
   try {
@@ -37,38 +41,52 @@ for (const [path, message] of required) {
   }
 }
 
-const platform = platforms[process.platform]
+const platform = { win32: Platform.WINDOWS, linux: Platform.LINUX, darwin: Platform.MAC }[process.platform]
 if (!platform) {
   console.error(`Unsupported platform: ${process.platform}`)
   process.exit(1)
 }
 
-// The OpenXR layer (Windows only, from `make build-xr-layer`) ships when it was built. The loader
-// loads it from disk, so like the host it must sit outside the asar.
-const xrLayerDir = join(appDir, 'resources', 'openxr-layer')
-const xrLayer = (await exists(xrLayerDir)) ? [xrLayerDir] : []
+// The updater compares versions as semver, so a build from an untagged checkout ("dev") still
+// needs one; 0.0.0 sorts below every release, so such a build always sees updates as newer.
+const requested = process.argv[2] ?? ''
+const version = /^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/.test(requested) ? requested : '0.0.0-dev'
 
 await rm(outDir, { recursive: true, force: true })
-await mkdir(outDir, { recursive: true })
 
-const [built] = await packager({
-  dir: appDir,
-  out: outDir,
-  platform,
-  arch: process.arch === 'arm64' ? 'arm64' : 'x64',
-  name: 'Sprint',
-  executableName: 'Sprint',
-  appBundleId: 'com.sprint.desktop',
-  // Packager appends the platform extension (.ico on Windows, .icns on macOS).
-  // The .icns comes from scripts/icons/make-mac-icon.mjs.
-  icon: join(appDir, 'resources', 'icon'),
-  overwrite: true,
-  prune: true,
-  asar: true,
-  // The published host is a native binary; asar would make it unexecutable.
-  extraResource: [join(appDir, 'resources', 'host'), ...xrLayer],
-  // .dev holds the dev-run Sprint.app clone (scripts/dev.mjs); never ship it.
-  ignore: [/^\/\.dev($|\/)/, /^\/src($|\/)/, /^\/electron($|\/)/, /^\/scripts($|\/)/, /^\/resources\/host($|\/)/, /^\/resources\/openxr-layer($|\/)/, /\.ts$/, /tsconfig.*\.json$/, /vite\.config\./],
+const built = await build({
+  targets: platform.createTarget(),
+  projectDir: appDir,
+  publish: 'never',
+  config: {
+    appId: 'com.sprint.desktop',
+    productName: 'Sprint',
+    executableName: 'Sprint',
+    extraMetadata: { version },
+    directories: { output: outDir },
+    // Vite bundles the renderer and tsc the main process; node_modules only adds main's
+    // runtime dependencies (electron-updater).
+    files: ['dist/**', 'dist-electron/**', 'package.json'],
+    asar: true,
+    // The published host is a native binary; asar would make it unexecutable.
+    extraResources: [{ from: 'resources/host', to: 'host' }],
+    // Nothing native to rebuild against Electron's headers.
+    npmRebuild: false,
+    win: { target: 'nsis', icon: 'resources/icon.ico' },
+    // One click, per user, no admin prompt: installs to %LocalAppData%\Programs\Sprint.
+    // Sprint's data lives elsewhere (%AppData%\Sprint) and survives an uninstall.
+    nsis: {
+      oneClick: true,
+      perMachine: false,
+      artifactName: 'sprint-${version}-setup.${ext}',
+      shortcutName: 'Sprint',
+    },
+    linux: { target: 'tar.gz', icon: 'resources/icon.png', artifactName: 'sprint-${version}-linux-${arch}.${ext}' },
+    // The .icns comes from scripts/icons/make-mac-icon.mjs.
+    mac: { target: 'dir', icon: 'resources/icon.icns', identity: null },
+    // Where the installed app looks for updates (written into its app-update.yml).
+    publish: { provider: 'github', owner: 'kratofl', repo: 'sprint' },
+  },
 })
 
-console.log(`Packaged to ${built}`)
+console.log(`Packaged ${version}:\n${built.map((file) => `  ${file}`).join('\n')}`)

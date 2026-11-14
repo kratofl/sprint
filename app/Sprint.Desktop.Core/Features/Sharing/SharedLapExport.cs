@@ -3,7 +3,7 @@ using Sprint.Desktop.Features.SessionPlanning;
 namespace Sprint.Desktop.Features.Sharing;
 
 /// <summary>A lap ready to write to a file, or why it cannot be shared.</summary>
-/// <param name="HasPositions">Whether it carries world positions, so it can be somebody's driving guide.</param>
+/// <param name="HasPositions">Whether it carries world positions (the lap's line on the track).</param>
 public sealed record SharedLapExportResult(SharedLap? Lap, string? Error, bool HasPositions);
 
 /// <summary>
@@ -14,13 +14,15 @@ public sealed record SharedLapExportResult(SharedLap? Lap, string? Error, bool H
 public static class SharedLapExport
 {
     /// <param name="driverName">Who to credit for the driver's own laps. A lap that was itself shared keeps its original driver.</param>
+    /// <param name="ownNotes">The driver's own notes on the lap (<c>LapNotes</c>). They go with it, after any it was shared with.</param>
     public static SharedLapExportResult Build(
         ILapHistoryStore history,
         ILapTraceStore traces,
         string sessionId,
         int lapNumber,
         string driverName,
-        DateTimeOffset now)
+        DateTimeOffset now,
+        IReadOnlyList<LapNote> ownNotes)
     {
         ArgumentNullException.ThrowIfNull(history);
         ArgumentNullException.ThrowIfNull(traces);
@@ -50,7 +52,10 @@ public static class SharedLapExport
             session.Context,
             record.LapNumber,
             record.LapTimeSeconds,
-            trace);
+            trace)
+        {
+            Notes = [.. record.Notes, .. ownNotes],
+        };
         return new SharedLapExportResult(lap, null, trace.TryGetChannel(LapTraceChannels.WorldX, out float[] _));
     }
 

@@ -10,6 +10,25 @@ internal sealed record LmuWheel
     public double TempOuterKelvin { get; init; }
     public double WearFraction { get; init; }
     public double CarcassTempKelvin { get; init; }
+    public double SuspensionDeflectionMeters { get; init; }
+    public double RideHeightMeters { get; init; }
+    public double BrakeTempCelsius { get; init; }
+    public double RotationRadiansPerSecond { get; init; }
+    public double LateralPatchVelocity { get; init; }
+    public double LongitudinalPatchVelocity { get; init; }
+    public double LateralGroundVelocity { get; init; }
+    public double LongitudinalGroundVelocity { get; init; }
+    public double CamberRadians { get; init; }
+    public double LateralForceNewtons { get; init; }
+    public double LongitudinalForceNewtons { get; init; }
+    public double LoadNewtons { get; init; }
+    public double GripFraction { get; init; }
+
+    /// <summary>mSurfaceType: 0 dry, 1 wet, 2 grass, 3 dirt, 4 gravel, 5 rumble strip, 6 special.</summary>
+    public byte SurfaceType { get; init; }
+    public bool Flat { get; init; }
+    public bool Detached { get; init; }
+    public byte RadiusCentimeters { get; init; }
 }
 
 internal sealed record LmuVehicleTelemetry
@@ -40,6 +59,24 @@ internal sealed record LmuVehicleTelemetry
     public double FilteredSteering { get; init; }
     public double FilteredClutch { get; init; }
     public double FuelLiters { get; init; }
+
+    /// <summary>mFuelCapacity: the tank's size, litres.</summary>
+    public double FuelCapacityLiters { get; init; }
+
+    /// <summary>mOverheating: whether the overheating warning shows.</summary>
+    public bool Overheating { get; init; }
+
+    /// <summary>mDetached: whether any part other than a wheel has come off.</summary>
+    public bool DetachedParts { get; init; }
+
+    /// <summary>mDentSeverity[8]: 0 none, 1 some, 2 more, at eight places around the car.</summary>
+    public IReadOnlyList<byte> DentSeverity { get; init; } = new byte[8];
+
+    /// <summary>mLastImpactET: session time of the last impact; 0 before the first.</summary>
+    public double LastImpactElapsedTime { get; init; }
+
+    /// <summary>mLastImpactMagnitude.</summary>
+    public double LastImpactMagnitude { get; init; }
     public int CurrentSectorRaw { get; init; }
     public string FrontCompoundName { get; init; } = "";
     public string RearCompoundName { get; init; } = "";
@@ -48,21 +85,72 @@ internal sealed record LmuVehicleTelemetry
     public bool TractionControlActive { get; init; }
     public byte TractionControl { get; init; }
     public byte TractionControlMax { get; init; }
+    public byte TractionControlSlip { get; init; }
+    public byte TractionControlSlipMax { get; init; }
+    public byte TractionControlCut { get; init; }
+    public byte TractionControlCutMax { get; init; }
     public byte Abs { get; init; }
     public byte AbsMax { get; init; }
     public byte MotorMap { get; init; }
     public byte MotorMapMax { get; init; }
+    public byte Migration { get; init; }
+    public byte MigrationMax { get; init; }
+    public byte FrontAntiSway { get; init; }
+    public byte FrontAntiSwayMax { get; init; }
+    public byte RearAntiSway { get; init; }
+    public byte RearAntiSwayMax { get; init; }
+
+    /// <summary>mSpeedLimiter: whether the pit limiter is switched on.</summary>
+    public bool SpeedLimiter { get; init; }
     public byte TrackLimitSteps { get; init; }
     public float RegenPower { get; init; }
     public float StateOfCharge { get; init; }
     public float VirtualEnergy { get; init; }
     public float GapAhead { get; init; }
     public float GapBehind { get; init; }
+
+    /// <summary>mVehicleModel: the car itself (e.g. "Oreca 07"), where <see cref="VehicleName"/> is the livery.</summary>
+    public string VehicleModel { get; init; } = "";
+
+    /// <summary>mVehicleClass.</summary>
+    public LmuVehicleClass VehicleClass { get; init; } = LmuVehicleClass.Unknown;
+
+    /// <summary>mVehicleChampionship.</summary>
+    public LmuVehicleChampionship VehicleChampionship { get; init; } = LmuVehicleChampionship.Unknown;
     public IReadOnlyList<LmuWheel> Wheels { get; init; } = Array.Empty<LmuWheel>();
+}
+
+/// <summary>IP_VehicleClass, as the shared-memory header numbers it (one byte).</summary>
+internal enum LmuVehicleClass : byte
+{
+    Hypercar = 0x00,
+    Lmp2Elms = 0x02,
+    Lmp2 = 0x03,
+    Lmp3 = 0x04,
+    Gte = 0x05,
+    Gt3 = 0x06,
+    PaceCar = 0x08,
+    Unknown = 0xFF,
+}
+
+/// <summary>IP_VehicleChampionship, as the shared-memory header numbers it (one byte).</summary>
+internal enum LmuVehicleChampionship : byte
+{
+    Wec2023 = 0x00,
+    Wec2024 = 0x01,
+    Wec2025 = 0x02,
+    Wec2026 = 0x03,
+    Elms2025 = 0x10,
+    Elms2026 = 0x11,
+    Unknown = 0xFF,
 }
 
 internal sealed record LmuVehicleScoring
 {
+    /// <summary>mID: the slot id.</summary>
+    public int Id { get; init; }
+    public string DriverName { get; init; } = "";
+
     /// <summary>mVehicleName: available from scoring, so it exists before the cockpit does.</summary>
     public string VehicleName { get; init; } = "";
 
@@ -82,11 +170,34 @@ internal sealed record LmuVehicleScoring
     public double LastSector2 { get; init; }
     public byte PitState { get; init; }
     public double TimeIntoLap { get; init; }
+
+    /// <summary>mFlag: the flag shown to this car, 0 green or 6 blue.</summary>
+    public byte Flag { get; init; }
     public bool UnderYellow { get; init; }
     public byte CountLapFlag { get; init; }
     public bool InGarageStall { get; init; }
     public bool DrsState { get; init; }
     public sbyte FinishStatus { get; init; }
+
+    /// <summary>mTotalLaps: laps completed.</summary>
+    public short TotalLaps { get; init; }
+
+    /// <summary>mSector: 0 is sector 3, 1 sector 1, 2 sector 2.</summary>
+    public sbyte Sector { get; init; }
+
+    /// <summary>mCurSector1/mCurSector2: the lap being driven's cumulative marks, when valid.</summary>
+    public double CurrentSector1 { get; init; }
+    public double CurrentSector2 { get; init; }
+
+    /// <summary>mInPits: between pit entrance and pit exit.</summary>
+    public bool InPits { get; init; }
+    public double TimeBehindNext { get; init; }
+    public int LapsBehindNext { get; init; }
+    public double TimeBehindLeader { get; init; }
+    public int LapsBehindLeader { get; init; }
+
+    /// <summary>mPos: world position in LMU's left-handed axes.</summary>
+    public LmuVector3 Position { get; init; }
 }
 
 internal sealed record LmuScoringInfo
@@ -104,6 +215,12 @@ internal sealed record LmuScoringInfo
     public double LapDistance { get; init; }
     public int NumVehicles { get; init; }
     public byte GamePhase { get; init; }
+
+    /// <summary>
+    /// mSectorFlag: a local yellow per sector, above 0 while one is out (-1 reads as invalid). Read in mSector's order
+    /// (index 0 is sector 3); the header itself is unsure, so this wants checking in a live session.
+    /// </summary>
+    public IReadOnlyList<sbyte> SectorFlags { get; init; } = [0, 0, 0];
     public bool InRealtime { get; init; }
 
     /// <summary>mAvgPathWetness: average wetness on the main path, 0–1.</summary>
@@ -114,6 +231,15 @@ internal sealed record LmuScoringInfo
 
     /// <summary>mTrackGripLevel: the sim's own grip grade.</summary>
     public byte TrackGripLevel { get; init; }
+
+    /// <summary>mRaining: how hard it rains, 0–1.</summary>
+    public double Raining { get; init; }
+
+    /// <summary>mAmbientTemp, °C.</summary>
+    public double AmbientTemperature { get; init; }
+
+    /// <summary>mTrackTemp, °C.</summary>
+    public double TrackTemperature { get; init; }
 }
 
 internal sealed record LmuParsedFrame
@@ -130,5 +256,14 @@ internal sealed record LmuParsedFrame
     /// the cockpit — which is the only place the lobby car can come from.
     /// </summary>
     public LmuVehicleScoring? PlayerVehicle { get; init; }
-    public bool PlayerInCar => PlayerHasVehicle && ScoringInfo.InRealtime && Telemetry is not null && Scoring is not null;
+
+    /// <summary>Every entry of the vehicle scoring array, in array order (not by place).</summary>
+    public IReadOnlyList<LmuVehicleScoring> Vehicles { get; init; } = [];
+
+    /// <summary>
+    /// Each car's front tyre compound by slot id (mID), from the telemetry array, which holds
+    /// every active car, not just the player's. Cars whose telemetry names no compound are absent.
+    /// </summary>
+    public IReadOnlyDictionary<int, string> FrontCompounds { get; init; } = new Dictionary<int, string>();
+    public bool PlayerInCar => this.PlayerHasVehicle && this.ScoringInfo.InRealtime && this.Telemetry is not null && this.Scoring is not null;
 }

@@ -22,7 +22,7 @@ public sealed class ChartStackController
     public ChartStackController(ChartStack stack)
     {
         ArgumentNullException.ThrowIfNull(stack);
-        Stack = stack;
+        this.Stack = stack;
     }
 
     public ChartStack Stack { get; }
@@ -32,7 +32,7 @@ public sealed class ChartStackController
 
     /// <summary>Every chart's reading at <see cref="Cursor"/>, or null while the pointer is away.</summary>
     public ChartStackReadout? Readout =>
-        Cursor is { } cursor ? Read(cursor) : null;
+        this.Cursor is { } cursor ? this.Read(cursor) : null;
 
     /// <summary>
     /// Places the cursor at a domain coordinate, snapped to what the domain can actually
@@ -40,38 +40,38 @@ public sealed class ChartStackController
     /// </summary>
     public bool MoveCursor(double domainValue)
     {
-        var snapped = Stack.Domain.Snap(domainValue);
-        if (Cursor is { } current && current.Equals(snapped))
+        double snapped = this.Stack.Domain.Snap(domainValue);
+        if (this.Cursor is { } current && current.Equals(snapped))
         {
             return false;
         }
 
-        Cursor = snapped;
+        this.Cursor = snapped;
         return true;
     }
 
     /// <summary>Takes the cursor away (the pointer left the stack). Returns whether anything changed.</summary>
     public bool ClearCursor()
     {
-        if (Cursor is null)
+        if (this.Cursor is null)
         {
             return false;
         }
 
-        Cursor = null;
+        this.Cursor = null;
         return true;
     }
 
     private ChartStackReadout Read(double domainValue) => new(
         domainValue,
-        Stack.Domain.Format(domainValue),
-        [.. Stack.Charts.Select(chart => new ChartPanelReadout(
+        this.Stack.Domain.Format(domainValue),
+        [.. this.Stack.Charts.Select(chart => new ChartPanelReadout(
             chart.Title,
             [.. chart.Series.Select(series => new ChartSeriesReadout(series.Name, ValueAt(series, domainValue)))]))]);
 
     private static double? ValueAt(ChartSeries series, double x)
     {
-        var samples = series.Samples;
+        IReadOnlyList<ChartSample> samples = series.Samples;
 
         // Outside the samples the series has nothing to report. Holding the nearest edge
         // value would state a measurement at a coordinate that was never observed, which is
@@ -84,8 +84,8 @@ public sealed class ChartStackController
         // The last sample at or before the cursor. Landing exactly on a sample must report
         // that sample, not the one before it — a stepped series would otherwise show the
         // previous lap's figure while the cursor sits on this one.
-        var index = 0;
-        for (var i = 1; i < samples.Count && samples[i].X <= x; i++)
+        int index = 0;
+        for (int i = 1; i < samples.Count && samples[i].X <= x; i++)
         {
             index = i;
         }
@@ -95,9 +95,9 @@ public sealed class ChartStackController
             return samples[index].Y;
         }
 
-        var (startX, startY) = samples[index];
-        var (endX, endY) = samples[index + 1];
-        var span = endX - startX;
+        (double startX, double startY) = samples[index];
+        (double endX, double endY) = samples[index + 1];
+        double span = endX - startX;
         if (series.Interpolation == ChartInterpolation.Stepped || span <= 0)
         {
             return startY;

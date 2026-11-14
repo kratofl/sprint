@@ -257,7 +257,7 @@ function Option({
       <span className="onboarding-option-text">
         <span className="onboarding-option-title">
           {title}
-          {badge ? <span className="onboarding-badge">{badge}</span> : null}
+          {badge ? <span className="chip">{badge}</span> : null}
         </span>
         <span className="onboarding-option-description">{description}</span>
       </span>

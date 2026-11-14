@@ -14,7 +14,7 @@ public sealed record GameTrackLayout(string TrackName, string Label);
 public sealed record GameCircuit(string Id, string Name, IReadOnlyList<GameTrackLayout> Layouts)
 {
     /// <summary>Whether the layout is still a real question once this circuit is chosen.</summary>
-    public bool LayoutIsAChoice => Layouts.Count > 1;
+    public bool LayoutIsAChoice => this.Layouts.Count > 1;
 }
 
 /// <summary>
@@ -111,14 +111,14 @@ public static class GameTrackCatalog
     {
         ArgumentNullException.ThrowIfNull(observedTrackNames);
 
-        var order = new List<string>();
-        var grouped = new Dictionary<string, List<GameTrackLayout>>(StringComparer.Ordinal);
-        var names = new Dictionary<string, string>(StringComparer.Ordinal);
+        List<string> order = new List<string>();
+        Dictionary<string, List<GameTrackLayout>> grouped = new Dictionary<string, List<GameTrackLayout>>(StringComparer.Ordinal);
+        Dictionary<string, string> names = new Dictionary<string, string>(StringComparer.Ordinal);
 
-        foreach (var track in observedTrackNames.Where(name => !string.IsNullOrWhiteSpace(name)))
+        foreach (string? track in observedTrackNames.Where(name => !string.IsNullOrWhiteSpace(name)))
         {
-            var id = CircuitId(game, track);
-            if (!grouped.TryGetValue(id, out var layouts))
+            string id = CircuitId(game, track);
+            if (!grouped.TryGetValue(id, out List<GameTrackLayout>? layouts))
             {
                 layouts = [];
                 grouped[id] = layouts;
@@ -174,7 +174,7 @@ public static class GameTrackCatalog
     // the catalog has never seen keeps the order it was observed in.
     private static IEnumerable<GameTrackLayout> Sorted(string? game, string id, List<GameTrackLayout> layouts)
     {
-        var definition = KnownCircuits(game).FirstOrDefault(circuit =>
+        CircuitDefinition? definition = KnownCircuits(game).FirstOrDefault(circuit =>
             string.Equals(circuit.Id, id, StringComparison.Ordinal));
         if (definition is null)
         {
@@ -188,10 +188,10 @@ public static class GameTrackCatalog
 
     private static (CircuitDefinition Circuit, LayoutDefinition Layout)? Find(string? game, string trackName)
     {
-        var normalized = Normalize(trackName);
-        foreach (var circuit in KnownCircuits(game))
+        string normalized = Normalize(trackName);
+        foreach (CircuitDefinition circuit in KnownCircuits(game))
         {
-            foreach (var layout in circuit.Layouts)
+            foreach (LayoutDefinition layout in circuit.Layouts)
             {
                 if (layout.Aliases.Any(alias => string.Equals(Normalize(alias), normalized, StringComparison.Ordinal)))
                 {
@@ -203,14 +203,9 @@ public static class GameTrackCatalog
         return null;
     }
 
-    private static IReadOnlyList<CircuitDefinition> KnownCircuits(string? game) => IsLeMansUltimate(game)
+    private static IReadOnlyList<CircuitDefinition> KnownCircuits(string? game) => GameNames.IsLeMansUltimate(game)
         ? LeMansUltimateCircuits
         : [];
-
-    private static bool IsLeMansUltimate(string? game) =>
-        string.Equals(game, "Le Mans Ultimate", StringComparison.OrdinalIgnoreCase)
-        || string.Equals(game, "LeMansUltimate", StringComparison.OrdinalIgnoreCase)
-        || string.Equals(game, "LMU", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// Folds case, separators and accents so "Autódromo José Carlos Pace" and the ASCII spelling
@@ -218,9 +213,9 @@ public static class GameTrackCatalog
     /// </summary>
     private static string Normalize(string value)
     {
-        var decomposed = value.Trim().ToLowerInvariant().Normalize(NormalizationForm.FormD);
-        var builder = new StringBuilder(decomposed.Length);
-        foreach (var character in decomposed)
+        string decomposed = value.Trim().ToLowerInvariant().Normalize(NormalizationForm.FormD);
+        StringBuilder builder = new StringBuilder(decomposed.Length);
+        foreach (char character in decomposed)
         {
             if (CharUnicodeInfo.GetUnicodeCategory(character) == UnicodeCategory.NonSpacingMark)
             {

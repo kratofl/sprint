@@ -32,6 +32,9 @@ public sealed class LapHistoryRecorder
     // Strictly-forward guard for the trace, so it stays a function of position.
     private const double PositionEpsilon = 1e-6;
 
+    // Below this a car in its stall counts as parked there (m/s).
+    private const float StandingStill = 0.5f;
+
     // How far apart the two halves of a start/finish crossing can land. LMU's lap number comes
     // from the telemetry buffer and the lap time from scoring, which the game refreshes about
     // five times a second, so at the line either one can be a frame or two ahead of the other.
@@ -42,6 +45,10 @@ public sealed class LapHistoryRecorder
     // mid-lap. Both stored tiers come out of this one buffer: the position→time reference
     // curve (#181) and the named-channel trace (#194).
     private readonly List<LapTraceSample> _samples = [];
+
+    // The tail of the default hand-off's write chain. Only the telemetry thread extends it; the
+    // host closes the recorder at shutdown only after that thread has stopped (FlushAsync).
+    private Task _writes = Task.CompletedTask;
 
     private LapHistorySession? _session;
     private int _lastSeenLap;
@@ -58,6 +65,11 @@ public sealed class LapHistoryRecorder
     // A crossing whose lap time has not arrived from scoring yet.
     private PendingLap? _pending;
 
+    // The drive out of the garage in progress (LapHistoryRecord.Outing), and whether the car
+    // has been back in the garage since it started.
+    private int _outing = 1;
+    private bool _garaged;
+
     public LapHistoryRecorder(
         ILapHistoryStore store,
         ILapTraceStore? traces = null,
@@ -66,22 +78,28 @@ public sealed class LapHistoryRecorder
         Action<Action>? dispatch = null,
         ILog? log = null)
     {
-        _store = store ?? throw new ArgumentNullException(nameof(store));
+        this._store = store ?? throw new ArgumentNullException(nameof(store));
         // Optional: a caller with nowhere to put traces still records laps and reference
         // curves, and those laps report the thinner tier honestly rather than not being
         // recorded at all.
-        _traces = traces;
-        _clock = clock ?? (() => DateTimeOffset.UtcNow);
-        _idFactory = idFactory ?? (() => Guid.NewGuid().ToString("N"));
-        // Laps complete about once a minute, so the default hand-off is a plain thread-pool
-        // queue: the caller returns immediately and ordering per session is preserved by
-        // the lock around the session itself.
-        _dispatch = dispatch ?? (work => ThreadPool.QueueUserWorkItem(_ => work()));
-        _log = log ?? NullLog.Instance;
+        this._traces = traces;
+        this._clock = clock ?? (() => DateTimeOffset.UtcNow);
+        this._idFactory = idFactory ?? (() => Guid.NewGuid().ToString("N"));
+        // The default hand-off runs the writes on the thread pool one after another, in the order
+        // they were asked for: each session write carries its own copy of the session (Persist),
+        // so an older copy landing after a newer one would drop the laps in between.
+        this._dispatch = dispatch ?? this.InOrder;
+        this._log = log ?? NullLog.Instance;
     }
 
     /// <summary>The session currently being recorded into, or null when none is open.</summary>
-    public LapHistorySession? OpenSession => _session;
+    public LapHistorySession? OpenSession => this._session;
+
+    /// <summary>
+    /// Raised on the telemetry thread when the car drives out of the garage again — the moment
+    /// after which its setup can no longer change. A handler must return quickly.
+    /// </summary>
+    public event Action? OutingStarted;
 
     /// <summary>
     /// Folds a live frame into the corpus. Opens a session the first time a usable context
@@ -91,6 +109,8 @@ public sealed class LapHistoryRecorder
     public void Ingest(TelemetryFrame frame)
     {
         ArgumentNullException.ThrowIfNull(frame);
+        // Before the context check: in the game's garage screen the frame may not name the car.
+        this.ObserveGarage(frame);
 
         LapHistoryContext? context = ContextOf(frame.Session);
         if (context is null)
@@ -108,6 +128,11 @@ public sealed class LapHistoryRecorder
         // Conditions can change while a session runs (a track dries, grip builds), and the
         // reading that matters is the one in force as laps are being filed.
         session.Conditions = MapConditions(frame.Conditions);
+        // The tank comes from the car, not the session, so it is taken once the car reports one.
+        if (frame.Car.FuelCapacityLiters is float tank && tank > 0)
+        {
+            session.Context.FuelCapacityLiters = tank;
+        }
 
         if (this.CompletedLap(frame) is { } completed)
         {
@@ -146,11 +171,33 @@ public sealed class LapHistoryRecorder
         this._lapTimeChangedAt = null;
         // A crossing the game never timed has nothing to file.
         this._pending = null;
+        this._outing = 1;
+        this._garaged = false;
 
         // A session with no completed laps carries nothing a reader could use.
         if (finished.Laps.Count > 0)
         {
             this.Persist(finished);
+        }
+    }
+
+    /// <summary>
+    /// Waits, for at most <paramref name="timeout"/>, for every write handed off so far to land;
+    /// true when they did. The host calls it on shutdown, once the telemetry thread has stopped and
+    /// <see cref="Close"/> has queued the finished session behind the last lap's writes, so the
+    /// process does not exit with the session still looking live. A custom <c>dispatch</c> owns its
+    /// own writes, so with one this returns true at once.
+    /// </summary>
+    public async Task<bool> FlushAsync(TimeSpan timeout)
+    {
+        try
+        {
+            await this._writes.WaitAsync(timeout);
+            return true;
+        }
+        catch (TimeoutException)
+        {
+            return false;
         }
     }
 
@@ -168,13 +215,17 @@ public sealed class LapHistoryRecorder
             return null;
         }
 
+        string? carType = string.IsNullOrWhiteSpace(session.CarType) ? null : session.CarType;
         return new LapHistoryContext
         {
             Game = session.Game,
             TrackCourse = session.Track,
-            CarModel = session.Car,
+            CarModel = CarNames.Of(session),
             TrackLengthMeters = session.TrackLengthMeters,
             CarClass = string.IsNullOrWhiteSpace(session.CarClass) ? null : session.CarClass,
+            CarType = carType,
+            // The game's car name is an entry (a livery) only when the game names the model apart from it.
+            Livery = carType is not null && session.Car != carType ? session.Car : null,
         };
     }
 
@@ -212,11 +263,11 @@ public sealed class LapHistoryRecorder
 
     private LapHistorySession OpenNew(LapHistoryContext context, HistorySessionKind kind) => new()
     {
-        Id = _idFactory(),
+        Id = this._idFactory(),
         Context = context,
         Kind = kind,
         Origin = LapHistoryOrigin.Recorded,
-        StartedAt = _clock(),
+        StartedAt = this._clock(),
     };
 
     /// <summary>
@@ -252,6 +303,8 @@ public sealed class LapHistoryRecorder
         LapHistoryRecord record = new()
         {
             LapNumber = finished,
+            Outing = this._outing,
+            CompletedAt = frame.Timestamp,
             // The crossing frame already describes the new lap. LMU may not mark that lap
             // countable yet, so the completed lap keeps the last validity observed before
             // the lap number changed.
@@ -269,6 +322,37 @@ public sealed class LapHistoryRecorder
         this._fuelAtLastCrossing = fuel;
         this._energyAtLastCrossing = energy;
         return record;
+    }
+
+    /// <summary>
+    /// Counts drives out of the garage. The car is in the garage while the driver is out of it
+    /// (the game's garage screen, where setups are changed) or while it stands still in its
+    /// stall; a car merely rolling through the pit lane past its stall is not. The first frame
+    /// back on the move starts the next outing.
+    /// </summary>
+    private void ObserveGarage(TelemetryFrame frame)
+    {
+        bool garaged = !frame.Session.InCar
+            || (frame.Car.InGarage == true && frame.Car.SpeedMetersPerSecond < StandingStill);
+        if (garaged)
+        {
+            this._garaged = true;
+            return;
+        }
+
+        if (!this._garaged)
+        {
+            return;
+        }
+
+        this._garaged = false;
+        // Before the first lap there is no earlier outing to tell this one apart from.
+        if (this._session?.Laps.Count > 0 || this._pending is not null)
+        {
+            this._outing++;
+        }
+
+        this.OutingStarted?.Invoke();
     }
 
     /// <summary>
@@ -360,17 +444,17 @@ public sealed class LapHistoryRecorder
         // over and the completeness guard decides whether what is left still spans the lap.
         if (!frame.Session.InCar)
         {
-            _samples.Clear();
+            this._samples.Clear();
             return;
         }
 
         // Any lap change starts a new trace, including one whose predecessor was never filed
         // (no completed time): the position wrap would otherwise leave the whole next lap
         // behind the previous trace's high-water mark and silently unsampled.
-        if (frame.Lap.CurrentLap != _sampledLap)
+        if (frame.Lap.CurrentLap != this._sampledLap)
         {
-            _samples.Clear();
-            _sampledLap = frame.Lap.CurrentLap;
+            this._samples.Clear();
+            this._sampledLap = frame.Lap.CurrentLap;
         }
 
         // A non-finite reading compares false against everything, so keeping it would make
@@ -381,10 +465,19 @@ public sealed class LapHistoryRecorder
             return;
         }
 
-        var position = Math.Clamp((double)frame.Lap.TrackPosition, 0, 1);
-        if (_samples.Count == 0 || position > _samples[^1].Position + PositionEpsilon)
+        // A trace never starts past the point a lap could still pass the completeness guard.
+        // That also covers the line skew: the lap number (telemetry) usually ticks over a few
+        // frames before the position (scoring) wraps, and a trace seeded with the old lap's
+        // ~0.99 would reject every position of the new lap as backwards.
+        double position = Math.Clamp((double)frame.Lap.TrackPosition, 0, 1);
+        if (this._samples.Count == 0 && position > LapCompleteness.StartMax)
         {
-            _samples.Add(new LapTraceSample(
+            return;
+        }
+
+        if (this._samples.Count == 0 || position > this._samples[^1].Position + PositionEpsilon)
+        {
+            this._samples.Add(new LapTraceSample(
                 position,
                 // Stored in km/h: the unit the driver reads and the unit the HUD draws.
                 frame.Car.SpeedMetersPerSecond * 3.6f,
@@ -395,7 +488,11 @@ public sealed class LapHistoryRecorder
                 Math.Max(frame.Lap.CurrentLapTime, 0),
                 frame.Car.Pose is { } pose
                     ? new LapTraceWorld((float)pose.PositionX, (float)pose.PositionY, (float)pose.PositionZ)
-                    : null));
+                    : null,
+                frame.Car.ThrottleApplied,
+                frame.Car.BrakeApplied,
+                LapTraceSettings.From(frame.Electronics, frame.Car.BrakeBiasRear),
+                LapTraceCar.Read(frame)));
         }
     }
 
@@ -432,31 +529,43 @@ public sealed class LapHistoryRecorder
     /// Files the lap's channel trace. Dispatched like the session write: a trace is the largest
     /// thing Sprint stores, so it is the last thing that should meet the telemetry thread.
     /// </summary>
-    private void PersistTrace(string traceId, LapChannelTrace trace) => _dispatch(() =>
+    private void PersistTrace(string traceId, LapChannelTrace trace) => this._dispatch(() =>
     {
         try
         {
-            _traces?.Save(traceId, trace);
+            this._traces?.Save(traceId, trace);
         }
         catch (Exception ex)
         {
             // A lost trace costs the lap its richest tier, never the lap itself.
-            _log.Warn($"Failed to persist lap trace '{traceId}'", ex);
+            this._log.Warn($"Failed to persist lap trace '{traceId}'", ex);
         }
     });
 
-    private void Persist(LapHistorySession session) => _dispatch(() =>
+    private void Persist(LapHistorySession session)
     {
-        try
+        // Copied here, on the telemetry thread: the write runs later on the dispatch hand-off, and
+        // serialising the live session there would race the next lap's Laps.Add and the per-frame
+        // context and conditions updates.
+        LapHistorySession snapshot = session.Snapshot();
+        this._dispatch(() =>
         {
-            _store.Save(session);
-        }
-        catch (Exception ex)
-        {
-            // Losing a lap must never take the telemetry pipeline with it.
-            _log.Warn($"Failed to persist lap-history session '{session.Id}'", ex);
-        }
-    });
+            try
+            {
+                this._store.Save(snapshot);
+            }
+            catch (Exception ex)
+            {
+                // Losing a lap must never take the telemetry pipeline with it.
+                this._log.Warn($"Failed to persist lap-history session '{snapshot.Id}'", ex);
+            }
+        });
+    }
+
+    // Each write starts once the one before it has finished. The work catches its own failures, so
+    // a failed write never stops the ones after it.
+    private void InOrder(Action work) =>
+        this._writes = this._writes.ContinueWith(_ => work(), CancellationToken.None, TaskContinuationOptions.None, TaskScheduler.Default);
 
     /// <summary>A finished lap waiting for its time, with the samples it was driven through.</summary>
     private sealed record PendingLap(LapHistoryRecord Record, LapTraceSample[] Samples, DateTimeOffset CrossedAt);

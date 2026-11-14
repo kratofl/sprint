@@ -1,150 +1,124 @@
-/* Help & diagnostics (HelpView.tsx). Laid out like the Windows mockup's
-   dashboard: InfoBars for problems, list cards with a 40px title row, 32px
-   rows under a 12px caption header. Built on .card.list-card, .list-header,
-   .list-row, .status, .infobar and .skeleton from styles.css. */
+/* Help & diagnostics (HelpView.tsx): the Checks list, the log viewer with the build and log
+   folder under it, then the keyboard shortcuts. One 720px column like Settings. Built on .card,
+   .card.list-card, .status, .infobar and .skeleton from styles.css. */
 
 .help {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  container-type: inline-size;
+  gap: 20px;
+  max-width: 720px;
 }
 
 .help > .page-header {
   margin-bottom: 0;
 }
 
-.help-split {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.7fr);
-  gap: 12px;
-  align-items: stretch;
-}
-
-@container (max-width: 860px) {
-  .help-split {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-
-.help-skeleton {
-  height: 200px;
-}
-
-.help-skeleton-tall {
-  height: 320px;
-}
-
-/* ── Cards ────────────────────────────────────────────────────────────────── */
-
-.help-ellipsis {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.help-strong {
-  font-weight: 600;
-}
-
 .help-secondary {
   color: var(--label-secondary);
 }
 
-/* ── This build (label · value rows) ──────────────────────────────────────── */
-
-.help-facts {
-  margin: 0;
-  border-top: 1px solid var(--divider);
-}
-
-.help-fact {
-  display: grid;
-  grid-template-columns: 112px minmax(0, 1fr);
-  align-items: center;
-  gap: 12px;
-  min-height: 32px;
-  padding: 6px 16px;
-}
-
-.help-fact + .help-fact {
-  border-top: 1px solid var(--divider);
-}
-
-.help-fact dt {
-  color: var(--label-secondary);
-  font-size: 12px;
-  line-height: 16px;
-}
-
-.help-fact dd {
-  min-width: 0;
-  margin: 0;
-}
-
-.help-path {
-  overflow-wrap: anywhere;
-  user-select: text;
-}
-
-/* ── Help topics ──────────────────────────────────────────────────────────── */
-
-.help-search {
-  width: 200px;
-}
-
-.help-topics {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  border-top: 1px solid var(--divider);
-}
-
-.help-topic {
-  padding: 8px 16px;
-}
-
-.help-topic + .help-topic {
-  border-top: 1px solid var(--divider);
-}
-
-.help-topic-title {
-  margin: 0;
+/* A titled group with an optional footnote, as on Settings. */
+.help-section-title {
+  margin: 0 0 8px;
   font-size: 13px;
   font-weight: 600;
   line-height: 20px;
 }
 
-.help-topic-body {
-  margin: 0;
+.help-section-footer {
+  margin: 6px 16px 0;
   color: var(--label-secondary);
   font-size: 12px;
   line-height: 16px;
 }
 
-/* ── Screens ──────────────────────────────────────────────────────────────── */
+.help-checks-skeleton {
+  height: 160px;
+}
 
-.help-screens .list-header,
-.help-screens .list-row {
+.help-logs-skeleton {
+  height: 280px;
+}
+
+/* ── Checks ───────────────────────────────────────────────────────────────── */
+
+.card.help-checks {
+  padding: 0;
+}
+
+.help-check {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 52px;
+  padding: 8px 16px;
+}
+
+.help-check + .help-check {
+  border-top: 1px solid var(--divider);
+}
+
+/* The Overview rig's picture well, a size down. */
+.help-check-picture {
   display: grid;
-  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 0.8fr) 150px;
+  flex: none;
+  place-items: center;
+  width: 48px;
+  height: 32px;
+  overflow: hidden;
+  border-radius: var(--radius-control-small);
+  background: var(--layer);
+  color: var(--label-secondary);
+}
+
+/* Explicit size: the generic SVGs carry only a viewBox, so max sizes alone collapse them. */
+.help-check-picture img {
+  width: 44px;
+  height: 28px;
+  object-fit: contain;
+}
+
+.help-check-picture > svg {
+  width: 18px;
+  height: 18px;
+}
+
+.help-check-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.help-check-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.help-check-detail {
+  color: var(--label-secondary);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.help-check-status {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
 }
 
 /* ── Logs ─────────────────────────────────────────────────────────────────── */
 
-.help-log-filters {
+.help-log-tools {
   display: flex;
   align-items: center;
   gap: 8px;
 }
 
-.help-log-filters select {
-  width: 104px;
-}
-
 .help-log-search {
-  width: 220px;
+  width: 160px;
 }
 
 .help-log-skeleton {
@@ -157,22 +131,21 @@
   margin: 0 16px 12px;
 }
 
-.help-logs .list-header,
-.help-logs .help-log-entry {
-  display: grid;
-  grid-template-columns: 160px 72px minmax(0, 1fr);
-  column-gap: 12px;
-}
-
 .help-log-list {
   max-height: 400px;
+  margin: 0;
+  padding: 0 16px;
   overflow-y: auto;
+  list-style: none;
 }
 
 .help-log-entry {
+  display: grid;
+  grid-template-columns: 72px 64px minmax(0, 1fr);
+  column-gap: 12px;
   align-items: start;
-  padding-top: 6px;
-  padding-bottom: 6px;
+  padding: 5px 0;
+  border-top: 1px solid var(--divider);
   line-height: 20px;
 }
 
@@ -190,4 +163,57 @@
 
 .help-log-truncated {
   padding-top: 8px;
+}
+
+/* The build and the log folder, under the log list. */
+.help-log-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 4px;
+  padding: 6px 12px 2px 16px;
+  border-top: 1px solid var(--divider);
+  color: var(--label-secondary);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.help-log-build {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* ── Shortcuts ────────────────────────────────────────────────────────────── */
+
+.card.help-shortcuts {
+  margin: 0;
+  padding: 0;
+}
+
+.help-shortcut {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 44px;
+  padding: 8px 16px;
+}
+
+.help-shortcut + .help-shortcut {
+  border-top: 1px solid var(--divider);
+}
+
+.help-shortcut dt,
+.help-shortcut dd {
+  margin: 0;
+}
+
+.help-key {
+  padding: 2px 8px;
+  border-radius: var(--radius-control-small);
+  background: var(--control-fill);
+  color: var(--label-secondary);
+  font: inherit;
+  font-size: 12px;
 }

@@ -12,12 +12,18 @@ namespace Sprint.Games;
 public static class GameProviders
 {
     /// <summary>
+    /// Le Mans Ultimate, by its concrete type: the host points it at the install folder the
+    /// driver chose, which no other game has.
+    /// </summary>
+    public static LeMansUltimateGameProvider LeMansUltimate { get; } = new();
+
+    /// <summary>
     /// Every registered provider, real games before the dev simulation so a consumer that
     /// wants "a real game" can take the first one and never start on synthetic data.
     /// </summary>
     public static IReadOnlyList<IGameProvider> All { get; } =
     [
-        new LeMansUltimateGameProvider(),
+        LeMansUltimate,
         new DemoGameProvider()
     ];
 

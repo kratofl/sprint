@@ -159,7 +159,7 @@ public static class DashWidgetCatalog
 
     public static DashWidgetDefinition Get(string type)
     {
-        if (Definitions.TryGetValue(type, out var definition))
+        if (Definitions.TryGetValue(type, out DashWidgetDefinition? definition))
         {
             return definition;
         }

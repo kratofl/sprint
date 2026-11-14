@@ -7,6 +7,9 @@ namespace Sprint.Desktop.Features.Analysis;
 /// One lap as the Analysis view lists it: enough to choose between laps without loading a
 /// single trace off disk.
 /// </summary>
+/// <param name="Outing">The run the lap was driven in (<see cref="LapHistoryRecord.Outing"/>), 0 when the source could not tell.</param>
+/// <param name="FrontCompound">The front tyres as the game named them; null when not recorded.</param>
+/// <param name="CompletedAt">When the lap ended; null for imported laps.</param>
 public sealed record CorpusLap(
     string SessionId,
     int LapNumber,
@@ -16,22 +19,33 @@ public sealed record CorpusLap(
     LapTargetTier Tier,
     LapHistoryContext Context,
     DateTimeOffset? SessionStartedAt,
-    string? SharedFrom)
+    string? SharedFrom,
+    int Outing = 0,
+    string? FrontCompound = null,
+    string? RearCompound = null,
+    double? FuelUsedLiters = null,
+    DateTimeOffset? CompletedAt = null)
 {
+    /// <summary>The notes left on this lap: the driver's own, then any that came with it when it was shared.</summary>
+    public IReadOnlyList<CorpusLapNote> Notes { get; init; } = [];
+
     /// <summary>Where this lap's channels live, when it has any.</summary>
-    public string TraceId => LapTraceId.For(SessionId, LapNumber);
+    public string TraceId => LapTraceId.For(this.SessionId, this.LapNumber);
 
     /// <summary>Whether this lap can be overlaid channel by channel, or only named.</summary>
-    public bool HasChannels => Tier == LapTargetTier.FullTrace;
+    public bool HasChannels => this.Tier == LapTargetTier.FullTrace;
 
     /// <summary>Why a lap cannot be overlaid, in the driver's words. Null when it can.</summary>
-    public string? UnavailableReason => Tier switch
+    public string? UnavailableReason => this.Tier switch
     {
         LapTargetTier.FullTrace => null,
         LapTargetTier.ReferenceCurve => "No channels — recorded before traces, or pruned to stay inside the disk budget.",
-        _ => "Lap time only — imported laps carry no shape.",
+        _ => "Lap time only — imported, or only part of the lap was seen.",
     };
 }
+
+/// <summary>A note on a lap as Analysis shows it. <paramref name="Mine"/>: the driver wrote it here, so may change it.</summary>
+public sealed record CorpusLapNote(string Id, double DistanceMeters, string Text, string Author, DateTimeOffset CreatedAt, bool Mine);
 
 /// <summary>
 /// Reads the lap-history corpus for the Analysis view and the Live Compare target picker
@@ -51,11 +65,16 @@ public sealed class LapCorpusBrowser
     private readonly ILapHistoryStore _history;
     private readonly ILapTraceStore _traces;
 
-    public LapCorpusBrowser(ILapHistoryStore history, ILapTraceStore traces)
+    /// <param name="notes">The driver's own lap notes. Without it laps carry only the notes they were shared with, and none can be written.</param>
+    public LapCorpusBrowser(ILapHistoryStore history, ILapTraceStore traces, LapNotes? notes = null)
     {
-        _history = history ?? throw new ArgumentNullException(nameof(history));
-        _traces = traces ?? throw new ArgumentNullException(nameof(traces));
+        this._history = history ?? throw new ArgumentNullException(nameof(history));
+        this._traces = traces ?? throw new ArgumentNullException(nameof(traces));
+        this.Notes = notes;
     }
+
+    /// <summary>Where the driver's own lap notes are kept, or null when they cannot be kept here.</summary>
+    public LapNotes? Notes { get; }
 
     /// <summary>
     /// Every session that holds at least one valid lap, for the picker to narrow down. Sessions
@@ -92,7 +111,8 @@ public sealed class LapCorpusBrowser
                 valid.Count,
                 valid.Count(lap => lap.HasChannelTrace),
                 valid.Min(lap => lap.LapTimeSeconds),
-                session.SharedFrom));
+                session.SharedFrom,
+                valid.Select(lap => lap.Outing ?? 0).Where(outing => outing > 0).Distinct().Count()));
         }
 
         return [.. sessions.OrderByDescending(session => session.StartedAt)];
@@ -117,8 +137,37 @@ public sealed class LapCorpusBrowser
             ? []
             : [.. stored.Laps
                 .Where(lap => Usable(stored, lap, all))
-                .Select(lap => Describe(stored, lap))
+                .Select(lap => this.Describe(stored, lap))
                 .OrderBy(lap => lap.LapTimeSeconds)];
+    }
+
+    /// <summary>One valid lap by its identity, or null when it is gone or was never valid.</summary>
+    public CorpusLap? Find(string sessionId, int lapNumber)
+    {
+        IReadOnlyList<LapHistorySession> stored = this._history.LoadAll();
+        LapHistorySession? session = stored
+            .FirstOrDefault(candidate => string.Equals(candidate.Id, sessionId, StringComparison.Ordinal));
+        LapHistoryRecord? lap = session?.Laps
+            .FirstOrDefault(candidate => candidate.LapNumber == lapNumber && Usable(session, candidate, stored));
+        return session is null || lap is null ? null : this.Describe(session, lap);
+    }
+
+    /// <summary>
+    /// Every valid lap on one course (game, track layout, car) across all sessions, fastest
+    /// first — the Live Compare picker's list. One read of the corpus, not one per session.
+    /// </summary>
+    public IReadOnlyList<CorpusLap> LapsOn(string game, string trackCourse, string carModel)
+    {
+        IReadOnlyList<LapHistorySession> stored = this._history.LoadAll();
+        return [.. stored
+            .Where(session => string.Equals(session.Context.Game, game, StringComparison.Ordinal)
+                && string.Equals(session.Context.TrackCourse, trackCourse, StringComparison.Ordinal)
+                && string.Equals(session.Context.CarModel, carModel, StringComparison.Ordinal)
+                && !LapHistoryImportService.HasRecordedEquivalent(session, stored))
+            .SelectMany(session => session.Laps
+                .Where(lap => Usable(session, lap, stored))
+                .Select(lap => this.Describe(session, lap)))
+            .OrderBy(lap => lap.LapTimeSeconds)];
     }
 
     private static bool Usable(
@@ -131,10 +180,11 @@ public sealed class LapCorpusBrowser
     /// <summary>
     /// The lap's channels, or null when there is no lap, it has none, or they could not be
     /// read. Null in, null out: "nothing is selected" is a normal state on this page, not a
-    /// caller error.
+    /// caller error. Without the car's readings (<see cref="LapTraceCar"/>): nothing compares
+    /// or draws those yet, and a hundred of them would drown the channels that are.
     /// </summary>
     public LapChannelTrace? Trace(CorpusLap? lap) =>
-        lap is { HasChannels: true } ? _traces.Load(lap.TraceId) : null;
+        lap is { HasChannels: true } && this._traces.Load(lap.TraceId) is { } trace ? LapTraceCar.Without(trace) : null;
 
     /// <summary>
     /// The channels both laps carry. A comparison can only honestly draw a channel that exists
@@ -156,17 +206,24 @@ public sealed class LapCorpusBrowser
         return [.. left.Channels.Keys.Where(right.Channels.ContainsKey).Order(StringComparer.Ordinal)];
     }
 
-    private static CorpusLap Describe(LapHistorySession session, LapHistoryRecord lap)
+    private CorpusLap Describe(LapHistorySession session, LapHistoryRecord lap)
     {
-        var tier = (lap.HasReferenceCurve, lap.HasChannelTrace) switch
+        IReadOnlyList<LapNote> own = this.Notes?.For(session.Id, lap.LapNumber) ?? [];
+        CorpusLapNote[] notes =
+        [
+            .. own.Select(note => new CorpusLapNote(note.Id, note.DistanceMeters, note.Text, note.Author, note.CreatedAt, Mine: true)),
+            .. lap.Notes.Select(note => new CorpusLapNote(note.Id, note.DistanceMeters, note.Text, note.Author, note.CreatedAt, Mine: false)),
+        ];
+
+        LapTargetTier tier = (lap.HasReferenceCurve, lap.HasChannelTrace) switch
         {
             (true, true) => LapTargetTier.FullTrace,
             (true, false) => LapTargetTier.ReferenceCurve,
             _ => LapTargetTier.TimeOnly,
         };
 
-        var when = session.StartedAt.ToLocalTime().ToString("HH:mm", CultureInfo.InvariantCulture);
-        var origin = session.SharedFrom is { Length: > 0 } from
+        string when = session.StartedAt.ToLocalTime().ToString("HH:mm", CultureInfo.InvariantCulture);
+        string origin = session.SharedFrom is { Length: > 0 } from
             ? $"Shared by {from}"
             : session.Kind.ToString();
 
@@ -179,6 +236,14 @@ public sealed class LapCorpusBrowser
             tier,
             session.Context,
             session.StartedAt,
-            session.SharedFrom);
+            session.SharedFrom,
+            lap.Outing ?? 0,
+            lap.FrontCompound,
+            lap.RearCompound,
+            lap.FuelUsedLiters,
+            lap.CompletedAt)
+        {
+            Notes = notes,
+        };
     }
 }

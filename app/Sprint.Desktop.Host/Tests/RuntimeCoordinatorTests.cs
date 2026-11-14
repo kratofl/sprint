@@ -5,8 +5,12 @@ using Sprint.Desktop.Features.Analysis;
 using Sprint.Desktop.Features.Dashes;
 using Sprint.Desktop.Features.Devices;
 using Sprint.Desktop.Features.Diagnostics;
+using Sprint.Desktop.Features.FirstRun;
+using Sprint.Desktop.Features.LiveCompare;
 using Sprint.Desktop.Features.SessionPlanning;
 using Sprint.Desktop.Runtime;
+using Sprint.Games.LeMansUltimate;
+using Sprint.Games.LeMansUltimate.Setups;
 using Xunit;
 
 namespace Sprint.Desktop.Host.Tests;
@@ -76,6 +80,45 @@ public sealed class RuntimeCoordinatorTests
     }
 
     [Fact]
+    public void SettingsUpdate_AutomaticUpdatesAreOnUntilTurnedOff()
+    {
+        RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
+        try
+        {
+            Assert.True(runtime.Settings.AutoInstallUpdates);
+
+            Assert.True(coordinator.Execute(Command("""{"type":"settings.update","autoInstallUpdates":false}"""), out string error), error);
+            Assert.False(new DesktopRuntime(dataRoot, PresetRoot).Settings.AutoInstallUpdates);
+
+            Assert.True(coordinator.Execute(Command("""{"type":"settings.update","autoInstallUpdates":true}"""), out error), error);
+            Assert.True(new DesktopRuntime(dataRoot, PresetRoot).Settings.AutoInstallUpdates);
+        }
+        finally
+        {
+            Cleanup(dataRoot);
+        }
+    }
+
+    [Fact]
+    public void SettingsUpdate_DashesViewMode_PersistsAndRejectsUnknownModes()
+    {
+        RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
+        try
+        {
+            Assert.True(coordinator.Execute(Command("""{"type":"settings.update","dashesUiViewMode":"list"}"""), out string error), error);
+            Assert.Equal("list", new DesktopRuntime(dataRoot, PresetRoot).Settings.DashesUI.ViewMode);
+
+            Assert.False(coordinator.Execute(Command("""{"type":"settings.update","dashesUiViewMode":"cards"}"""), out string rejected));
+            Assert.Contains("dashes UI view mode", rejected);
+            Assert.Equal("list", runtime.Settings.DashesUI.ViewMode);
+        }
+        finally
+        {
+            Cleanup(dataRoot);
+        }
+    }
+
+    [Fact]
     public void CloudConfigure_RecordsTheFirstRunAnswerAndPersistsIt()
     {
         RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
@@ -124,6 +167,52 @@ public sealed class RuntimeCoordinatorTests
             bool ok = coordinator.Execute(Command("""{"type":"settings.update","unknownField":123}"""), out string error);
             Assert.False(ok);
             Assert.Equal("no recognized settings fields were provided", error);
+        }
+        finally
+        {
+            Cleanup(dataRoot);
+        }
+    }
+
+    [Fact]
+    public void SettingsUpdate_TraceExpiry_IsOffUntilSetAndThenDeletesOldLapsTelemetryAtOnce()
+    {
+        string dataRoot = NewTempDataRoot();
+        try
+        {
+            DesktopRuntime runtime = new(dataRoot, PresetRoot);
+            LocalLapHistoryStore history = new(Path.Combine(dataRoot, "lap-history"));
+            LocalLapTraceStore traces = new(Path.Combine(dataRoot, "lap-traces"));
+            RuntimeCoordinator coordinator = new(runtime, traceRetention: new LapTraceRetention(traces, history));
+            LapHistorySession old = new()
+            {
+                Id = "old",
+                StartedAt = DateTimeOffset.UtcNow.AddDays(-200),
+                Context = new LapHistoryContext { Game = "LMU", TrackCourse = "Spa", CarModel = "963" },
+            };
+            for (int lap = 1; lap <= 7; lap++)
+            {
+                string traceId = LapTraceId.For(old.Id, lap);
+                traces.Save(traceId, new LapChannelTrace { PositionStep = 0.5, Channels = { [LapTraceChannels.SpeedKph] = [1, 2, 3] } });
+                old.Laps.Add(new LapHistoryRecord { LapNumber = lap, IsValid = true, LapTimeSeconds = 120 + lap, TraceId = traceId });
+            }
+
+            history.Save(old);
+            Assert.Equal(0, runtime.Settings.SessionPlanner.TraceExpiryDays);
+
+            Assert.False(coordinator.Execute(Command("""{"type":"settings.update","traceExpiryDays":-1}"""), out string rejected));
+            Assert.Contains("traceExpiryDays", rejected);
+            Assert.False(coordinator.Execute(Command("""{"type":"settings.update","traceExpiryDays":"90"}"""), out _));
+            Assert.Equal(7, traces.Usage().Laps);
+
+            Assert.True(coordinator.Execute(Command("""{"type":"settings.update","traceExpiryDays":90}"""), out string error), error);
+
+            // The five fastest laps of the car and track keep theirs, however old.
+            Assert.Equal(5, traces.Usage().Laps);
+            Assert.Equal(90, new DesktopRuntime(dataRoot, PresetRoot).Settings.SessionPlanner.TraceExpiryDays);
+
+            Assert.True(coordinator.Execute(Command("""{"type":"settings.update","traceExpiryDays":0}"""), out error), error);
+            Assert.Equal(0, new DesktopRuntime(dataRoot, PresetRoot).Settings.SessionPlanner.TraceExpiryDays);
         }
         finally
         {
@@ -304,6 +393,76 @@ public sealed class RuntimeCoordinatorTests
     }
 
     [Fact]
+    public void ABrowserDisplayIsAddedAt1024x576AndKeepsAValidatedResolutionAndBackground()
+    {
+        RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
+        try
+        {
+            Assert.True(coordinator.Execute(Command("""{"type":"devices.add","catalogId":"browser-display"}"""), out string addError), addError);
+            SavedDevice device = Assert.Single(runtime.Devices);
+            Assert.True(BrowserDisplays.Is(device));
+            Assert.Equal((1024, 576, DeviceOrientation.Landscape, false), (device.Width, device.Height, device.Orientation, device.Transparent));
+
+            Assert.True(coordinator.Execute(Command($$"""{"type":"devices.resolution","deviceId":"{{device.Id}}","width":720,"height":1080}"""), out string sizeError), sizeError);
+            Assert.True(coordinator.Execute(Command($$"""{"type":"devices.transparent","deviceId":"{{device.Id}}","transparent":true}"""), out string backgroundError), backgroundError);
+
+            SavedDevice reloaded = new DesktopRuntime(dataRoot, PresetRoot).Devices.Single();
+            Assert.Equal((720, 1080, DeviceOrientation.Portrait, true), (reloaded.Width, reloaded.Height, reloaded.Orientation, reloaded.Transparent));
+
+            Assert.False(coordinator.Execute(Command($$"""{"type":"devices.resolution","deviceId":"{{device.Id}}","width":1921,"height":1080}"""), out string tooWide));
+            Assert.Equal("a browser display is 100 to 1920 pixels wide and 100 to 1080 high", tooWide);
+            Assert.False(coordinator.Execute(Command($$"""{"type":"devices.resolution","deviceId":"{{device.Id}}","width":800,"height":99}"""), out _));
+            Assert.False(coordinator.Execute(Command($$"""{"type":"devices.resolution","deviceId":"{{device.Id}}","width":800}"""), out string missing));
+            Assert.Equal("width and height are required", missing);
+            Assert.False(coordinator.Execute(Command($$"""{"type":"devices.transparent","deviceId":"{{device.Id}}","transparent":"yes"}"""), out string notBool));
+            Assert.Equal("transparent is required", notBool);
+            Assert.Equal((720, 1080, true), (device.Width, device.Height, device.Transparent));
+        }
+        finally
+        {
+            Cleanup(dataRoot);
+        }
+    }
+
+    [Fact]
+    public void ABrowserDisplayIsNoPanelAndAPanelHasNoBrowserSettings()
+    {
+        RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
+        try
+        {
+            Assert.True(coordinator.Execute(Command("""{"type":"devices.add","catalogId":"browser-display"}"""), out _));
+            Assert.True(coordinator.Execute(Command("""{"type":"devices.add","catalogId":"generic-vocore"}"""), out _));
+            SavedDevice browser = runtime.Devices.Single(BrowserDisplays.Is);
+            SavedDevice panel = runtime.Devices.Single(device => !BrowserDisplays.Is(device));
+
+            // Renaming keeps working; turning, shifting or insetting it does not.
+            Assert.True(coordinator.Execute(
+                Command($$"""{"type":"devices.update","deviceId":"{{browser.Id}}","name":"Headset","rotation":90,"offsetX":0,"offsetY":0,"margin":0,"dashId":"default"}"""),
+                out string renameError), renameError);
+            Assert.Equal("Headset", browser.Name);
+            Assert.False(coordinator.Execute(
+                Command($$"""{"type":"devices.update","deviceId":"{{browser.Id}}","name":"Headset","rotation":0,"offsetX":0,"offsetY":0,"margin":0,"dashId":"default"}"""),
+                out string rotateError));
+            Assert.Equal("a browser display has no orientation, offset or margin", rotateError);
+            Assert.False(coordinator.Execute(
+                Command($$"""{"type":"devices.update","deviceId":"{{browser.Id}}","name":"Headset","rotation":90,"offsetX":0,"offsetY":0,"margin":4,"dashId":"default"}"""),
+                out _));
+            Assert.False(coordinator.Execute(Command($$"""{"type":"devices.purpose","deviceId":"{{browser.Id}}","purpose":"rear-view-mirror"}"""), out string mirrorError));
+            Assert.Equal("a browser display cannot mirror the desktop", mirrorError);
+            Assert.True(coordinator.Execute(Command($$"""{"type":"devices.purpose","deviceId":"{{browser.Id}}","purpose":"lap-times"}"""), out _));
+
+            Assert.False(coordinator.Execute(Command($$"""{"type":"devices.resolution","deviceId":"{{panel.Id}}","width":800,"height":480}"""), out string panelSize));
+            Assert.Equal("only a browser display has a resolution to set", panelSize);
+            Assert.False(coordinator.Execute(Command($$"""{"type":"devices.transparent","deviceId":"{{panel.Id}}","transparent":true}"""), out _));
+            Assert.False(panel.Transparent);
+        }
+        finally
+        {
+            Cleanup(dataRoot);
+        }
+    }
+
+    [Fact]
     public void DevicesSave_TogglesDisabledAndPersists()
     {
         RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
@@ -329,6 +488,62 @@ public sealed class RuntimeCoordinatorTests
     }
 
     [Fact]
+    public void DevicesMultiDial_RenamesAPositionAndInvertsThePopupAndPersists()
+    {
+        RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
+        try
+        {
+            Assert.True(coordinator.Execute(Command("""{"type":"devices.add","catalogId":"bavarian-omega-v2-pro"}"""), out _));
+            SavedDevice device = Assert.Single(runtime.Devices);
+
+            Assert.True(coordinator.Execute(
+                Command($$"""{"type":"devices.multiDial","deviceId":"{{device.Id}}","position":0,"label":" STRAT ","color":"#4a6cdc"}"""),
+                out string error), error);
+            Assert.True(coordinator.Execute(
+                Command($$"""{"type":"devices.multiDial","deviceId":"{{device.Id}}","invertPopup":true}"""),
+                out error), error);
+
+            DesktopRuntime reloaded = new(dataRoot, PresetRoot);
+            MultiDialSettings? saved = reloaded.Devices.Single().MultiDial;
+            Assert.NotNull(saved);
+            Assert.Equal(new MultiDialLabel("STRAT", "#4A6CDC"), saved.Positions[0]);
+            Assert.Equal("TC2", saved.Positions[1].Label);
+            Assert.True(saved.InvertPopup);
+        }
+        finally
+        {
+            Cleanup(dataRoot);
+        }
+    }
+
+    [Fact]
+    public void DevicesMultiDial_RejectsABadColourAndADeviceWithoutADial()
+    {
+        RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
+        try
+        {
+            Assert.True(coordinator.Execute(Command("""{"type":"devices.add","catalogId":"bavarian-omega-v2-pro"}"""), out _));
+            Assert.True(coordinator.Execute(Command("""{"type":"devices.add","catalogId":"generic-vocore"}"""), out _));
+            SavedDevice omega = runtime.Devices.First(device => device.PresetId == "bavarian-omega-v2-pro");
+            SavedDevice screen = runtime.Devices.First(device => device.PresetId == "generic-vocore");
+
+            Assert.False(coordinator.Execute(
+                Command($$"""{"type":"devices.multiDial","deviceId":"{{omega.Id}}","position":0,"label":"STRAT","color":"blue"}"""),
+                out string error));
+            Assert.Equal("color must be #RRGGBB", error);
+            Assert.False(coordinator.Execute(
+                Command($$"""{"type":"devices.multiDial","deviceId":"{{screen.Id}}","invertPopup":true}"""),
+                out error));
+            Assert.Equal("device has no multi-dial", error);
+            Assert.Null(omega.MultiDial);
+        }
+        finally
+        {
+            Cleanup(dataRoot);
+        }
+    }
+
+    [Fact]
     public void DashCreate_UnknownProfile_ReturnsError()
     {
         RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
@@ -345,26 +560,25 @@ public sealed class RuntimeCoordinatorTests
     }
 
     [Fact]
-    public void DashSave_PinsIdAndDefaultRegardlessOfPayload()
+    public void DashSave_PinsIdAndCategoryRegardlessOfPayload()
     {
         RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
         try
         {
-            DashLayout created = runtime.CreateDashLayout();
-            Assert.False(created.IsDefault);
+            Assert.True(coordinator.Execute(Command("""{"type":"dash.create","name":"Mine","category":"Race"}"""), out string error), error);
+            DashLayout created = runtime.DashLayouts.Single(layout => layout.Name == "Mine");
 
-            string maliciousLayout = $$"""
-                {"id":"default","default":true,"name":"Hijacked","gridCols":20,"gridRows":12,"pages":[{"id":"main","name":"Main","widgets":[]}]}
+            string staleLayout = """
+                {"id":"default","category":"Practice","name":"Renamed","gridCols":20,"gridRows":12,"pages":[{"id":"main","name":"Main","widgets":[]}]}
                 """;
-
             bool ok = coordinator.Execute(
-                Command($$"""{"type":"dash.save","dashId":"{{created.Id}}","layout":{{maliciousLayout}} }"""),
-                out string error);
+                Command($$"""{"type":"dash.save","dashId":"{{created.Id}}","layout":{{staleLayout}} }"""),
+                out error);
 
             Assert.True(ok, error);
-            DashLayout saved = runtime.DashLayouts.Single(layout => string.Equals(layout.Name, "Hijacked", StringComparison.Ordinal));
+            DashLayout saved = runtime.DashLayouts.Single(layout => layout.Name == "Renamed");
             Assert.Equal(created.Id, saved.Id);
-            Assert.False(saved.IsDefault);
+            Assert.Equal("Race", saved.Category);
         }
         finally
         {
@@ -373,18 +587,194 @@ public sealed class RuntimeCoordinatorTests
     }
 
     [Fact]
-    public void DashDelete_RefusesToDeleteTheDefaultDash()
+    public void DashSave_KeepsAnAlertsOwnDisplayMode_AcrossARestart()
     {
         RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
         try
         {
-            DashLayout defaultLayout = runtime.DashLayouts.Single(layout => layout.IsDefault);
+            DashLayout dash = runtime.DashLayouts.First();
+            string layout = """
+                {"name":"Boxed","gridCols":20,"gridRows":12,"pages":[{"id":"main","name":"Main","widgets":[]}],
+                 "alerts":[{"id":"tc_change","type":"tc_change","enabled":true,"col":6,"row":3,"colSpan":8,"rowSpan":6,"displayMode":"center","colorToken":"ice","durationSeconds":2,"invertColors":false}]}
+                """;
+            bool ok = coordinator.Execute(Command($$"""{"type":"dash.save","dashId":"{{dash.Id}}","layout":{{layout}} }"""), out string error);
 
-            bool ok = coordinator.Execute(Command($$"""{"type":"dash.delete","dashId":"{{defaultLayout.Id}}"}"""), out string error);
+            Assert.True(ok, error);
+            DashAlert alert = Assert.Single(new DesktopRuntime(dataRoot, PresetRoot).DashLayouts.Single(saved => saved.Id == dash.Id).Alerts);
+            Assert.Equal("center", alert.DisplayMode);
+            Assert.False(alert.UsesGlobalSettings);
+        }
+        finally
+        {
+            Cleanup(dataRoot);
+        }
+    }
+
+    [Fact]
+    public void DashDelete_DeletesEvenTheLastDash_AndItStaysGone()
+    {
+        RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
+        try
+        {
+            DashLayout only = Assert.Single(runtime.DashLayouts);
+
+            bool ok = coordinator.Execute(Command($$"""{"type":"dash.delete","dashId":"{{only.Id}}"}"""), out string error);
+
+            Assert.True(ok, error);
+            Assert.Empty(runtime.DashLayouts);
+            Assert.Empty(new DesktopRuntime(dataRoot, PresetRoot).DashLayouts);
+        }
+        finally
+        {
+            Cleanup(dataRoot);
+        }
+    }
+
+    [Fact]
+    public void DashCreate_Blank_FitsTheProfileWithOneEmptyPage()
+    {
+        RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
+        try
+        {
+            bool ok = coordinator.Execute(
+                Command("""{"type":"dash.create","profileId":"portrait-480x800","name":"  Quali  ","category":"qualifying"}"""),
+                out string error);
+
+            Assert.True(ok, error);
+            DashLayout created = runtime.DashLayouts.Single(layout => layout.Name == "Quali");
+            ScreenProfile profile = ScreenProfileCatalog.Resolve("portrait-480x800");
+            Assert.Equal(profile.Id, created.ScreenProfileId);
+            Assert.Equal((profile.GridCols, profile.GridRows), (created.GridCols, created.GridRows));
+            DashPage page = Assert.Single(created.Pages);
+            Assert.Empty(page.Widgets);
+            Assert.Equal("Qualifying", created.Category);
+        }
+        finally
+        {
+            Cleanup(dataRoot);
+        }
+    }
+
+    [Fact]
+    public void DashCreate_FromSource_CopiesRefittedAndKeepsTheSourceCategoryUnlessGiven()
+    {
+        RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
+        try
+        {
+            DashLayout source = runtime.DashLayouts.Single();
+            Assert.True(coordinator.Execute(Command($$"""{"type":"dash.setCategory","dashId":"{{source.Id}}","category":"Endurance"}"""), out string error), error);
+
+            Assert.True(coordinator.Execute(Command($$"""{"type":"dash.create","sourceDashId":"{{source.Id}}","profileId":"square-800x800"}"""), out error), error);
+            Assert.True(coordinator.Execute(Command($$"""{"type":"dash.create","sourceDashId":"{{source.Id}}","name":"Loose","category":null}"""), out error), error);
+
+            DashLayout copy = runtime.DashLayouts.Single(layout => layout.Name == $"{source.Name} copy");
+            Assert.NotEqual(source.Id, copy.Id);
+            Assert.Equal("square-800x800", copy.ScreenProfileId);
+            Assert.Equal(source.Pages.Count, copy.Pages.Count);
+            Assert.Equal("Endurance", copy.Category);
+
+            DashLayout loose = runtime.DashLayouts.Single(layout => layout.Name == "Loose");
+            Assert.Equal(source.ScreenProfileId, loose.ScreenProfileId);
+            Assert.Null(loose.Category);
+        }
+        finally
+        {
+            Cleanup(dataRoot);
+        }
+    }
+
+    [Theory]
+    [InlineData("""{"type":"dash.create","sourceDashId":"missing"}""", "source dash not found")]
+    [InlineData("""{"type":"dash.create","name":"   "}""", "name must not be blank")]
+    [InlineData("""{"type":"dash.create","category":"Rally"}""", "unknown category")]
+    public void DashCreate_RejectsBadArguments(string json, string expected)
+    {
+        RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
+        try
+        {
+            bool ok = coordinator.Execute(Command(json), out string error);
 
             Assert.False(ok);
-            Assert.Equal("cannot delete the default dash", error);
-            Assert.Contains(runtime.DashLayouts, layout => layout.Id == defaultLayout.Id);
+            Assert.Equal(expected, error);
+            Assert.Single(runtime.DashLayouts);
+        }
+        finally
+        {
+            Cleanup(dataRoot);
+        }
+    }
+
+    [Fact]
+    public void DashCategory_CreateMovesTheDash_RenameFollows_DeleteUncategorises()
+    {
+        RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
+        try
+        {
+            DashLayout dash = runtime.DashLayouts.Single();
+
+            Assert.True(coordinator.Execute(Command($$"""{"type":"dash.category.create","name":" Sprint races ","dashId":"{{dash.Id}}"}"""), out string error), error);
+            Assert.Equal(["Sprint races"], runtime.Settings.CustomDashCategories);
+            Assert.Equal("Sprint races", dash.Category);
+
+            Assert.True(coordinator.Execute(Command("""{"type":"dash.category.rename","name":"sprint RACES","newName":"Sprints"}"""), out error), error);
+            Assert.Equal(["Sprints"], runtime.Settings.CustomDashCategories);
+            Assert.Equal("Sprints", dash.Category);
+
+            DesktopRuntime reloaded = new(dataRoot, PresetRoot);
+            Assert.Equal(["Sprints"], reloaded.Settings.CustomDashCategories);
+            Assert.Equal("Sprints", reloaded.DashLayouts.Single().Category);
+
+            Assert.True(coordinator.Execute(Command("""{"type":"dash.category.delete","name":"Sprints"}"""), out error), error);
+            Assert.Empty(runtime.Settings.CustomDashCategories);
+            Assert.Null(dash.Category);
+            Assert.Null(new DesktopRuntime(dataRoot, PresetRoot).DashLayouts.Single().Category);
+        }
+        finally
+        {
+            Cleanup(dataRoot);
+        }
+    }
+
+    [Theory]
+    [InlineData("""{"type":"dash.category.create","name":"  "}""", "category name is required")]
+    [InlineData("""{"type":"dash.category.create","name":"race"}""", "\"race\" is a built-in category")]
+    [InlineData("""{"type":"dash.category.create","name":"Other"}""", "\"Other\" is reserved")]
+    [InlineData("""{"type":"dash.category.create","name":"MINE"}""", "a category named \"MINE\" already exists")]
+    [InlineData("""{"type":"dash.category.rename","name":"Mine","newName":"Theirs"}""", "a category named \"Theirs\" already exists")]
+    [InlineData("""{"type":"dash.category.rename","name":"Race","newName":"Races"}""", "built-in categories cannot be changed")]
+    [InlineData("""{"type":"dash.category.delete","name":"Nope"}""", "category not found")]
+    [InlineData("""{"type":"dash.setCategory","dashId":"default","category":"Nope"}""", "unknown category")]
+    public void DashCategory_RejectsInvalidNames(string json, string expected)
+    {
+        RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
+        try
+        {
+            Assert.True(coordinator.Execute(Command("""{"type":"dash.category.create","name":"Mine"}"""), out string error), error);
+            Assert.True(coordinator.Execute(Command("""{"type":"dash.category.create","name":"Theirs"}"""), out error), error);
+
+            bool ok = coordinator.Execute(Command(json), out error);
+
+            Assert.False(ok);
+            Assert.Equal(expected, error);
+            Assert.Equal(["Mine", "Theirs"], runtime.Settings.CustomDashCategories);
+        }
+        finally
+        {
+            Cleanup(dataRoot);
+        }
+    }
+
+    [Fact]
+    public void DashCategory_RenameToADifferentCasingOfItself_IsAllowed()
+    {
+        RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
+        try
+        {
+            Assert.True(coordinator.Execute(Command("""{"type":"dash.category.create","name":"wet"}"""), out string error), error);
+
+            Assert.True(coordinator.Execute(Command("""{"type":"dash.category.rename","name":"wet","newName":"Wet"}"""), out error), error);
+
+            Assert.Equal(["Wet"], runtime.Settings.CustomDashCategories);
         }
         finally
         {
@@ -584,6 +974,131 @@ public sealed class RuntimeCoordinatorTests
     }
 
     [Fact]
+    public void PlanCreate_WithoutAReserve_TakesThePlannersDefault()
+    {
+        RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
+        try
+        {
+            Assert.True(coordinator.Execute(Command("""{"type":"planner.settings","fuelReserveLaps":3}"""), out string settingsError), settingsError);
+            Assert.True(coordinator.Execute(Command("""{"type":"plan.create","track":"Spa"}"""), out string error), error);
+            Assert.True(coordinator.Execute(Command("""{"type":"plan.create","track":"Monza","fuelReserveLaps":0}"""), out error), error);
+
+            List<SessionPlan> plans = [.. SessionPlanningProbe.For(runtime.DataRoot).Store.LoadAll()];
+            Assert.Equal(3, Assert.Single(plans, plan => plan.Track == "Spa").FuelReserveLaps);
+            // Defaults seed, never lock: a plan that says 0 keeps 0.
+            Assert.Equal(0, Assert.Single(plans, plan => plan.Track == "Monza").FuelReserveLaps);
+        }
+        finally
+        {
+            Cleanup(dataRoot);
+        }
+    }
+
+    [Fact]
+    public void PlannerSettings_ApplyAndPersistEveryField()
+    {
+        RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
+        try
+        {
+            bool ok = coordinator.Execute(
+                Command("""{"type":"planner.settings","fuelReserveLaps":2,"fuelHistorySource":"MatchingSessionType","warnOnRaceFormatMismatch":false}"""),
+                out string error);
+
+            Assert.True(ok, error);
+            SessionPlannerSettings reloaded = new DesktopRuntime(dataRoot, PresetRoot).Settings.SessionPlanner;
+            Assert.Equal(2, reloaded.FuelReserveLaps);
+            Assert.Equal(FuelHistorySource.MatchingSessionType, reloaded.FuelHistorySource);
+            Assert.False(reloaded.WarnOnRaceFormatMismatch);
+        }
+        finally
+        {
+            Cleanup(dataRoot);
+        }
+    }
+
+    [Theory]
+    [InlineData("""{"type":"planner.settings"}""", "no recognized planner settings")]
+    [InlineData("""{"type":"planner.settings","fuelReserveLaps":-1}""", "fuelReserveLaps")]
+    [InlineData("""{"type":"planner.settings","fuelReserveLaps":11}""", "fuelReserveLaps")]
+    [InlineData("""{"type":"planner.settings","fuelReserveLaps":1.5}""", "fuelReserveLaps")]
+    [InlineData("""{"type":"planner.settings","fuelHistorySource":"1"}""", "fuelHistorySource")]
+    [InlineData("""{"type":"planner.settings","fuelHistorySource":"AllValidLaps, MatchingSessionType"}""", "fuelHistorySource")]
+    [InlineData("""{"type":"planner.settings","fuelHistorySource":"matchingsessiontype"}""", "fuelHistorySource")]
+    [InlineData("""{"type":"planner.settings","fuelReserveLaps":2,"fuelHistorySource":"Sometimes"}""", "fuelHistorySource")]
+    [InlineData("""{"type":"planner.settings","warnOnRaceFormatMismatch":"yes"}""", "warnOnRaceFormatMismatch")]
+    public void PlannerSettings_RejectBadValuesAndWriteNothing(string json, string expected)
+    {
+        RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
+        try
+        {
+            // A valid field beside a bad one is not applied either.
+            Assert.False(coordinator.Execute(Command(json), out string error));
+            Assert.Contains(expected, error, StringComparison.Ordinal);
+            Assert.Equal(1, runtime.Settings.SessionPlanner.FuelReserveLaps);
+            Assert.Equal(FuelHistorySource.AllValidLaps, runtime.Settings.SessionPlanner.FuelHistorySource);
+            Assert.True(runtime.Settings.SessionPlanner.WarnOnRaceFormatMismatch);
+        }
+        finally
+        {
+            Cleanup(dataRoot);
+        }
+    }
+
+    [Theory]
+    [InlineData("""{"type":"plan.create","fuelReserveLaps":1000000000}""", "fuelReserveLaps")]
+    [InlineData("""{"type":"plan.create","fuelReserveLaps":-1}""", "fuelReserveLaps")]
+    [InlineData("""{"type":"plan.create","fuelReserveLaps":1.5}""", "fuelReserveLaps")]
+    [InlineData("""{"type":"plan.create","raceLengthFormat":"LapBased","raceLengthValue":2001}""", "at most 2000 laps")]
+    [InlineData("""{"type":"plan.create","raceLengthFormat":"TimeBased","raceLengthValue":1801}""", "at most 1800 minutes")]
+    [InlineData("""{"type":"plan.create","raceLengthFormat":"TimeBased","raceLengthValue":-5}""", "raceLengthValue")]
+    [InlineData("""{"type":"plan.create","avgLapTimeSeconds":0.001}""", "avgLapTimeSeconds")]
+    [InlineData("""{"type":"plan.create","avgLapTimeSeconds":100000}""", "avgLapTimeSeconds")]
+    [InlineData("""{"type":"plan.create","fuelPerLapLiters":0}""", "fuelPerLapLiters")]
+    [InlineData("""{"type":"plan.create","fuelPerLapLiters":5000}""", "fuelPerLapLiters")]
+    public void PlanCreate_RefusesFiguresNoRaceCouldHave(string json, string expected)
+    {
+        RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
+        try
+        {
+            Assert.False(coordinator.Execute(Command(json), out string error));
+            Assert.Contains(expected, error, StringComparison.Ordinal);
+            Assert.Empty(SessionPlanningProbe.For(runtime.DataRoot).Store.LoadAll());
+        }
+        finally
+        {
+            Cleanup(dataRoot);
+        }
+    }
+
+    [Theory]
+    [InlineData("""{"fuelReserveLaps":1000000000}""", "fuelReserveLaps")]
+    [InlineData("""{"raceLengthValue":100000}""", "at most 2000 laps")]
+    // 2000 laps was a fine race by laps; as minutes it is not, so the new format is checked against it.
+    [InlineData("""{"raceLengthFormat":"TimeBased","name":"Renamed"}""", "at most 1800 minutes")]
+    [InlineData("""{"avgLapTimeSeconds":1,"name":"Renamed"}""", "avgLapTimeSeconds")]
+    public void PlanUpdate_RefusesFiguresNoRaceCouldHaveAndChangesNothing(string patch, string expected)
+    {
+        RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
+        try
+        {
+            Assert.True(coordinator.Execute(Command("""{"type":"plan.create","track":"Spa","name":"Spa","raceLengthFormat":"LapBased","raceLengthValue":2000}"""), out string createError), createError);
+            SessionPlan created = Assert.Single(SessionPlanningProbe.For(runtime.DataRoot).Store.LoadAll());
+            string json = $$"""{"type":"plan.update","planId":"{{created.Id}}",{{patch[1..]}}""";
+
+            Assert.False(coordinator.Execute(Command(json), out string error));
+            Assert.Contains(expected, error, StringComparison.Ordinal);
+            // A later good patch saves the plan as it is in memory: nothing of the refused one rides along.
+            Assert.True(coordinator.Execute(Command($$"""{"type":"plan.update","planId":"{{created.Id}}","notes":"later"}"""), out string notesError), notesError);
+            SessionPlan stored = Assert.Single(SessionPlanningProbe.For(runtime.DataRoot).Store.LoadAll());
+            Assert.Equal(("Spa", RaceLengthFormat.LapBased, 2000d), (stored.Name, stored.RaceLengthFormat, stored.RaceLengthValue));
+        }
+        finally
+        {
+            Cleanup(dataRoot);
+        }
+    }
+
+    [Fact]
     public void PlanCreateThenUpdate_PatchesNameAndPersistsAcrossReload()
     {
         RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
@@ -595,7 +1110,8 @@ public sealed class RuntimeCoordinatorTests
 
             SessionPlanningProbe probe = SessionPlanningProbe.For(runtime.DataRoot);
             SessionPlan created = Assert.Single(probe.Store.LoadAll());
-            Assert.Equal("New Session Plan", created.Name);
+            // A blank name is the derived one (Track – Car), exactly what the dialog previewed.
+            Assert.Equal("Spa – 963", created.Name);
 
             bool ok = coordinator.Execute(
                 Command($$"""{"type":"plan.update","planId":"{{created.Id}}","name":"Race day"}"""),
@@ -661,6 +1177,47 @@ public sealed class RuntimeCoordinatorTests
 
             Assert.True(ok, error);
             Assert.Empty(probe.Store.LoadAll());
+        }
+        finally
+        {
+            Cleanup(dataRoot);
+        }
+    }
+
+    [Fact]
+    public void PlanSetTarget_StoresADrivenLapAndRefusesOneThatWasNot()
+    {
+        RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
+        try
+        {
+            new LocalLapHistoryStore(Path.Combine(runtime.DataRoot, "lap-history")).Save(new LapHistorySession
+            {
+                Id = "practice-1",
+                Kind = HistorySessionKind.Practice,
+                StartedAt = DateTimeOffset.UtcNow.AddHours(-1),
+                Context = new LapHistoryContext { Game = "LMU", TrackCourse = "Spa", CarModel = "963" },
+                Laps =
+                [
+                    new LapHistoryRecord { LapNumber = 1, IsValid = true, LapTimeSeconds = 126.0 },
+                    new LapHistoryRecord { LapNumber = 2, IsValid = true, LapTimeSeconds = 124.9 },
+                    new LapHistoryRecord { LapNumber = 3, IsValid = true, LapTimeSeconds = 125.4 },
+                ],
+            });
+            Assert.True(coordinator.Execute(Command("""{"type":"plan.create","game":"LMU","car":"963","track":"Spa"}"""), out _));
+            SessionPlanningProbe probe = SessionPlanningProbe.For(runtime.DataRoot);
+            string planId = Assert.Single(probe.Store.LoadAll()).Id;
+
+            Assert.True(coordinator.Execute(Command($$"""{"type":"plan.setTarget","planId":"{{planId}}","kind":"Qualifying","scope":"Practice","statistic":"Fastest"}"""), out string error), error);
+            Assert.True(coordinator.Execute(Command($$"""{"type":"plan.setTarget","planId":"{{planId}}","kind":"Race","scope":"Practice","statistic":"Custom","lapSessionId":"practice-1","lapNumber":3}"""), out error), error);
+            Assert.False(coordinator.Execute(Command($$"""{"type":"plan.setTarget","planId":"{{planId}}","kind":"Race","scope":"Practice","statistic":"Custom","lapSessionId":"practice-1","lapNumber":9}"""), out error));
+            Assert.Equal("no such lap for this car and track", error);
+
+            SessionPlan stored = Assert.Single(probe.Store.LoadAll());
+            Assert.Equal(124.9, stored.TargetsFor(SegmentKind.Qualifying)?.LapTime?.LapTimeSeconds);
+            Assert.Equal(3, stored.TargetsFor(SegmentKind.Race)?.LapTime?.LapNumber);
+
+            Assert.True(coordinator.Execute(Command($$"""{"type":"plan.clearTarget","planId":"{{planId}}","kind":"Race"}"""), out error), error);
+            Assert.Null(Assert.Single(probe.Store.LoadAll()).TargetsFor(SegmentKind.Race)?.LapTime);
         }
         finally
         {
@@ -746,6 +1303,24 @@ public sealed class RuntimeCoordinatorTests
         }
     }
 
+    [Theory]
+    [InlineData("""{"type":"analysis.setRunSetup","outing":1,"setupId":5}""", "setupId must be a string or null")]
+    [InlineData("""{"type":"analysis.setRunSetup","setupId":"file-a"}""", "outing must be a number")]
+    [InlineData("""{"type":"analysis.setRunSetup","outing":1,"setupId":null}""", "no session is open")]
+    public void AnalysisSetRunSetup_RefusesWhatThePageCouldNeverSend(string command, string expected)
+    {
+        RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
+        try
+        {
+            Assert.False(coordinator.Execute(Command(command), out string error));
+            Assert.Equal(expected, error);
+        }
+        finally
+        {
+            Cleanup(dataRoot);
+        }
+    }
+
     [Fact]
     public void AnalysisSelectLap_InvalidRole_ReturnsError()
     {
@@ -794,6 +1369,67 @@ public sealed class RuntimeCoordinatorTests
     }
 
     [Fact]
+    public void LapNotes_RoundTripThroughTheCommandSurfaceSignedWithTheDriverName()
+    {
+        FakeLapHistoryStore history = new();
+        history.Add(FakeLapHistoryStore.Session("session-a", "UnitTestGame", "UnitTestTrack", "UnitTestCar", lapNumber: 5, lapTimeSeconds: 120));
+        string notesPath = Path.Combine(NewTempDataRoot(), "lap-notes.json");
+        LapCorpusBrowser browser = new(history, new FakeLapTraceStore(), new LapNotes(notesPath));
+        AnalysisController analysis = new(browser);
+        RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot, analysis: analysis);
+        try
+        {
+            runtime.Settings.DriverName = "Alex";
+            Assert.True(coordinator.Execute(Command("""{"type":"lap.note.add","sessionId":"session-a","lapNumber":5,"distanceMeters":3200,"text":"Lift earlier into C3"}"""), out string addError), addError);
+            CorpusLapNote note = Assert.Single(browser.Find("session-a", 5)?.Notes ?? []);
+            Assert.Equal("Alex", note.Author);
+            Assert.Equal(3200, note.DistanceMeters);
+
+            string update = JsonSerializer.Serialize(new { type = "lap.note.update", sessionId = "session-a", lapNumber = 5, noteId = note.Id, text = "Lift into C3" });
+            Assert.True(coordinator.Execute(Command(update), out string updateError), updateError);
+            Assert.Equal("Lift into C3", Assert.Single(browser.Find("session-a", 5)?.Notes ?? []).Text);
+
+            string delete = JsonSerializer.Serialize(new { type = "lap.note.delete", sessionId = "session-a", lapNumber = 5, noteId = note.Id });
+            Assert.True(coordinator.Execute(Command(delete), out string deleteError), deleteError);
+            Assert.Empty(browser.Find("session-a", 5)?.Notes ?? []);
+        }
+        finally
+        {
+            Cleanup(dataRoot);
+            Cleanup(Path.GetDirectoryName(notesPath) ?? notesPath);
+        }
+    }
+
+    [Theory]
+    [InlineData("""{"type":"lap.note.add","lapNumber":5,"distanceMeters":10,"text":"x"}""", "sessionId is required")]
+    [InlineData("""{"type":"lap.note.add","sessionId":"session-a","lapNumber":"5","distanceMeters":10,"text":"x"}""", "lapNumber must be a number")]
+    [InlineData("""{"type":"lap.note.add","sessionId":"session-a","lapNumber":5,"text":"x"}""", "distanceMeters must be a number")]
+    [InlineData("""{"type":"lap.note.add","sessionId":"session-a","lapNumber":5,"distanceMeters":10}""", "text is required")]
+    [InlineData("""{"type":"lap.note.add","sessionId":"session-a","lapNumber":5,"distanceMeters":10,"text":" "}""", "Write something first.")]
+    [InlineData("""{"type":"lap.note.add","sessionId":"session-a","lapNumber":7,"distanceMeters":10,"text":"x"}""", "no such lap")]
+    [InlineData("""{"type":"lap.note.update","sessionId":"session-a","lapNumber":5,"text":"x"}""", "noteId is required")]
+    [InlineData("""{"type":"lap.note.update","sessionId":"session-a","lapNumber":5,"noteId":"nope","text":"x"}""", "no such note on that lap")]
+    [InlineData("""{"type":"lap.note.delete","sessionId":"session-a","lapNumber":5,"noteId":"nope"}""", "no such note on that lap")]
+    public void LapNotes_RefuseWhatThePageCouldNeverSend(string command, string expected)
+    {
+        FakeLapHistoryStore history = new();
+        history.Add(FakeLapHistoryStore.Session("session-a", "UnitTestGame", "UnitTestTrack", "UnitTestCar", lapNumber: 5, lapTimeSeconds: 120));
+        string notesRoot = NewTempDataRoot();
+        AnalysisController analysis = new(new LapCorpusBrowser(history, new FakeLapTraceStore(), new LapNotes(Path.Combine(notesRoot, "lap-notes.json"))));
+        RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot, analysis: analysis);
+        try
+        {
+            Assert.False(coordinator.Execute(Command(command), out string error));
+            Assert.Equal(expected, error);
+        }
+        finally
+        {
+            Cleanup(dataRoot);
+            Cleanup(notesRoot);
+        }
+    }
+
+    [Fact]
     public void DiagnosticsSetLogLevel_UnknownLevel_ReturnsError()
     {
         RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
@@ -828,23 +1464,19 @@ public sealed class RuntimeCoordinatorTests
     }
 
     [Fact]
-    public void GuideUpdate_PersistsAPartialPatchAsANewSettingsObject()
+    public void CompareReadings_RefuseAnUnknownReadingAndAnEmptyHud()
     {
         RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
         try
         {
-            DrivingGuideSettings before = runtime.Settings.DrivingGuide;
+            Assert.False(coordinator.Execute(Command("""{"type":"compare.readings","panelIds":["boost"],"showDelta":true}"""), out string unknown));
+            Assert.Equal("unknown reading: boost", unknown);
+            Assert.False(coordinator.Execute(Command("""{"type":"compare.readings","panelIds":[],"showDelta":false}"""), out string empty));
+            Assert.Equal("Keep at least one reading on the HUD.", empty);
 
-            bool ok = coordinator.Execute(Command("""{"type":"guide.update","showLine":true,"eyeUpMeters":0.85}"""), out string error);
-
-            Assert.True(ok, error);
-            DrivingGuideSettings after = runtime.Settings.DrivingGuide;
-            // Replaced, not mutated: the feed reads it off-thread and compares by reference.
-            Assert.NotSame(before, after);
-            Assert.True(after.ShowLine);
-            Assert.Equal(0.85, after.EyeUpMeters);
-            Assert.Equal(before.MetersAhead, after.MetersAhead);
-            Assert.True(new DesktopRuntime(dataRoot, PresetRoot).Settings.DrivingGuide.ShowLine);
+            Assert.True(coordinator.Execute(Command("""{"type":"compare.readings","panelIds":["steering","brake"],"showDelta":false}"""), out string error), error);
+            Assert.Equal(["steering", "brake"], runtime.Settings.LiveCompare.PanelIds);
+            Assert.False(runtime.Settings.LiveCompare.ShowDelta);
         }
         finally
         {
@@ -853,16 +1485,201 @@ public sealed class RuntimeCoordinatorTests
     }
 
     [Fact]
-    public void GuideUpdate_RefusesAnOutOfRangeNumberWithoutApplyingAnything()
+    public void CompareRange_IsSavedAndReachesTheHudAtOnce_AndAnOutOfRangeWindowIsRefused()
+    {
+        string dataRoot = NewTempDataRoot();
+        DesktopRuntime runtime = new DesktopRuntime(dataRoot, PresetRoot);
+        LiveCompareService liveCompare = new LiveCompareService(
+            new LapCorpusBrowser(new LocalLapHistoryStore(Path.Combine(dataRoot, "lap-history")), new LocalLapTraceStore(Path.Combine(dataRoot, "lap-traces"))),
+            () => null);
+        RuntimeCoordinator coordinator = new RuntimeCoordinator(runtime, liveCompare: liveCompare);
+        try
+        {
+            Assert.True(coordinator.Execute(Command("""{"type":"compare.range","metersBehind":100,"metersAhead":1000}"""), out string error), error);
+            Assert.Equal((100d, 1000d), (runtime.Settings.LiveCompare.MetersBehind, runtime.Settings.LiveCompare.MetersAhead));
+            Assert.Equal((100d, 1000d), (liveCompare.Controller.MetersBehind, liveCompare.Controller.MetersAhead));
+
+            Assert.False(coordinator.Execute(Command("""{"type":"compare.range","metersBehind":100,"metersAhead":50000}"""), out string tooFar));
+            Assert.Equal("metersAhead must be between 100 and 2000", tooFar);
+            Assert.False(coordinator.Execute(Command("""{"type":"compare.range","metersBehind":-5,"metersAhead":600}"""), out string negative));
+            Assert.Equal("metersBehind must be between 50 and 1000", negative);
+            Assert.False(coordinator.Execute(Command("""{"type":"compare.range","metersAhead":600}"""), out string missing));
+            Assert.Equal("metersBehind and metersAhead are required", missing);
+            Assert.Equal(1000d, liveCompare.Controller.MetersAhead);
+        }
+        finally
+        {
+            Cleanup(dataRoot);
+        }
+    }
+
+    [Fact]
+    public void CompareRange_AHandEditedRangeIsHeldToBoundsSoThePickersStillWork()
+    {
+        string dataRoot = NewTempDataRoot();
+        DesktopRuntime runtime = new DesktopRuntime(dataRoot, PresetRoot);
+        LiveCompareService liveCompare = new LiveCompareService(
+            new LapCorpusBrowser(new LocalLapHistoryStore(Path.Combine(dataRoot, "lap-history")), new LocalLapTraceStore(Path.Combine(dataRoot, "lap-traces"))),
+            () => null);
+        RuntimeCoordinator coordinator = new RuntimeCoordinator(runtime, liveCompare: liveCompare);
+        try
+        {
+            runtime.Settings.LiveCompare.MetersBehind = 10;
+            runtime.Settings.LiveCompare.MetersAhead = 3000;
+            liveCompare.Configure(runtime.Settings.LiveCompare);
+
+            Assert.Equal((50d, 2000d), (liveCompare.Controller.MetersBehind, liveCompare.Controller.MetersAhead));
+            // The page sends back what it shows, changing one side: accepted.
+            Assert.True(coordinator.Execute(Command("""{"type":"compare.range","metersBehind":200,"metersAhead":2000}"""), out string error), error);
+            Assert.Equal((200d, 2000d), (runtime.Settings.LiveCompare.MetersBehind, runtime.Settings.LiveCompare.MetersAhead));
+        }
+        finally
+        {
+            Cleanup(dataRoot);
+        }
+    }
+
+    [Fact]
+    public void CompareHudLayout_RemembersAWindowPerMonitor()
     {
         RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
         try
         {
-            bool ok = coordinator.Execute(Command("""{"type":"guide.update","showLine":true,"yawOffsetDegrees":45}"""), out string error);
+            bool ok = coordinator.Execute(
+                Command("""{"type":"compare.hud.layout","windowId":"brake","screen":{"x":0,"y":0,"width":2560,"height":1440},"x":40,"y":60,"width":400,"height":170}"""),
+                out string error);
 
-            Assert.False(ok);
-            Assert.Equal("yawOffsetDegrees must be a number from -20 to 20", error);
-            Assert.False(runtime.Settings.DrivingGuide.ShowLine);
+            Assert.True(ok, error);
+            HudWindowLayout layout = Assert.Single(runtime.Settings.LiveCompare.Layouts);
+            Assert.Equal(HudLayoutStore.KeyFor("brake", new HudScreen(0, 0, 2560, 1440)), layout.Key);
+            Assert.Equal((40, 60, 400, 170), (layout.X, layout.Y, layout.Width, layout.Height));
+        }
+        finally
+        {
+            Cleanup(dataRoot);
+        }
+    }
+
+    [Fact]
+    public void CompareHudToggle_NeedsALapToTrainAgainst()
+    {
+        RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
+        try
+        {
+            Assert.False(coordinator.Execute(Command("""{"type":"compare.hud.toggle"}"""), out string error));
+            Assert.Equal("Pick a lap to train against first.", error);
+        }
+        finally
+        {
+            Cleanup(dataRoot);
+        }
+    }
+
+    [Fact]
+    public void CompareHudArrange_NeedsToSayWhichWay()
+    {
+        RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
+        try
+        {
+            Assert.False(coordinator.Execute(Command("""{"type":"compare.hud.arrange"}"""), out string missing));
+            Assert.Equal("arranging is required", missing);
+            Assert.True(coordinator.Execute(Command("""{"type":"compare.hud.arrange","arranging":true}"""), out string error), error);
+            Assert.True(coordinator.Execute(Command("""{"type":"compare.hud.arrange","arranging":false}"""), out error), error);
+        }
+        finally
+        {
+            Cleanup(dataRoot);
+        }
+    }
+
+    [Theory]
+    [InlineData("""{"type":"firstRun.complete","driverName":"   ","driverNumber":"7"}""")]
+    [InlineData("""{"type":"firstRun.complete","driverName":"your name","driverNumber":"7"}""")]
+    [InlineData("""{"type":"firstRun.complete","driverName":"Ada","driverNumber":"7a"}""")]
+    [InlineData("""{"type":"firstRun.complete","driverName":"Ada","driverNumber":"1234"}""")]
+    public void FirstRunComplete_RejectsAPlaceholderNameOrABadNumber(string json)
+    {
+        RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
+        try
+        {
+            Assert.False(coordinator.Execute(Command(json), out string error));
+            Assert.NotEmpty(error);
+            Assert.False(runtime.Settings.FirstRunDone);
+        }
+        finally
+        {
+            Cleanup(dataRoot);
+        }
+    }
+
+    [Fact]
+    public void FirstRunComplete_SavesTheDriverAndIsDone()
+    {
+        RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
+        try
+        {
+            bool ok = coordinator.Execute(
+                Command("""{"type":"firstRun.complete","driverName":"  Ada Lovelace ","driverNumber":"07"}"""),
+                out string error);
+
+            Assert.True(ok, error);
+            DesktopRuntime reloaded = new(dataRoot, PresetRoot);
+            Assert.Equal("Ada Lovelace", reloaded.Settings.DriverName);
+            Assert.Equal("07", reloaded.Settings.DriverNumber);
+            Assert.True(reloaded.Settings.FirstRunDone);
+        }
+        finally
+        {
+            Cleanup(dataRoot);
+        }
+    }
+
+    [Fact]
+    public void GameSetFolder_RejectsAFolderThatIsNotAnInstall()
+    {
+        RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
+        try
+        {
+            string json = JsonSerializer.Serialize(new { type = "game.setFolder", folder = dataRoot });
+            Assert.False(coordinator.Execute(Command(json), out string error));
+            Assert.Equal("That folder isn't a Le Mans Ultimate install.", error);
+            Assert.Null(runtime.Settings.GameFolder);
+        }
+        finally
+        {
+            Cleanup(dataRoot);
+        }
+    }
+
+    [Fact]
+    public void GameSetFolder_PointsSetupsAtTheChosenInstallAndNullFindsItAgain()
+    {
+        string dataRoot = NewTempDataRoot();
+        try
+        {
+            DesktopRuntime runtime = new(dataRoot, PresetRoot);
+            LeMansUltimateGameProvider provider = new();
+            GameFolder gameFolder = new(provider);
+            RuntimeCoordinator coordinator = new(runtime, gameFolder: gameFolder);
+            string install = Path.Combine(dataRoot, "Le Mans Ultimate");
+            string track = Path.Combine(install, LmuSetupRepository.SetupsSubPath, "Spa");
+            Directory.CreateDirectory(track);
+            File.WriteAllText(Path.Combine(track, "Quali.svm"), "");
+
+            string chose = JsonSerializer.Serialize(new { type = "game.setFolder", folder = install });
+            Assert.True(coordinator.Execute(Command(chose), out string error), error);
+
+            Assert.Equal(install, new DesktopRuntime(dataRoot, PresetRoot).Settings.GameFolder);
+            Assert.Equal(Path.Combine(install, LmuSetupRepository.SetupsSubPath), provider.Setups?.WatchRoot);
+            if (gameFolder.Summary() is { } summary)
+            {
+                Assert.Equal(new GameFolderSummary(install, Chosen: true, Found: true, SetupCount: 1, ResultsCount: 0), summary);
+            }
+
+            Assert.True(coordinator.Execute(Command("""{"type":"game.setFolder","folder":null}"""), out error), error);
+            Assert.Null(runtime.Settings.GameFolder);
+            Assert.Null(provider.ChosenFolder);
+            Assert.NotEqual(Path.Combine(install, LmuSetupRepository.SetupsSubPath), provider.Setups?.WatchRoot);
         }
         finally
         {
@@ -935,17 +1752,17 @@ public sealed class RuntimeCoordinatorTests
     {
         private readonly List<LapHistorySession> _sessions = [];
 
-        public void Add(LapHistorySession session) => _sessions.Add(session);
+        public void Add(LapHistorySession session) => this._sessions.Add(session);
 
-        public IReadOnlyList<LapHistorySession> LoadAll() => _sessions;
+        public IReadOnlyList<LapHistorySession> LoadAll() => this._sessions;
 
         public void Save(LapHistorySession session)
         {
-            _sessions.RemoveAll(existing => existing.Id == session.Id);
-            _sessions.Add(session);
+            this._sessions.RemoveAll(existing => existing.Id == session.Id);
+            this._sessions.Add(session);
         }
 
-        public void Delete(string sessionId) => _sessions.RemoveAll(session => session.Id == sessionId);
+        public void Delete(string sessionId) => this._sessions.RemoveAll(session => session.Id == sessionId);
 
         public static LapHistorySession Session(string id, string game, string track, string car, int lapNumber, double lapTimeSeconds) => new()
         {

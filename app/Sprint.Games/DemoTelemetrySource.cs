@@ -49,84 +49,84 @@ internal sealed class DemoTelemetrySource : ITelemetrySource
 
     public string Name => "Sprint Demo";
 
-    public TelemetryStatus Status => _status;
+    public TelemetryStatus Status => this._status;
 
-    public TelemetryFrame Current => _current;
+    public TelemetryFrame Current => this._current;
 
     public void Connect()
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        _connected = true;
-        _status = _status with { State = TelemetryConnectionState.Connected, SourceName = Name };
+        ObjectDisposedException.ThrowIf(this._disposed, this);
+        this._connected = true;
+        this._status = this._status with { State = TelemetryConnectionState.Connected, SourceName = this.Name };
     }
 
     public void Disconnect()
     {
-        if (_disposed)
+        if (this._disposed)
         {
             return;
         }
 
-        _connected = false;
-        _status = TelemetryStatus.Disconnected(Name);
+        this._connected = false;
+        this._status = TelemetryStatus.Disconnected(this.Name);
     }
 
     public bool TryRead(out TelemetryFrame frame)
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
+        ObjectDisposedException.ThrowIf(this._disposed, this);
 
-        if (!_connected)
+        if (!this._connected)
         {
-            frame = _current;
+            frame = this._current;
             return false;
         }
 
-        _current = Step();
-        _status = _status with
+        this._current = this.Step();
+        this._status = this._status with
         {
             State = TelemetryConnectionState.Connected,
-            SourceName = Name,
-            LastFrameAt = _current.Timestamp,
+            SourceName = this.Name,
+            LastFrameAt = this._current.Timestamp,
             LastFrameValid = true
         };
-        frame = _current;
+        frame = this._current;
         return true;
     }
 
     public void Dispose()
     {
-        if (_disposed)
+        if (this._disposed)
         {
             return;
         }
 
-        _disposed = true;
-        _connected = false;
-        _status = TelemetryStatus.Disconnected(Name);
+        this._disposed = true;
+        this._connected = false;
+        this._status = TelemetryStatus.Disconnected(this.Name);
     }
 
     private TelemetryFrame Step()
     {
-        _tick += 1;
-        var lapTick = _tick % TicksPerLap;
+        this._tick += 1;
+        int lapTick = this._tick % TicksPerLap;
         if (lapTick == 0)
         {
             // Crossed the line: bank the just-completed lap and start a fresh one.
-            _lastLapTime = _lapPace;
-            if (_bestLapTime <= 0 || _lastLapTime < _bestLapTime)
+            this._lastLapTime = this._lapPace;
+            if (this._bestLapTime <= 0 || this._lastLapTime < this._bestLapTime)
             {
-                _bestLapTime = _lastLapTime;
+                this._bestLapTime = this._lastLapTime;
             }
 
-            _lap += 1;
-            _lapPace = PaceFor(_lap);
+            this._lap += 1;
+            this._lapPace = PaceFor(this._lap);
         }
 
-        var progress = (double)lapTick / TicksPerLap; // track position 0..1
-        var phase = _tick / 6.0;
-        var speed = 215 + (int)(Math.Sin(phase) * 38) + _random.Next(-3, 4);
-        var rpm = 5600 + (int)((Math.Sin(phase * 1.7) + 1) * 1200);
-        var gear = Math.Clamp(1 + speed / 58, 1, 6);
+        double progress = (double)lapTick / TicksPerLap; // track position 0..1
+        double phase = this._tick / 6.0;
+        int speed = 215 + (int)(Math.Sin(phase) * 38) + this._random.Next(-3, 4);
+        int rpm = 5600 + (int)((Math.Sin(phase * 1.7) + 1) * 1200);
+        int gear = Math.Clamp(1 + speed / 58, 1, 6);
 
         return CreateFrame(
             speedKph: Math.Max(42, speed),
@@ -135,13 +135,13 @@ internal sealed class DemoTelemetrySource : ITelemetrySource
             throttle: (float)Math.Clamp(0.56 + Math.Sin(phase) * 0.42, 0, 1),
             brake: (float)Math.Clamp(Math.Sin(phase + 2.2) * 0.56, 0, 1),
             trackPosition: (float)progress,
-            currentLap: _lap,
-            currentLapTime: progress * _lapPace,
-            lastLapTime: _lastLapTime,
-            bestLapTime: _bestLapTime,
-            fuelLiters: Math.Max(1, 42 - _tick / 240),
+            currentLap: this._lap,
+            currentLapTime: progress * this._lapPace,
+            lastLapTime: this._lastLapTime,
+            bestLapTime: this._bestLapTime,
+            fuelLiters: Math.Max(1, 42 - this._tick / 240),
             sector: 1 + (int)(progress * 3) % 3,
-            tireBase: 84 + _tick % 4);
+            tireBase: 84 + this._tick % 4);
     }
 
     // Alternate lap pace so a faster lap is adopted as the delta reference.

@@ -1,0 +1,18 @@
+{
+  "id": "browser-display",
+  "name": "Browser / VR display",
+  "description": "A dash any browser on this PC can show, such as a VR overlay's web source",
+  "brand": "",
+  "detect": [],
+  "type": "screen",
+  "vid": 0,
+  "pid": 0,
+  "width": 1024,
+  "height": 576,
+  "rotation": 90,
+  "offset_x": 0,
+  "offset_y": 0,
+  "margin": 0,
+  "driver": "browser",
+  "bindings": []
+}

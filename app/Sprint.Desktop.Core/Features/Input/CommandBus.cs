@@ -26,14 +26,14 @@ public sealed class CommandBus
     public void RegisterMeta(CommandMeta meta)
     {
         ArgumentNullException.ThrowIfNull(meta);
-        lock (_gate)
+        lock (this._gate)
         {
-            if (!_staticCatalog.ContainsKey(meta.Id))
+            if (!this._staticCatalog.ContainsKey(meta.Id))
             {
-                _staticOrder.Add(meta.Id);
+                this._staticOrder.Add(meta.Id);
             }
 
-            _staticCatalog[meta.Id] = meta;
+            this._staticCatalog[meta.Id] = meta;
         }
     }
 
@@ -41,9 +41,9 @@ public sealed class CommandBus
     public void Handle(string id, Action<object?> handler)
     {
         ArgumentNullException.ThrowIfNull(handler);
-        lock (_gate)
+        lock (this._gate)
         {
-            _handlers[id] = handler;
+            this._handlers[id] = handler;
         }
     }
 
@@ -51,9 +51,9 @@ public sealed class CommandBus
     public bool Dispatch(string id, object? payload = null)
     {
         Action<object?>? handler;
-        lock (_gate)
+        lock (this._gate)
         {
-            _handlers.TryGetValue(id, out handler);
+            this._handlers.TryGetValue(id, out handler);
         }
 
         handler?.Invoke(payload);
@@ -63,11 +63,11 @@ public sealed class CommandBus
     /// <summary>A snapshot of all command metadata (static first, then dynamic), for the bindings UI.</summary>
     public IReadOnlyList<CommandMeta> Catalog()
     {
-        lock (_gate)
+        lock (this._gate)
         {
-            var result = new List<CommandMeta>(_staticOrder.Count + _dynamicOrder.Count);
-            result.AddRange(_staticOrder.Where(_staticCatalog.ContainsKey).Select(id => _staticCatalog[id]));
-            result.AddRange(_dynamicOrder.Where(_dynamicCatalog.ContainsKey).Select(id => _dynamicCatalog[id]));
+            List<CommandMeta> result = new List<CommandMeta>(this._staticOrder.Count + this._dynamicOrder.Count);
+            result.AddRange(this._staticOrder.Where(this._staticCatalog.ContainsKey).Select(id => this._staticCatalog[id]));
+            result.AddRange(this._dynamicOrder.Where(this._dynamicCatalog.ContainsKey).Select(id => this._dynamicCatalog[id]));
             return result;
         }
     }
@@ -76,20 +76,20 @@ public sealed class CommandBus
     public void ReplaceDynamic(IEnumerable<DynamicCommand> entries)
     {
         ArgumentNullException.ThrowIfNull(entries);
-        lock (_gate)
+        lock (this._gate)
         {
-            foreach (var id in _dynamicOrder)
+            foreach (string id in this._dynamicOrder)
             {
-                _dynamicCatalog.Remove(id);
-                _handlers.Remove(id);
+                this._dynamicCatalog.Remove(id);
+                this._handlers.Remove(id);
             }
 
-            _dynamicOrder.Clear();
-            foreach (var entry in entries)
+            this._dynamicOrder.Clear();
+            foreach (DynamicCommand entry in entries)
             {
-                _dynamicOrder.Add(entry.Meta.Id);
-                _dynamicCatalog[entry.Meta.Id] = entry.Meta;
-                _handlers[entry.Meta.Id] = entry.Handler;
+                this._dynamicOrder.Add(entry.Meta.Id);
+                this._dynamicCatalog[entry.Meta.Id] = entry.Meta;
+                this._handlers[entry.Meta.Id] = entry.Handler;
             }
         }
     }

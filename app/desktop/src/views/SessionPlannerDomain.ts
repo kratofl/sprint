@@ -1,4 +1,4 @@
-import type { PlanContextChoices, SprintCommand } from '../bridge'
+import type { EstimateFigure, FuelHistory, PlanContextChoices, PlanDetection, PlanFuelRequest, PlanTargetOption, PlanTargetScope, PlanTargetScopeGroup, PlanTargetStatistic, RaceFuelEstimate, SprintCommand } from '../bridge'
 import type { StatusTone } from '../shell/Status'
 
 /**
@@ -8,8 +8,8 @@ import type { StatusTone } from '../shell/Status'
  * `app/Sprint.Desktop.Core/Features/SessionPlanning/SessionPlanModels.cs` and
  * `PlanTargetModels.cs` — the same convention `DashesDomain.ts` uses for the
  * dash model. If those files change, this one must change with them.
- * `RuntimeCoordinator` has no command that writes `PlanTargets`: they are
- * rendered read-only here (see `PlanTarget` below).
+ * Targets are written by `plan.setTarget` / `plan.clearTarget` with a pick from
+ * `GET /api/planner/targets` (the bridge's `planTargets`).
  */
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null
@@ -25,8 +25,7 @@ export type PlanMode = 'Planned' | 'Quick'
 export type RaceLengthFormat = 'Unknown' | 'TimeBased' | 'LapBased'
 export type SegmentSource = 'Planned' | 'Manual' | 'Detected'
 export type DetectionConfidence = 'None' | 'Low' | 'Medium' | 'High'
-export type PlanTargetScope = 'CurrentQualifying' | 'Qualifying' | 'Practice' | 'PracticeProgram' | 'Manual'
-export type PlanTargetStatistic = 'Fastest' | 'Median' | 'Slowest' | 'Custom'
+export type { PlanTargetScope, PlanTargetStatistic }
 
 /** A plan status's dot colour, the same on every page: tracking = live, armed = ready, abandoned = interrupted. */
 export const PLAN_STATUS_TONE: Record<PlanStatus, StatusTone> = {
@@ -318,6 +317,310 @@ export function choicesForGame(choices: PlanContextChoices, game: string): { tra
   return match ? { tracks: match.tracks, cars: match.cars } : { tracks: choices.tracks, cars: choices.cars }
 }
 
+/**
+ * What an unnamed plan is called: "Track – Car", or "New Session Plan" with neither. Mirrors
+ * `SessionPlannerService.DerivedName`, which names a plan created with a blank name, so the name
+ * field's placeholder is exactly the name the plan gets.
+ */
+export function derivedPlanName(track: string, car: string): string {
+  const parts = [track.trim(), car.trim()].filter((part) => part.length > 0)
+  return parts.length === 0 ? 'New Session Plan' : parts.join(' – ')
+}
+
+/** A typed figure, or null for "not typed": empty, 0 and anything that is not a positive number alike. */
+export const positiveOrNull = (text: string): number | null => {
+  const value = Number(text)
+  return text.trim().length > 0 && Number.isFinite(value) && value > 0 ? value : null
+}
+
+// ── A plan's lap time and fuel per lap (the plan dialogs' fields) ───────────
+
+/** A car at a track, as the plan dialogs name it and the calculator answers about it. */
+export type PlanContextNames = { game: string; car: string; track: string }
+
+/**
+ * What the driver's laps with a dialog's car at its track say about one figure: their median and the
+ * laps it rests on, `none` when they have no such figure, `unknown` until the calculator has answered
+ * for this car and track.
+ */
+export type FigureHistory = { kind: 'unknown' } | { kind: 'none' } | { kind: 'median'; value: number; laps: number }
+
+/**
+ * A plan dialog's lap time or fuel per lap. `typed` is the driver's text; null while the field
+ * follows their laps, when it shows the median, says so under it and saves null. A typed text that is
+ * no positive number (emptied, 0) is no value: the field follows the laps again — at once in what it
+ * saves and says, and in what it shows once the driver leaves it (`settledFigure`). A new car or
+ * track changes only `history`, never what the driver typed.
+ */
+export type FigureField = { typed: string | null; history: FigureHistory }
+
+const UNKNOWN: FigureHistory = { kind: 'unknown' }
+
+export const EMPTY_FIGURE: FigureField = { typed: null, history: UNKNOWN }
+
+/** The laps' median for the field, or null when they have none (or are not known yet). */
+const medianOf = (field: FigureField): number | null => (field.history.kind === 'median' ? field.history.value : null)
+
+/** What the field shows: the driver's text, else the laps' median. */
+export const figureText = (field: FigureField): string => field.typed ?? (medianOf(field)?.toString() ?? '')
+
+/**
+ * What an empty field shows greyed: the laps' median it falls back to, `Not used` when the laps have
+ * no such figure (so nothing stands in), else `Optional` before they are known.
+ */
+export const figurePlaceholder = (field: FigureField): string => medianOf(field)?.toString() ?? (field.history.kind === 'none' ? 'Not used' : 'Optional')
+
+/**
+ * What the field sends and saves: only a value the driver typed. A field that follows the laps saves
+ * null ("from your laps"), so the plan's race fuel keeps following new laps (`RaceFuelEstimate.For`).
+ */
+export const savedFigure = (field: FigureField): number | null => (field.typed === null ? null : positiveOrNull(field.typed))
+
+/** The value the plan will work with (the field's hint): the driver's, else the laps' median, else none. */
+export const figureValue = (field: FigureField): number | null => savedFigure(field) ?? medianOf(field)
+
+/**
+ * Under a field that saves nothing, what stands in for it: "From your 11 laps", or that the laps have
+ * no such figure (its placeholder then says it is not used). Null under the driver's own value, and
+ * before the laps are known.
+ */
+export function figureNote(field: FigureField): string | null {
+  if (savedFigure(field) !== null) return null
+  switch (field.history.kind) {
+    case 'median':
+      return `From your ${field.history.laps} ${field.history.laps === 1 ? 'lap' : 'laps'}`
+    case 'none':
+      return 'None from your laps'
+    case 'unknown':
+      return null
+  }
+}
+
+/** The field as the driver types into it. */
+export const typedFigure = (field: FigureField, text: string): FigureField => ({ ...field, typed: text })
+
+/** The field once the driver leaves it: emptied or 0 shows the laps' value again. The same object otherwise. */
+export const settledFigure = (field: FigureField): FigureField =>
+  field.typed !== null && savedFigure(field) === null ? { ...field, typed: null } : field
+
+/** A stored plan's own value is the driver's; a plan without one (or a legacy 0) follows its laps. */
+export const storedFigure = (value: number | null): FigureField => (value !== null && value > 0 ? { typed: String(value), history: UNKNOWN } : EMPTY_FIGURE)
+
+const sameHistory = (a: FigureHistory, b: FigureHistory): boolean =>
+  a.kind === 'median' && b.kind === 'median' ? a.value === b.value && a.laps === b.laps : a.kind === b.kind
+
+/**
+ * The field once the history for its car and track has arrived: the median, rounded to what the
+ * field shows (`decimals`), or none when the laps have no such figure. What the driver typed stays.
+ * Returns the field itself when nothing changed, so a repeat answer does not re-render.
+ */
+export function prefillFigure(field: FigureField, median: number | null, laps: number, decimals: number): FigureField {
+  const history: FigureHistory = median === null || laps === 0 ? { kind: 'none' } : { kind: 'median', value: Number(median.toFixed(decimals)), laps }
+  return sameHistory(field.history, history) ? field : { ...field, history }
+}
+
+/** How many decimals a pre-filled figure keeps: a lap time to the thousandth, litres to the hundredth. */
+const LAP_TIME_DECIMALS = 3
+const FUEL_DECIMALS = 2
+
+/** A plan dialog's two figures, and the car and track whose laps they show (null before any). */
+export type PlanFigures = { lapTime: FigureField; fuelPerLap: FigureField; historyFor: PlanContextNames | null }
+
+/**
+ * Both figures once the calculator answered about the dialog's car and track (`context`). With that
+ * history, both take it and remember whose it is. Without (the calculator gave no answer), laps of
+ * another car or track are dropped rather than shown as this one's, and this one's stay. What the
+ * driver typed always stays. The same object when nothing changed.
+ */
+export function prefillFigures<T extends PlanFigures>(current: T, context: PlanContextNames, history: FuelHistory | null): T {
+  const ours = current.historyFor !== null && sameContext(current.historyFor, context)
+  if (history === null) {
+    if (current.historyFor === null || ours) return current
+    return { ...current, lapTime: { ...current.lapTime, history: UNKNOWN }, fuelPerLap: { ...current.fuelPerLap, history: UNKNOWN }, historyFor: null }
+  }
+  const lapTime = prefillFigure(current.lapTime, history.lapTimeSeconds, history.lapTimeLaps, LAP_TIME_DECIMALS)
+  const fuelPerLap = prefillFigure(current.fuelPerLap, history.fuelPerLapLiters, history.fuelLaps, FUEL_DECIMALS)
+  if (ours && lapTime === current.lapTime && fuelPerLap === current.fuelPerLap) return current
+  return { ...current, lapTime, fuelPerLap, historyFor: { game: context.game, car: context.car, track: context.track } }
+}
+
+/** Whether a calculator answer was for this plan's car and track, so its history may fill this plan's fields. */
+export const sameContext = (a: PlanContextNames, b: PlanContextNames): boolean => a.game === b.game && a.car === b.car && a.track === b.track
+
+/** What the race fuel still needs before it can be worked out, as Quick plan says it under the dash; null once it has a figure. */
+export function fuelGap(plan: CreatePlanInput, estimate: RaceFuelEstimate): string | null {
+  if (estimate.totalLiters !== null) return null
+  if (plan.raceLengthFormat === 'Unknown') return 'Needs the race length'
+  if (estimate.laps === null) return 'Needs a lap time'
+  return 'Needs the fuel per lap'
+}
+
+/** The calculator's question (`POST /api/planner/fuel-estimate`) for the plan a dialog would save. */
+export const planFuelRequest = (plan: CreatePlanInput): PlanFuelRequest => ({
+  game: plan.game,
+  car: plan.car,
+  track: plan.track,
+  raceLengthFormat: plan.raceLengthFormat,
+  raceLengthValue: plan.raceLengthValue,
+  fuelReserveLaps: plan.fuelReserveLaps,
+  avgLapTimeSeconds: plan.avgLapTimeSeconds,
+  fuelPerLapLiters: plan.fuelPerLapLiters,
+})
+
+/** The calculator asked only for the history of a car at a track: a plan dialog filling its figures. */
+export const historyRequest = (context: PlanContextNames): PlanFuelRequest => ({
+  ...context,
+  raceLengthFormat: 'Unknown',
+  raceLengthValue: 0,
+  fuelReserveLaps: 0,
+  avgLapTimeSeconds: null,
+  fuelPerLapLiters: null,
+})
+
+/**
+ * What Quick plan asks for: the context and race length where they were not detected, and always
+ * the lap time, fuel per lap (pre-filled from the driver's laps here) and the reserve.
+ */
+export type QuickPlanAnswers = {
+  game: string
+  car: string
+  track: string
+  raceLengthFormat: 'TimeBased' | 'LapBased'
+  raceLength: string
+  lapTime: FigureField
+  fuelPerLap: FigureField
+  /** The car and track whose laps the figures show (PlanFigures). */
+  historyFor: PlanContextNames | null
+  fuelReserveLaps: number
+}
+
+/**
+ * The plan Quick plan creates: what was detected, and the driver's answers only where it was not.
+ * Named by the host (blank name), qualifying included as in every new plan, the reserve, and the lap
+ * time and fuel per lap only where the driver typed them (`savedFigure`): an empty or pre-filled
+ * figure leaves the estimate to the lap history.
+ */
+export function quickPlanInput(detection: PlanDetection, answers: QuickPlanAnswers): CreatePlanInput {
+  const asked = (field: PlanDetection['missing'][number]) => detection.missing.includes(field)
+  const context = asked('Context') ? { game: answers.game.trim(), car: answers.car.trim(), track: answers.track.trim() } : detection.context
+  const typedLength = positiveOrNull(answers.raceLength)
+  const length = detection.raceLength ?? (typedLength !== null ? { format: answers.raceLengthFormat, value: typedLength } : null)
+  return {
+    name: '',
+    ...context,
+    mode: 'Quick',
+    qualifyingIncluded: true,
+    raceLengthFormat: length?.format ?? 'Unknown',
+    raceLengthValue: length?.value ?? 0,
+    fuelReserveLaps: answers.fuelReserveLaps,
+    avgLapTimeSeconds: savedFigure(answers.lapTime),
+    fuelPerLapLiters: savedFigure(answers.fuelPerLap),
+    notes: '',
+  }
+}
+
+// ── Planner settings (AppSettings.SessionPlanner, behind the planner's gear) ────
+
+export type FuelHistoryChoice = 'AllValidLaps' | 'MatchingSessionType'
+
+/** The planner's own defaults: the reserve new plans start with, the laps a fuel estimate draws on, and the mismatch warning. */
+export type PlannerSettings = { fuelReserveLaps: number; fuelHistorySource: FuelHistoryChoice; warnOnRaceFormatMismatch: boolean }
+
+/** The most reserve the gear offers; `planner.settings` accepts up to `SessionPlannerSettings.MaxFuelReserveLaps`. */
+export const RESERVE_CHOICES: readonly number[] = [0, 1, 2, 3]
+
+/**
+ * What `plan.create` / `plan.update` accept (host: `PlanLimits`, the reserve's `SessionPlannerSettings.MaxFuelReserveLaps`),
+ * as the New plan dialog's `min`/`max`. The host refuses anything outside them either way.
+ */
+export const PLAN_LIMITS = {
+  maxRaceLaps: 2000,
+  maxRaceMinutes: 30 * 60,
+  maxFuelReserveLaps: 10,
+  minLapTimeSeconds: 10,
+  maxLapTimeSeconds: 30 * 60,
+  maxFuelPerLapLiters: 100,
+} as const
+
+/** The longest race a length input takes in `format`'s unit. */
+export const maxRaceLength = (format: RaceLengthFormat): number => (format === 'LapBased' ? PLAN_LIMITS.maxRaceLaps : PLAN_LIMITS.maxRaceMinutes)
+
+/** Reads `settings.sessionPlanner`, falling back to the host's own defaults for anything missing. */
+export function readPlannerSettings(settings: Record<string, unknown>): PlannerSettings {
+  const planner = isRecord(settings.sessionPlanner) ? settings.sessionPlanner : {}
+  return {
+    fuelReserveLaps: typeof planner.fuelReserveLaps === 'number' && Number.isInteger(planner.fuelReserveLaps) && planner.fuelReserveLaps >= 0 ? planner.fuelReserveLaps : 1,
+    fuelHistorySource: planner.fuelHistorySource === 'MatchingSessionType' ? 'MatchingSessionType' : 'AllValidLaps',
+    warnOnRaceFormatMismatch: planner.warnOnRaceFormatMismatch !== false,
+  }
+}
+
+export const buildPlannerSettings = (patch: Partial<PlannerSettings>): SprintCommand => ({ type: 'planner.settings', ...patch })
+
+/** "+1 lap", "+2 laps", "None": a reserve as the gear and the plan say it. */
+export const reserveLabel = (laps: number): string => (laps === 0 ? 'None' : `+${laps} ${laps === 1 ? 'lap' : 'laps'}`)
+
+/** "+1 lap reserve", "no reserve": the reserve under a fuel figure. */
+export const reserveNote = (laps: number): string => (laps === 0 ? 'no reserve' : `${reserveLabel(laps)} reserve`)
+
+// ── Race fuel (state.planFuel, RaceFuelEstimate on the host) ────────────────
+
+const finiteOrNull = (value: unknown): number | null => (typeof value === 'number' && Number.isFinite(value) ? value : null)
+
+const parseEstimateFigure = (value: unknown): EstimateFigure | null => {
+  if (!isRecord(value)) return null
+  const figure = finiteOrNull(value.value)
+  if (figure === null) return null
+  if (value.source === 'History') return { source: 'History', value: figure, laps: finiteOrNull(value.laps) ?? 0 }
+  return value.source === 'Plan' ? { source: 'Plan', value: figure } : null
+}
+
+/** Narrows one plan's race fuel: a `state.planFuel` entry, or the `raceFuel` of a plan shared with the pit wall. */
+export const parseRaceFuelEstimate = (value: unknown): RaceFuelEstimate | null => {
+  if (!isRecord(value)) return null
+  const stints = isRecord(value.stints) ? value.stints : null
+  const lapsPerStint = stints ? finiteOrNull(stints.lapsPerStint) : null
+  const liters = stints && Array.isArray(stints.liters) ? stints.liters.filter((item): item is number => typeof item === 'number' && Number.isFinite(item)) : []
+  return {
+    laps: finiteOrNull(value.laps),
+    lapTime: parseEstimateFigure(value.lapTime),
+    fuelPerLap: parseEstimateFigure(value.fuelPerLap),
+    reserveLaps: finiteOrNull(value.reserveLaps) ?? 0,
+    totalLiters: finiteOrNull(value.totalLiters),
+    tankLiters: finiteOrNull(value.tankLiters),
+    stints: lapsPerStint !== null && liters.length > 0 ? { lapsPerStint, liters } : null,
+  }
+}
+
+/** Where an estimate's figure came from, in words: "median of 46 laps", "from the plan". */
+export const figureSource = (figure: EstimateFigure): string =>
+  figure.source === 'History' ? `median of ${figure.laps} ${figure.laps === 1 ? 'lap' : 'laps'}` : 'from the plan'
+
+/**
+ * The litres each stint takes, rounded up and run together: "6 × 88 L, then 81 L", "2 × 48 L",
+ * "73 L" for a race on one tank.
+ */
+export function stintsLabel(liters: readonly number[]): string {
+  const runs: { liters: number; count: number }[] = []
+  for (const stint of liters) {
+    const rounded = Math.ceil(stint)
+    const last = runs[runs.length - 1]
+    if (last && last.liters === rounded) last.count++
+    else runs.push({ liters: rounded, count: 1 })
+  }
+  return runs.map((run) => (run.count > 1 ? `${run.count} × ${run.liters} L` : `${run.liters} L`)).join(', then ')
+}
+
+/** "By laps", "By time": the race format the game reported, as the race card says it. */
+export const detectedFormatLabel = (format: RaceLengthFormat): string | null =>
+  format === 'LapBased' ? 'By laps' : format === 'TimeBased' ? 'By time' : null
+
+/** The race format the game reported for the plan's race, once it has been driven; null before. */
+export function detectedRaceFormat(plan: SessionPlan): RaceLengthFormat | null {
+  const race = [...plan.segments].reverse().find((segment) => segment.kind === 'Race' && segment.detectedRaceFormat !== 'Unknown')
+  return race ? race.detectedRaceFormat : null
+}
+
 // ── Command builders (RuntimeCoordinator: plan.*) ───────────────────────────
 
 export type CreatePlanInput = {
@@ -357,3 +660,102 @@ export const buildPlanStart = (planId: string, kind: SegmentKind): SprintCommand
 export const buildPlanStop = (planId: string): SprintCommand => ({ type: 'plan.stop', planId })
 
 export const buildPlanReleaseActive = (): SprintCommand => ({ type: 'plan.releaseActive' })
+
+export const buildPlanSetTarget = (planId: string, kind: SegmentKind, option: PlanTargetOption): SprintCommand => ({
+  type: 'plan.setTarget',
+  planId,
+  kind,
+  scope: option.scope,
+  statistic: option.statistic,
+  ...(option.programType !== null ? { programType: option.programType } : {}),
+  ...(option.statistic === 'Custom' ? { lapSessionId: option.lapSessionId, lapNumber: option.lapNumber } : {}),
+})
+
+export const buildPlanClearTarget = (planId: string, kind: SegmentKind): SprintCommand => ({ type: 'plan.clearTarget', planId, kind })
+
+// ── The weekend (the plan page's timeline and session cards) ────────────────
+
+/** A stop on the plan's timeline: practice, the sessions the plan runs, then the finish. */
+export type WeekendStop = 'Practice' | SegmentKind | 'Finish'
+
+/** Where a session stands in the plan: driven, being driven, the one coming, after that, or not in it. */
+export type SessionState = 'done' | 'live' | 'next' | 'later' | 'skipped'
+
+/** The plan's stops in order, and the one it is at: the session being tracked, else the next one; a finished plan is at the finish. */
+export function weekendTimeline(plan: SessionPlan): { stops: WeekendStop[]; at: number } {
+  const stops: WeekendStop[] = plan.qualifyingIncluded ? ['Practice', 'Qualifying', 'Race', 'Finish'] : ['Practice', 'Race', 'Finish']
+  if (plan.status === 'Completed') return { stops, at: stops.length - 1 }
+  const at: WeekendStop = openSegment(plan)?.kind ?? nextSegment(plan)
+  return { stops, at: stops.indexOf(at) }
+}
+
+export function sessionState(plan: SessionPlan, kind: SegmentKind): SessionState {
+  if (kind === 'Qualifying' && !plan.qualifyingIncluded) return 'skipped'
+  const open = openSegment(plan)
+  if (open?.kind === kind) return 'live'
+  if (plan.segments.some((segment) => segment.kind === kind)) return 'done'
+  if (plan.status === 'Completed' || plan.status === 'Abandoned') return 'skipped'
+  return open === null && nextSegment(plan) === kind ? 'next' : 'later'
+}
+
+/** "6 h", "45 min", "30 laps": a race length as a driver says it. */
+export function formatRaceLength(format: RaceLengthFormat, value: number): string {
+  if (format === 'LapBased') return `${value} laps`
+  if (format !== 'TimeBased') return 'Not set'
+  return value >= 60 && value % 60 === 0 ? `${value / 60} h` : `${value} min`
+}
+
+/** The plan's race length as a driver says it. */
+export const raceLengthShort = (plan: SessionPlan): string => formatRaceLength(plan.raceLengthFormat, plan.raceLengthValue)
+
+/** The practice driven at the plan's car and track: count, best, median, and the lap times oldest first. */
+export type PracticeSummary = { laps: number; best: number; median: number; times: number[] }
+
+export function practiceSummary(groups: readonly PlanTargetScopeGroup[]): PracticeSummary | null {
+  const practice = groups.find((group) => group.scope === 'Practice')
+  if (!practice || practice.laps.length === 0) return null
+  const pick = (statistic: PlanTargetStatistic) => practice.options.find((option) => option.statistic === statistic)?.lapTimeSeconds
+  const chronological = [...practice.laps].sort(
+    (a, b) => (a.lapSessionStartedAt ?? '').localeCompare(b.lapSessionStartedAt ?? '') || a.lapNumber - b.lapNumber,
+  )
+  const times = chronological.map((lap) => lap.lapTimeSeconds)
+  return { laps: practice.sampleSize || times.length, best: pick('Fastest') ?? Math.min(...times), median: pick('Median') ?? times[0], times }
+}
+
+/** What the plan does next, as a list row says it. */
+export function nextStepLabel(plan: SessionPlan): string {
+  switch (plan.status) {
+    case 'Draft':
+      return 'Arm'
+    case 'Armed':
+      return nextSegment(plan)
+    case 'Tracking':
+      return `${openSegment(plan)?.kind ?? 'Session'} · live`
+    default:
+      return '—'
+  }
+}
+
+/** The target the plan chases next (the race's, once the plan is over). */
+export function headlineTarget(plan: SessionPlan): PlanTarget | null {
+  const kind: SegmentKind = plan.status === 'Completed' || plan.status === 'Abandoned' ? 'Race' : (openSegment(plan)?.kind ?? nextSegment(plan))
+  return targetsFor(plan, kind)?.lapTime ?? null
+}
+
+/** The plan the list puts on top: the active one, else the newest open plan. */
+export const upNextPlan = (plans: readonly SessionPlan[]): SessionPlan | null => activePlan(plans) ?? groupPlans(plans).open[0] ?? null
+
+/** The one option a stored target points at, so the picker can mark it. */
+export const isPickedTarget = (target: PlanTarget | null, option: PlanTargetOption): boolean =>
+  target !== null &&
+  target.scope === option.scope &&
+  target.statistic === option.statistic &&
+  (target.programType ?? null) === option.programType &&
+  (option.statistic !== 'Custom' || (target.lapSessionId === option.lapSessionId && target.lapNumber === option.lapNumber))
+
+/** Where a stored target came from, in a driver's words: "Fastest of 9 practice laps", "Lap 4 of qualifying". */
+export function targetSummary(target: PlanTarget): string {
+  const scope = (target.scope === 'PracticeProgram' && target.programType ? `${target.programType} practice` : TARGET_SCOPE_LABELS[target.scope]).toLowerCase()
+  if (target.statistic === 'Custom' || target.statistic === null) return target.lapNumber !== null ? `Lap ${target.lapNumber} of ${scope}` : `A ${scope} lap`
+  return `${target.statistic} of ${target.sampleSize} ${scope} ${target.sampleSize === 1 ? 'lap' : 'laps'}`
+}

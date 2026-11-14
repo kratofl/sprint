@@ -56,13 +56,13 @@ public static class LapTraceCharts
         ArgumentNullException.ThrowIfNull(domain);
         ArgumentNullException.ThrowIfNull(sources);
 
-        var samples = sampleCount ?? (domain.Kind == ChartDomainKind.TrackDistance
+        int samples = sampleCount ?? (domain.Kind == ChartDomainKind.TrackDistance
             ? DefaultSampleCount
             : LapSampleCount);
 
         // Only name the lap in a series when there is more than one to tell apart. With a
         // single lap on screen "Speed · You" is noise; with two it is the whole point.
-        var named = sources.Count > 1;
+        bool named = sources.Count > 1;
 
         return new ChartStack(
             domain,
@@ -76,12 +76,12 @@ public static class LapTraceCharts
         int sampleCount,
         bool named)
     {
-        var series = new List<ChartSeries>();
-        foreach (var source in sources)
+        List<ChartSeries> series = new List<ChartSeries>();
+        foreach (LapTraceSeriesSource source in sources)
         {
-            for (var i = 0; i < panel.Channels.Count; i++)
+            for (int i = 0; i < panel.Channels.Count; i++)
             {
-                var channel = panel.Channels[i];
+                LapChartChannel channel = panel.Channels[i];
 
                 // A trace that never carried this channel contributes no series at all, so a
                 // panel whose channel is missing everywhere reports Empty rather than drawing
@@ -111,12 +111,12 @@ public static class LapTraceCharts
         ChartDomain domain,
         int sampleCount)
     {
-        var samples = new List<ChartSample>(sampleCount);
-        var step = domain.Span / Math.Max(1, sampleCount - 1);
+        List<ChartSample> samples = new List<ChartSample>(sampleCount);
+        double step = domain.Span / Math.Max(1, sampleCount - 1);
 
-        for (var i = 0; i < sampleCount; i++)
+        for (int i = 0; i < sampleCount; i++)
         {
-            var x = domain.Min + (i * step);
+            double x = domain.Min + (i * step);
             if (source.UpTo is { } limit && x > limit)
             {
                 break;
@@ -158,7 +158,7 @@ public static class LapTraceCharts
             return null;
         }
 
-        var position = x / trackLengthMeters;
+        double position = x / trackLengthMeters;
         position -= Math.Floor(position);
         return position;
     }

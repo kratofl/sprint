@@ -33,7 +33,7 @@ public sealed record PlanContextOptions(
         ArgumentNullException.ThrowIfNull(live);
 
         // Contexts only: the sheet needs distinct names, not every lap's reference curve.
-        var contexts = store.LoadContexts()
+        List<(string Game, string, string)> contexts = store.LoadContexts()
             .Select(context => (context.Game, context.TrackCourse, context.CarModel))
             .Append((live.Game, live.Track, live.Car))
             .Where(context => context != (null, null, null))
@@ -44,11 +44,11 @@ public sealed record PlanContextOptions(
             Distinct(contexts.Select(context => context.Item2)),
             Distinct(contexts.Select(context => context.Item3)))
         {
-            _contexts = contexts,
+            Contexts = contexts,
         };
     }
 
-    private IReadOnlyList<(string Game, string Track, string Car)> _contexts { get; init; } = [];
+    private IReadOnlyList<(string Game, string Track, string Car)> Contexts { get; init; } = [];
 
     /// <summary>
     /// The same options narrowed to one game, so another sim's cars are not offered for a
@@ -62,18 +62,18 @@ public sealed record PlanContextOptions(
             return this;
         }
 
-        var matching = _contexts
+        List<(string Game, string Track, string Car)> matching = this.Contexts
             .Where(context => string.Equals(context.Game, game, StringComparison.OrdinalIgnoreCase))
             .ToList();
 
         return matching.Count == 0
             ? this
             : new PlanContextOptions(
-                Games,
+                this.Games,
                 Distinct(matching.Select(context => context.Track)),
                 Distinct(matching.Select(context => context.Car)))
             {
-                _contexts = _contexts,
+                Contexts = this.Contexts,
             };
     }
 

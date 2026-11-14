@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace Sprint.Desktop.Features.Devices;
@@ -14,6 +15,18 @@ public sealed class CatalogDevice
 
     [JsonPropertyName("description")]
     public string Description { get; set; } = "";
+
+    /// <summary>Who makes it, for the Add device dialog's brand filter.</summary>
+    [JsonPropertyName("brand")]
+    public string Brand { get; set; } = "";
+
+    /// <summary>
+    /// The USB devices that, plugged in together, are this entry: a bare screen is its panel,
+    /// the Omega is its VoCore panel plus its button box. Read by <see cref="DeviceDetection"/>;
+    /// empty means it is never offered as plugged in.
+    /// </summary>
+    [JsonPropertyName("detect")]
+    public List<UsbIdPattern> Detect { get; set; } = [];
 
     [JsonPropertyName("type")]
     public string Type { get; set; } = "screen";
@@ -33,15 +46,15 @@ public sealed class CatalogDevice
     [JsonPropertyName("rotation")]
     public int Rotation
     {
-        get => (int)_orientation;
-        set => _orientation = DeviceOrientations.Resolve(value);
+        get => (int)this._orientation;
+        set => this._orientation = DeviceOrientations.Resolve(value);
     }
 
     [JsonIgnore]
     public DeviceOrientation Orientation
     {
-        get => _orientation;
-        set => _orientation = value;
+        get => this._orientation;
+        set => this._orientation = value;
     }
 
     [JsonPropertyName("offset_x")]
@@ -58,6 +71,10 @@ public sealed class CatalogDevice
 
     [JsonPropertyName("bindings")]
     public List<DeviceBinding> Bindings { get; set; } = [];
+
+    /// <summary>The wheel's multi-position switch, when it has one (see <see cref="MultiDials"/>).</summary>
+    [JsonPropertyName("multiDial")]
+    public MultiDialLayout? MultiDial { get; set; }
 }
 
 public sealed class SavedDevice
@@ -66,6 +83,14 @@ public sealed class SavedDevice
 
     public string Id { get; set; } = "";
     public string Name { get; set; } = "";
+
+    /// <summary>
+    /// The catalog entry the device was added from (a preset id, or a custom wheel's slug). The
+    /// desktop picks the device's picture by it: USB ids cannot tell presets apart, since every
+    /// VoCore panel reports the same VID/PID. Empty for devices saved before it existed.
+    /// </summary>
+    public string PresetId { get; set; } = "";
+
     public string Driver { get; set; } = "";
     public string Type { get; set; } = "screen";
     public ushort Vid { get; set; }
@@ -75,15 +100,15 @@ public sealed class SavedDevice
     public int Height { get; set; }
     public int Rotation
     {
-        get => (int)_orientation;
-        set => _orientation = DeviceOrientations.Resolve(value);
+        get => (int)this._orientation;
+        set => this._orientation = DeviceOrientations.Resolve(value);
     }
 
     [JsonIgnore]
     public DeviceOrientation Orientation
     {
-        get => _orientation;
-        set => _orientation = value;
+        get => this._orientation;
+        set => this._orientation = value;
     }
     public int OffsetX { get; set; }
     public int OffsetY { get; set; }
@@ -107,11 +132,23 @@ public sealed class SavedDevice
 
     public List<DeviceBinding> Bindings { get; set; } = [];
     public bool Disabled { get; set; }
+
+    /// <summary>The driver's names and colours for the preset's dial positions; null keeps the preset's defaults.</summary>
+    public MultiDialSettings? MultiDial { get; set; }
+
+    /// <summary>
+    /// Browser displays only (<see cref="BrowserDisplays"/>): the page shows the dash over a
+    /// transparent background instead of black, for an overlay.
+    /// </summary>
+    public bool Transparent { get; set; }
+
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? ExtensionData { get; set; }
 }
 
 public sealed record ScreenCaptureRegion(int X, int Y, int Width, int Height)
 {
-    public bool IsValid => Width > 0 && Height > 0;
+    public bool IsValid => this.Width > 0 && this.Height > 0;
 }
 
 public sealed class DeviceBinding
@@ -121,6 +158,9 @@ public sealed class DeviceBinding
 
     [JsonPropertyName("command")]
     public string Command { get; set; } = "";
+
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? ExtensionData { get; set; }
 }
 
 public static class DeviceCapabilities

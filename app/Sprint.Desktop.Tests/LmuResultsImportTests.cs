@@ -12,7 +12,7 @@ namespace Sprint.Desktop.Tests;
 /// Importing Le Mans Ultimate's own results archive into the lap-history corpus (#182). The
 /// archive is an <em>import</em> path only: everything a reader sees afterwards is a Sprint
 /// record, and the two mappings that decide whether imported and recorded laps land in the
-/// same bucket (course, not venue; car type, not class) are pinned here.
+/// same bucket (course, not venue; the car's name, not its model or livery) are pinned here.
 /// </summary>
 public sealed class LmuResultsImportTests : IDisposable
 {
@@ -20,15 +20,15 @@ public sealed class LmuResultsImportTests : IDisposable
 
     public LmuResultsImportTests()
     {
-        _dir = Path.Combine(Path.GetTempPath(), "sprint-lmu-import-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(_dir);
+        this._dir = Path.Combine(Path.GetTempPath(), "sprint-lmu-import-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(this._dir);
     }
 
     public void Dispose()
     {
         try
         {
-            Directory.Delete(_dir, recursive: true);
+            Directory.Delete(this._dir, recursive: true);
         }
         catch (IOException)
         {
@@ -100,17 +100,17 @@ public sealed class LmuResultsImportTests : IDisposable
 
     private string WriteResult(string name, string xml)
     {
-        var path = Path.Combine(_dir, name);
+        string path = Path.Combine(this._dir, name);
         File.WriteAllText(path, xml);
         return path;
     }
 
     private ImportedSession ReadSingle(string xml)
     {
-        WriteResult("result.xml", xml);
-        var importer = new LmuResultsImporter(_dir);
-        var entry = Assert.Single(importer.ListEntries());
-        var session = importer.Read(entry);
+        this.WriteResult("result.xml", xml);
+        LmuResultsImporter importer = new LmuResultsImporter(this._dir);
+        ResultsArchiveEntry entry = Assert.Single(importer.ListEntries());
+        ImportedSession? session = importer.Read(entry);
 
         Assert.NotNull(session);
         return session;
@@ -119,7 +119,7 @@ public sealed class LmuResultsImportTests : IDisposable
     [Fact]
     public void Buckets_an_imported_session_by_the_course_never_the_venue()
     {
-        var session = ReadSingle(RaceXml);
+        ImportedSession session = this.ReadSingle(RaceXml);
 
         // Live telemetry reports the layout being driven, so the archive's course is the only
         // field the two history writers can agree on.
@@ -130,7 +130,7 @@ public sealed class LmuResultsImportTests : IDisposable
     [Fact]
     public void Keys_on_the_car_model_and_keeps_the_class_as_metadata()
     {
-        var session = ReadSingle(RaceXml);
+        ImportedSession session = this.ReadSingle(RaceXml);
 
         // "Hyper" is a whole field of cars; live telemetry reports the model, so the model is
         // the key and the class rides along for a future "same class" fallback.
@@ -154,7 +154,7 @@ public sealed class LmuResultsImportTests : IDisposable
     [InlineData("SomethingNew", ImportedSessionKind.Unknown)]
     public void Maps_every_session_kind_the_sim_writes(string sessionElement, ImportedSessionKind expected)
     {
-        var session = ReadSingle(SessionXml(sessionElement));
+        ImportedSession session = this.ReadSingle(SessionXml(sessionElement));
 
         Assert.Equal(expected, session.Kind);
     }
@@ -162,12 +162,12 @@ public sealed class LmuResultsImportTests : IDisposable
     [Fact]
     public void Carries_the_players_laps_with_times_sectors_speed_and_compounds()
     {
-        var session = ReadSingle(RaceXml);
+        ImportedSession session = this.ReadSingle(RaceXml);
 
         // Three laps: the player's. The other driver's lap belongs to somebody else's history.
         Assert.Equal(3, session.Laps.Count);
 
-        var outLap = session.Laps[0];
+        ImportedLap outLap = session.Laps[0];
         Assert.Equal(1, outLap.LapNumber);
         Assert.Null(outLap.LapTimeSeconds); // "--.----" is untimed, not a zero-second lap
         Assert.Empty(outLap.SectorsSeconds);
@@ -175,7 +175,7 @@ public sealed class LmuResultsImportTests : IDisposable
         Assert.Equal("Medium", outLap.FrontCompound);
         Assert.Equal("Medium", outLap.RearCompound);
 
-        var fastest = session.Laps[2];
+        ImportedLap fastest = session.Laps[2];
         Assert.Equal(3, fastest.LapNumber);
         Assert.Equal(107.6273, fastest.LapTimeSeconds);
         Assert.Equal(new[] { 40.8718, 28.7522, 38.4118 }, fastest.SectorsSeconds);
@@ -187,7 +187,7 @@ public sealed class LmuResultsImportTests : IDisposable
     [Fact]
     public void Keeps_sectors_positional_when_the_archive_states_only_some()
     {
-        var session = ReadSingle("""
+        ImportedSession session = this.ReadSingle("""
             <rFactorXML><RaceResults>
               <TrackCourse>Circuit des 24 Heures</TrackCourse>
               <Race><Driver>
@@ -200,19 +200,19 @@ public sealed class LmuResultsImportTests : IDisposable
         // Index i is sector i+1, so a stated third sector after an omitted second is dropped
         // rather than reported as the second — a reader adding these up must not get a total
         // that never happened.
-        var lap = Assert.Single(session.Laps);
+        ImportedLap lap = Assert.Single(session.Laps);
         Assert.Equal(new[] { 40.0 }, lap.SectorsSeconds);
     }
 
     [Fact]
     public void Lists_entries_newest_first_with_the_keys_a_ledger_scan_needs()
     {
-        var older = WriteResult("2026_06_20-race.xml", RaceXml);
-        var newer = WriteResult("2026_06_22-quali.xml", SessionXml("Qualify"));
+        string older = this.WriteResult("2026_06_20-race.xml", RaceXml);
+        string newer = this.WriteResult("2026_06_22-quali.xml", SessionXml("Qualify"));
         File.SetLastWriteTimeUtc(older, new DateTime(2026, 6, 20, 12, 0, 0, DateTimeKind.Utc));
         File.SetLastWriteTimeUtc(newer, new DateTime(2026, 6, 22, 12, 0, 0, DateTimeKind.Utc));
 
-        var entries = new LmuResultsImporter(_dir).ListEntries();
+        IReadOnlyList<ResultsArchiveEntry> entries = new LmuResultsImporter(this._dir).ListEntries();
 
         Assert.Equal(2, entries.Count);
         Assert.Equal(newer, entries[0].Id); // newest first
@@ -227,7 +227,7 @@ public sealed class LmuResultsImportTests : IDisposable
     [Fact]
     public void An_archive_that_was_never_written_is_empty_and_says_where_it_looked()
     {
-        var importer = new LmuResultsImporter(Path.Combine(_dir, "never-run"));
+        LmuResultsImporter importer = new LmuResultsImporter(Path.Combine(this._dir, "never-run"));
 
         // A game that has never been run is not an error.
         Assert.Empty(importer.ListEntries());
@@ -242,40 +242,40 @@ public sealed class LmuResultsImportTests : IDisposable
     public void Reads_nothing_from_an_entry_it_cannot_parse_or_bucket()
     {
         // A file the sim left half-written must not abort the rest of a batch import.
-        WriteResult("broken.xml", "<rFactorXML><RaceResults>");
-        Assert.Null(new LmuResultsImporter(_dir).Read(Single(_dir)));
-        File.Delete(Path.Combine(_dir, "broken.xml"));
+        this.WriteResult("broken.xml", "<rFactorXML><RaceResults>");
+        Assert.Null(new LmuResultsImporter(this._dir).Read(Single(this._dir)));
+        File.Delete(Path.Combine(this._dir, "broken.xml"));
 
         // Nothing marks the local player, so there is no driver whose history this is.
-        WriteResult("spectated.xml", """
+        this.WriteResult("spectated.xml", """
             <rFactorXML><RaceResults><TrackCourse>Circuit des 24 Heures</TrackCourse>
               <Race><Driver><Name>Bravo</Name><CarType>Porsche 963</CarType><isPlayer>0</isPlayer>
                 <Lap num="1">106.0</Lap></Driver></Race>
             </RaceResults></rFactorXML>
             """);
-        Assert.Null(new LmuResultsImporter(_dir).Read(Single(_dir)));
-        File.Delete(Path.Combine(_dir, "spectated.xml"));
+        Assert.Null(new LmuResultsImporter(this._dir).Read(Single(this._dir)));
+        File.Delete(Path.Combine(this._dir, "spectated.xml"));
 
         // A venue is not a course, and substituting one would file these laps in a bucket the
         // recorder can never write to. No course means no bucket.
-        WriteResult("venue-only.xml", """
+        this.WriteResult("venue-only.xml", """
             <rFactorXML><RaceResults><TrackVenue>Le Mans</TrackVenue>
               <Race><Driver><Name>Alpha</Name><CarType>Ferrari 499P</CarType><isPlayer>1</isPlayer>
                 <Lap num="1">106.0</Lap></Driver></Race>
             </RaceResults></rFactorXML>
             """);
-        Assert.Null(new LmuResultsImporter(_dir).Read(Single(_dir)));
-        File.Delete(Path.Combine(_dir, "venue-only.xml"));
+        Assert.Null(new LmuResultsImporter(this._dir).Read(Single(this._dir)));
+        File.Delete(Path.Combine(this._dir, "venue-only.xml"));
 
         // Likewise no car model: the bucket key is game + course + model, and a guessed bucket
         // silently corrupts every statistic drawn from it.
-        WriteResult("carless.xml", """
+        this.WriteResult("carless.xml", """
             <rFactorXML><RaceResults><TrackCourse>Circuit des 24 Heures</TrackCourse>
               <Race><Driver><Name>Alpha</Name><isPlayer>1</isPlayer>
                 <Lap num="1">106.0</Lap></Driver></Race>
             </RaceResults></rFactorXML>
             """);
-        Assert.Null(new LmuResultsImporter(_dir).Read(Single(_dir)));
+        Assert.Null(new LmuResultsImporter(this._dir).Read(Single(this._dir)));
     }
 
     private static ResultsArchiveEntry Single(string directory) =>
@@ -283,27 +283,41 @@ public sealed class LmuResultsImportTests : IDisposable
 
     private LapHistorySession ImportSingle(string xml)
     {
-        WriteResult("result.xml", xml);
-        var store = new RecordingLapHistoryStore();
-        new LapHistoryImportService(store).Import(new LmuResultsImporter(_dir));
+        this.WriteResult("result.xml", xml);
+        RecordingLapHistoryStore store = new RecordingLapHistoryStore();
+        new LapHistoryImportService(store).Import(new LmuResultsImporter(this._dir));
 
         return Assert.Single(store.LoadAll());
     }
 
     [Fact]
+    public void Lists_every_livery_the_archive_names_with_the_car_it_is()
+    {
+        this.WriteResult("race.xml", RaceXml);
+
+        IReadOnlyList<ResultsCar> cars = new LmuResultsImporter(this._dir).ListCars();
+
+        Assert.Contains(new ResultsCar("Test 499P #1", "Ferrari 499P", "Hyper", "WEC 2025"), cars);
+        Assert.Equal(cars.Count, cars.Select(car => car.Livery).Distinct().Count());
+    }
+
+    [Fact]
     public void Writes_an_archived_session_into_the_corpus_as_sprint_records()
     {
-        WriteResult("race.xml", RaceXml);
-        var store = new RecordingLapHistoryStore();
+        this.WriteResult("race.xml", RaceXml);
+        RecordingLapHistoryStore store = new RecordingLapHistoryStore();
 
-        var report = new LapHistoryImportService(store).Import(new LmuResultsImporter(_dir));
+        LapHistoryImportReport report = new LapHistoryImportService(store).Import(new LmuResultsImporter(this._dir));
 
-        var session = Assert.Single(store.LoadAll());
+        LapHistorySession session = Assert.Single(store.LoadAll());
         Assert.Equal(LapHistoryOrigin.Imported, session.Origin);
         Assert.Equal(HistorySessionKind.Race, session.Kind);
         Assert.Equal("LeMansUltimate", session.Context.Game);
         Assert.Equal("Circuit des 24 Heures", session.Context.TrackCourse);
-        Assert.Equal("Ferrari 499P", session.Context.CarModel);
+        // Named by class and make; the archive's model and the player's livery are kept beside it.
+        Assert.Equal("Hypercar Ferrari", session.Context.CarModel);
+        Assert.Equal("Ferrari 499P", session.Context.CarType);
+        Assert.Equal("Test 499P #1", session.Context.Livery);
         Assert.Equal("Hyper", session.Context.CarClass);
         Assert.Equal(13626.0, session.Context.TrackLengthMeters);
         Assert.Equal(DateTimeOffset.FromUnixTimeSeconds(1782240911), session.StartedAt);
@@ -322,7 +336,7 @@ public sealed class LmuResultsImportTests : IDisposable
     {
         // The archive states it, so the corpus must keep it: stopping at the importer would
         // mean re-parsing XML later to answer a question the import already had in hand.
-        var laps = ImportSingle(RaceXml).Laps;
+        List<LapHistoryRecord> laps = this.ImportSingle(RaceXml).Laps;
 
         // The out lap is untimed and therefore never written; lap 3 is the fastest.
         Assert.Equal(290.98, laps[^1].TopSpeedKph);
@@ -331,7 +345,7 @@ public sealed class LmuResultsImportTests : IDisposable
     [Fact]
     public void Leaves_what_the_archive_never_stated_absent_rather_than_zero()
     {
-        var session = ImportSingle(RaceXml);
+        LapHistorySession session = this.ImportSingle(RaceXml);
 
         // The results XML carries no fuel, no virtual energy, no weather, no grip and no
         // multipliers, and never will. A reader has to be able to tell "unknown" from "dry" or
@@ -370,7 +384,7 @@ public sealed class LmuResultsImportTests : IDisposable
     [Fact]
     public void Carries_the_stated_compounds_without_inventing_wear_or_temperature()
     {
-        var lap = ImportSingle(RaceXml).Laps[1]; // lap 3, run on softs
+        LapHistoryRecord lap = this.ImportSingle(RaceXml).Laps[1]; // lap 3, run on softs
 
         // The archive states one compound per axle, so both corners of an axle carry it and
         // nothing else about the corner is claimed.
@@ -386,22 +400,22 @@ public sealed class LmuResultsImportTests : IDisposable
         });
 
         // A file that states no compound gets no corners, rather than four empty ones on disk.
-        Assert.Empty(Assert.Single(ImportSingle(SessionXml("Race")).Laps).Tires);
+        Assert.Empty(Assert.Single(this.ImportSingle(SessionXml("Race")).Laps).Tires);
     }
 
     [Fact]
     public void Re_importing_the_same_session_writes_nothing_a_second_time()
     {
-        WriteResult("race.xml", RaceXml);
-        var store = new RecordingLapHistoryStore();
-        var service = new LapHistoryImportService(store);
+        this.WriteResult("race.xml", RaceXml);
+        RecordingLapHistoryStore store = new RecordingLapHistoryStore();
+        LapHistoryImportService service = new LapHistoryImportService(store);
 
-        var first = service.Import(new LmuResultsImporter(_dir));
+        LapHistoryImportReport first = service.Import(new LmuResultsImporter(this._dir));
 
         // The same session under a different file name, as a moved or restored results folder
         // produces. The key is the session itself, so this costs one re-parse and nothing else.
-        WriteResult("race-restored.xml", RaceXml);
-        var second = service.Import(new LmuResultsImporter(_dir));
+        this.WriteResult("race-restored.xml", RaceXml);
+        LapHistoryImportReport second = service.Import(new LmuResultsImporter(this._dir));
 
         Assert.Single(store.LoadAll());
         Assert.Equal(1, store.Saves); // not even rewritten with an identical record
@@ -413,18 +427,18 @@ public sealed class LmuResultsImportTests : IDisposable
     [Fact]
     public void The_natural_key_a_scan_can_compute_is_the_id_the_import_writes()
     {
-        WriteResult("race.xml", RaceXml);
-        var importer = new LmuResultsImporter(_dir);
-        var entry = Assert.Single(importer.ListEntries());
-        var imported = importer.Read(entry);
+        this.WriteResult("race.xml", RaceXml);
+        LmuResultsImporter importer = new LmuResultsImporter(this._dir);
+        ResultsArchiveEntry entry = Assert.Single(importer.ListEntries());
+        ImportedSession? imported = importer.Read(entry);
         Assert.NotNull(imported);
-        var store = new RecordingLapHistoryStore();
+        RecordingLapHistoryStore store = new RecordingLapHistoryStore();
 
         new LapHistoryImportService(store).Import(importer);
 
         // Track, kind, session time (the archive's own, 18:55:11 UTC) and player, readable and
         // with no hash of anything on disk to keep in step.
-        var session = Assert.Single(store.LoadAll());
+        LapHistorySession session = Assert.Single(store.LoadAll());
         Assert.Equal(
             "imported-lemansultimate-circuit_des_24_heures-race-20260623T185511Z-alpha_tester",
             session.Id);
@@ -439,13 +453,13 @@ public sealed class LmuResultsImportTests : IDisposable
     {
         // Same track and car, so only the rest of the natural key can separate these. A key that
         // collapsed any of them would silently merge four sessions into one.
-        WriteResult("race.xml", RaceXml);
-        WriteResult("later.xml", RaceXml.Replace("1782240911", "1782244511"));
-        WriteResult("practice.xml", RaceXml.Replace("<Race>", "<Practice1>").Replace("</Race>", "</Practice1>"));
-        WriteResult("teammate.xml", RaceXml.Replace("Alpha Tester", "Charlie Tester"));
-        var store = new RecordingLapHistoryStore();
+        this.WriteResult("race.xml", RaceXml);
+        this.WriteResult("later.xml", RaceXml.Replace("1782240911", "1782244511"));
+        this.WriteResult("practice.xml", RaceXml.Replace("<Race>", "<Practice1>").Replace("</Race>", "</Practice1>"));
+        this.WriteResult("teammate.xml", RaceXml.Replace("Alpha Tester", "Charlie Tester"));
+        RecordingLapHistoryStore store = new RecordingLapHistoryStore();
 
-        var report = new LapHistoryImportService(store).Import(new LmuResultsImporter(_dir));
+        LapHistoryImportReport report = new LapHistoryImportService(store).Import(new LmuResultsImporter(this._dir));
 
         Assert.Equal(4, report.ImportedCount);
         Assert.Equal(4, store.LoadAll().Count);
@@ -456,15 +470,15 @@ public sealed class LmuResultsImportTests : IDisposable
     [Fact]
     public void The_game_provider_exposes_the_archive_as_its_results_capability()
     {
-        var provider = GameProviders.Find("lemansultimate");
+        IGameProvider? provider = GameProviders.Find("lemansultimate");
         Assert.NotNull(provider);
 
-        var importer = provider.Results;
+        IResultsImporter? importer = provider.Results;
 
         // Le Mans Ultimate always archives results, so the capability exists wherever the
         // default library does; whether this machine has any files yet is ListEntries' answer,
         // not a reason to hide the capability.
-        var defaultPath = LmuResultsReader.DefaultResultsPath();
+        string defaultPath = LmuResultsReader.DefaultResultsPath();
         Assert.Equal(defaultPath.Length == 0, importer is null);
         if (importer is null)
         {
@@ -480,8 +494,9 @@ public sealed class LmuResultsImportTests : IDisposable
     {
         // The live context is taken from the game's own telemetry mapping rather than typed out,
         // because that is what the recorder writes. If the importer and the live adapter ever
-        // disagree about the game name, the course or the car model, this is where it shows.
-        var live = new LmuTelemetryMapper(() => new DateTimeOffset(2026, 6, 23, 21, 0, 0, TimeSpan.Zero))
+        // disagree about the game name, the course or the car's name, this is where it shows.
+        // Live, LMU names the livery; the archive names the model. Both must land on one name.
+        TelemetryFrame live = new LmuTelemetryMapper(() => new DateTimeOffset(2026, 6, 23, 21, 0, 0, TimeSpan.Zero))
             .Map(new LmuParsedFrame
             {
                 ScoringInfo = new LmuScoringInfo
@@ -489,34 +504,37 @@ public sealed class LmuResultsImportTests : IDisposable
                     TrackName = "Circuit des 24 Heures",
                     Session = 10, // race
                     LapDistance = 13626.0,
+                    InRealtime = true,
                 },
                 PlayerHasVehicle = true,
                 PlayerIndex = 0,
-                PlayerVehicle = new LmuVehicleScoring
+                Telemetry = new LmuVehicleTelemetry
                 {
-                    VehicleName = "Ferrari 499P",
-                    VehicleClass = "Hyper",
+                    VehicleName = "Ferrari AF Corse 2025 #50:LM",
+                    VehicleModel = "Ferrari 499P",
+                    VehicleChampionship = LmuVehicleChampionship.Wec2025,
                 },
+                Scoring = new LmuVehicleScoring { VehicleClass = "Hyper" },
             });
+        string carName = CarNames.Of(live.Session);
+        Assert.Equal("Hypercar Ferrari", carName);
 
-        var store = new RecordingLapHistoryStore();
-        var recorder = new LapHistoryRecorder(store, dispatch: work => work());
-        // The mapped frame is the lobby's; the recorder times laps from in-car frames only.
-        SessionInfo driving = live.Session with { InCar = true };
-        recorder.Ingest(live with { Session = driving, Lap = new LapState { CurrentLap = 4 } });
-        recorder.Ingest(live with { Session = driving, Lap = new LapState { CurrentLap = 5, LastLapTime = 109.5 } });
+        RecordingLapHistoryStore store = new RecordingLapHistoryStore();
+        LapHistoryRecorder recorder = new LapHistoryRecorder(store, dispatch: work => work());
+        recorder.Ingest(live with { Lap = new LapState { CurrentLap = 4 } });
+        recorder.Ingest(live with { Lap = new LapState { CurrentLap = 5, LastLapTime = 109.5 } });
 
-        WriteResult("race.xml", RaceXml);
-        new LapHistoryImportService(store).Import(new LmuResultsImporter(_dir));
+        this.WriteResult("race.xml", RaceXml);
+        new LapHistoryImportService(store).Import(new LmuResultsImporter(this._dir));
 
         // Two sessions on disk — one per writer — but one bucket.
         Assert.Equal(2, store.LoadAll().Count);
 
-        var statistics = LapHistoryStatistics.Resolve(store, new LapHistoryContext
+        LapHistoryStatisticsResult? statistics = LapHistoryStatistics.Resolve(store, new LapHistoryContext
         {
             Game = live.Session.Game,
             TrackCourse = live.Session.Track,
-            CarModel = live.Session.Car,
+            CarModel = carName,
         });
 
         Assert.NotNull(statistics);
@@ -531,7 +549,7 @@ public sealed class LmuResultsImportTests : IDisposable
         {
             Assert.Equal(live.Session.Game, session.Context.Game);
             Assert.Equal(live.Session.Track, session.Context.TrackCourse);
-            Assert.Equal(live.Session.Car, session.Context.CarModel);
+            Assert.Equal(carName, session.Context.CarModel);
         });
     }
 
@@ -545,14 +563,14 @@ public sealed class LmuResultsImportTests : IDisposable
 
         public int Saves { get; private set; }
 
-        public IReadOnlyList<LapHistorySession> LoadAll() => [.. _sessions.Values];
+        public IReadOnlyList<LapHistorySession> LoadAll() => [.. this._sessions.Values];
 
         public void Save(LapHistorySession session)
         {
-            Saves++;
-            _sessions[session.Id] = session;
+            this.Saves++;
+            this._sessions[session.Id] = session;
         }
 
-        public void Delete(string sessionId) => _sessions.Remove(sessionId);
+        public void Delete(string sessionId) => this._sessions.Remove(sessionId);
     }
 }

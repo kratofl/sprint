@@ -9,8 +9,8 @@ are split the way they are.
 Sim (LMU shared memory)
   -> Sprint.Games adapter -> TelemetryFrame (Sprint.Desktop.Api)
   -> Sprint.Desktop.Core (telemetry engine, planner, recorder, devices, USB)
-  -> Sprint.Desktop.Host  (loopback HTTP, bearer token)
-  <-> app/desktop         (Electron main + React renderer + offscreen dash browsers)
+  -> Sprint.Desktop.Host  (loopback HTTP, bearer token; draws the wheel with the Rust dash renderer)
+  <-> app/desktop         (Electron main + React renderer)
   -> api/ (GraphQL, Postgres + InfluxDB) <-> web/ (Next.js)
 ```
 
@@ -25,6 +25,13 @@ a change to one is a change to both.
 
 Things that describe a plan rather than a car (targets, planned fuel) do not go on the frame. See
 [session-planner.md](session-planner.md#target-delivery-to-the-wheel).
+
+Dev recordings (`make record-app`, `app/Sprint.Games/Recording`) store the mapped frame, so whatever is
+not on the frame when a recording is made is gone from it for good. The other cars (`TelemetryFrame.Field`)
+come from scoring, which LMU updates ~5 times a second against ~60 frames: the source hands out the same
+list until scoring changes, and a recording writes it only on the frames where it changed — `null` on
+disk means "unchanged", and `TelemetryRecordingReader` puts the last field back on every frame. Read
+recordings through it, not line by line.
 
 ## Native host, web UI
 
@@ -80,8 +87,7 @@ serves both.
   `PageHeader` portals its CommandBar into the slot
   ([`shell/toolbarActions.ts`](../../app/desktop/src/shell/toolbarActions.ts)). Whether the actions
   fit is the pure rule in [`shell/actionsPlacement.ts`](../../app/desktop/src/shell/actionsPlacement.ts)
-  (with hysteresis, so a window at the boundary does not bounce them). The room is counted with the
-  telemetry indicator already at its dot, so the indicator shrinks before actions leave. Room and
+  (with hysteresis, so a window at the boundary does not bounce them). Room and
   width are read together before paint on every render and whenever the bar resizes; a stored
   width goes stale after navigation or a label change. The content fallback row is drawn with the
   same toolbar-item styles (`.toolbar-items`), so its width there is its toolbar width.
@@ -110,12 +116,33 @@ serves both.
 
 ## The frame path
 
-telemetry → dash DOM → Electron offscreen paint → raw BGRA → host → RGB565 → USB.
+telemetry → host → Rust dash renderer on the screen's publisher thread → RGB565 → USB.
 
-The same `packages/dashboard` component drives the editor preview, the on-screen display and the USB
-output, so what the editor shows is what the wheel shows. No PNG, JPEG or base64 on the live path; a
-busy consumer keeps only the latest frame. Dash rendering continues while the main window is hidden.
-Rear-view output captures a desktop region natively and never touches the dash DOM. Details:
+Every dash picture comes from one renderer, the Rust crate in
+[`packages/dashboard/renderer`](../../packages/dashboard/renderer): the host calls it natively for
+the wheel ([`NativeDashFrameSource`](../../app/Sprint.Desktop.Host/NativeDashFrameSource.cs)), and
+the editor, the dash stills and browser displays run the same code compiled to WebAssembly. What
+the editor shows is what the wheel shows, and the host's build compiles both forms
+(`scripts/build-dash-renderer.mjs`), which is why building needs the Rust toolchain.
+
+- The wheel never leaves the host process: no Electron, no HTTP, no state poll on the path. It
+  used to be painted by offscreen Chromium in Electron. Fed from the app's state poll, it ran at
+  ~5 fps and 1–2 s behind; in a process of its own it still cost a Chromium per screen and two
+  HTTP hops per frame. Nothing the app does may slow the wheel again.
+- The renderer runs on the screen's own `ScreenPublisher` thread, the only thread that calls
+  it. It redraws only for a new telemetry frame, a new scene, a turn of the wheel's multi-dial, or
+  while the last picture depends on time (an alert banner or the dial popup, a held lap-timer
+  result); otherwise the publisher sees an unchanged frame and does not resend it. No PNG, JPEG or base64; a busy consumer keeps only the latest frame.
+- The slow part of the **scene** (layout, driver name and number, plan targets) is built once per
+  change on the reconcile loop (`DashSceneContent`, and `DashMultiDial` for a wheel's dial names
+  and colours); the page, the idle flag and where the dial stands are read per frame, so a
+  wheel-button page change or a dial turn shows within a frame. A browser display reads the same
+  scene ([browser-displays.md](browser-displays.md)).
+- A render failure never leaves a frozen picture: the screen shows red and black stripes
+  (`ScreenFailurePattern`) and reads `Faulted` with the renderer's reason
+  ([diagnostics](../operations/diagnostics.md#wheel-screens)).
+
+Rear-view output captures a desktop region natively and never touches the renderer. Details:
 [screen-protocols.md](screen-protocols.md), [dash-rendering.md](dash-rendering.md).
 
 ## Local data
@@ -126,9 +153,15 @@ dashes, devices, setups, session plans, the lap-history corpus, lap traces, diag
 one file per record where a corrupt file must not cost the rest. Persisted enums use names. Data from
 the retired clients is not migrated.
 
+A newer Sprint's files meet an older one after a rollback or a shared lap. So every file Sprint writes
+either carries a version its reader checks (binary: lap traces, `.sprintlap`, recordings) or keeps
+the fields it does not know (`[JsonExtensionData]` on JSON models), and a breaking change bumps the
+version. A single-file store that cannot read its file sets it aside (`AtomicFile.SetAside`) before
+falling back to defaults, so its next save does not overwrite what a newer build wrote.
+
 ## Cloud
 
 `api/` is .NET 10 + HotChocolate GraphQL over Postgres (relational) and InfluxDB (live telemetry time
-series); shared DTOs live in `app/Sprint.Contracts`. The desktop's cloud traffic is sign-in, sync and lap
-sharing (`SprintCloudClient`), the live telemetry stream while syncing, plus GitHub release checks and
+series); shared DTOs live in `app/Sprint.Contracts`. The desktop's cloud traffic is sign-in and sync
+(`SprintCloudClient`), the live telemetry stream while syncing, plus GitHub release checks and
 update downloads. Sign-in, live and engineer access: [live-telemetry.md](live-telemetry.md). Deployment: [operations/deployment.md](../operations/deployment.md).

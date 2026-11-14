@@ -23,5 +23,5 @@ public sealed record LiveCompareTarget(
     LapHistoryContext Context)
 {
     /// <summary>Where the lap's channels live in the trace store.</summary>
-    public string TraceId => LapTraceId.For(SessionId, LapNumber);
+    public string TraceId => LapTraceId.For(this.SessionId, this.LapNumber);
 }

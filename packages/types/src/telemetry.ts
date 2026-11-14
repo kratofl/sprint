@@ -2,6 +2,11 @@
 
 export type SessionType = 'practice' | 'qualify' | 'race' | 'warmup' | 'unknown'
 
+// Where a car is in a pit stop.
+export type PitState = 'none' | 'requested' | 'entering' | 'stopped' | 'exiting'
+
+export type FinishStatus = 'none' | 'finished' | 'dnf' | 'disqualified'
+
 export interface Session {
   game: string
   track: string
@@ -38,6 +43,11 @@ export interface CarState {
   positionY: number
   positionZ: number
   brakeBiasRear: number // rear brake bias fraction (0–1); 0 = front biased
+  // Pit lane and garage. null when the game does not say.
+  inGarage: boolean | null   // in its own garage stall, where the setup can change
+  inPitLane: boolean | null  // between pit entry and pit exit
+  pitState: PitState | null
+  pitLimiter: boolean | null // pit speed limiter switched on
 }
 
 export enum TirePosition {
@@ -101,6 +111,12 @@ export interface Electronics {
   absMax: number
   motorMap: number    // engine/motor map setting
   motorMapMax: number // maximum motor map setting for this car
+  migration: number   // brake migration setting; its max is 0 when the car has none
+  migrationMax: number
+  frontAntiRollBar: number
+  frontAntiRollBarMax: number
+  rearAntiRollBar: number
+  rearAntiRollBarMax: number
   drsActive: boolean  // DRS currently deployed
 
   // Availability flags — false when the feature is not present on the current car.
@@ -144,6 +160,44 @@ export interface TelemetryFrame {
   energy: EnergyState
   penalties: Penalties
   conditions: SessionConditions
+  // Every car in the session, the player's included, as the game last scored them (LMU:
+  // ~5 Hz). Empty when the game does not report other cars.
+  field: FieldCar[]
+}
+
+// One car in the session as scoring reports it: a timing-table row and a track-map dot.
+export interface FieldCar {
+  id: number              // the game's slot id; unique within one snapshot
+  driver: string
+  car: string             // the entry (team, livery, number), as Session.car names the player's
+  carClass: string
+  isPlayer: boolean
+  place: number           // 1-based overall; 0 when unknown
+  classPlace: number      // 1-based within carClass; 0 when unknown
+  lapsCompleted: number
+  lapDistanceMeters: number // against Session.trackLengthMeters it is the lap fraction
+  sector: number          // 1–3; 0 when unknown
+  bestLapTime: number | null
+  lastLapTime: number | null
+  // Sector durations of the last lap (null unless its marks were credible) and of the lap
+  // being driven (each null until that sector is done).
+  lastLapSector1: number | null
+  lastLapSector2: number | null
+  lastLapSector3: number | null
+  currentLapSector1: number | null
+  currentLapSector2: number | null
+  gapToLeader: number     // seconds behind the overall leader, plus whole laps below
+  lapsToLeader: number
+  gapToNext: number       // seconds behind the car one place ahead, plus whole laps below
+  lapsToNext: number
+  inPitLane: boolean
+  inGarage: boolean
+  pitState: PitState
+  pitStops: number
+  finishStatus: FinishStatus
+  // World position in metres, right-handed and seen from above: the frame lap traces use.
+  positionX: number
+  positionZ: number
 }
 
 // Conditions a session is run under. Every value is nullable because no game reports all

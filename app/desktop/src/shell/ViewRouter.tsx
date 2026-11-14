@@ -1,4 +1,4 @@
-import type { AppView, SprintCommand } from '../bridge'
+import type { AppView, SprintCommand, UpdateStatus } from '../bridge'
 import type { RuntimeState } from './runtime'
 import { HomeView } from '../views/HomeView'
 import { SessionPlannerView } from '../views/SessionPlannerView'
@@ -8,12 +8,13 @@ import { DevicesView } from '../views/DevicesView'
 import { SetupsView } from '../views/SetupsView'
 import { RaceEngineerView } from '../views/RaceEngineerView'
 import { LiveLinkView } from '../views/LiveLinkView'
+import { OnTrackView } from '../views/OnTrackView'
 import { SettingsView } from '../views/SettingsView'
 import { HelpView } from '../views/HelpView'
 
 /**
  * A navigation intent that also names the specific item to open, so a Home
- * launchpad row (dash card, device row, plan tile) can jump straight into
+ * row (plan, device, recorded session) can jump straight into
  * that item instead of just switching pages. The id can only accompany the
  * view it belongs to — mirrors `AppView`, but only the views with an
  * item-level destination carry an (optional) id.
@@ -21,8 +22,10 @@ import { HelpView } from '../views/HelpView'
 export type NavigationTarget =
   | { view: 'Home' }
   | { view: 'SessionPlanner'; planId?: string }
-  | { view: 'Analysis' }
+  | { view: 'OnTrack' }
+  | { view: 'Analysis'; sessionId?: string }
   | { view: 'Dashes'; dashId?: string }
+  | { view: 'Dashes'; newDash: true }
   | { view: 'Devices'; deviceId?: string }
   | { view: 'Setups' }
   | { view: 'RaceEngineer' }
@@ -46,6 +49,7 @@ export function ViewRouter({
   onOpenItem,
   onImportResults,
   onSetUpCloud,
+  updateStatus,
 }: {
   view: AppView
   focus: NavigationTarget | null
@@ -56,10 +60,12 @@ export function ViewRouter({
   onImportResults?: () => void
   /** Opens the Sprint web setup (Settings' "Set up Sprint web"). */
   onSetUpCloud: () => void
+  /** Where the self-update stands (App.tsx follows it), for Settings. */
+  updateStatus: UpdateStatus
 }) {
   switch (view) {
     case 'Home':
-      return <HomeView runtime={runtime} onNavigate={onNavigate} onOpenItem={onOpenItem} />
+      return <HomeView runtime={runtime} onNavigate={onNavigate} onOpenItem={onOpenItem} onImportResults={onImportResults} />
     case 'SessionPlanner':
       return (
         <SessionPlannerView
@@ -69,21 +75,30 @@ export function ViewRouter({
           onImportResults={onImportResults}
         />
       )
+    case 'OnTrack':
+      return <OnTrackView runtime={runtime} send={send} />
     case 'Analysis':
-      return <AnalysisView runtime={runtime} send={send} onImportResults={onImportResults} />
+      return (
+        <AnalysisView
+          runtime={runtime}
+          send={send}
+          focusSessionId={focus?.view === 'Analysis' ? focus.sessionId : undefined}
+          onImportResults={onImportResults}
+        />
+      )
     case 'Dashes':
-      return <DashesView runtime={runtime} send={send} focusDashId={focus?.view === 'Dashes' ? focus.dashId : undefined} />
+      return <DashesView runtime={runtime} send={send} focusDashId={focus?.view === 'Dashes' && 'dashId' in focus ? focus.dashId : undefined} openNewDash={focus?.view === 'Dashes' && 'newDash' in focus} />
     case 'Devices':
       return <DevicesView runtime={runtime} send={send} focusDeviceId={focus?.view === 'Devices' ? focus.deviceId : undefined} />
     case 'Setups':
-      return <SetupsView runtime={runtime} send={send} />
+      return <SetupsView />
     case 'RaceEngineer':
-      return <RaceEngineerView runtime={runtime} send={send} />
+      return <RaceEngineerView runtime={runtime} send={send} onNavigate={onNavigate} />
     case 'LiveLink':
-      return <LiveLinkView runtime={runtime} send={send} />
+      return <LiveLinkView runtime={runtime} send={send} onNavigate={onNavigate} />
     case 'Settings':
-      return <SettingsView runtime={runtime} send={send} onSetUpCloud={onSetUpCloud} />
+      return <SettingsView runtime={runtime} send={send} onSetUpCloud={onSetUpCloud} updateStatus={updateStatus} />
     case 'Help':
-      return <HelpView runtime={runtime} send={send} />
+      return <HelpView runtime={runtime} send={send} onNavigate={onNavigate} onOpenItem={onOpenItem} />
   }
 }

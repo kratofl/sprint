@@ -1,91 +1,62 @@
-import { useEffect, useState } from 'react'
-import { BarChart3, ChevronLeft, Download, FileDown, FolderOpen, RefreshCw, X } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { BarChart3, Download, FolderOpen, X } from 'lucide-react'
 import { bridge } from '../bridge'
-import type { LapExportResult, LapImportResult, SprintCommand } from '../bridge'
+import type { LapExportResult, SprintCommand } from '../bridge'
 import type { RuntimeState } from '../shell/runtime'
-import { CommandDivider, PageHeader } from '../shell/PageHeader'
-import { Status } from '../shell/Status'
-import {
-  ALL_LAP_CHART_PANELS,
-  ANALYSIS_DEFAULT_PANELS,
-  EMPTY_ANALYSIS_STATE,
-  applyLapListFilter,
-  buildAnalysisFilter,
-  buildAnalysisRefresh,
-  buildAnalysisSelectLap,
-  buildAnalysisSelectSession,
-  buildLapTraceChartPanels,
-  dayLabel,
-  formatGap,
-  formatLapSeconds,
-  isTraceUsable,
-  lapTimeStats,
-  parseAnalysisState,
-  parseLapChannelTrace,
-} from './AnalysisDomain'
-import type {
-  AnalysisFilterPatch,
-  AnalysisFilterState,
-  AnalysisLapFilter,
-  AnalysisLapSort,
-  AnalysisState,
-  CorpusLap,
-  CorpusSession,
-  LapChannelTrace,
-  LapTraceSeriesSource,
-} from './AnalysisDomain'
-import { LapTraceChartStack } from './AnalysisChart'
+import { PageHeader } from '../shell/PageHeader'
+import { usePageUp } from '../shell/pageUp'
+import { EMPTY_ANALYSIS_STATE, buildAnalysisSelectSession, buildSetRunSetup, parseAnalysisState } from './AnalysisDomain'
+import type { AnalysisState, CorpusLap, LapFileNotice } from './AnalysisDomain'
+import { DEFAULT_LAP_LAYOUT, parseLapLayout } from './AnalysisLapLayout'
+import { LapPage, useStoredLapLayout } from './AnalysisLapPage'
+import { SessionList } from './AnalysisSessionList'
+import { useLapFileImport } from './LapImportDialog'
+import { LapList, LapTimesCard, SessionHead } from './AnalysisSessionPage'
+import type { LapOrder } from './AnalysisSessionPage'
+import { sessionsIn } from './AnalysisSessions'
+import type { ListScope } from './AnalysisSessions'
+import { MenuLayer, type MenuAnchor } from '../shell/Menu'
+import { buildSetTarget } from './OnTrackDomain'
+import { lapKeyOf, sameLap } from './OnTrackLaps'
+import type { LapKey } from './OnTrackLaps'
 import './AnalysisView.css'
 
 /**
- * Analysis: browse the recorded/imported/shared lap corpus, pick a primary and a comparison
- * lap — even across two different sessions — and overlay their traces (docs/internals/live-compare.md
- * "Analysis view"; the target-picker half is not
- * built here). All narrowing and lap-picking state lives server-side in `AnalysisController`;
- * this view only renders `state.analysis` and sends `analysis.*` commands.
+ * Analysis: the laps Sprint recorded, imported or was sent, over three pages at the full content
+ * width. The list (your sessions grouped by car and track, or — Mine | Shared — the laps others
+ * shared with you; AnalysisSessionList.tsx), one session (its lap times and its laps by run,
+ * AnalysisSessionPage.tsx), and one lap on its own (the track map and its channels,
+ * AnalysisLapPage.tsx), where comparing with another lap is the driver's choice. Any lap with a
+ * line can also become On track's training target or be saved as a lap file.
  *
- * Layout: the CommandBar holds the view options as selects (corpus filters on the session list,
- * lap filter + sort inside a session) and Refresh. The page has no primary action — browsing
- * has no single next step. Inside a session: a KPI row of lap stats, the lap comparison chart
- * card, then the laps; on the session list the chart card sits above the sessions whenever a lap
- * is picked, because a comparison can span two sessions.
- *
- * "Import results" (the LMU results archive, #185) opens the shell's import dialog when the game
- * has an archive; imported sessions join the corpus this page browses.
+ * Which session is open is host state (`analysis.selectSession`, so the Overview can open one);
+ * the open lap, the lap compared with, the list shown, the lap order and the list's filters are
+ * local, and the lap page's arrangement is kept per viewer (`useStoredLapLayout`). The host sends
+ * every session live (`state.analysis.sessions`), so the list needs no refresh.
  */
 export function AnalysisView({
   runtime,
   send,
+  focusSessionId,
   onImportResults,
 }: {
   runtime: RuntimeState
   send: (command: SprintCommand) => Promise<void>
+  /** A session to open on mount (an Overview session row), applied once — see the effect below. */
+  focusSessionId?: string
   /** Opens the shell's import dialog; absent when the game has no results archive. */
   onImportResults?: () => void
 }) {
   const analysis: AnalysisState = runtime.kind === 'ready' ? parseAnalysisState(runtime.sprint) : EMPTY_ANALYSIS_STATE
 
-  const [lapFilter, setLapFilter] = useState<AnalysisLapFilter>('All')
-  const [lapSort, setLapSort] = useState<AnalysisLapSort>('Fastest')
-  const [panelIds, setPanelIds] = useState<string[]>(ANALYSIS_DEFAULT_PANELS.map((panel) => panel.id))
+  const [openLap, setOpenLap] = useState<LapKey | null>(null)
+  const [compareWith, setCompareWith] = useState<LapKey | null>(null)
+  const [scope, setScope] = useState<ListScope>('mine')
+  const [order, setOrder] = useState<LapOrder>('LapNumber')
+  const [layout, setLayout] = useStoredLapLayout(parseLapLayout, DEFAULT_LAP_LAYOUT)
   const [actionError, setActionError] = useState<string | null>(null)
   const [lapFileNotice, setLapFileNotice] = useState<LapFileNotice | null>(null)
-  const primaryTrace = useLapTrace(analysis.primary)
-  const comparisonTrace = useLapTrace(analysis.comparison)
-
-  if (runtime.kind === 'loading') {
-    return (
-      <div className="analysis-page">
-        <PageHeader title="Analysis" />
-        <div className="analysis-kpis">
-          {[0, 1, 2, 3].map((index) => (
-            <div key={index} className="kpi skeleton analysis-kpi-skeleton" />
-          ))}
-        </div>
-        <div className="card skeleton analysis-card-skeleton" />
-      </div>
-    )
-  }
+  const lapFileImport = useLapFileImport(setLapFileNotice)
 
   const runAction = async (command: SprintCommand) => {
     setActionError(null)
@@ -95,71 +66,78 @@ export function AnalysisView({
       setActionError(error instanceof Error ? error.message : 'That change could not be applied.')
     }
   }
-
-  const exportLap = async (lap: CorpusLap) => {
-    setLapFileNotice(exportNotice(await bridge.exportLap(lap.sessionId, lap.lapNumber)))
+  // A note's Save waits on this: the editor stays open, text and all, when the host refuses it.
+  const sendNote = async (command: SprintCommand): Promise<boolean> => {
+    setActionError(null)
+    try {
+      await send(command)
+      return true
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'That note could not be saved.')
+      return false
+    }
   }
-  const importLap = async () => {
-    setLapFileNotice(importNotice(await bridge.importLap()))
+  const closeLap = () => {
+    setOpenLap(null)
+    setCompareWith(null)
+  }
+  const openSession = (sessionId: string | null) => {
+    closeLap()
+    void runAction(buildAnalysisSelectSession(sessionId))
   }
 
-  const { filter, session, primary, comparison } = analysis
-  const corpusEmpty = filter.games.length === 0 && filter.sessions.length === 0 && filter.tracks.length === 0
-  const onFilter = (patch: AnalysisFilterPatch) => void runAction(buildAnalysisFilter(patch))
-  const filterSelects = session || corpusEmpty ? [] : corpusFilterSelects(filter)
+  // `focusSessionId` names a session for one render only (the shell clears it after handing it
+  // off — see App.tsx), so this opens it once.
+  useEffect(() => {
+    if (!focusSessionId) return
+    setOpenLap(null)
+    setCompareWith(null)
+    send(buildAnalysisSelectSession(focusSessionId)).catch((error: unknown) =>
+      setActionError(error instanceof Error ? error.message : 'That session could not be opened.'),
+    )
+  }, [focusSessionId, send])
+
+  const { session, courseLaps } = analysis
+  // Compare offers every lap with a line with this car here; "your best" is your fastest of them all.
+  const drawable = courseLaps.filter((lap) => lap.hasChannels)
+  const yourBest = courseLaps.find((lap) => !lap.sharedFrom) ?? null
+  const lap = session && openLap ? (analysis.laps.find((candidate) => sameLap(candidate, openLap)) ?? null) : null
+  const other = lap && compareWith ? (drawable.find((candidate) => sameLap(candidate, compareWith)) ?? null) : null
+  const page = session === null ? 'list' : lap ? 'lap' : 'session'
+  const sharedCount = sessionsIn(analysis.sessions, 'shared').length
+
+  usePageUp(page === 'list' ? null : page === 'lap' ? (session?.label ?? 'Session') : 'All sessions', () => (page === 'lap' ? closeLap() : openSession(null)))
+
+  if (runtime.kind === 'loading') {
+    return (
+      <div className="analysis-page">
+        <PageHeader title="Analysis" />
+        <div className="card skeleton analysis-card-skeleton" />
+      </div>
+    )
+  }
+
+  const exportLap = async (target: CorpusLap) => {
+    setLapFileNotice(exportNotice(await bridge.exportLap(target.sessionId, target.lapNumber)))
+  }
+  const trainAgainst = async (target: CorpusLap) => {
+    setActionError(null)
+    try {
+      await send(buildSetTarget(target))
+      setLapFileNotice({ tone: 'success', title: 'Training lap set', message: `${target.label}. Start training from On track.` })
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'That lap could not be set.')
+    }
+  }
 
   return (
     <div className="analysis-page">
       <PageHeader title="Analysis">
-        {session ? (
+        {page === 'list' && (
           <>
-            <select aria-label="Show laps" value={lapFilter} onChange={(event) => setLapFilter(lapFilterFrom(event.target.value))}>
-              <option value="All">All laps</option>
-              <option value="WithChannels">With channels</option>
-              <option value="TimeOnly">Time only</option>
-            </select>
-            <select aria-label="Sort laps" value={lapSort} onChange={(event) => setLapSort(event.target.value === 'LapNumber' ? 'LapNumber' : 'Fastest')}>
-              <option value="Fastest">Fastest first</option>
-              <option value="LapNumber">Lap order</option>
-            </select>
-            <CommandDivider />
+            <ScopeSwitch scope={scope} sharedCount={sharedCount} onScope={setScope} />
+            <ImportButton onLapFile={lapFileImport.open} onResults={onImportResults} />
           </>
-        ) : (
-          filterSelects.length > 0 && (
-            <>
-              {filterSelects.map((select) => (
-                <select
-                  key={select.key}
-                  aria-label={select.label}
-                  value={select.value ?? ''}
-                  onChange={(event) => {
-                    const patch: AnalysisFilterPatch = {}
-                    patch[select.key] = event.target.value === '' ? null : event.target.value
-                    onFilter(patch)
-                  }}
-                >
-                  <option value="">{select.allLabel}</option>
-                  {select.options.map((option) => (
-                    <option key={option} value={option}>
-                      {select.key === 'day' ? dayLabel(option) : option}
-                    </option>
-                  ))}
-                </select>
-              ))}
-              <CommandDivider />
-            </>
-          )
-        )}
-        <button type="button" className="button subtle" onClick={() => void runAction(buildAnalysisRefresh())}>
-          <RefreshCw /> Refresh
-        </button>
-        <button type="button" className="button subtle" onClick={() => void importLap()}>
-          <FolderOpen /> Open lap file
-        </button>
-        {onImportResults && (
-          <button type="button" className="button subtle" onClick={onImportResults}>
-            <Download /> Import results
-          </button>
         )}
       </PageHeader>
 
@@ -176,7 +154,7 @@ export function AnalysisView({
 
       {lapFileNotice && (
         <div className={`infobar ${lapFileNotice.tone}`} role={lapFileNotice.tone === 'error' ? 'alert' : 'status'}>
-          <span className="infobar-icon">{lapFileNotice.tone === 'error' || lapFileNotice.tone === 'warning' ? '!' : 'i'}</span>
+          <span className="infobar-icon">{lapFileNotice.tone === 'error' ? '!' : 'i'}</span>
           <strong className="infobar-title">{lapFileNotice.title}</strong>
           <span className="infobar-message">{lapFileNotice.message}</span>
           <button type="button" className="icon-button" aria-label="Dismiss" onClick={() => setLapFileNotice(null)}>
@@ -185,37 +163,47 @@ export function AnalysisView({
         </div>
       )}
 
-      {analysis.notice && (
+      {analysis.notice && page === 'session' && (
         <div className="infobar info" role="status">
           <span className="infobar-icon">i</span>
           <span className="infobar-message">{analysis.notice}</span>
         </div>
       )}
 
-      {session ? (
+      {session && lap ? (
+        <LapPage
+          lap={lap}
+          session={session}
+          runs={analysis.runs}
+          sessionLaps={analysis.laps}
+          courseLaps={drawable}
+          yourBest={yourBest}
+          compareWith={other}
+          layout={layout}
+          onLayout={setLayout}
+          onCompare={(picked) => setCompareWith(picked ? lapKeyOf(picked) : null)}
+          onBack={closeLap}
+          onTrain={(target) => void trainAgainst(target)}
+          onNote={sendNote}
+        />
+      ) : session ? (
         <>
-          <SessionHead session={session} onBack={() => void runAction(buildAnalysisSelectSession(null))} />
-          <LapKpis laps={analysis.laps} primary={primary} comparison={comparison} />
-          <ComparisonCard
-            primary={primary}
-            comparison={comparison}
-            primaryTrace={primaryTrace}
-            comparisonTrace={comparisonTrace}
-            panelIds={panelIds}
-            onTogglePanel={(id) => setPanelIds((current) => (current.includes(id) ? current.filter((item) => item !== id) : [...current, id]))}
-            onClear={(role) => void runAction(buildAnalysisSelectLap(role, null))}
-          />
+          <SessionHead session={session} onBack={() => openSession(null)} />
+          <LapTimesCard laps={analysis.laps} runs={analysis.runs} yourBest={yourBest} onOpen={(picked) => setOpenLap(lapKeyOf(picked))} />
           <LapList
             laps={analysis.laps}
-            primary={primary}
-            comparison={comparison}
-            lapFilter={lapFilter}
-            lapSort={lapSort}
-            onSelect={(role, lapNumber) => void runAction(buildAnalysisSelectLap(role, lapNumber))}
-            onExport={(lap) => void exportLap(lap)}
+            runs={analysis.runs}
+            // Setup files name the model ("Porsche 963"), not the car's name ("Hypercar Porsche").
+            car={session.context.carType ?? session.context.carModel}
+            order={order}
+            onOrder={setOrder}
+            onSetRunSetup={(outing, setupId) => void runAction(buildSetRunSetup(outing, setupId))}
+            onOpen={(picked) => setOpenLap(lapKeyOf(picked))}
+            onExport={(target) => void exportLap(target)}
+            onTrain={(target) => void trainAgainst(target)}
           />
         </>
-      ) : corpusEmpty ? (
+      ) : analysis.sessions.length === 0 ? (
         <div className="card">
           <div className="empty-state">
             <BarChart3 size={28} strokeWidth={1.5} />
@@ -224,292 +212,71 @@ export function AnalysisView({
           </div>
         </div>
       ) : (
-        <>
-          {(primary || comparison) && (
-            <ComparisonCard
-              primary={primary}
-              comparison={comparison}
-              primaryTrace={primaryTrace}
-              comparisonTrace={comparisonTrace}
-              panelIds={panelIds}
-              onTogglePanel={(id) => setPanelIds((current) => (current.includes(id) ? current.filter((item) => item !== id) : [...current, id]))}
-              onClear={(role) => void runAction(buildAnalysisSelectLap(role, null))}
-            />
-          )}
-          <SessionList
-            sessions={filter.sessions}
-            onOpen={(id) => void runAction(buildAnalysisSelectSession(id))}
-            onClearFilters={() => onFilter({ track: null, carClass: null, carModel: null, day: null })}
-            filtered={filter.track !== null || filter.carClass !== null || filter.carModel !== null || filter.day !== null}
-          />
-        </>
+        <SessionList sessions={analysis.sessions} scope={scope} onOpen={(id) => openSession(id)} />
       )}
+      {lapFileImport.dialog}
     </div>
   )
 }
 
-// ── Trace loading ──────────────────────────────────────────────────────────
-
-/** A selected lap's trace: none picked or no channels, fetching, drawn, or fetched but unusable. */
-type TraceState = { kind: 'none' } | { kind: 'loading' } | { kind: 'ready'; trace: LapChannelTrace } | { kind: 'unavailable' }
-
-/**
- * Lap traces are fetched on demand (bridge.analysisTrace), never held in polled state — a
- * trace is a few hundred KB, too large to poll every frame.
- */
-function useLapTrace(lap: CorpusLap | null): TraceState {
-  const [state, setState] = useState<TraceState>({ kind: 'none' })
-  const sessionId = lap?.sessionId
-  const lapNumber = lap?.lapNumber
-  const hasChannels = lap?.hasChannels === true
-
-  useEffect(() => {
-    if (sessionId === undefined || lapNumber === undefined || !hasChannels) {
-      setState({ kind: 'none' })
-      return
-    }
-
-    let cancelled = false
-    setState({ kind: 'loading' })
-    void bridge.analysisTrace(sessionId, lapNumber).then((raw) => {
-      if (cancelled) return
-      const trace = parseLapChannelTrace(raw)
-      setState(trace && isTraceUsable(trace) ? { kind: 'ready', trace } : { kind: 'unavailable' })
-    })
-
-    return () => {
-      cancelled = true
-    }
-  }, [sessionId, lapNumber, hasChannels])
-
-  return state
-}
-
-// ── CommandBar filter selects ──────────────────────────────────────────────
-
-type FilterSelect = { key: 'track' | 'carClass' | 'carModel' | 'day'; label: string; allLabel: string; value: string | null; options: string[] }
-
-/** The corpus filters worth offering: tracks whenever there are any, the others only when they actually narrow (2+). */
-function corpusFilterSelects(filter: AnalysisFilterState): FilterSelect[] {
-  const selects: FilterSelect[] = []
-  if (filter.tracks.length > 0) selects.push({ key: 'track', label: 'Track', allLabel: 'All tracks', value: filter.track, options: filter.tracks })
-  if (filter.classes.length > 1) selects.push({ key: 'carClass', label: 'Class', allLabel: 'All classes', value: filter.carClass, options: filter.classes })
-  if (filter.carModels.length > 1) selects.push({ key: 'carModel', label: 'Car', allLabel: 'All cars', value: filter.carModel, options: filter.carModels })
-  if (filter.days.length > 1) selects.push({ key: 'day', label: 'Day', allLabel: 'All days', value: filter.day, options: filter.days })
-  return selects
-}
-
-const lapFilterFrom = (value: string): AnalysisLapFilter => (value === 'WithChannels' || value === 'TimeOnly' ? value : 'All')
-
-// ── Session list ───────────────────────────────────────────────────────────
-
-function SessionList({
-  sessions,
-  filtered,
-  onOpen,
-  onClearFilters,
-}: {
-  sessions: readonly CorpusSession[]
-  filtered: boolean
-  onOpen: (sessionId: string) => void
-  onClearFilters: () => void
-}) {
+/** Mine | Shared: your sessions, or the laps others shared with you, never one list of both. */
+function ScopeSwitch({ scope, sharedCount, onScope }: { scope: ListScope; sharedCount: number; onScope: (scope: ListScope) => void }) {
   return (
-    <section className="card list-card" aria-label="Sessions">
-      <div className="card-header">
-        <h2 className="card-title">Sessions</h2>
-        <span className="muted tabular">{sessions.length}</span>
-      </div>
-      <div className="list-header analysis-session-columns">
-        <span>Day</span>
-        <span>Session</span>
-        <span>Track</span>
-        <span>Car</span>
-        <span className="analysis-num">Laps</span>
-        <span className="analysis-num">Best</span>
-      </div>
-      {sessions.length === 0 ? (
-        <div className="list-card-empty analysis-list-empty">
-          <span className="muted">No sessions match this filter.</span>
-          {filtered && (
-            <button type="button" className="button small" onClick={onClearFilters}>
-              Clear filters
-            </button>
-          )}
-        </div>
-      ) : (
-        <div className="list-rows">
-          {sessions.map((session) => (
-            <button key={session.id} type="button" className="list-row analysis-session-columns" onClick={() => onOpen(session.id)}>
-              <span className="analysis-secondary">{session.day ? dayLabel(session.day) : '—'}</span>
-              <span className="analysis-cell-strong">
-                <span className="analysis-ellipsis">{session.label}</span>
-                {session.origin !== 'Recorded' && <span className="chip chip-muted">{session.origin}</span>}
-              </span>
-              <span className="analysis-ellipsis" title={session.context.trackCourse}>
-                {session.context.trackCourse || '—'}
-              </span>
-              <span className="analysis-ellipsis analysis-secondary" title={session.context.carModel}>
-                {session.context.carModel || '—'}
-              </span>
-              <span className="analysis-num tabular">{session.lapCount}</span>
-              <span className="analysis-num tabular analysis-strong">{formatLapSeconds(session.bestLapSeconds)}</span>
-            </button>
-          ))}
-        </div>
-      )}
-    </section>
-  )
-}
-
-// ── Inside a session ───────────────────────────────────────────────────────
-
-function SessionHead({ session, onBack }: { session: CorpusSession; onBack: () => void }) {
-  const context = [session.day ? dayLabel(session.day) : null, session.context.trackCourse, session.context.carModel, session.detail]
-    .filter((part): part is string => part !== null && part.length > 0)
-    .join(' · ')
-
-  return (
-    <div className="analysis-session-head">
-      <button type="button" className="button subtle analysis-back" onClick={onBack}>
-        <ChevronLeft /> All sessions
+    <div className="segmented" role="radiogroup" aria-label="Laps shown">
+      <button type="button" role="radio" className="segmented-item" aria-checked={scope === 'mine'} onClick={() => onScope('mine')}>
+        Mine
       </button>
-      <div className="analysis-session-heading">
-        <h2 className="analysis-session-name">{session.label}</h2>
-        {session.origin !== 'Recorded' && <span className="chip chip-muted">{session.origin}</span>}
-      </div>
-      {context && <span className="muted">{context}</span>}
+      <button type="button" role="radio" className="segmented-item" aria-checked={scope === 'shared'} onClick={() => onScope('shared')}>
+        Shared
+        {sharedCount > 0 && <span className="analysis-scope-count tabular">{sharedCount}</span>}
+      </button>
     </div>
   )
 }
 
-function LapKpis({ laps, primary, comparison }: { laps: readonly CorpusLap[]; primary: CorpusLap | null; comparison: CorpusLap | null }) {
-  const stats = lapTimeStats(laps)
-  const gap = primary && comparison ? primary.lapTimeSeconds - comparison.lapTimeSeconds : null
+/** "Import…": a lap file someone sent you, or the game's results archive when it has one. */
+function ImportButton({ onLapFile, onResults }: { onLapFile: () => void; onResults?: () => void }) {
+  const [menuAt, setMenuAt] = useState<MenuAnchor | null>(null)
+  const button = useRef<HTMLButtonElement | null>(null)
+  const close = () => {
+    setMenuAt(null)
+    button.current?.focus()
+  }
+  const act = (action: () => void) => {
+    close()
+    action()
+  }
 
   return (
-    <div className="analysis-kpis">
-      <div className="kpi">
-        <span className="kpi-label">Laps</span>
-        <span className="kpi-value">{stats.count}</span>
-        <span className="kpi-delta">{stats.traced === 0 ? 'Lap times only' : `${stats.traced} with channels`}</span>
-      </div>
-      <div className="kpi">
-        <span className="kpi-label">Best lap</span>
-        <span className="kpi-value">{formatLapSeconds(stats.best?.lapTimeSeconds ?? null)}</span>
-        <span className="kpi-delta">{stats.best ? stats.best.label : 'No timed laps'}</span>
-      </div>
-      <div className="kpi">
-        <span className="kpi-label">Median lap</span>
-        <span className="kpi-value">{formatLapSeconds(stats.medianSeconds)}</span>
-        <span className="kpi-delta">
-          {stats.medianSeconds !== null && stats.best ? `${formatGap(stats.medianSeconds - stats.best.lapTimeSeconds)} to best` : 'No timed laps'}
-        </span>
-      </div>
-      <div className="kpi">
-        <span className="kpi-label">Primary vs comparison</span>
-        <span className="kpi-value">{gap !== null ? formatGap(gap) : '—'}</span>
-        <span className="kpi-delta analysis-kpi-detail">
-          {primary && comparison ? `${primary.label} vs ${comparison.label}` : 'Pick two laps to compare'}
-        </span>
-      </div>
-    </div>
-  )
-}
-
-function LapList({
-  laps,
-  primary,
-  comparison,
-  lapFilter,
-  lapSort,
-  onSelect,
-  onExport,
-}: {
-  laps: readonly CorpusLap[]
-  primary: CorpusLap | null
-  comparison: CorpusLap | null
-  lapFilter: AnalysisLapFilter
-  lapSort: AnalysisLapSort
-  onSelect: (role: 'primary' | 'comparison', lapNumber: number | null) => void
-  /** Saves the lap as a .sprintlap. Offered only on laps with channels: a time alone has nothing to share. */
-  onExport: (lap: CorpusLap) => void
-}) {
-  const rows = applyLapListFilter(laps, lapFilter, lapSort)
-  const best = lapTimeStats(laps).best
-
-  return (
-    <section className="card list-card" aria-label="Laps">
-      <div className="card-header">
-        <h2 className="card-title">Laps</h2>
-        <span className="muted tabular">{rows.length === laps.length ? laps.length : `${rows.length} of ${laps.length}`}</span>
-      </div>
-      <div className="list-header analysis-lap-columns">
-        <span>Lap</span>
-        <span className="analysis-num">Time</span>
-        <span className="analysis-num">Gap</span>
-        <span>Trace</span>
-        <span />
-      </div>
-      {rows.length === 0 ? (
-        <div className="list-card-empty analysis-list-empty">
-          <span className="muted">No laps match this filter.</span>
-        </div>
-      ) : (
-        <div className="list-rows" role="list">
-          {rows.map((lap) => {
-            const isPrimary = primary?.sessionId === lap.sessionId && primary.lapNumber === lap.lapNumber
-            const isComparison = comparison?.sessionId === lap.sessionId && comparison.lapNumber === lap.lapNumber
-            const rowClass = isPrimary ? 'list-row analysis-lap-columns selected' : isComparison ? 'list-row analysis-lap-columns is-comparison' : 'list-row analysis-lap-columns'
-            const isBest = best?.lapNumber === lap.lapNumber
-
-            return (
-              <div key={lap.lapNumber} className={rowClass} role="listitem">
-                <span className="analysis-strong">{lap.label}</span>
-                <span className="analysis-num tabular analysis-strong">{formatLapSeconds(lap.lapTimeSeconds)}</span>
-                <span className="analysis-num tabular analysis-secondary">{isBest ? 'Best' : best ? formatGap(lap.lapTimeSeconds - best.lapTimeSeconds) : '—'}</span>
-                <Status
-                  tone={lap.hasChannels ? 'success' : 'neutral'}
-                  className={lap.hasChannels ? undefined : 'analysis-trace-missing'}
-                  title={lap.unavailableReason ?? undefined}
-                >
-                  {lap.hasChannels ? 'Channels' : 'Time only'}
-                </Status>
-                <span className="analysis-lap-actions">
-                  {lap.hasChannels && (
-                    <button type="button" className="icon-button" aria-label={`Save ${lap.label} as a lap file`} title="Save as a lap file" onClick={() => onExport(lap)}>
-                      <FileDown size={16} />
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    className="button small analysis-pick role-primary"
-                    aria-pressed={isPrimary}
-                    onClick={() => onSelect('primary', isPrimary ? null : lap.lapNumber)}
-                  >
-                    Primary
-                  </button>
-                  <button
-                    type="button"
-                    className="button small analysis-pick role-comparison"
-                    aria-pressed={isComparison}
-                    onClick={() => onSelect('comparison', isComparison ? null : lap.lapNumber)}
-                  >
-                    Compare
-                  </button>
-                </span>
-              </div>
-            )
-          })}
-        </div>
+    <>
+      <button
+        ref={button}
+        type="button"
+        className="button subtle"
+        aria-haspopup="menu"
+        aria-expanded={menuAt !== null}
+        onClick={(event) => {
+          const box = event.currentTarget.getBoundingClientRect()
+          setMenuAt({ x: box.right - 240, y: box.bottom + 4 })
+        }}
+      >
+        <Download /> Import…
+      </button>
+      {menuAt && (
+        <MenuLayer anchor={menuAt} label="Import" width={240} onClose={close}>
+          <button type="button" role="menuitem" className="menu-item" onClick={() => act(onLapFile)}>
+            <FolderOpen size={14} /> A shared lap file…
+          </button>
+          {onResults && (
+            <button type="button" role="menuitem" className="menu-item" onClick={() => act(onResults)}>
+              <Download size={14} /> The game’s results…
+            </button>
+          )}
+        </MenuLayer>
       )}
-    </section>
+    </>
   )
 }
-
-// ── Lap files ──────────────────────────────────────────────────────────────
-
-type LapFileNotice = { tone: 'success' | 'info' | 'warning' | 'error'; title: string; message: string }
 
 const exportNotice = (result: LapExportResult): LapFileNotice | null => {
   switch (result.outcome) {
@@ -518,107 +285,6 @@ const exportNotice = (result: LapExportResult): LapFileNotice | null => {
     case 'failed':
       return { tone: 'error', title: 'Lap not saved', message: result.error }
     case 'saved':
-      return result.hasPositions
-        ? { tone: 'success', title: 'Lap saved', message: `${result.fileName}. Send it on; it opens with Open lap file in Analysis.` }
-        : {
-            tone: 'warning',
-            title: 'Lap saved without positions',
-            message: `${result.fileName} compares fine, but it was recorded before Sprint kept positions, so it cannot be a driving guide.`,
-          }
+      return { tone: 'success', title: 'Lap saved', message: `${result.fileName}. Send it on; it opens with Import… in Analysis.` }
   }
-}
-
-const importNotice = (result: LapImportResult): LapFileNotice | null => {
-  switch (result.outcome) {
-    case 'cancelled':
-      return null
-    case 'failed':
-      return { tone: 'error', title: 'Lap file not opened', message: result.error }
-    case 'alreadyPresent':
-      return { tone: 'info', title: 'Already added', message: `${result.sharedBy}'s ${formatLapSeconds(result.lapTimeSeconds)} at ${result.track} is already in your laps.` }
-    case 'imported': {
-      const lap = `${result.sharedBy}'s ${formatLapSeconds(result.lapTimeSeconds)} at ${result.track} in the ${result.car}`
-      return result.hasPositions
-        ? { tone: 'success', title: 'Lap added', message: `${lap}. It is under ${result.track}, and it can be your driving guide there.` }
-        : { tone: 'warning', title: 'Lap added without positions', message: `${lap}. It compares fine, but it cannot be a driving guide.` }
-    }
-  }
-}
-
-// ── Lap comparison chart card ──────────────────────────────────────────────
-
-function ComparisonCard({
-  primary,
-  comparison,
-  primaryTrace,
-  comparisonTrace,
-  panelIds,
-  onTogglePanel,
-  onClear,
-}: {
-  primary: CorpusLap | null
-  comparison: CorpusLap | null
-  primaryTrace: TraceState
-  comparisonTrace: TraceState
-  panelIds: readonly string[]
-  onTogglePanel: (panelId: string) => void
-  onClear: (role: 'primary' | 'comparison') => void
-}) {
-  const sources: LapTraceSeriesSource[] = []
-  if (primary && primaryTrace.kind === 'ready') sources.push({ trace: primaryTrace.trace, label: primary.label, role: 'Current' })
-  if (comparison && comparisonTrace.kind === 'ready') sources.push({ trace: comparisonTrace.trace, label: comparison.label, role: 'Comparison' })
-  const panels = ALL_LAP_CHART_PANELS.filter((panel) => panelIds.includes(panel.id))
-  const chartPanels = sources.length > 0 ? buildLapTraceChartPanels(sources, panels) : []
-  const loading = primaryTrace.kind === 'loading' || comparisonTrace.kind === 'loading'
-
-  const emptyText = loading
-    ? 'Loading the lap trace…'
-    : !primary && !comparison
-      ? 'Pick a primary lap, and a comparison lap to overlay it, from the laps below.'
-      : 'No channel trace was recorded for the selected laps. Their times are in the lap list.'
-
-  return (
-    <section className="card analysis-chart-card" aria-label="Lap comparison">
-      <div className="analysis-card-head">
-        <h2 className="card-title">Lap comparison</h2>
-        <div className="analysis-legend">
-          {primary && <LegendLap lap={primary} role="primary" onClear={() => onClear('primary')} />}
-          {comparison && <LegendLap lap={comparison} role="comparison" onClear={() => onClear('comparison')} />}
-        </div>
-      </div>
-
-      {sources.length > 0 ? (
-        <>
-          <div className="analysis-panel-chips" role="group" aria-label="Charts">
-            {ALL_LAP_CHART_PANELS.map((panel) => {
-              const shown = panelIds.includes(panel.id)
-              return (
-                <button key={panel.id} type="button" className={shown ? 'chip chip-default' : 'chip chip-muted'} aria-pressed={shown} onClick={() => onTogglePanel(panel.id)}>
-                  {panel.title}
-                </button>
-              )
-            })}
-          </div>
-          {chartPanels.length > 0 ? <LapTraceChartStack panels={chartPanels} /> : <p className="muted analysis-chart-empty">Pick at least one chart above.</p>}
-        </>
-      ) : (
-        <p className="muted analysis-chart-empty">{emptyText}</p>
-      )}
-    </section>
-  )
-}
-
-/** A legend entry for a picked lap: 8px series square (brand = primary, blue = comparison), the lap, and a clear button. */
-function LegendLap({ lap, role, onClear }: { lap: CorpusLap; role: 'primary' | 'comparison'; onClear: () => void }) {
-  return (
-    <span className={`analysis-legend-item role-${role}`}>
-      <span className="analysis-legend-key" aria-hidden="true" />
-      <span className="analysis-legend-label" title={lap.detail}>
-        {role === 'primary' ? 'Primary' : 'Comparison'}: {lap.label} · {formatLapSeconds(lap.lapTimeSeconds)}
-      </span>
-      <button type="button" className="icon-button analysis-legend-clear" aria-label={`Clear ${role} lap`} onClick={onClear}>
-        <X size={12} />
-      </button>
-    </span>
-  )
 }

@@ -45,9 +45,9 @@ public sealed class AnalysisTests
     [Fact]
     public void CarArtworkUsesStableModelIdentityAndReportsMissingAssetsHonestly()
     {
-        var mclaren = AnalysisArtworkCatalog.ResolveCar("Le Mans Ultimate", "McLaren 720S LMGT3 Evo");
-        var porsche = AnalysisArtworkCatalog.ResolveCar("Le Mans Ultimate", "Porsche 911 GT3 R LMGT3");
-        var porschePrototype = AnalysisArtworkCatalog.ResolveCar("Le Mans Ultimate", "Porsche 963");
+        AnalysisCarArtwork mclaren = AnalysisArtworkCatalog.ResolveCar("Le Mans Ultimate", "McLaren 720S LMGT3 Evo");
+        AnalysisCarArtwork porsche = AnalysisArtworkCatalog.ResolveCar("Le Mans Ultimate", "Porsche 911 GT3 R LMGT3");
+        AnalysisCarArtwork porschePrototype = AnalysisArtworkCatalog.ResolveCar("Le Mans Ultimate", "Porsche 963");
 
         Assert.Equal("mclaren-720s-lmgt3-evo", mclaren.Identity);
         Assert.Equal("porsche-911-gt3-r-lmgt3", porsche.Identity);
@@ -62,7 +62,7 @@ public sealed class AnalysisTests
     [Fact]
     public void CarClassDisplayUsesCompactBadgesAndCanonicalFullNames()
     {
-        var options = GameCarClassCatalog.Classes(
+        IReadOnlyList<GameCarClass> options = GameCarClassCatalog.Classes(
             "Le Mans Ultimate",
             ["Hypercar", "LMP2", "LMGT3", "GTE", "LMP3"]);
 
@@ -87,8 +87,8 @@ public sealed class AnalysisTests
             (LapCorpusFilter.DisplayClass(options.Single(option => option.Id == "LMP3")).Abbreviation,
              LapCorpusFilter.DisplayClass(options.Single(option => option.Id == "LMP3")).Name));
 
-        var unknown = GameCarClassCatalog.Classes("Another Game", ["GT3_WORLD-CHALLENGE"]).Single();
-        var unknownDisplay = LapCorpusFilter.DisplayClass(unknown);
+        GameCarClass unknown = GameCarClassCatalog.Classes("Another Game", ["GT3_WORLD-CHALLENGE"]).Single();
+        AnalysisCarClassDisplay unknownDisplay = LapCorpusFilter.DisplayClass(unknown);
         Assert.Equal("GT3-WC", unknownDisplay.Abbreviation);
         Assert.Equal("GT3 WORLD CHALLENGE", unknownDisplay.Name);
     }
@@ -96,10 +96,10 @@ public sealed class AnalysisTests
     [Fact]
     public void TrackArtworkResolvesDistinctRealLayoutsAndSpaAliases()
     {
-        var barcelona = AnalysisArtworkCatalog.ResolveTrack(Lmu, "Circuit de Barcelona-Catalunya");
-        var leMans = AnalysisArtworkCatalog.ResolveTrack(Lmu, "Circuit de la Sarthe");
-        var spa = AnalysisArtworkCatalog.ResolveTrack(Lmu, "Spa-Francorchamps");
-        var spaEndurance = AnalysisArtworkCatalog.ResolveTrack(Lmu, "Spa-Francorchamps Endurance");
+        AnalysisTrackArtwork? barcelona = AnalysisArtworkCatalog.ResolveTrack(Lmu, "Circuit de Barcelona-Catalunya");
+        AnalysisTrackArtwork? leMans = AnalysisArtworkCatalog.ResolveTrack(Lmu, "Circuit de la Sarthe");
+        AnalysisTrackArtwork? spa = AnalysisArtworkCatalog.ResolveTrack(Lmu, "Spa-Francorchamps");
+        AnalysisTrackArtwork? spaEndurance = AnalysisArtworkCatalog.ResolveTrack(Lmu, "Spa-Francorchamps Endurance");
         Assert.NotNull(barcelona);
         Assert.NotNull(leMans);
         Assert.NotNull(spa);
@@ -118,9 +118,9 @@ public sealed class AnalysisTests
     public void EveryTrackTheGameRecordsHasItsOwnCircuitLayout()
     {
         // The exact TrackCourse names Le Mans Ultimate wrote into a real driver's history.
-        var circuits = GameTrackCatalog.Circuits(Lmu, LmuCorpusTracks);
+        IReadOnlyList<GameCircuit> circuits = GameTrackCatalog.Circuits(Lmu, LmuCorpusTracks);
 
-        var artwork = circuits.ToDictionary(
+        Dictionary<string, string?> artwork = circuits.ToDictionary(
             circuit => circuit.Name,
             circuit => AnalysisArtworkCatalog.ResolveCircuit(circuit.Id)?.AssetFileName);
         Assert.DoesNotContain(null, artwork.Values);
@@ -130,12 +130,12 @@ public sealed class AnalysisTests
     [Fact]
     public void LayoutVariantsShareOneCircuitCardAndAreAskedAfterwards()
     {
-        var circuits = GameTrackCatalog.Circuits(Lmu, LmuCorpusTracks);
+        IReadOnlyList<GameCircuit> circuits = GameTrackCatalog.Circuits(Lmu, LmuCorpusTracks);
 
         // 17 recorded track names, 14 places: variants are not places of their own.
         Assert.Equal(17, LmuCorpusTracks.Length);
         Assert.Equal(14, circuits.Count);
-        var spa = circuits.Single(circuit => circuit.Id == "spa");
+        GameCircuit spa = circuits.Single(circuit => circuit.Id == "spa");
         Assert.Equal("Circuit de Spa-Francorchamps", spa.Name);
         Assert.True(spa.LayoutIsAChoice);
         Assert.Equal(["Grand Prix", "Endurance"], spa.Layouts.Select(layout => layout.Label));
@@ -143,7 +143,7 @@ public sealed class AnalysisTests
 
         // An unknown track keeps the name the game gave it rather than joining a circuit it may
         // not belong to.
-        var unknown = GameTrackCatalog.Circuits(Lmu, ["Nürburgring Nordschleife"]).Single();
+        GameCircuit unknown = GameTrackCatalog.Circuits(Lmu, ["Nürburgring Nordschleife"]).Single();
         Assert.Equal("Nürburgring Nordschleife", unknown.Name);
         Assert.False(unknown.LayoutIsAChoice);
     }
@@ -151,7 +151,7 @@ public sealed class AnalysisTests
     [Fact]
     public void PickingACircuitWithSeveralLayoutsLeavesTheLayoutUnanswered()
     {
-        var filter = Filter(
+        LapCorpusFilter filter = Filter(
             Session("hs-spa", "Circuit de Spa-Francorchamps", "Hypercar", "Porsche 963", Evening),
             Session("hs-spa-e", "Circuit de Spa-Francorchamps Endurance", "Hypercar", "Porsche 963", Evening.AddHours(-1)),
             Session("hs-monza", "Autodromo Nazionale Monza", "Hypercar", "Porsche 963", Evening.AddHours(-2)));
@@ -178,7 +178,7 @@ public sealed class AnalysisTests
     [Fact]
     public void GamesAndTracksAreOfferedMostRecentlyDrivenFirst()
     {
-        var filter = Filter(
+        LapCorpusFilter filter = Filter(
             Session("hs-spa", "Spa-Francorchamps", "Hypercar", "Porsche 963", Evening.AddDays(-7)),
             Session("hs-monza", "Monza", "Hypercar", "Porsche 963", Evening));
 
@@ -192,9 +192,9 @@ public sealed class AnalysisTests
     [Fact]
     public void PickingAGameKeepsTracksFromOtherGamesOutOfTheNextStep()
     {
-        var lmu = HistorySession("hs-lmu", "Spa-Francorchamps", "Hypercar", "Porsche 963", Evening, traced: true);
-        var acc = HistorySession("hs-acc", "Monza", "GT3", "Ferrari 296", Evening.AddHours(-1), traced: true, game: "Assetto Corsa Competizione");
-        var filter = Filter(lmu, acc);
+        LapHistorySession lmu = HistorySession("hs-lmu", "Spa-Francorchamps", "Hypercar", "Porsche 963", Evening, traced: true);
+        LapHistorySession acc = HistorySession("hs-acc", "Monza", "GT3", "Ferrari 296", Evening.AddHours(-1), traced: true, game: "Assetto Corsa Competizione");
+        LapCorpusFilter filter = Filter(lmu, acc);
 
         Assert.Null(filter.Game);
         filter.SelectGame("Assetto Corsa Competizione");
@@ -209,7 +209,7 @@ public sealed class AnalysisTests
     {
         // "falls dann nur ein gibt dann direkt das vor auswählen" — a step with one answer is
         // not a question.
-        var filter = Filter(Session("hs-1", "Spa-Francorchamps", "Hypercar", "Porsche 963", Evening));
+        LapCorpusFilter filter = Filter(Session("hs-1", "Spa-Francorchamps", "Hypercar", "Porsche 963", Evening));
 
         Assert.Equal("Hypercar", filter.CarClass);
         Assert.Equal("Porsche 963", filter.CarModel);
@@ -220,7 +220,7 @@ public sealed class AnalysisTests
     [Fact]
     public void TwoClassesAtOneTrackAreAChoiceAndNarrowTheCarsUnderThem()
     {
-        var filter = Filter(
+        LapCorpusFilter filter = Filter(
             Session("hs-hyper", "Spa-Francorchamps", "Hypercar", "Porsche 963", Evening),
             Session("hs-gt3", "Spa-Francorchamps", "GT3", "Ferrari 296", Evening.AddHours(-2)),
             Session("hs-gt3b", "Spa-Francorchamps", "GT3", "BMW M4", Evening.AddHours(-3)));
@@ -239,7 +239,7 @@ public sealed class AnalysisTests
     [Fact]
     public void PickingAClassWithOneCarStillPreselectsThatCar()
     {
-        var filter = Filter(
+        LapCorpusFilter filter = Filter(
             Session("hs-hyper", "Spa-Francorchamps", "Hypercar", "Porsche 963", Evening),
             Session("hs-gt3", "Spa-Francorchamps", "GT3", "Ferrari 296", Evening.AddHours(-2)));
 
@@ -251,7 +251,7 @@ public sealed class AnalysisTests
     [Fact]
     public void ASessionWithNoCarClassIsNamedRatherThanHidden()
     {
-        var filter = Filter(Session("hs-1", "Spa-Francorchamps", carClass: null, "Porsche 963", Evening));
+        LapCorpusFilter filter = Filter(Session("hs-1", "Spa-Francorchamps", carClass: null, "Porsche 963", Evening));
 
         Assert.Equal([LapCorpusFilter.UnspecifiedClass], filter.Classes);
         Assert.Equal(LapCorpusFilter.UnspecifiedClass, filter.CarClass);
@@ -261,7 +261,7 @@ public sealed class AnalysisTests
     [Fact]
     public void ChangingTrackForgetsEverythingUnderTheOldOne()
     {
-        var filter = Filter(
+        LapCorpusFilter filter = Filter(
             Session("hs-spa", "Spa-Francorchamps", "Hypercar", "Porsche 963", Evening),
             Session("hs-monza-a", "Monza", "GT3", "Ferrari 296", Evening.AddDays(-1)),
             Session("hs-monza-b", "Monza", "GT3", "BMW M4", Evening.AddDays(-2)));
@@ -277,7 +277,7 @@ public sealed class AnalysisTests
     [Fact]
     public void LmuClassAliasesCombineUnderReadableGameClassNames()
     {
-        var filter = Filter(
+        LapCorpusFilter filter = Filter(
             Session("hs-hyper", "Spa-Francorchamps", "Hyper", "Porsche 963", Evening),
             Session("hs-hypercar", "Spa-Francorchamps", "Hypercar", "Ferrari 499P", Evening.AddHours(-1)),
             Session("hs-lmp2", "Monza", "LMP2_ELMS", "Oreca 07", Evening.AddHours(-2)));
@@ -292,9 +292,9 @@ public sealed class AnalysisTests
     [Fact]
     public void UnknownGameClassNamesRemainReadableWithoutSharingLmuAliases()
     {
-        var classes = GameCarClassCatalog.Classes("Another Game", ["GT3_WORLD-CHALLENGE"]);
+        IReadOnlyList<GameCarClass> classes = GameCarClassCatalog.Classes("Another Game", ["GT3_WORLD-CHALLENGE"]);
 
-        var definition = Assert.Single(classes);
+        GameCarClass definition = Assert.Single(classes);
         Assert.Equal("GT3 WORLD CHALLENGE", definition.Name);
         Assert.Equal("GT3_WORLD-CHALLENGE", GameCarClassCatalog.CanonicalId("Another Game", definition.Id));
     }
@@ -303,14 +303,14 @@ public sealed class AnalysisTests
     public void TheDayFilterIsOptionalAndNarrowsToOneEvening()
     {
         // "gestern um 19:00 war eine session die will ich anschauen".
-        var filter = Filter(
+        LapCorpusFilter filter = Filter(
             Session("hs-today", "Spa-Francorchamps", "Hypercar", "Porsche 963", Evening),
             Session("hs-yesterday", "Spa-Francorchamps", "Hypercar", "Porsche 963", Evening.AddDays(-1)));
 
         Assert.Null(filter.Day);
         Assert.Equal(2, filter.Sessions.Count);
 
-        var yesterday = filter.Days.Last();
+        DateOnly yesterday = filter.Days.Last();
         filter.SelectDay(yesterday);
 
         Assert.Equal("hs-yesterday", Assert.Single(filter.Sessions).Id);
@@ -319,12 +319,12 @@ public sealed class AnalysisTests
     [Fact]
     public void TheDateRangeIsInclusiveAndCanBeOpenEnded()
     {
-        var filter = Filter(
+        LapCorpusFilter filter = Filter(
             Session("hs-today", "Spa-Francorchamps", "Hypercar", "Porsche 963", Evening),
             Session("hs-yesterday", "Spa-Francorchamps", "Hypercar", "Porsche 963", Evening.AddDays(-1)),
             Session("hs-older", "Spa-Francorchamps", "Hypercar", "Porsche 963", Evening.AddDays(-2)));
 
-        var yesterday = DateOnly.FromDateTime(Evening.AddDays(-1).LocalDateTime);
+        DateOnly yesterday = DateOnly.FromDateTime(Evening.AddDays(-1).LocalDateTime);
         filter.SelectDateRange(yesterday, null);
         Assert.Equal(["hs-today", "hs-yesterday"], filter.Sessions.Select(session => session.Id));
 
@@ -345,7 +345,7 @@ public sealed class AnalysisTests
     [Fact]
     public void DaysReadTheWayADriverNamesThem()
     {
-        var today = new DateOnly(2026, 8, 3);
+        DateOnly today = new DateOnly(2026, 8, 3);
 
         Assert.Equal("Today", LapCorpusFilter.DayLabel(today, today));
         Assert.Equal("Yesterday", LapCorpusFilter.DayLabel(today.AddDays(-1), today));
@@ -355,11 +355,11 @@ public sealed class AnalysisTests
     [Fact]
     public void SessionsAreListedNewestFirstWithTheirTimeAndBestLap()
     {
-        var filter = Filter(
+        LapCorpusFilter filter = Filter(
             Session("hs-early", "Spa-Francorchamps", "Hypercar", "Porsche 963", Evening.AddHours(-3)),
             Session("hs-late", "Spa-Francorchamps", "Hypercar", "Porsche 963", Evening));
 
-        var sessions = filter.Sessions;
+        IReadOnlyList<CorpusSession> sessions = filter.Sessions;
 
         Assert.Equal("hs-late", sessions[0].Id);
         Assert.Contains("Practice", sessions[0].Label, StringComparison.Ordinal);
@@ -370,7 +370,7 @@ public sealed class AnalysisTests
     [Fact]
     public void ASharedSessionIsLabelledByWhoDroveIt()
     {
-        var session = HistorySession("hs-shared", "Spa-Francorchamps", "Hypercar", "Porsche 963", Evening, traced: true);
+        LapHistorySession session = HistorySession("hs-shared", "Spa-Francorchamps", "Hypercar", "Porsche 963", Evening, traced: true);
         session.Origin = LapHistoryOrigin.Shared;
         session.SharedFrom = "Ada";
 
@@ -380,7 +380,7 @@ public sealed class AnalysisTests
     [Fact]
     public void ASessionWithNoTracedLapsSaysSoBeforeItIsOpened()
     {
-        var filter = Filter(HistorySession("hs-1", "Spa-Francorchamps", "Hypercar", "Porsche 963", Evening, traced: false));
+        LapCorpusFilter filter = Filter(HistorySession("hs-1", "Spa-Francorchamps", "Hypercar", "Porsche 963", Evening, traced: false));
 
         Assert.False(filter.Sessions[0].HasChannels);
     }
@@ -474,9 +474,9 @@ public sealed class AnalysisTests
     [Fact]
     public void AnEmptyCorpusSaysSoRatherThanShowingAnEmptyChart()
     {
-        var controller = new AnalysisController(new LapCorpusBrowser(new FakeHistory(), new FakeTraces()));
+        AnalysisController controller = new AnalysisController(new LapCorpusBrowser(new FakeHistory(), new FakeTraces()));
 
-        var state = controller.Load();
+        AnalysisState state = controller.Load();
 
         Assert.True(state.Filter.IsEmpty);
         Assert.Null(state.Stack);
@@ -486,10 +486,10 @@ public sealed class AnalysisTests
     [Fact]
     public void OpeningThePageWaitsForAnExplicitSessionChoice()
     {
-        var browser = BrowserFor(
+        LapCorpusBrowser browser = BrowserFor(
             Session("hs-old", "Spa-Francorchamps", "Hypercar", "Porsche 963", Evening.AddDays(-1)),
             Session("hs-new", "Spa-Francorchamps", "Hypercar", "Porsche 963", Evening));
-        var controller = new AnalysisController(browser);
+        AnalysisController controller = new AnalysisController(browser);
 
         Assert.Null(controller.Load().Session);
         Assert.Equal("hs-new", controller.CreateSessionFilter().Sessions[0].Id);
@@ -498,10 +498,10 @@ public sealed class AnalysisTests
     [Fact]
     public void LapsAreListedFastestFirstWithTheirTier()
     {
-        var controller = Controller(out var browser, Session("hs-1", "Spa-Francorchamps", "Hypercar", "Porsche 963", Evening));
-        var state = controller.Load();
+        AnalysisController controller = Controller(out LapCorpusBrowser? browser, Session("hs-1", "Spa-Francorchamps", "Hypercar", "Porsche 963", Evening));
+        AnalysisState state = controller.Load();
 
-        var laps = browser.Laps(state.Session);
+        IReadOnlyList<CorpusLap> laps = browser.Laps(state.Session);
 
         Assert.Equal([101.0, 102.0, 103.0], laps.Select(lap => lap.LapTimeSeconds));
         Assert.All(laps, lap => Assert.Equal(LapTargetTier.FullTrace, lap.Tier));
@@ -511,13 +511,13 @@ public sealed class AnalysisTests
     [Fact]
     public void LapSidebarCanFilterByChannelsAndSortByLapNumber()
     {
-        var session = HistorySession("hs-1", "Spa-Francorchamps", "Hypercar", "Porsche 963", Evening, traced: true);
+        LapHistorySession session = HistorySession("hs-1", "Spa-Francorchamps", "Hypercar", "Porsche 963", Evening, traced: true);
         session.Laps[1].TraceId = null;
-        var browser = BrowserFor(session);
-        var described = browser.Laps(browser.Sessions()[0]);
+        LapCorpusBrowser browser = BrowserFor(session);
+        IReadOnlyList<CorpusLap> described = browser.Laps(browser.Sessions()[0]);
 
-        var channels = AnalysisLapList.Apply(described, AnalysisLapFilter.WithChannels, AnalysisLapSort.LapNumber);
-        var timeOnly = AnalysisLapList.Apply(described, AnalysisLapFilter.TimeOnly, AnalysisLapSort.Fastest);
+        IReadOnlyList<CorpusLap> channels = AnalysisLapList.Apply(described, AnalysisLapFilter.WithChannels, AnalysisLapSort.LapNumber);
+        IReadOnlyList<CorpusLap> timeOnly = AnalysisLapList.Apply(described, AnalysisLapFilter.TimeOnly, AnalysisLapSort.Fastest);
 
         Assert.Equal([1, 3], channels.Select(lap => lap.LapNumber));
         Assert.Equal(2, Assert.Single(timeOnly).LapNumber);
@@ -526,9 +526,9 @@ public sealed class AnalysisTests
     [Fact]
     public void AnInvalidLapIsNotOfferedAsSomethingToShapeACornerAgainst()
     {
-        var session = HistorySession("hs-1", "Spa-Francorchamps", "Hypercar", "Porsche 963", Evening, traced: true);
+        LapHistorySession session = HistorySession("hs-1", "Spa-Francorchamps", "Hypercar", "Porsche 963", Evening, traced: true);
         session.Laps[0].IsValid = false;
-        var controller = Controller(out var browser, session);
+        AnalysisController controller = Controller(out LapCorpusBrowser? browser, session);
 
         Assert.DoesNotContain(browser.Laps(controller.Load().Session), lap => lap.LapNumber == 1);
     }
@@ -538,11 +538,11 @@ public sealed class AnalysisTests
     {
         // Hiding it would read as "that lap is gone", which is false — the lap is there, its
         // channels are not.
-        var controller = Controller(
-            out var browser,
+        AnalysisController controller = Controller(
+            out LapCorpusBrowser? browser,
             HistorySession("hs-1", "Spa-Francorchamps", "Hypercar", "Porsche 963", Evening, traced: false));
 
-        var lap = browser.Laps(controller.Load().Session)[0];
+        CorpusLap lap = browser.Laps(controller.Load().Session)[0];
 
         Assert.Equal(LapTargetTier.ReferenceCurve, lap.Tier);
         Assert.False(lap.HasChannels);
@@ -552,14 +552,14 @@ public sealed class AnalysisTests
     [Fact]
     public void TwoLapsOverlayOnOneSharedDomain()
     {
-        var controller = Controller(out var browser, Session("hs-1", "Spa-Francorchamps", "Hypercar", "Porsche 963", Evening));
-        var laps = browser.Laps(controller.Load().Session);
+        AnalysisController controller = Controller(out LapCorpusBrowser? browser, Session("hs-1", "Spa-Francorchamps", "Hypercar", "Porsche 963", Evening));
+        IReadOnlyList<CorpusLap> laps = browser.Laps(controller.Load().Session);
 
         controller.SelectPrimary(laps[0]);
         controller.SelectComparison(laps[1]);
-        var state = controller.State();
+        AnalysisState state = controller.State();
 
-        var speed = state.Stack!.Charts.Single(chart => chart.Title == "Speed");
+        ChartPanel speed = state.Stack!.Charts.Single(chart => chart.Title == "Speed");
         Assert.Equal(ChartDomainKind.TrackPosition, state.Stack.Domain.Kind);
         Assert.Contains(speed.Series, series => series.Role == ChartSeriesRole.Current);
         Assert.Contains(speed.Series, series => series.Role == ChartSeriesRole.Comparison);
@@ -570,18 +570,18 @@ public sealed class AnalysisTests
     {
         // Tonight's lap against the best ever is the comparison that matters most, and it needs
         // no extra UI — only changing track invalidates a pick.
-        var controller = Controller(
-            out var browser,
+        AnalysisController controller = Controller(
+            out LapCorpusBrowser? browser,
             Session("hs-old", "Spa-Francorchamps", "Hypercar", "Porsche 963", Evening.AddDays(-1)),
             Session("hs-new", "Spa-Francorchamps", "Hypercar", "Porsche 963", Evening));
-        var state = controller.Load();
+        AnalysisState state = controller.Load();
 
         controller.SelectPrimary(browser.Laps(state.Session)[0]);
-        var old = controller.Filter.Sessions.Single(session => session.Id == "hs-old");
+        CorpusSession old = controller.Filter.Sessions.Single(session => session.Id == "hs-old");
         controller.SelectSession(old);
         controller.SelectComparison(browser.Laps(old)[0]);
 
-        var overlaid = controller.State();
+        AnalysisState overlaid = controller.State();
         Assert.Equal("hs-new", overlaid.Primary!.SessionId);
         Assert.Equal("hs-old", overlaid.Comparison!.SessionId);
         Assert.NotNull(overlaid.Stack);
@@ -590,11 +590,11 @@ public sealed class AnalysisTests
     [Fact]
     public void ChangingTrackDropsTheLapChoicesTheyBelongedToTheOldOne()
     {
-        var controller = Controller(
-            out var browser,
+        AnalysisController controller = Controller(
+            out LapCorpusBrowser? browser,
             Session("hs-spa", "Spa-Francorchamps", "Hypercar", "Porsche 963", Evening),
             Session("hs-monza", "Monza", "Hypercar", "Porsche 963", Evening.AddDays(-1)));
-        var state = controller.Load();
+        AnalysisState state = controller.Load();
         controller.SelectPrimary(browser.Laps(state.Session)[0]);
 
         controller.SelectTrack("Monza");
@@ -605,8 +605,8 @@ public sealed class AnalysisTests
     [Fact]
     public void PickingTheComparisonAgainClearsIt()
     {
-        var controller = Controller(out var browser, Session("hs-1", "Spa-Francorchamps", "Hypercar", "Porsche 963", Evening));
-        var laps = browser.Laps(controller.Load().Session);
+        AnalysisController controller = Controller(out LapCorpusBrowser? browser, Session("hs-1", "Spa-Francorchamps", "Hypercar", "Porsche 963", Evening));
+        IReadOnlyList<CorpusLap> laps = browser.Laps(controller.Load().Session);
 
         controller.SelectComparison(laps[1]);
         controller.SelectComparison(laps[1]);
@@ -617,12 +617,12 @@ public sealed class AnalysisTests
     [Fact]
     public void SelectingALapWithNoChannelsExplainsWhyNothingIsDrawn()
     {
-        var controller = Controller(
-            out var browser,
+        AnalysisController controller = Controller(
+            out LapCorpusBrowser? browser,
             HistorySession("hs-1", "Spa-Francorchamps", "Hypercar", "Porsche 963", Evening, traced: false));
 
         controller.SelectPrimary(browser.Laps(controller.Load().Session)[0]);
-        var state = controller.State();
+        AnalysisState state = controller.State();
 
         Assert.Null(state.Stack);
         Assert.Contains("No channels", state.Notice!, StringComparison.Ordinal);
@@ -631,7 +631,7 @@ public sealed class AnalysisTests
     [Fact]
     public void AFilterThatMatchesNothingSaysSo()
     {
-        var controller = Controller(out _, Session("hs-1", "Spa-Francorchamps", "Hypercar", "Porsche 963", Evening));
+        AnalysisController controller = Controller(out _, Session("hs-1", "Spa-Francorchamps", "Hypercar", "Porsche 963", Evening));
         controller.Load();
 
         controller.SelectDay(new DateOnly(2020, 1, 1));
@@ -646,6 +646,28 @@ public sealed class AnalysisTests
         Assert.Contains(LapTraceChannels.SpeedKph, LapCorpusBrowser.SharedChannels(Trace(), TraceWithoutGear()));
     }
 
+    [Fact]
+    public void The_list_gets_every_session_with_its_runs_and_an_open_session_gets_every_lap_on_its_course()
+    {
+        LapHistorySession spa = Session("spa", "Spa", "Hypercar", "Porsche 963", Evening);
+        spa.Laps[0].Outing = 1;
+        spa.Laps[1].Outing = 1;
+        spa.Laps[2].Outing = 2;
+        LapHistorySession olderSpa = Session("spa-older", "Spa", "Hypercar", "Porsche 963", Evening.AddDays(-1));
+        LapHistorySession monza = Session("monza", "Monza", "Hypercar", "Porsche 963", Evening.AddDays(-2));
+        AnalysisController controller = Controller(out _, spa, olderSpa, monza);
+
+        AnalysisState state = controller.State();
+
+        Assert.Equal(["spa", "spa-older", "monza"], state.Sessions.Select(session => session.Id));
+        Assert.Equal([2, 0, 0], state.Sessions.Select(session => session.Runs));
+        Assert.Equal("spa", state.Session?.Id);
+        Assert.Equal(6, state.CourseLaps.Count);
+        Assert.All(state.CourseLaps, lap => Assert.Equal("Spa", lap.Context.TrackCourse));
+        Assert.Equal("monza", controller.FindSession("monza")?.Id);
+        Assert.Null(controller.FindSession("gone"));
+    }
+
     // ── Fixtures ─────────────────────────────────────────────────────────────
 
     private static AnalysisController Controller(
@@ -653,7 +675,7 @@ public sealed class AnalysisTests
         params LapHistorySession[] sessions)
     {
         browser = BrowserFor(sessions);
-        var controller = new AnalysisController(browser);
+        AnalysisController controller = new AnalysisController(browser);
         controller.Load();
         controller.SelectSession(browser.Sessions().FirstOrDefault());
         return controller;
@@ -664,9 +686,9 @@ public sealed class AnalysisTests
 
     private static LapCorpusBrowser BrowserFor(params LapHistorySession[] sessions)
     {
-        var traces = new FakeTraces();
-        var history = new FakeHistory();
-        foreach (var session in sessions)
+        FakeTraces traces = new FakeTraces();
+        FakeHistory history = new FakeHistory();
+        foreach (LapHistorySession session in sessions)
         {
             history.Add(session, traces, Trace());
         }
@@ -690,7 +712,7 @@ public sealed class AnalysisTests
         bool traced,
         string game = "Le Mans Ultimate")
     {
-        var session = new LapHistorySession
+        LapHistorySession session = new LapHistorySession
         {
             Id = id,
             Kind = HistorySessionKind.Practice,
@@ -705,7 +727,7 @@ public sealed class AnalysisTests
             },
         };
 
-        for (var lap = 1; lap <= 3; lap++)
+        for (int lap = 1; lap <= 3; lap++)
         {
             session.Laps.Add(new LapHistoryRecord
             {
@@ -726,15 +748,15 @@ public sealed class AnalysisTests
 
     private static LapChannelTrace BuildTrace(bool withGear)
     {
-        const int Count = 201;
-        var speed = new float[Count];
-        var brake = new float[Count];
-        var throttle = new float[Count];
-        var steering = new float[Count];
-        var gear = new float[Count];
-        for (var i = 0; i < Count; i++)
+        const int count = 201;
+        float[] speed = new float[count];
+        float[] brake = new float[count];
+        float[] throttle = new float[count];
+        float[] steering = new float[count];
+        float[] gear = new float[count];
+        for (int i = 0; i < count; i++)
         {
-            var t = i / (double)(Count - 1);
+            double t = i / (double)(count - 1);
             speed[i] = (float)(100 + (200 * t));
             brake[i] = (float)t;
             throttle[i] = (float)(1 - t);
@@ -742,7 +764,7 @@ public sealed class AnalysisTests
             gear[i] = 4;
         }
 
-        var channels = new Dictionary<string, float[]>(StringComparer.Ordinal)
+        Dictionary<string, float[]> channels = new Dictionary<string, float[]>(StringComparer.Ordinal)
         {
             [LapTraceChannels.SpeedKph] = speed,
             [LapTraceChannels.Brake] = brake,
@@ -756,7 +778,7 @@ public sealed class AnalysisTests
 
         return new LapChannelTrace
         {
-            PositionStep = 1.0 / (Count - 1),
+            PositionStep = 1.0 / (count - 1),
             TrackLengthMeters = TrackLength,
             Channels = channels,
         };
@@ -768,32 +790,32 @@ public sealed class AnalysisTests
 
         public void Add(LapHistorySession session, FakeTraces traces, LapChannelTrace trace)
         {
-            _sessions.Add(session);
-            foreach (var lap in session.Laps.Where(lap => lap.TraceId is { Length: > 0 }))
+            this._sessions.Add(session);
+            foreach (LapHistoryRecord? lap in session.Laps.Where(lap => lap.TraceId is { Length: > 0 }))
             {
                 traces.All[lap.TraceId!] = trace;
             }
         }
 
-        public IReadOnlyList<LapHistorySession> LoadAll() => _sessions;
+        public IReadOnlyList<LapHistorySession> LoadAll() => this._sessions;
 
-        public void Save(LapHistorySession session) => _sessions.Add(session);
+        public void Save(LapHistorySession session) => this._sessions.Add(session);
 
-        public void Delete(string sessionId) => _sessions.RemoveAll(s => s.Id == sessionId);
+        public void Delete(string sessionId) => this._sessions.RemoveAll(s => s.Id == sessionId);
     }
 
     private sealed class FakeTraces : ILapTraceStore
     {
         public Dictionary<string, LapChannelTrace> All { get; } = new(StringComparer.Ordinal);
 
-        public void Save(string traceId, LapChannelTrace trace) => All[traceId] = trace;
+        public void Save(string traceId, LapChannelTrace trace) => this.All[traceId] = trace;
 
         public LapChannelTrace? Load(string traceId) =>
-            All.TryGetValue(traceId, out var trace) ? trace : null;
+            this.All.TryGetValue(traceId, out LapChannelTrace? trace) ? trace : null;
 
-        public void Delete(string traceId) => All.Remove(traceId);
+        public void Delete(string traceId) => this.All.Remove(traceId);
 
         public IReadOnlyList<LapTraceInfo> List() =>
-            [.. All.Select(pair => new LapTraceInfo(pair.Key, 0, Evening))];
+            [.. this.All.Select(pair => new LapTraceInfo(pair.Key, 0, Evening))];
     }
 }

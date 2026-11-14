@@ -24,8 +24,8 @@ internal static class LmuBinary
 
     public static string ReadNullTerminatedString(ReadOnlySpan<byte> bytes)
     {
-        var zero = bytes.IndexOf((byte)0);
-        var slice = zero >= 0 ? bytes[..zero] : bytes;
+        int zero = bytes.IndexOf((byte)0);
+        ReadOnlySpan<byte> slice = zero >= 0 ? bytes[..zero] : bytes;
         return Encoding.UTF8.GetString(slice);
     }
 
@@ -49,13 +49,13 @@ internal static class LmuBinary
 
     public static float ReadSingle(ReadOnlySpan<byte> buffer, int offset)
     {
-        var bits = System.Buffers.Binary.BinaryPrimitives.ReadInt32LittleEndian(Slice(buffer, offset, sizeof(float)));
+        int bits = System.Buffers.Binary.BinaryPrimitives.ReadInt32LittleEndian(Slice(buffer, offset, sizeof(float)));
         return BitConverter.Int32BitsToSingle(bits);
     }
 
     public static double ReadDouble(ReadOnlySpan<byte> buffer, int offset)
     {
-        var bits = System.Buffers.Binary.BinaryPrimitives.ReadInt64LittleEndian(Slice(buffer, offset, sizeof(double)));
+        long bits = System.Buffers.Binary.BinaryPrimitives.ReadInt64LittleEndian(Slice(buffer, offset, sizeof(double)));
         return BitConverter.Int64BitsToDouble(bits);
     }
 

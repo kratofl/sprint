@@ -1,7 +1,7 @@
 // Resolves a layout's color palette and theme presets, ported from the desktop client's
-// `Features/Dashes/DashPalette.cs` and `DashThemePresets.cs`. Colors are CSS color strings
-// (mostly hex) rather than a parsed color type, since the consumer here is HTML/CSS/SVG, not
-// a Skia canvas.
+// `Features/Dashes/DashPalette.cs` and `DashThemePresets.cs`. The editor reads it for its
+// swatches and pickers; the Rust renderer resolves the same palette for the pixels
+// (renderer/src/palette.rs, whose tests are ported from palette.test.ts).
 //
 // The dash is hardware output, not app UI: it owns its palette and does not follow the app's
 // design tokens. Change these values only as a deliberate dash change — they are what the
@@ -41,7 +41,7 @@ export interface DashPaletteColors {
 }
 
 /** The raw on-wheel colors every palette slot and theme preset is built from. */
-const dashColor = {
+export const dashColor = {
   background: '#08080A',
   surface: '#1B1B1E',
   // A solid mid-grey, not a translucent white: USB wheel panels wash out near-black, and a
@@ -184,73 +184,6 @@ export function resolveStyleColor(token: string | undefined, palette: DashPalett
     case 'label': return palette.muted
     default: return undefined
   }
-}
-
-/** Temperature-coded color for a tyre readout (Celsius), matching the desktop painter thresholds. */
-export function resolveTyreColor(celsius: number, palette: DashPaletteColors): string {
-  if (celsius > 110) return palette.critical
-  if (celsius > 100) return palette.warning
-  if (celsius > 70) return palette.goodOnTarget
-  return palette.coldLow
-}
-
-/**
- * Dims an opaque hex color toward black (0..1 factor) — used for bar tracks/unlit segments.
- * Accepts `#rgb`, `#rrggbb`, or AARRGGBB-ordered `#aarrggbb` hex only (the palette colors this
- * is applied to are always resolved hex, never the CSS `rgba()` literals used elsewhere).
- */
-export function dimColor(color: string, factor: number): string {
-  const { r, g, b, a } = parseHexColor(color)
-  const scaled = {
-    r: clampByte(Math.trunc(r * factor)),
-    g: clampByte(Math.trunc(g * factor)),
-    b: clampByte(Math.trunc(b * factor)),
-  }
-  const body = `${toHexByte(scaled.r)}${toHexByte(scaled.g)}${toHexByte(scaled.b)}`
-  return a === 255 ? `#${body}` : `#${toHexByte(a)}${body}`
-}
-
-/**
- * Applies an alpha value (0..1) to an opaque hex color, returning a CSS `rgba()` string — used
- * for the flag-state screen tints in DashRenderer.tsx.
- */
-export function withAlpha(color: string, alpha: number): string {
-  const { r, g, b } = parseHexColor(color)
-  return `rgba(${r}, ${g}, ${b}, ${clamp01(alpha)})`
-}
-
-function clamp01(value: number): number {
-  return Math.max(0, Math.min(1, value))
-}
-
-function parseHexColor(color: string): { r: number; g: number; b: number; a: number } {
-  const digits = color.trim().replace('#', '')
-  if (digits.length === 3) {
-    const [r, g, b] = digits.split('')
-    return { r: parseInt(r + r, 16), g: parseInt(g + g, 16), b: parseInt(b + b, 16), a: 255 }
-  }
-  if (digits.length === 6) {
-    return { r: parseInt(digits.slice(0, 2), 16), g: parseInt(digits.slice(2, 4), 16), b: parseInt(digits.slice(4, 6), 16), a: 255 }
-  }
-  if (digits.length === 8) {
-    // 8-digit hex is alpha-first: AARRGGBB, e.g. "#12FFFFFF" for a near-transparent white.
-    return {
-      a: parseInt(digits.slice(0, 2), 16),
-      r: parseInt(digits.slice(2, 4), 16),
-      g: parseInt(digits.slice(4, 6), 16),
-      b: parseInt(digits.slice(6, 8), 16),
-    }
-  }
-
-  throw new TypeError(`dimColor: not a hex color: "${color}"`)
-}
-
-function clampByte(value: number): number {
-  return Math.max(0, Math.min(255, value))
-}
-
-function toHexByte(value: number): string {
-  return value.toString(16).padStart(2, '0')
 }
 
 /**

@@ -32,9 +32,12 @@ states explain what to do next instead of showing a blank list.
 
 ### 2. Real Electron pass
 
-On a copy of the data (`SPRINT_DESKTOP_DATA_ROOT`, no `devices.json`), driven over CDP:
+Use your own hidden run: `make agent-app` (fresh data; `DATA=<copy>` without `devices.json` for real
+data, `FILE=<recording>` for live telemetry), driven with `app/desktop/scripts/cdp.mjs`
+(`shot`, `click`, `type`, `key`, `eval`, `wait`), stopped with `agent-app.mjs stop <run folder>`
+(`docs/operations/development.md`). A replay is not a real-game pass. Check:
 
-- the window opens with its native chrome — Windows: the 48px toolbar with the caption buttons at its right end; macOS:
+- (visible `make dev-app` only, the hidden run has no OS chrome) the window opens with its native chrome — Windows: the 48px toolbar with the caption buttons at its right end; macOS:
   the traffic lights over the sidebar's top band and the 52px toolbar — and telemetry status shows
   the real link state, never fake live data (on macOS that is `Unsupported`);
 - every navigation item and Alt+1…8 (⌘1…8) opens its view; Ctrl+K (⌘K) opens the command palette;
@@ -47,9 +50,12 @@ On a copy of the data (`SPRINT_DESKTOP_DATA_ROOT`, no `devices.json`), driven ov
 
 ### 3. Release pass (packaged build)
 
-After `make build-app`, launch `app/build/bin/Sprint-<platform>-<arch>/Sprint.exe` (`Sprint.app` on
-macOS): the same shell renders, the host's `presets/` shipped, Settings shows the stamped version,
-and "Check for updates" answers without crashing.
+After `make build-app`, launch `app/build/bin/win-unpacked/Sprint.exe` (`mac-<arch>/Sprint.app` on
+macOS), or run the installer beside it (`sprint-<version>-setup.exe`): the same shell renders with
+data (the bundled host started), the host's `presets/` shipped and Settings shows the stamped version.
+The dash renderer shipped too: the Dashes page draws its dashes, and a browser display added on
+Devices shows its dash at its address (a wheel screen with red and black stripes, or a display
+reading `Faulted`, means the renderer library is missing).
 
 ### Report
 

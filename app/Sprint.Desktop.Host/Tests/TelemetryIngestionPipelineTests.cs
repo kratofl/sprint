@@ -28,7 +28,7 @@ public sealed class TelemetryIngestionPipelineTests
             // Synchronous dispatch: the recorder's default hands persistence to the thread pool,
             // which would make this test race its own assertion.
             LapHistoryRecorder lapHistory = new(lapHistoryStore, lapTraceStore, dispatch: work => work());
-            PlanTargetDelivery planTargets = new(() => planner.ActivePlan, lapHistoryStore);
+            PlanTargetDelivery planTargets = new(() => planner.ReadActive(PlanTargetDelivery.Aim.Of), lapHistoryStore);
             TelemetryIngestionPipeline pipeline = new(runtime, planner, lapHistory, planTargets, _ => { });
 
             // Establishes the baseline lap (1) the recorder is waiting to see finished, then
@@ -60,7 +60,7 @@ public sealed class TelemetryIngestionPipelineTests
                 clock: () => clock.Now);
             ILapHistoryStore lapHistoryStore = new LocalLapHistoryStore(Path.Combine(dataRoot, "lap-history"));
             LapHistoryRecorder lapHistory = new(lapHistoryStore, dispatch: work => work());
-            PlanTargetDelivery planTargets = new(() => planner.ActivePlan, lapHistoryStore);
+            PlanTargetDelivery planTargets = new(() => planner.ReadActive(PlanTargetDelivery.Aim.Of), lapHistoryStore);
             TelemetryIngestionPipeline pipeline = new(runtime, planner, lapHistory, planTargets, _ => { });
 
             SessionPlan plan = planner.CreatePlan(new CreatePlanRequest { Name = "Race", Game = "LMU", Car = "GT3", Track = "Spa" });
@@ -93,7 +93,7 @@ public sealed class TelemetryIngestionPipelineTests
             ILapHistoryStore lapHistoryStore = new LocalLapHistoryStore(Path.Combine(dataRoot, "lap-history"));
             SessionPlannerService planner = new(new LocalSessionPlanStore(Path.Combine(dataRoot, "session-plans")));
             LapHistoryRecorder lapHistory = new(lapHistoryStore, dispatch: work => work());
-            PlanTargetDelivery planTargets = new(() => planner.ActivePlan, lapHistoryStore);
+            PlanTargetDelivery planTargets = new(() => planner.ReadActive(PlanTargetDelivery.Aim.Of), lapHistoryStore);
             TelemetryIngestionPipeline pipeline = new(runtime, planner, lapHistory, planTargets, _ => { });
 
             // A host publish loop polling faster than the game publishes new frames re-observes
@@ -127,7 +127,7 @@ public sealed class TelemetryIngestionPipelineTests
             SessionPlannerService planner = new(planStore, clock: () => clock.Now);
             ILapHistoryStore lapHistoryStore = new LocalLapHistoryStore(Path.Combine(dataRoot, "lap-history"));
             LapHistoryRecorder lapHistory = new(lapHistoryStore, dispatch: work => work());
-            PlanTargetDelivery planTargets = new(() => planner.ActivePlan, lapHistoryStore);
+            PlanTargetDelivery planTargets = new(() => planner.ReadActive(PlanTargetDelivery.Aim.Of), lapHistoryStore);
             List<DeltaReference?> requestedReferences = [];
             TelemetryIngestionPipeline pipeline = new(
                 runtime, planner, lapHistory, planTargets, reference => requestedReferences.Add(reference));
@@ -241,7 +241,7 @@ public sealed class TelemetryIngestionPipelineTests
 
         public void Save(SessionPlan plan)
         {
-            if (ThrowOnSave)
+            if (this.ThrowOnSave)
             {
                 throw new InvalidOperationException("Simulated session-plan store failure.");
             }

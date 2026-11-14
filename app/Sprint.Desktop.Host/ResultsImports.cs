@@ -60,7 +60,7 @@ public sealed record ResultsImportResult(ResultsImportOutcome Outcome, int Impor
 /// </summary>
 public sealed class ResultsImports
 {
-    private readonly IResultsImporter? _importer;
+    private readonly Func<IResultsImporter?> _importer;
     private readonly ResultsImportLedger _ledger;
     private readonly ResultsImportScanner _scanner;
     private readonly LapHistoryImportService _importService;
@@ -68,21 +68,24 @@ public sealed class ResultsImports
     // Never disposed: it lives as long as the host, and its wait handle is never requested.
     private readonly SemaphoreSlim _gate = new(1, 1);
 
-    /// <param name="importer">The game's results archive, or null when the game has none Sprint can read.</param>
-    public ResultsImports(IResultsImporter? importer, ILapHistoryStore history, ResultsImportLedger ledger, ILog? log = null)
+    /// <param name="importer">
+    /// The game's results archive, or null when the game has none Sprint can read. Asked on every
+    /// use, so a change of the game's install folder is followed without a restart.
+    /// </param>
+    public ResultsImports(Func<IResultsImporter?> importer, ILapHistoryStore history, ResultsImportLedger ledger, ILog? log = null)
     {
         ArgumentNullException.ThrowIfNull(history);
-        this._importer = importer;
+        this._importer = importer ?? throw new ArgumentNullException(nameof(importer));
         this._ledger = ledger ?? throw new ArgumentNullException(nameof(ledger));
         this._scanner = new ResultsImportScanner(ledger, history);
         this._importService = new LapHistoryImportService(history, log);
     }
 
     /// <summary>False when the game archives nothing Sprint can read; the UI then offers no import at all.</summary>
-    public bool Available => this._importer is not null;
+    public bool Available => this._importer() is not null;
 
     /// <summary>Where the sessions come from, phrased for a sentence ("the Le Mans Ultimate results folder"). Never a path.</summary>
-    public string SourceName => this._importer?.SourceDescription ?? "";
+    public string SourceName => this._importer()?.SourceDescription ?? "";
 
     /// <summary>
     /// Finds sessions that are not imported yet. The startup prompt passes
@@ -91,7 +94,7 @@ public sealed class ResultsImports
     /// </summary>
     public async Task<ResultsImportOffer> ScanAsync(bool includeDeclined, CancellationToken ct)
     {
-        if (this._importer is not { } importer)
+        if (this._importer() is not { } importer)
         {
             return ResultsImportOffer.Empty;
         }
@@ -124,7 +127,7 @@ public sealed class ResultsImports
     public async Task<ResultsImportResult> ImportAsync(IReadOnlyCollection<string> ids, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(ids);
-        if (this._importer is not { } importer)
+        if (this._importer() is not { } importer)
         {
             return new ResultsImportResult(ResultsImportOutcome.Failed, Error: "This game has no results archive Sprint can import.");
         }
@@ -158,7 +161,7 @@ public sealed class ResultsImports
     public async Task DeclineAsync(IReadOnlyCollection<string> ids, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(ids);
-        if (this._importer is not { } importer)
+        if (this._importer() is not { } importer)
         {
             return;
         }

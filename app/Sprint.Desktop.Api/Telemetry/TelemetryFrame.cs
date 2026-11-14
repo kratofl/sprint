@@ -19,6 +19,103 @@ public sealed record TelemetryFrame
     public EnergyState Energy { get; init; } = new();
     public PenaltiesState Penalties { get; init; } = new();
     public SessionConditions Conditions { get; init; } = new();
+
+    /// <summary>The car's bodywork and impact state; null when the game does not report it or the driver is not in the car.</summary>
+    public DamageState? Damage { get; init; }
+
+    /// <summary>
+    /// Every car in the session, the player's included, as the game last scored them; null when
+    /// the game does not report other cars. Scoring updates far less often than telemetry (LMU:
+    /// ~5 Hz against ~60 Hz), so a source hands out the same list until scoring changes, and a
+    /// recording stores it only when it did.
+    /// </summary>
+    public IReadOnlyList<FieldCar>? Field { get; init; }
+}
+
+/// <summary>
+/// One car in the session as scoring reports it: enough for a timing table and a track map.
+/// Flat on purpose, so two snapshots compare by value.
+/// </summary>
+public sealed record FieldCar
+{
+    /// <summary>The game's slot id. Unique within a snapshot; a server can reuse it after someone leaves.</summary>
+    public int Id { get; init; }
+    public string Driver { get; init; } = "";
+
+    /// <summary>The entry as the game names it (team, livery, number) — <see cref="SessionInfo.Car"/> for the player.</summary>
+    public string Car { get; init; } = "";
+
+    /// <summary>The class as the game states it, in <see cref="SessionInfo.CarClass"/>'s spelling.</summary>
+    public string CarClass { get; init; } = "";
+    public bool IsPlayer { get; init; }
+
+    /// <summary>1-based overall position; 0 when unknown.</summary>
+    public int Place { get; init; }
+
+    /// <summary>1-based position within <see cref="CarClass"/>, ranked from <see cref="Place"/>; 0 when unknown.</summary>
+    public int ClassPlace { get; init; }
+    public int LapsCompleted { get; init; }
+
+    /// <summary>Distance around the lap in metres; against <see cref="SessionInfo.TrackLengthMeters"/> it is the lap fraction.</summary>
+    public double LapDistanceMeters { get; init; }
+
+    /// <summary>The sector the car is in, 1–3; 0 when unknown.</summary>
+    public int Sector { get; init; }
+    public double? BestLapTime { get; init; }
+    public double? LastLapTime { get; init; }
+
+    /// <summary>Sector durations of the last lap; all null unless the lap's marks were credible.</summary>
+    public double? LastLapSector1 { get; init; }
+    public double? LastLapSector2 { get; init; }
+    public double? LastLapSector3 { get; init; }
+
+    /// <summary>Sector durations of the lap being driven, each null until that sector is done.</summary>
+    public double? CurrentLapSector1 { get; init; }
+    public double? CurrentLapSector2 { get; init; }
+
+    /// <summary>Seconds and whole laps behind the overall leader.</summary>
+    public double GapToLeader { get; init; }
+    public int LapsToLeader { get; init; }
+
+    /// <summary>Seconds and whole laps behind the car one place ahead.</summary>
+    public double GapToNext { get; init; }
+    public int LapsToNext { get; init; }
+    public bool InPitLane { get; init; }
+    public bool InGarage { get; init; }
+    public PitState PitState { get; init; }
+    public int PitStops { get; init; }
+    public FinishStatus FinishStatus { get; init; }
+
+    /// <summary>Penalties the car still has to serve (a count: the game does not say which kind).</summary>
+    public int Penalties { get; init; }
+
+    /// <summary>The car is being shown the blue flag: a faster car is about to lap it.</summary>
+    public bool BlueFlag { get; init; }
+
+    /// <summary>The front tyre compound as the game names it (e.g. "Medium"); null when the game does not say for this car.</summary>
+    public string? Compound { get; init; }
+
+    /// <summary>World position in metres, in <see cref="CarPose"/>'s convention (right-handed, +Y up), seen from above.</summary>
+    public float PositionX { get; init; }
+    public float PositionZ { get; init; }
+}
+
+/// <summary>Where a car is in a pit stop.</summary>
+public enum PitState
+{
+    None,
+    Requested,
+    Entering,
+    Stopped,
+    Exiting
+}
+
+public enum FinishStatus
+{
+    None,
+    Finished,
+    Dnf,
+    Disqualified
 }
 
 /// <summary>
@@ -46,6 +143,40 @@ public sealed record SessionConditions
 
     /// <summary>Whether the session forces a fixed setup.</summary>
     public bool? FixedSetup { get; init; }
+
+    /// <summary>Air temperature, °C.</summary>
+    public double? AirTemperatureCelsius { get; init; }
+
+    /// <summary>Track surface temperature, °C.</summary>
+    public double? TrackTemperatureCelsius { get; init; }
+
+    /// <summary>How hard it is raining, 0–1.</summary>
+    public double? Raining { get; init; }
+}
+
+/// <summary>
+/// What has happened to the car's body. Read beside the tyres' own <see cref="TireState.Flat"/>
+/// and <see cref="TireState.Detached"/>, which cover the wheels.
+/// </summary>
+public sealed record DamageState
+{
+    /// <summary>
+    /// Dent severity at eight places around the car, 0 none, 1 some, 2 more, in the game's order
+    /// (LMU mDentSeverity). Always eight entries.
+    /// </summary>
+    public IReadOnlyList<int> Dents { get; init; } = [0, 0, 0, 0, 0, 0, 0, 0];
+
+    /// <summary>Session time of the last impact, seconds; null before the first one.</summary>
+    public double? LastImpactSessionTime { get; init; }
+
+    /// <summary>How hard the last impact was, as the game measures it.</summary>
+    public double LastImpactMagnitude { get; init; }
+
+    /// <summary>Whether the game shows the overheating warning.</summary>
+    public bool Overheating { get; init; }
+
+    /// <summary>Whether any part other than a wheel has come off.</summary>
+    public bool DetachedParts { get; init; }
 }
 
 public sealed record SessionInfo
@@ -67,6 +198,19 @@ public sealed record SessionInfo
     /// part of a context key.
     /// </summary>
     public string CarClass { get; init; } = "";
+
+    /// <summary>
+    /// The car's model as the game names it (e.g. "Oreca 07"), empty when unknown.
+    /// <see cref="Car"/> can name an entry — a livery with a team and a number — so this is
+    /// what says which car it actually is.
+    /// </summary>
+    public string CarType { get; init; } = "";
+
+    /// <summary>
+    /// The championship the car is entered in, as the game names it (e.g. "WEC 2026",
+    /// "ELMS 2025"), empty when unknown.
+    /// </summary>
+    public string CarChampionship { get; init; } = "";
     public SessionType SessionType { get; init; } = SessionType.Unknown;
 
     /// <summary>Seconds elapsed in the current session.</summary>
@@ -86,8 +230,28 @@ public sealed record SessionInfo
     /// </summary>
     public double? SessionTimeRemaining { get; init; }
     public double BestLapTime { get; init; }
+    /// <summary>The session's lap limit, or 0 when it has none (a timed or open session).</summary>
     public int MaxLaps { get; init; }
     public bool InCar { get; init; }
+
+    /// <summary>Where the session stands: before the start, green, under a full course yellow, stopped, over.</summary>
+    public SessionPhase Phase { get; init; }
+}
+
+/// <summary>
+/// The session's state for the whole field. A full course yellow and a safety car are one phase:
+/// the game does not tell them apart.
+/// </summary>
+public enum SessionPhase
+{
+    Unknown,
+    BeforeStart,
+    Formation,
+    Countdown,
+    Green,
+    FullCourseYellow,
+    Stopped,
+    Over
 }
 
 public enum SessionType
@@ -117,23 +281,53 @@ public sealed record CarState
 
     /// <summary>Driver steering position before steering assists or vehicle-side filtering.</summary>
     public float Steering { get; init; }
+
+    /// <summary>
+    /// The throttle the car actually got, 0–1: <see cref="Throttle"/> after traction control,
+    /// rev and speed limiting. Null when the game does not say.
+    /// </summary>
+    public float? ThrottleApplied { get; init; }
+
+    /// <summary>
+    /// The brake the car actually got, 0–1: <see cref="Brake"/> after ABS. Null when the game
+    /// does not say.
+    /// </summary>
+    public float? BrakeApplied { get; init; }
     public float FuelLiters { get; init; }
     public float FuelPerLapLiters { get; init; }
+
+    /// <summary>How much fuel the tank holds, litres. Null when the game does not say.</summary>
+    public float? FuelCapacityLiters { get; init; }
     /// <summary>World position in the game's own frame, for track maps. <see cref="Pose"/> is the frame-neutral one.</summary>
     public float PositionX { get; init; }
     public float PositionY { get; init; }
     public float PositionZ { get; init; }
     public float BrakeBiasRear { get; init; }
 
-    /// <summary>Where the car is and how it is moving, for drawing into the driver's view. Null when the game does not say.</summary>
+    /// <summary>
+    /// Whether the car stands in its own garage stall, the only place its setup can be changed.
+    /// Null when the game does not say.
+    /// </summary>
+    public bool? InGarage { get; init; }
+
+    /// <summary>Whether the car is between pit entry and pit exit. Null when the game does not say.</summary>
+    public bool? InPitLane { get; init; }
+
+    /// <summary>Where the car is in a pit stop. Null when the game does not say.</summary>
+    public PitState? PitState { get; init; }
+
+    /// <summary>Whether the pit speed limiter is switched on. Null when the game does not say.</summary>
+    public bool? PitLimiter { get; init; }
+
+    /// <summary>Where the car is and how it is moving. Null when the game does not say.</summary>
     public CarPose? Pose { get; init; }
 }
 
 /// <summary>
 /// The car's rigid-body state in one convention every consumer shares, whatever the game uses:
-/// right-handed, +Y up; the body frame is +X right, +Y up, -Z forward (OpenXR's), and
+/// right-handed, +Y up; the body frame is +X right, +Y up, -Z forward (as OpenXR), and
 /// <see cref="Orientation"/> rotates body vectors into world vectors. A game adapter converts
-/// into this at the edge, so the driving guide's renderers never learn a game's axes.
+/// into this at the edge, so no consumer ever learns a game's axes.
 /// </summary>
 public sealed record CarPose
 {
@@ -178,6 +372,71 @@ public sealed record TireState
     public float PressureKPa { get; init; }
     public float WearPercent { get; init; }
     public string Compound { get; init; } = "";
+
+    // The wheel corner around the tyre: what slip, lockups, offs and damage are read from.
+    // 0 (or Unknown) means the game reported nothing, as for every other tyre channel.
+
+    /// <summary>Wheel speed, rad/s. Near 0 while the car still moves is a lockup.</summary>
+    public float RotationRadiansPerSecond { get; init; }
+
+    /// <summary>
+    /// How fast the contact patch slides along the tyre, m/s, against the road. Large under
+    /// braking is a lockup, large under throttle is wheelspin; no tyre radius needed.
+    /// </summary>
+    public float LongitudinalPatchVelocity { get; init; }
+
+    /// <summary>How fast the contact patch slides sideways, m/s: the slide in a corner.</summary>
+    public float LateralPatchVelocity { get; init; }
+
+    /// <summary>The road's speed under the contact patch along the tyre, m/s. Slip ratio is patch over ground velocity.</summary>
+    public float LongitudinalGroundVelocity { get; init; }
+
+    /// <summary>The road's speed under the contact patch across the tyre, m/s. Slip angle comes from it with the longitudinal one.</summary>
+    public float LateralGroundVelocity { get; init; }
+
+    /// <summary>The game's estimate of what fraction of the contact patch is sliding, 0–1.</summary>
+    public float PatchSlidingFraction { get; init; }
+
+    /// <summary>Vertical load on the tyre, N.</summary>
+    public float LoadNewtons { get; init; }
+
+    public float LateralForceNewtons { get; init; }
+
+    public float LongitudinalForceNewtons { get; init; }
+
+    /// <summary>Radians; positive leans the top of the wheel outward.</summary>
+    public float CamberRadians { get; init; }
+
+    /// <summary>Unloaded tyre radius, metres (the game reports whole centimetres).</summary>
+    public float RadiusMeters { get; init; }
+
+    public float BrakeTempCelsius { get; init; }
+
+    public float SuspensionDeflectionMeters { get; init; }
+
+    public float RideHeightMeters { get; init; }
+
+    /// <summary>
+    /// What the tyre is on: grass or gravel marks an off, a rumble strip a kerb. LMU reports
+    /// Dry also when it has no reading, so read it beside a non-zero load.
+    /// </summary>
+    public TireSurface Surface { get; init; } = TireSurface.Unknown;
+
+    public bool Flat { get; init; }
+
+    public bool Detached { get; init; }
+}
+
+public enum TireSurface
+{
+    Unknown,
+    Dry,
+    Wet,
+    Grass,
+    Dirt,
+    Gravel,
+    RumbleStrip,
+    Special
 }
 
 public sealed record LapState
@@ -209,17 +468,42 @@ public sealed record RaceFlags
     public bool SafetyCar { get; init; }
     public bool VirtualSafetyCar { get; init; }
     public bool Checkered { get; init; }
+
+    /// <summary>A local yellow somewhere in sector 1, 2 or 3; the game says which sector, not where in it.</summary>
+    public bool Sector1Yellow { get; init; }
+    public bool Sector2Yellow { get; init; }
+    public bool Sector3Yellow { get; init; }
 }
 
+/// <summary>
+/// The car's driver aids and the settings the driver can change from the cockpit. Each setting
+/// pairs with a maximum; a maximum of 0 means the car does not offer it.
+/// </summary>
 public sealed record ElectronicsState
 {
     public bool TractionControlActive { get; init; }
     public byte TractionControl { get; init; }
     public byte TractionControlMax { get; init; }
+
+    /// <summary>Traction control slip.</summary>
+    public byte TractionControlSlip { get; init; }
+    public byte TractionControlSlipMax { get; init; }
+
+    /// <summary>Traction control power cut.</summary>
+    public byte TractionControlCut { get; init; }
+    public byte TractionControlCutMax { get; init; }
     public byte Abs { get; init; }
     public byte AbsMax { get; init; }
     public byte MotorMap { get; init; }
     public byte MotorMapMax { get; init; }
+
+    /// <summary>Brake migration.</summary>
+    public byte Migration { get; init; }
+    public byte MigrationMax { get; init; }
+    public byte FrontAntiRollBar { get; init; }
+    public byte FrontAntiRollBarMax { get; init; }
+    public byte RearAntiRollBar { get; init; }
+    public byte RearAntiRollBarMax { get; init; }
     public bool DrsActive { get; init; }
 }
 

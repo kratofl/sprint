@@ -24,9 +24,10 @@ public static class PlanContextCapture
         ArgumentNullException.ThrowIfNull(remembered);
         ArgumentNullException.ThrowIfNull(session);
 
-        var changed = false;
+        bool changed = false;
         changed |= Adopt(session.Game, remembered.Game, value => remembered.Game = value);
-        changed |= Adopt(session.Car, remembered.Car, value => remembered.Car = value);
+        // The car's name, not the game's entry name: a plan is matched to history by that name.
+        changed |= Adopt(CarNames.Of(session), remembered.Car, value => remembered.Car = value);
         changed |= Adopt(session.Track, remembered.Track, value => remembered.Track = value);
         return changed;
     }

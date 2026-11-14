@@ -1,15 +1,9 @@
 import { useLayoutEffect, useRef, type RefObject } from 'react'
-import { ArrowLeft, ChevronLeft, PanelLeft, Search } from 'lucide-react'
+import { PanelLeft, Search } from 'lucide-react'
 import { platform } from '../platform'
-import type { RuntimeState } from './runtime'
 import { shortcutAria, shortcutLabel } from './shortcuts'
-import { Status } from './Status'
-import { TelemetryBadge } from './TelemetryBadge'
 
 type TitleBarProps = {
-  canGoBack: boolean
-  onBack: () => void
-  runtime: RuntimeState
   onOpenPalette: () => void
   /** The current page's navigation label, shown as the page title. */
   title: string
@@ -17,8 +11,6 @@ type TitleBarProps = {
   onToggleSidebar: () => void
   /** The "Show sidebar" button, focused after the sidebar is hidden from the keyboard. */
   showSidebarRef: RefObject<HTMLButtonElement | null>
-  /** The telemetry indicator opens Help & diagnostics. */
-  onOpenDiagnostics: () => void
   /** The element the current page's actions render into (PageHeader portals them). */
   onActionsSlot: (slot: HTMLElement | null) => void
   /**
@@ -29,10 +21,11 @@ type TitleBarProps = {
 }
 
 /**
- * The window's toolbar, right of the sidebar, in three zones (styles.css lays them out as
- * one grid). Leading: (macOS: sidebar toggle while the sidebar is hidden), back, the page title.
- * Centre: the telemetry indicator. Trailing: the page's actions (PageHeader portals them into
- * the slot), then a search field that opens the palette.
+ * The window's toolbar, right of the sidebar, in two zones (styles.css lays them out as
+ * one grid). Leading: (macOS: sidebar toggle while the sidebar is hidden), the page title. There
+ * is no back button: a deeper page carries its own way up, and Alt+Left / ⌘[ goes up a level (App.tsx).
+ * Trailing: the page's actions (PageHeader portals them into the slot), then a search field that
+ * opens the palette. The game link lives at the foot of the sidebar (TelemetryRow.tsx), not here.
  *
  * Windows and Linux: 48px, and it is the window's title bar. The OS caption buttons are
  * Electron's native `titleBarOverlay` on the right; `.titlebar-trail` reserves their width
@@ -42,42 +35,33 @@ type TitleBarProps = {
  * (or over the toolbar's left inset while the sidebar is hidden).
  */
 export function TitleBar({
-  canGoBack,
-  onBack,
-  runtime,
   onOpenPalette,
   title,
   sidebarCollapsed,
   onToggleSidebar,
   showSidebarRef,
-  onOpenDiagnostics,
   onActionsSlot,
   onActionsRoom,
 }: TitleBarProps) {
   const toolbarRef = useRef<HTMLElement>(null)
   const leadRef = useRef<HTMLDivElement>(null)
-  const centreRef = useRef<HTMLDivElement>(null)
   const trailRef = useRef<HTMLDivElement>(null)
   const searchRef = useRef<HTMLButtonElement>(null)
 
-  // The actions' room is what the grid leaves after the leading zone, the search field, the
-  // gaps and the centre's minimum (the telemetry indicator collapsed to its dot), so the
-  // indicator shrinks first and the actions leave only when even the dot would not fit.
-  // Read on demand (PageHeader asks before paint, after the new page title is in), so a
+  // The actions' room is what the grid leaves after the leading zone, the search field and the
+  // gaps. Read on demand (PageHeader asks before paint, after the new page title is in), so a
   // decision never uses a stale width.
   useLayoutEffect(() => {
     const toolbar = toolbarRef.current
     const lead = leadRef.current
-    const centre = centreRef.current
     const trail = trailRef.current
     const search = searchRef.current
-    if (!toolbar || !lead || !centre || !trail || !search) return
+    if (!toolbar || !lead || !trail || !search) return
     const measure = (): number => {
       const bar = getComputedStyle(toolbar)
       const inner = toolbar.clientWidth - parseFloat(bar.paddingLeft) - parseFloat(bar.paddingRight)
-      const gaps = 2 * parseFloat(bar.columnGap) + parseFloat(getComputedStyle(trail).columnGap)
-      const centreMin = parseFloat(getComputedStyle(centre).minWidth) || 0
-      return Math.floor(inner - lead.offsetWidth - search.offsetWidth - gaps - centreMin)
+      const gaps = parseFloat(bar.columnGap) + parseFloat(getComputedStyle(trail).columnGap)
+      return Math.floor(inner - lead.offsetWidth - search.offsetWidth - gaps)
     }
     onActionsRoom({ measure })
     const observer = new ResizeObserver(() => onActionsRoom({ measure }))
@@ -102,41 +86,16 @@ export function TitleBar({
             <PanelLeft size={16} strokeWidth={1.7} />
           </button>
         ) : null}
-        <BackButton canGoBack={canGoBack} onBack={onBack} />
         {/* The page's own <h1> (visually hidden) stays the accessible title. */}
         <span className="titlebar-title" aria-hidden="true">
           {title}
         </span>
-      </div>
-      <div ref={centreRef} className="titlebar-centre">
-        {runtime.kind === 'ready' ? (
-          <TelemetryBadge telemetry={runtime.sprint.telemetry} onOpen={onOpenDiagnostics} />
-        ) : (
-          <TelemetryLoading />
-        )}
       </div>
       <div ref={trailRef} className="titlebar-trail">
         <div ref={onActionsSlot} className="titlebar-actions" />
         <SearchButton ref={searchRef} onOpenPalette={onOpenPalette} />
       </div>
     </header>
-  )
-}
-
-function BackButton({ canGoBack, onBack }: { canGoBack: boolean; onBack: () => void }) {
-  const mac = platform === 'mac'
-  return (
-    <button
-      type="button"
-      className="titlebar-back"
-      onClick={onBack}
-      disabled={!canGoBack}
-      aria-label="Back"
-      aria-keyshortcuts={shortcutAria(platform, { kind: 'back' })}
-      title={`Back (${shortcutLabel(platform, { kind: 'back' })})`}
-    >
-      {mac ? <ChevronLeft size={18} strokeWidth={1.8} /> : <ArrowLeft size={16} strokeWidth={1.7} />}
-    </button>
   )
 }
 
@@ -154,13 +113,5 @@ function SearchButton({ onOpenPalette, ref }: { onOpenPalette: () => void; ref?:
       <kbd>{shortcutLabel(platform, { kind: 'palette' })}</kbd>
       <Search size={13} strokeWidth={1.8} aria-hidden="true" />
     </button>
-  )
-}
-
-function TelemetryLoading() {
-  return (
-    <Status tone="neutral" quiet className="telemetry-badge">
-      Loading…
-    </Status>
   )
 }

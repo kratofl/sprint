@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using Sprint.Desktop.Features.Devices;
 
@@ -15,6 +16,9 @@ public sealed record InputBinding
 
     [JsonPropertyName("command")]
     public string Command { get; init; } = "";
+
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? ExtensionData { get; init; }
 }
 
 /// <summary>The persisted global controls config (controls.json).</summary>
@@ -22,6 +26,9 @@ public sealed class ControlsConfig
 {
     [JsonPropertyName("bindings")]
     public List<InputBinding> Bindings { get; set; } = [];
+
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? ExtensionData { get; set; }
 }
 
 /// <summary>
@@ -33,9 +40,9 @@ public static class BindingResolver
 {
     public static string? Resolve(string input, params IEnumerable<InputBinding>[] layers)
     {
-        foreach (var layer in layers)
+        foreach (IEnumerable<InputBinding> layer in layers)
         {
-            foreach (var binding in layer)
+            foreach (InputBinding binding in layer)
             {
                 if (string.Equals(binding.Input, input, StringComparison.OrdinalIgnoreCase))
                 {
@@ -64,7 +71,7 @@ public static class HardwareBindingResolver
         IEnumerable<SavedDevice> devices,
         IEnumerable<InputBinding> globalBindings)
     {
-        foreach (var device in devices.Where(device => !device.Disabled))
+        foreach (SavedDevice? device in devices.Where(device => !device.Disabled))
         {
             if (ResolveDevice(input.Input, device) is { } resolved)
             {
@@ -79,7 +86,7 @@ public static class HardwareBindingResolver
 
     private static ResolvedHardwareBinding? ResolveDevice(string input, SavedDevice device)
     {
-        var command = device.Bindings
+        string? command = device.Bindings
             .FirstOrDefault(binding => string.Equals(binding.Input, input, StringComparison.OrdinalIgnoreCase))
             ?.Command;
         return string.IsNullOrWhiteSpace(command)

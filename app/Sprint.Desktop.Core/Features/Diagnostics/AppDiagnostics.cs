@@ -45,11 +45,11 @@ public static class AppDiagnostics
                 return new Uninstaller(() => { });
             }
 
-            var resolvedPaths = paths ?? DiagnosticsPaths.CreateDefault();
-            var fileLogger = new FileLogger(resolvedPaths, minimumLevel);
-            var liveLog = new LiveLogStore();
-            var logger = new CompositeLog(fileLogger, liveLog);
-            var crash = new CrashReporter(resolvedPaths, logger, BuildInfo.Version);
+            DiagnosticsPaths resolvedPaths = paths ?? DiagnosticsPaths.CreateDefault();
+            FileLogger fileLogger = new FileLogger(resolvedPaths, minimumLevel);
+            LiveLogStore liveLog = new LiveLogStore();
+            CompositeLog logger = new CompositeLog(fileLogger, liveLog);
+            CrashReporter crash = new CrashReporter(resolvedPaths, logger, BuildInfo.Version);
 
             Log = logger;
             LiveLog = liveLog;
@@ -112,7 +112,7 @@ public static class AppDiagnostics
 
         public void Dispose()
         {
-            var action = Interlocked.Exchange(ref _dispose, null);
+            Action? action = Interlocked.Exchange(ref this._dispose, null);
             action?.Invoke();
         }
     }

@@ -1,14 +1,145 @@
-/* Settings (SettingsView.tsx): Windows 11 Settings layout. Groups of setting
-   cards 4px apart; each card is icon · title + description · control. Built on
-   .card, .button and .infobar from styles.css (dialogs: shell/ContentDialog.tsx);
-   the setting row and the ToggleSwitch are local because no other view uses them. */
+/* Settings (SettingsView.tsx) and the dash designer's Settings section (SettingsLayout.tsx).
+   The Settings page: the driver card, then grouped lists — one card per group, rows split by
+   hairlines, a footnote under the group. The designer: setting cards 4px apart, each icon ·
+   title + description · control. Both share the ToggleSwitch below. Built on .card, .button,
+   .segmented and .infobar from styles.css. */
 
 .settings {
   display: flex;
   flex-direction: column;
   gap: 20px;
-  max-width: 1000px;
+  max-width: 720px;
 }
+
+.settings-secondary {
+  color: var(--label-secondary);
+}
+
+/* ── Driver card ──────────────────────────────────────────────────────────── */
+
+.settings-driver {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.settings-driver-avatar {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-pill);
+  background: var(--layer);
+  color: var(--label-secondary);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.settings-driver-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.settings-plate-field {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+}
+
+/* The race number as a plate, in the card's 20px heading type. */
+.settings-plate,
+.settings-plate-input {
+  height: 40px;
+  border-radius: var(--radius-control);
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 28px;
+}
+
+.settings-plate {
+  display: grid;
+  place-items: center;
+  min-width: 56px;
+  padding: 0 10px;
+  background: var(--layer);
+}
+
+.settings-plate-input {
+  width: 88px;
+  padding: 0 10px;
+  text-align: center;
+}
+
+.settings-driver-skeleton {
+  height: 82px;
+}
+
+/* ── Grouped list ─────────────────────────────────────────────────────────── */
+
+.settings-list-title {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 20px;
+}
+
+.card.settings-list-card {
+  padding: 0;
+}
+
+.settings-list-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-height: 48px;
+  padding: 8px 16px;
+}
+
+.settings-list-row + .settings-list-row {
+  border-top: 1px solid var(--divider);
+}
+
+.settings-list-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.settings-list-detail {
+  color: var(--label-secondary);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.settings-list-detail.tone-danger {
+  color: var(--danger-text);
+}
+
+.settings-list-control {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.settings-list-footer {
+  margin: 6px 16px 0;
+  color: var(--label-secondary);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.settings-list-skeleton {
+  height: 150px;
+}
+
+/* ── Setting card (the dash designer's Settings section) ──────────────────── */
 
 /* The column gap spaces the header from the first group. */
 .settings > .page-header {
@@ -28,11 +159,6 @@
   line-height: 20px;
 }
 
-.settings-row-skeleton {
-  height: 64px;
-}
-
-/* ── Setting card ─────────────────────────────────────────────────────────── */
 
 .settings-row {
   display: grid;
@@ -87,86 +213,4 @@
 
 .settings-input-narrow {
   width: 96px;
-}
-
-/* Driving guide calibration: each number carries its own short label. */
-.settings-guide-number {
-  display: inline-flex;
-  flex-direction: column;
-  gap: 2px;
-  color: var(--label-secondary);
-  font-size: 12px;
-  line-height: 16px;
-}
-
-.settings-guide-number .settings-input-narrow {
-  width: 72px;
-}
-
-/* ── ToggleSwitch (Fluent: 40×20 track, 12px knob, 14px on hover) ─────────── */
-
-.settings-switch-field {
-  display: inline-flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.settings-switch-state {
-  min-width: 22px;
-  text-align: right;
-}
-
-.settings-switch {
-  position: relative;
-  width: 40px;
-  height: 20px;
-  flex: none;
-  padding: 0;
-  border: 1px solid var(--label-secondary);
-  border-radius: var(--radius-pill);
-  background: var(--control-fill);
-}
-
-.settings-switch:hover {
-  background: var(--control-fill-hover);
-}
-
-.settings-switch-knob {
-  position: absolute;
-  top: 50%;
-  left: 3px;
-  width: 12px;
-  height: 12px;
-  margin-top: -6px;
-  border-radius: var(--radius-pill);
-  background: var(--label-secondary);
-  transition:
-    left var(--motion-fast) var(--ease-out),
-    width var(--motion-fast) var(--ease-out),
-    height var(--motion-fast) var(--ease-out),
-    margin var(--motion-fast) var(--ease-out);
-}
-
-.settings-switch:hover .settings-switch-knob {
-  width: 14px;
-  height: 14px;
-  margin-top: -7px;
-}
-
-.settings-switch[aria-checked='true'] {
-  border-color: var(--brand-500);
-  background: var(--brand-500);
-}
-
-.settings-switch[aria-checked='true']:hover {
-  background: color-mix(in srgb, var(--brand-500) 90%, var(--window));
-}
-
-.settings-switch[aria-checked='true'] .settings-switch-knob {
-  left: 23px;
-  background: var(--on-brand);
-}
-
-.settings-switch[aria-checked='true']:hover .settings-switch-knob {
-  left: 21px;
 }

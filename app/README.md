@@ -1,10 +1,10 @@
 # Desktop App (`/app`)
 
 The driver's-rig desktop app: a headless **.NET 10** native host paired with an
-**Electron + React** UI (`app/desktop`). The host reads live telemetry, drives USB
-screens, and owns all native/platform logic; the Electron app renders the shared
-`packages/dashboard` component to the screen, to the editor preview, and offscreen
-for USB output, and hosts the Home / Session Planner / Analysis / Dashes / Devices
+**Electron + React** UI (`app/desktop`). The host reads live telemetry, draws and
+drives the USB screens with the Rust dash renderer (`packages/dashboard/renderer`),
+and owns all native/platform logic; the Electron app draws dashes in the editor
+with the same renderer as WebAssembly, and hosts the Home / Session Planner / Analysis / Dashes / Devices
 / Setups / Race Engineer / Settings / Help shell.
 
 > Read [`docs/internals/overview.md`](../docs/internals/overview.md) before
@@ -19,13 +19,13 @@ references enforce the seams — respect them:
 |---|---|---|
 | **`Sprint.Desktop.Api`** | The shared contract: `TelemetryFrame` + sub-states, `ITelemetrySource` (lifecycle + health), `TelemetryStatus`/`TelemetryConnectionState`/`TelemetryFreshness`, and the `Engineer/` command/event/staged-change shapes. | Game paths, shared-memory names, binary layouts, parser quirks, **or any UI type**. |
 | **`Sprint.Games`** | Telemetry adapters — the **only** place that knows game paths/shm names/structs/parsers. `DemoTelemetrySource` (dev/test) + the LMU adapter. References `Api` only. | UI types, persistence, anything `Core`/`Host`-specific. |
-| **`Sprint.Desktop.Core`** | All native desktop logic and no UI framework: runtime persistence, the telemetry engine, session planning, analysis, the dash layout model, devices, hardware/USB, input, diagnostics, and updates. References `Api` + `Games`. | Any UI framework — Core stays headless. |
-| **`Sprint.Desktop.Host`** | The HTTP adapter: `Program.cs` exposes `/api/state`, `/api/commands`, frame intake, traces, diagnostics logs, and update checks over loopback HTTP with a per-launch bearer token. Input validation lives at this boundary and in `RuntimeCoordinator`. | Native business logic (belongs in `Core`) or UI. |
-| **`Sprint.Desktop.Tests`** | xunit regression suite at stable seams: contracts, runtime persistence, LMU parsing/mapping/source, telemetry engine, dash layout model, hardware fakes/RGB565, input binding, updates, session planning, analysis. References `Core`, `Api`, `Games`. `Sprint.Desktop.Host/Tests` separately covers the command surface and screen outputs. | — |
+| **`Sprint.Desktop.Core`** | All native desktop logic and no UI framework: runtime persistence, the telemetry engine, session planning, analysis, the dash layout model, devices, hardware/USB, input, and diagnostics. References `Api` + `Games`. | Any UI framework — Core stays headless. |
+| **`Sprint.Desktop.Host`** | The HTTP adapter: `Program.cs` exposes `/api/state`, `/api/commands`, traces and diagnostics logs over loopback HTTP with a per-launch bearer token. Input validation lives at this boundary and in `RuntimeCoordinator`. | Native business logic (belongs in `Core`) or UI. |
+| **`Sprint.Desktop.Tests`** | xunit regression suite at stable seams: contracts, runtime persistence, LMU parsing/mapping/source, telemetry engine, dash layout model, hardware fakes/RGB565, input binding, session planning, analysis. References `Core`, `Api`, `Games`. `Sprint.Desktop.Host/Tests` separately covers the command surface and screen outputs. | — |
 
 `app/desktop` is a separate pnpm package (not part of the .NET solution): the
-Electron main process (window, frameless title bar, native-host lifetime, one
-offscreen browser per active dash output) plus a Vite/React renderer. It owns
+Electron main process (window, frameless title bar, native-host lifetime) plus a
+Vite/React renderer. It owns
 presentation only — views render state and raise intent via `send(command)`; all
 state arrives through one subscription in `App.tsx`, and `app/desktop/src/bridge.ts`
 is the renderer's only data access.
@@ -42,7 +42,7 @@ Sprint.Desktop.Core/
 └── Features/
     ├── Live/                 ← TelemetryEngine (bg reader + reconnect + rate/delta), presenters
     ├── Dashes/                ← dash layout model, editor controller, validator, widget catalog, binding resolver, alert tracker
-    ├── Hardware/              ← Rgb565, IScreenDriver + FakeScreenDriver, ScreenPublisher, WinUSB VoCore/USBD480 drivers, desktop-capture + offscreen-frame plumbing
+    ├── Hardware/              ← Rgb565, IScreenDriver + FakeScreenDriver, ScreenPublisher, Rgb565Composer, WinUSB VoCore/USBD480 drivers, desktop capture
     ├── Input/                 ← CommandBus, InputBinding + store, WindowsRawInputSource
     ├── Engineer/              ← EngineerStageService (staged-change diff via the Api contract), models
     ├── Setup/                 ← setup programs, snapshot capture/association, SetupComparison (A/B predicted delta)
@@ -54,8 +54,7 @@ Sprint.Desktop.Core/
     ├── Sharing/               ← shared-lap import/export and the Sprint cloud client
     ├── Diagnostics/           ← FileLogger, CrashReporter, LiveLogStore (see docs/operations/diagnostics.md)
     ├── Notifications/         ← toast timeline, system-animation preference
-    ├── Development/           ← dev/test game-state override
-    └── Updates/               ← UpdateChecker (channel-aware semver), GitHubReleaseSource, UpdateInstaller
+    └── Development/           ← dev/test game-state override
 ```
 
 ## Development environment
@@ -79,6 +78,8 @@ Sprint.Desktop.Core/
   see [`docs/operations/development.md`](../docs/operations/development.md#developing-on-macos).
 - Node ≥ 20 and `pnpm install` are required for `app/desktop`, `packages/dashboard`,
   and `packages/tokens`, which the desktop app depends on.
+- The Rust toolchain is required by the host's build and the desktop app's: see
+  [`docs/operations/development.md`](../docs/operations/development.md#rust-toolchain).
 
 ## Commands
 
@@ -86,6 +87,7 @@ Sprint.Desktop.Core/
 # Restore / build (the real gate is -warnaserror)
 dotnet restore app/Sprint.Desktop.slnx
 make lint-app                      # = dotnet build app/Sprint.Desktop.slnx -warnaserror
+                                    #   + cargo clippy / fmt --check for the dash renderer crate
                                     #   + pnpm type-check for @sprint/dashboard and @sprint/desktop
 
 # Run the app (demo telemetry by default; a running game drives the LMU source)
@@ -94,6 +96,7 @@ make dev-host                      # = dotnet watch --project app/Sprint.Desktop
 
 # Tests
 make test-app                      # = dotnet test (Sprint.Desktop.Tests + Sprint.Desktop.Host/Tests)
+                                    #   + cargo test for the dash renderer crate
                                     #   + pnpm test for @sprint/dashboard and @sprint/desktop
 
 # Publish + package → app/build/bin
@@ -105,14 +108,15 @@ make build-app [VERSION=1.2.3]     # = dotnet publish the host (self-contained, 
 
 Tests sit at **stable, behaviour-oriented seams** so implementation can change
 without rewriting the suite: pure presenters/reducers (dash layout model + editor
-controller, RGB565, command/binding, engineer staging, update checker, surface
+controller, RGB565, command/binding, engineer staging, surface
 state), persistence against **temp dirs** (never real AppData), and hardware/input
 verified against fakes (`FakeScreenDriver`, keyboard-fallback capture) rather than
 physical devices. `Sprint.Desktop.Host/Tests` separately exercises the command
-surface and screen outputs at the HTTP boundary. `packages/dashboard` and
-`app/desktop` carry their own TypeScript suites (`pnpm --filter @sprint/dashboard
-test`, `pnpm --filter @sprint/desktop test`); `make test-app` runs all four
-together.
+surface and screen outputs at the HTTP boundary. The dash renderer crate carries
+its own Rust suite (`cargo test` in `packages/dashboard/renderer`), and
+`packages/dashboard` and `app/desktop` their TypeScript suites (`pnpm --filter
+@sprint/dashboard test`, `pnpm --filter @sprint/desktop test`); `make test-app`
+runs all five together.
 
 ## Adding a game (desktop)
 

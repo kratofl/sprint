@@ -5,7 +5,7 @@ export type LocalCounts = { sessions: number; setups: number; dashes: number }
 
 /** Counts from the polled state: recorded sessions, the driver's own setups (no templates) and dashes. */
 export const localCounts = (state: SprintState): LocalCounts => ({
-  sessions: state.lapHistory.length,
+  sessions: state.sessionCount,
   setups: state.setupPrograms.filter((program) => program.isTemplate !== true).length,
   dashes: state.dashLayouts.length,
 })
