@@ -265,7 +265,6 @@ public sealed class BrowserDisplayServer
             return;
         }
 
-        this._listening = false;
         this._app = null;
         // Feeds are held open: end them first, or Kestrel waits for them until its timeout.
         this._serving?.Cancel();
@@ -275,6 +274,8 @@ public sealed class BrowserDisplayServer
         }
         finally
         {
+            // Only now is the port closed; Listening promises exactly that.
+            this._listening = false;
             await app.DisposeAsync();
             this._serving?.Dispose();
             this._serving = null;

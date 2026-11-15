@@ -16,12 +16,26 @@ import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, write
 import path from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import { fileURLToPath } from 'node:url'
+import { connect } from './cdp-client.mjs'
 import { recordingsRoot } from './dev-data.mjs'
 import { stopTree, treeSpawnOptions } from './process-tree.mjs'
 
 const desktopRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
 const runsRoot = path.join(desktopRoot, '.dev', 'agent-runs')
 const STARTUP_TIMEOUT_MS = 180_000
+
+/** Whether the main window's page has the preload's bridge; false while it is still loading. */
+async function bridgeReady(port) {
+  const page = await connect(port).catch(() => null)
+  if (!page) return false
+  try {
+    // A navigation can drop the socket mid-call, which never answers.
+    const probe = page.evaluate(`typeof window.sprint?.sendCommand === 'function'`).catch(() => false)
+    return await Promise.race([probe, delay(2000).then(() => false)])
+  } finally {
+    page.close()
+  }
+}
 
 /** The value after `--name`, or null. */
 const option = (args, name) => {
@@ -130,16 +144,14 @@ async function start(args) {
   })
 
   // Chromium writes the port it chose, then the browser's path, once DevTools listens. The main
-  // window has loaded once a page target for it exists.
+  // window's page target exists from the moment its navigation starts, before the preload has
+  // run, so the app is ready only once the page sees `window.sprint`.
   const portFile = path.join(dataRoot, 'DevToolsActivePort')
   const deadline = Date.now() + STARTUP_TIMEOUT_MS
   let port = null
   while (Date.now() < deadline) {
     if (port === null && existsSync(portFile)) port = Number(readFileSync(portFile, 'utf8').split(/\r?\n/)[0]) || null
-    if (port !== null) {
-      const targets = await fetch(`http://127.0.0.1:${port}/json/list`).then((response) => response.json(), () => [])
-      if (targets.some((target) => target.type === 'page' && target.url.includes('backdrop=window'))) break
-    }
+    if (port !== null && (await bridgeReady(port))) break
     await delay(250)
   }
   if (port === null || Date.now() >= deadline) {
