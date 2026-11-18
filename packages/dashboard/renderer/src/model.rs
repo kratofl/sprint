@@ -13,6 +13,8 @@ use std::collections::BTreeMap;
 use serde::Deserialize;
 use serde_json::{Map, Value};
 
+use crate::lap_summary::{LapReview, LapReviewField};
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum DashStyle {
     #[default]
@@ -196,6 +198,8 @@ pub struct DashLayout {
     pub alerts: Vec<DashAlert>,
     pub theme: Option<DashTheme>,
     pub alert_config: Option<Map<String, Value>>,
+    /// What the lap review (`lap_summary`) shows in its six cells.
+    pub lap_review: LapReview,
     pub chrome: DashChrome,
     /// The zones (bar spots, side grids, gear centre) instead of an even grid: see `grid::zoned_rect`.
     pub zoned: bool,
@@ -333,6 +337,7 @@ fn parse_layout(raw: &Map<String, Value>) -> Result<DashLayout, String> {
             .and_then(Value::as_object)
             .map(|theme| theme.iter().filter_map(|(key, value)| value.as_str().map(|v| (key.clone(), v.to_owned()))).collect()),
         alert_config: raw.get("alertConfig").and_then(Value::as_object).cloned(),
+        lap_review: parse_lap_review(raw.get("lapReview")),
         chrome: raw
             .get("chrome")
             .and_then(Value::as_object)
@@ -406,6 +411,20 @@ fn parse_group(value: &Value) -> Option<DashWidgetGroup> {
             centered: style.get("align").and_then(Value::as_str) == Some("center"),
         }),
     })
+}
+
+/// The layout's `lapReview: { cells }`, cell by cell: a cell that is missing or names no known
+/// field is the default's cell in that place, and entries past the sixth are ignored. Never an
+/// error: the review always has something to show.
+fn parse_lap_review(value: Option<&Value>) -> LapReview {
+    let cells = value.and_then(|review| review.get("cells")).and_then(Value::as_array).map(Vec::as_slice).unwrap_or_default();
+    let mut review = LapReview::DEFAULT;
+    for (cell, raw) in review.cells.iter_mut().zip(cells) {
+        if let Some(field) = raw.as_str().and_then(LapReviewField::parse) {
+            *cell = field;
+        }
+    }
+    review
 }
 
 fn parse_alert(value: &Value) -> Option<DashAlert> {
@@ -1125,6 +1144,27 @@ mod tests {
         let widget = &s.layout.pages[0].widgets[0];
         assert_eq!(widget.config_string("align"), Some("left"));
         assert_eq!(widget.style.as_ref().and_then(|st| st.text_color.clone()), None);
+    }
+
+    #[test]
+    fn a_lap_review_cell_that_is_missing_or_unknown_falls_back_to_the_default_in_its_place() {
+        use LapReviewField as F;
+        let review = |json: &str| parse_lap_review(serde_json::from_str::<Value>(json).ok().as_ref());
+        assert_eq!(
+            review(r#"{"cells":["lap","none","energy_used","best_lap","tyre_wear","gap_ahead"]}"#).cells,
+            [F::Lap, F::Empty, F::EnergyUsed, F::BestLap, F::TyreWear, F::GapAhead]
+        );
+        let defaults = LapReview::DEFAULT.cells;
+        assert_eq!(
+            review(r#"{"cells":["lap","rpm",7,null,"fuel_left","sector2"]}"#).cells,
+            [F::Lap, defaults[1], defaults[2], defaults[3], F::FuelLeft, F::Sector2]
+        );
+        assert_eq!(review(r#"{"cells":["lap"]}"#).cells, [F::Lap, defaults[1], defaults[2], defaults[3], defaults[4], defaults[5]], "too few");
+        assert_eq!(review(r#"{"cells":["none","none","none","none","none","none","lap"]}"#).cells, [F::Empty; 6], "too many");
+        for missing in ["null", "{}", r#"{"cells":"lap"}"#, "[]"] {
+            assert_eq!(review(missing), LapReview::DEFAULT, "{missing}");
+        }
+        assert_eq!(scene("").unwrap().layout.lap_review, LapReview::DEFAULT, "a layout without one");
     }
 
     #[test]

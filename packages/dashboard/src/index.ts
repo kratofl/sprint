@@ -5,6 +5,7 @@
 // renderer, natively, in the host.
 
 import type { DashAlertDisplayMode } from './alerts'
+import type { DashLapReview } from './lapReview'
 
 export type DashColorSystem = 'functional' | 'styled'
 /**
@@ -66,8 +67,9 @@ export interface DashAlert { id: string; type: string; enabled: boolean; col: nu
  * `category` is the Dashes page grouping (host `DashLayout.Category`); absent means "Other". The
  * renderer ignores it. `zoned`: the bar spots, side grids and gear centre of `zones.ts` instead of
  * an even grid (then `gridCols`/`gridRows` are 11 x 9). `chrome`: the flat style's look.
+ * `lapReview`: the lap review's six cells (`lapReviewCells` reads them); absent shows the defaults.
  */
-export interface DashLayout { id: string; name: string; category?: string; mode: string; colorSystem?: DashColorSystem; dashStyle?: DashStyle; chrome?: DashChrome; zoned?: boolean; screenProfile?: string; gridCols: number; gridRows: number; pages: DashPage[]; idlePage?: DashPage | null; alerts: DashAlert[]; theme?: DashTheme; alertConfig?: Record<string, unknown> }
+export interface DashLayout { id: string; name: string; category?: string; mode: string; colorSystem?: DashColorSystem; dashStyle?: DashStyle; chrome?: DashChrome; zoned?: boolean; screenProfile?: string; gridCols: number; gridRows: number; pages: DashPage[]; idlePage?: DashPage | null; alerts: DashAlert[]; theme?: DashTheme; alertConfig?: Record<string, unknown>; lapReview?: DashLapReview }
 
 export { DashCanvas, type DashCanvasProps } from './DashCanvas'
 export { dashboardWidgetTypes, isDashWidgetType, type DashWidgetType } from './widgetTypes'
@@ -81,8 +83,9 @@ export {
   dashAlertTypes, isDashAlertType, dashAlertDefaults, dashAlertFromSettings, previewAlertBanner, alertColorSwatch, maxAlertSeconds,
   LAP_SUMMARY_SECONDS, LAP_SUMMARY_MAX_SECONDS, MIN_ALERT_SECONDS, MAX_ALERT_SECONDS, FUEL_LAPS_LEFT_MIN, FUEL_LAPS_LEFT_MAX,
   type DashAlertBanner, type DashAlertType, type DashAlertSize, type DashAlertDisplayMode, type DashAlertSettings, type DashAlertPopup,
-  type DashAlertPlacement, type DashLapSummaryPopup,
+  type DashAlertPlacement, type DashLapSummaryPopup, type DashLapSector, type DashSectorRating,
 } from './alerts'
+export { dashLapReviewFields, isDashLapReviewField, lapReviewCells, DEFAULT_LAP_REVIEW_CELLS, LAP_REVIEW_TOP_SHARE, type DashLapReviewField, type DashLapReview } from './lapReview'
 export { multiDialInk, multiDialSwatches, type DashMultiDialPopup } from './multiDial'
 // The editor's direct-manipulation overlay (drag/resize handles) positions itself with the same
 // grid math the renderer places widgets with, so it never drifts a pixel from what is drawn.

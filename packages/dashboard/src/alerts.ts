@@ -132,28 +132,50 @@ export type DashAlertPopup = {
   invertColors: boolean
 } & DashAlertPlacement
 
+/** How a sector time compares, like a timing screen: the fastest (purple), the driver's best (green), slower (yellow), or no bests to compare with yet. */
+export type DashSectorRating = 'fastest' | 'personalBest' | 'slower' | 'unrated'
+
+/** One sector of a finished lap. */
+export interface DashLapSector { seconds: number; rating: DashSectorRating }
+
 /**
- * The full-screen summary of a finished lap. Each delta is actual minus target (negative is
- * better) and null when there is nothing to compare against.
+ * The lap review: the full-screen summary of a finished lap (the `lap_summary` alert), as the
+ * renderer captured it when the lap finished. A value is null when the game did not report it;
+ * each delta is actual minus target (negative is better) and null when there is nothing to
+ * compare against. Which values show is the layout's `lapReview` (see lapReview.ts).
  */
 export interface DashLapSummaryPopup {
   kind: 'lapSummary'
   lap: number
-  /** The session's lap limit, for "LAP 12 OF 24"; null when the session has none. */
+  /** The session's lap limit, for "12 /24"; null when the session has none. */
   totalLaps: number | null
   /** The race position as the lap finished; null when the game reports none. */
   position: number | null
+  /** The cars in the session, for "P4 /22". */
+  totalPositions: number | null
   lapTime: number
   /** False when the game flagged the lap invalid; it never counts as a best. */
   valid: boolean
   /** Lap time minus the best valid lap before it. Negative is a new best. */
   lapDelta: number | null
+  /** The best valid lap once this one is counted (this lap's own time when it is the best). */
+  bestLap: number | null
   /** Lap time minus the plan's lap-time target the lap was driven with. Negative is faster. */
   targetDelta: number | null
+  /** The lap's three sectors; null for a sector without a time. */
+  sectors: [DashLapSector | null, DashLapSector | null, DashLapSector | null]
   /** Liters the lap used, or null when the lap's start was not seen or the car was refueled. */
   fuelUsed: number | null
   /** Fuel used minus the plan's per-lap target. Positive means over target. */
   fuelDelta: number | null
+  /** Laps the fuel left lasts at the game's per-lap average. */
+  fuelLeftLaps: number | null
+  /** Virtual energy the lap used, percentage points; null for a car without it. */
+  energyUsed: number | null
+  /** The wear left on the most worn tyre, % (100 is new). */
+  tyreWearLeft: number | null
+  /** Seconds to the car ahead; null when there is none. */
+  gapAhead: number | null
 }
 
 /** What the renderer draws over the dash: the JSON `render_still` takes as its banner, the multi-dial popup included. */
@@ -220,17 +242,25 @@ const SAMPLES: Record<Exclude<DashAlertType, 'dial_change' | 'lap_summary'>, Sam
   fuel_low: { title: 'FUEL', value: '1.8', detail: 'LAPS LEFT', color: (p) => p.warning },
 }
 
+// The made-up lap the app plays the lap review with (`SAMPLE_LAP` in alerts.rs): a new best whose sectors show all three timing colours.
 const SAMPLE_LAP: DashLapSummaryPopup = {
   kind: 'lapSummary',
   lap: 12,
   totalLaps: 24,
   position: 4,
+  totalPositions: 22,
   lapTime: 124.912,
   valid: true,
   lapDelta: -0.214,
+  bestLap: 124.912,
   targetDelta: -0.088,
+  sectors: [{ seconds: 38.412, rating: 'personalBest' }, { seconds: 44.187, rating: 'fastest' }, { seconds: 42.313, rating: 'slower' }],
   fuelUsed: 2.41,
   fuelDelta: -0.09,
+  fuelLeftLaps: 12.4,
+  energyUsed: 4.2,
+  tyreWearLeft: 81,
+  gapAhead: 1.384,
 }
 
 /**

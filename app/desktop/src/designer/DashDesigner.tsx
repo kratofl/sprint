@@ -129,6 +129,8 @@ function DesignerWindow({
   const { layout, undo, redo } = doc
   const [section, setSection] = useState<Section>('layout')
   const [chosenPageId, setChosenPageId] = useState(() => host.pages[0]?.id ?? host.idlePage?.id ?? '')
+  // The page dock's Lap review stop instead of a page; kept here, like the page, across sections.
+  const [reviewing, setReviewing] = useState(false)
   // How the Layout section shows the dash; kept here so it survives a trip to another section.
   const [view, setView] = useState<CanvasView>('outline')
   const [previewState, setPreviewState] = useState<DashPreviewState>('live')
@@ -199,7 +201,24 @@ function DesignerWindow({
       <div className="designer-dragband" />
 
       <div className="designer-stage" role="tabpanel" id={`${tabsId}-panel`} aria-labelledby={`${tabsId}-${section}`}>
-        {section === 'layout' && <LayoutSection doc={doc} frame={frame} chosenPageId={chosenPageId} onChoosePage={setChosenPageId} modes={modeActions} view={view} previewState={previewState} showGrid={showGrid} />}
+        {section === 'layout' && (
+          <LayoutSection
+            doc={doc}
+            frame={frame}
+            chosenPageId={chosenPageId}
+            onChoosePage={(pageId) => {
+              setReviewing(false)
+              setChosenPageId(pageId)
+            }}
+            reviewing={reviewing}
+            onReview={() => setReviewing(true)}
+            onOpenDashSettings={() => void bridge.openDashSettings()}
+            modes={modeActions}
+            view={view}
+            previewState={previewState}
+            showGrid={showGrid}
+          />
+        )}
         {section === 'theme' && <ThemeSection layout={layout} apply={doc.apply} frame={frame} page={page} idle={idle} />}
         {section === 'settings' && (
           <SettingsSection
@@ -240,7 +259,7 @@ function DesignerWindow({
         </div>
 
         <div className="designer-trail">
-          {section === 'layout' && (
+          {section === 'layout' && !reviewing && (
             <ViewTools view={view} onView={setView} previewState={previewState} onPreviewState={setPreviewState} showGrid={showGrid} onToggleGrid={() => setShowGrid((value) => !value)} />
           )}
           <div className="designer-glass designer-tools">

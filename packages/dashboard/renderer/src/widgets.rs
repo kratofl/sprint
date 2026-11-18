@@ -144,7 +144,7 @@ fn energy_fill(pct: f64, palette: &DashPaletteColors) -> Option<Rgba> {
 }
 
 /// The virtual-energy level as a percentage, tolerating a 0..1 or a 0..100 source scale.
-fn virtual_energy_percent(frame: &TelemetryFrame) -> f64 {
+pub(crate) fn virtual_energy_percent(frame: &TelemetryFrame) -> f64 {
     let raw = frame.energy.virtual_energy;
     if raw > 0.0 && raw <= 1.0 { raw * 100.0 } else { raw }
 }
@@ -565,15 +565,17 @@ fn tyre(b: &mut Builder, w: &WidgetContext) {
 
 /// How one sector time compares: the fastest (the class's best, or the session's when the class
 /// is unknown), the driver's own best, slower than that, or not comparable (no bests known yet).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum SectorState {
+/// The lap review banner carries it as `fastest`, `personalBest`, `slower` or `unrated`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum SectorState {
     Fastest,
     PersonalBest,
     Slower,
     Unrated,
 }
 
-fn sector_state(lap: &LapState, index: usize, time: f64) -> SectorState {
+pub(crate) fn sector_state(lap: &LapState, index: usize, time: f64) -> SectorState {
     // A best is the same lap's own time once it is set, so "as fast" counts.
     const SAME: f64 = 0.0005;
     let best = |bests: &[Option<f64>]| bests.get(index).copied().flatten();
@@ -595,7 +597,7 @@ fn shown_sectors(lap: &LapState) -> [Option<f64>; 3] {
     std::array::from_fn(|i| times.get(i).copied().filter(|time| *time > 0.0))
 }
 
-fn sector_color(state: SectorState, palette: &DashPaletteColors) -> Option<Rgba> {
+pub(crate) fn sector_color(state: SectorState, palette: &DashPaletteColors) -> Option<Rgba> {
     match state {
         SectorState::Fastest => Some(palette.timing_fastest_overall),
         SectorState::PersonalBest => Some(palette.timing_personal_best),

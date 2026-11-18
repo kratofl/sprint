@@ -2,6 +2,8 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { loadDashWasm } from './dashWasm.js'
+import { previewAlertBanner } from './alerts'
+import { defaultDashPalette } from './palette'
 
 // The build the test script writes first (scripts/build-dash-renderer.mjs --wasm).
 const wasm = await loadDashWasm(readFileSync(new URL('../generated/sprint_dash.wasm', import.meta.url)))
@@ -31,6 +33,14 @@ test("a dash the renderer cannot draw throws the renderer's own message and keep
   assert.throws(() => wasm.renderStill('', '{"kind":"setting"}', 0), /./, 'a malformed banner')
   wasm.renderStill('', '', 0)
   assert.deepEqual([wasm.width, wasm.height], [4, 2])
+})
+
+test("the app's sample lap review is a banner the renderer reads", () => {
+  wasm.setScene(scene({}))
+  const lapReview = { id: 'lr', type: 'lap_summary', enabled: true, col: 0, row: 0, colSpan: 1, rowSpan: 1 }
+  const banner = previewAlertBanner({ ...layout, mode: 'basic', alerts: [lapReview] }, lapReview, defaultDashPalette)
+  assert.equal(banner?.kind, 'lapSummary')
+  assert.deepEqual(wasm.renderStill('', JSON.stringify(banner), 0), { timeDependent: false })
 })
 
 test('acknowledging takes down an alert held until acknowledged', () => {

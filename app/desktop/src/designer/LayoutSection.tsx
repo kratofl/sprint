@@ -5,6 +5,7 @@ import { addWidget, addWidgetAt } from '../views/DashesDomain'
 import { DesignerCanvas, dropCell, type DragState, type PointerPos } from './DesignerCanvas'
 import { swapWidgets } from '../views/DashesDomain'
 import { GroupInspector, SelectionInspector } from './GroupInspector'
+import { LapReviewEditor } from './LapReviewEditor'
 import { PageDock } from './PageDock'
 import { PageInspector, type ModeActions } from './PageInspector'
 import { WidgetInspector } from './WidgetInspector'
@@ -27,13 +28,17 @@ const ARROWS: Record<string, [number, number]> = { ArrowLeft: [-1, 0], ArrowRigh
  * otherwise. Keys (never while typing in a field): Delete removes the selection, the arrows move
  * it a cell, Ctrl+G groups it, Ctrl+Shift+G ungroups, Ctrl+D copies it, Escape deselects. A
  * right-click on a widget or group offers the same as a menu (`NodeMenu`), and moves it into a group. With nothing selected, the right panel is
- * the page's own (`PageInspector`): the sessions and modes it shows in, and when it jumps.
+ * the page's own (`PageInspector`): the sessions and modes it shows in, and when it jumps. The
+ * dock's last stop, Lap review, swaps all of that for the dash's lap review (`LapReviewEditor`).
  */
 export function LayoutSection({
   doc,
   frame,
   chosenPageId,
   onChoosePage,
+  reviewing,
+  onReview,
+  onOpenDashSettings,
   modes,
   view,
   previewState,
@@ -44,6 +49,10 @@ export function LayoutSection({
   /** The page being designed; kept by the window so it survives a trip to another section. */
   chosenPageId: string
   onChoosePage: (pageId: string) => void
+  /** The lap review is on the stage instead of the page (the dock's Lap review stop). */
+  reviewing: boolean
+  onReview: () => void
+  onOpenDashSettings: () => void
   /** The driver's own dash modes, for the page panel and the dock's preview. */
   modes: ModeActions
   /** How the canvas shows the dash, what it shows and the grid: the toolbar's (`ViewTools`). */
@@ -91,6 +100,13 @@ export function LayoutSection({
     onChoosePage(next)
     setSelection([])
     setDragState({ kind: 'idle' })
+  }
+
+  const review = (): void => {
+    onReview()
+    setSelection([])
+    setDragState({ kind: 'idle' })
+    setMenu(null)
   }
 
   const commit = (mutate: Mutate, failureMessage: string): void => {
@@ -236,7 +252,7 @@ export function LayoutSection({
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
       // A dialog or menu owns its keys: Delete in a confirm must not delete the selection behind it.
-      if (event.defaultPrevented || isTypingTarget(event.target) || isInOverlay(event.target) || event.altKey) return
+      if (reviewing || event.defaultPrevented || isTypingTarget(event.target) || isInOverlay(event.target) || event.altKey) return
       if (event.ctrlKey || event.metaKey) {
         const key = event.key.toLowerCase()
         if (key === 'g') {
@@ -275,7 +291,27 @@ export function LayoutSection({
   })
 
   const frameShown = resolvePreviewFrame(previewState, frame)
+  const dockPreview = modes.modes.some((mode) => mode.id === cyclePreview) || ['all', 'practice', 'qualifying', 'race'].includes(cyclePreview) ? cyclePreview : 'all'
   const only = selectedNodes.length === 1 ? selectedNodes[0] : undefined
+
+  if (reviewing) {
+    return (
+      <>
+        <LapReviewEditor layout={layout} apply={apply} frame={frameShown} canvas={canvas} setFitElement={setFitElement} onOpenDashSettings={onOpenDashSettings} />
+        <PageDock
+          layout={layout}
+          pageId={pageId}
+          onSelectPage={selectPage}
+          reviewing
+          onReview={review}
+          apply={apply}
+          cyclePreview={dockPreview}
+          onCyclePreview={setCyclePreview}
+          modes={modes.modes}
+        />
+      </>
+    )
+  }
 
   return (
     <>
@@ -380,8 +416,10 @@ export function LayoutSection({
         layout={layout}
         pageId={pageId}
         onSelectPage={selectPage}
+        reviewing={false}
+        onReview={review}
         apply={apply}
-        cyclePreview={modes.modes.some((mode) => mode.id === cyclePreview) || ['all', 'practice', 'qualifying', 'race'].includes(cyclePreview) ? cyclePreview : 'all'}
+        cyclePreview={dockPreview}
         onCyclePreview={setCyclePreview}
         modes={modes.modes}
       />

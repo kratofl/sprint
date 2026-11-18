@@ -95,6 +95,8 @@ export function parseDashLayout(row: Record<string, unknown>): DashLayout | null
     layout.theme = Object.fromEntries(Object.entries(row.theme).filter((entry): entry is [string, string] => typeof entry[1] === 'string'))
   }
   if (isRecord(row.alertConfig)) layout.alertConfig = row.alertConfig
+  // The renderer reads each cell defensively (lapReviewCells); only the shape is checked here.
+  if (isRecord(row.lapReview) && Array.isArray(row.lapReview.cells)) layout.lapReview = { cells: row.lapReview.cells.filter((cell): cell is string => typeof cell === 'string') }
 
   return layout
 }

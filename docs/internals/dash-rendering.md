@@ -153,12 +153,18 @@ are not.
   passing one. A held alert never makes the picture time dependent: whoever calls `acknowledge`
   renders again. While the flag alert is up the flag overlay is not drawn; it would name the
   flag twice.
+- **The lap review draws only what the lap left behind.** The `lap_summary` alert's six cells
+  are the layout's `lapReview.cells` (`LapReview` in `lap_summary.rs`; a missing or unknown cell
+  is the default's in its place). `LapSummaryWatcher` captures every value a cell can show as the
+  lap finishes (the sectors and best with the lap time, the rest on the frame the lap counter
+  moves), and the screen draws from that capture, never from the live frame, so a review held
+  for 15 s still shows the lap it is about.
 - **A panic is an error, not a crash.** Every C ABI entry point catches panics, which needs
   `panic = "unwind"` in the release profile; in WebAssembly a panic traps and
   `src/dashWasm.js` starts a fresh instance.
 - **The editor's copies are guarded.** The widget types the editor offers
-  (`src/widgetTypes.ts`) are checked against what the renderer draws by a Rust test that reads that
-  file. Palette, grid math and groups exist in both languages because the WebAssembly build only
+  (`src/widgetTypes.ts`), the alert types (`src/alerts.ts`) and the lap review fields
+  (`src/lapReview.ts`) are checked against the renderer's by Rust tests that read those files. Palette, grid math and groups exist in both languages because the WebAssembly build only
   turns a scene into pixels, and the editor needs those answers itself while editing (swatches, the
   selection overlay that must line up to the pixel, the group tree). Each Rust module's tests are
   ported from the TypeScript ones; a change to one side is a change to both, tests included.

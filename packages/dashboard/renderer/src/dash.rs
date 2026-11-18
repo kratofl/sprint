@@ -199,7 +199,7 @@ pub fn build_display_list(fonts: &Fonts, scene: &Scene, frame: &TelemetryFrame, 
         race_logic_lap_timer_overlay(&mut b, view, frame, &palette, width, height);
     }
     if let Some(banner) = overlays.banner {
-        alert_banner(&mut b, banner, frame, &palette, chrome, width, height);
+        alert_banner(&mut b, banner, &layout.lap_review, &palette, chrome, width, height);
     }
     if !focused_lap_timer && !overlays.banner.is_some_and(DashAlertBanner::is_flag_alert) {
         flag_overlay(&mut b, frame, &palette, width, height);

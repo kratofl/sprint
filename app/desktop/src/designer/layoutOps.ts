@@ -1,4 +1,4 @@
-import { DASH_ZONES, type DashLayout, type DashPage, type GridSpan } from '@sprint/dashboard'
+import { DASH_ZONES, lapReviewCells, type DashLapReviewField, type DashLayout, type DashPage, type GridSpan } from '@sprint/dashboard'
 import { findPage } from '../views/DashesDomain'
 
 /**
@@ -15,6 +15,23 @@ export function movePage(layout: DashLayout, pageId: string, offset: -1 | 1): Da
   const [page] = pages.splice(index, 1)
   pages.splice(target, 0, page)
   return { ...layout, pages }
+}
+
+/** Puts `field` in the lap review's box `index` (0–5, rows 2 and 3 left to right); null when it is already there. */
+export function setLapReviewCell(layout: DashLayout, index: number, field: DashLapReviewField): DashLayout | null {
+  const cells = lapReviewCells(layout.lapReview)
+  if (index < 0 || index >= cells.length || cells[index] === field) return null
+  return { ...layout, lapReview: { cells: cells.map((cell, at) => (at === index ? field : cell)) } }
+}
+
+/** Whether the dash sets its own lap review boxes, rather than showing the defaults. */
+export const hasOwnLapReview = (layout: DashLayout): boolean => layout.lapReview !== undefined
+
+/** Back to the default lap review boxes; null when the dash already shows them. */
+export function resetLapReview(layout: DashLayout): DashLayout | null {
+  if (!hasOwnLapReview(layout)) return null
+  const { lapReview: _dropped, ...rest } = layout
+  return rest
 }
 
 /** The page the designer shows for a chosen id: that page while it exists, else the first one (undo can take a page away). */

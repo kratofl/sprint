@@ -27,7 +27,7 @@ export const ALERT_COPY: Record<DashAlertType, { label: string; when: string }> 
   flag: { label: 'Flags', when: 'Yellow, blue, safety car, VSC and red' },
   penalty: { label: 'Penalties', when: 'A new penalty to serve' },
   fuel_low: { label: 'Fuel warning', when: 'Once a stint, when the fuel runs low' },
-  lap_summary: { label: 'Lap review', when: 'After each timed lap' },
+  lap_summary: { label: 'Lap review', when: 'After each timed lap. Each dash picks what it shows, in its designer.' },
 }
 
 /** The page's lists of alerts, top to bottom, after Acknowledge. Every alert type is in exactly one. */

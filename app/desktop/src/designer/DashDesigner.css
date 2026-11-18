@@ -727,6 +727,65 @@ svg.designer-node-stack {
   background: var(--subtle-hover);
 }
 
+/* ── Lap review (LapReviewEditor.tsx) ─────────────────────────────────────
+   The library lists fields to click, not widgets to drag; boxes over the six cells pick which. */
+
+.designer-review-library .designer-library-item {
+  cursor: pointer;
+}
+
+.designer-library-item.on {
+  font-weight: 600;
+}
+
+.designer-review-check {
+  margin-left: auto;
+  color: var(--brand-500);
+}
+
+.designer-review-sep {
+  display: block;
+  margin: 4px 8px;
+  border-top: 1px solid var(--divider);
+}
+
+.designer-review {
+  position: relative;
+  display: block;
+}
+
+.designer-review-boxes {
+  position: absolute;
+  inset: 0;
+}
+
+.designer-review-box {
+  position: absolute;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: var(--radius-control);
+  background: transparent;
+  cursor: pointer;
+}
+
+.designer-review-box:hover {
+  border-color: var(--label-secondary);
+}
+
+.designer-review-box:focus-visible {
+  border-color: var(--label-secondary);
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.designer-review-box[aria-pressed='true'] {
+  border-color: var(--brand-500);
+}
+
+.designer-review-reset {
+  align-self: flex-start;
+}
+
 /* ── Canvas views (CanvasViews.tsx) ─────────────────────────────────────
    The app's own look over or instead of the dash, never the dash's: what the Layout section edits on. */
 

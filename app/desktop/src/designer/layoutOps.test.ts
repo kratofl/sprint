@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import type { DashLayout } from '@sprint/dashboard'
-import { emptyCells, movePage } from './layoutOps'
+import { emptyCells, movePage, resetLapReview, setLapReviewCell } from './layoutOps'
 
 const layout: DashLayout = {
   id: 'dash',
@@ -16,6 +16,15 @@ const layout: DashLayout = {
   ],
   alerts: [],
 }
+
+test('a lap review box takes a field, keeps the others at their defaults, and resets to none of its own', () => {
+  const picked = setLapReviewCell(layout, 3, 'energy_used')
+  assert.deepEqual(picked?.lapReview?.cells, ['sector1', 'sector2', 'sector3', 'energy_used', 'fuel_used', 'target'])
+  assert.equal(picked && setLapReviewCell(picked, 3, 'energy_used'), null, 'already there: no edit, no undo step')
+  assert.equal(setLapReviewCell(layout, 6, 'lap'), null)
+  assert.equal(picked && resetLapReview(picked)?.lapReview, undefined)
+  assert.equal(resetLapReview(layout), null)
+})
 
 test('pages move one place at a time and stop at the ends', () => {
   assert.deepEqual(movePage(layout, 'b', -1)?.pages.map((page) => page.id), ['b', 'a', 'c'])

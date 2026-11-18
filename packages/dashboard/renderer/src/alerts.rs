@@ -17,12 +17,13 @@ use serde_json::{Map, Value};
 
 use crate::format::{format_front_brake_bias, js_number_string, to_fixed};
 use crate::grid::AlertSpan;
-use crate::lap_summary::{LapSummary, LapSummaryWatcher};
+use crate::lap_summary::{LapSector, LapSummary, LapSummaryWatcher};
 use crate::model::{DashAlert, DashLayout, DashTargets, TelemetryFrame};
 use crate::multi_dial::DashMultiDialPopup;
 use crate::palette::{
     DashPaletteColors, Rgba, canonical_alert_color_token, dash_color, dash_setting_colors, find_preset_by_alert_color_token, parse_css_hex, preset_swatch_color,
 };
+use crate::widgets::SectorState;
 
 /// The condition a value is shown in (`DashCondition`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -752,16 +753,29 @@ fn detect(
     }
 }
 
+/// The made-up lap the designer plays the lap review with (`SAMPLE_LAP` in alerts.ts): a new best
+/// whose sectors show all three timing colours.
 const SAMPLE_LAP: LapSummary = LapSummary {
     lap: 12.0,
     total_laps: Some(24.0),
     position: Some(4.0),
+    total_positions: Some(22.0),
     lap_time: 124.912,
     valid: true,
     lap_delta: Some(-0.214),
+    best_lap: Some(124.912),
     target_delta: Some(-0.088),
+    sectors: [
+        Some(LapSector { seconds: 38.412, rating: SectorState::PersonalBest }),
+        Some(LapSector { seconds: 44.187, rating: SectorState::Fastest }),
+        Some(LapSector { seconds: 42.313, rating: SectorState::Slower }),
+    ],
     fuel_used: Some(2.41),
     fuel_delta: Some(-0.09),
+    fuel_left_laps: Some(12.4),
+    energy_used: Some(4.2),
+    tyre_wear_left: Some(81.0),
+    gap_ahead: Some(1.384),
 };
 
 /// The multi-dial popup the designer plays `dial_change` with.
@@ -1463,19 +1477,33 @@ mod tests {
         let parsed = popup(Some(&parse_banner(strip).expect("strip")));
         assert_eq!((parsed.alert_type, parsed.placement, parsed.detail), (DashAlertType::FuelLow, AlertPlacement::Strip, None));
 
-        let lap = br#"{"kind":"lapSummary","lap":12,"totalLaps":null,"position":4,"lapTime":124.912,"lapDelta":null,"targetDelta":0.4,"valid":false,"fuelUsed":2.9,"fuelDelta":null}"#;
+        let lap = br#"{"kind":"lapSummary","lap":12,"totalLaps":null,"position":4,"totalPositions":22,"lapTime":124.912,"lapDelta":null,"bestLap":null,
+            "targetDelta":0.4,"valid":false,"sectors":[{"seconds":38.4,"rating":"personalBest"},null,{"seconds":42.3,"rating":"unrated"}],
+            "fuelUsed":2.9,"fuelDelta":null,"fuelLeftLaps":12.4,"energyUsed":null,"tyreWearLeft":81,"gapAhead":1.384}"#;
         let summary = LapSummary {
             lap: 12.0,
             total_laps: None,
             position: Some(4.0),
+            total_positions: Some(22.0),
             lap_time: 124.912,
             valid: false,
             lap_delta: None,
+            best_lap: None,
             target_delta: Some(0.4),
+            sectors: [
+                Some(LapSector { seconds: 38.4, rating: SectorState::PersonalBest }),
+                None,
+                Some(LapSector { seconds: 42.3, rating: SectorState::Unrated }),
+            ],
             fuel_used: Some(2.9),
             fuel_delta: None,
+            fuel_left_laps: Some(12.4),
+            energy_used: None,
+            tyre_wear_left: Some(81.0),
+            gap_ahead: Some(1.384),
         };
         assert_eq!(parse_banner(lap), Ok(DashAlertBanner::LapSummary(summary)));
+        assert!(parse_banner(&String::from_utf8_lossy(lap).replace("unrated", "blue").into_bytes()).is_err(), "only the known ratings");
 
         let dial = br##"{"kind":"multiDial","caption":"MULTI","label":"TC2","color":"#E0A30C","inverted":false,"displayMode":"strip"}"##;
         assert_eq!(

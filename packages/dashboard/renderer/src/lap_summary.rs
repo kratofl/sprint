@@ -1,35 +1,150 @@
-// Detects finished laps for the lap summary popup: where the lap left the driver (lap x of y,
-// position), the lap time against the best before it and against the plan's target, and the fuel
-// the lap used against the plan's per-lap target. Clock-free like `DashAlertTracker`, which owns
-// one of these and decides when the popup shows.
+// Detects finished laps for the lap review, the full-screen alert (`lap_summary`) after each
+// timed lap, and captures as the lap finished every value the review can show: the lap time
+// against the best before it and against the plan's target, the sector times rated like a timing
+// screen, where the lap left the driver (lap x of y, position of n, the gap ahead), the fuel and
+// virtual energy the lap used, the fuel left and the most worn tyre. Clock-free like
+// `DashAlertTracker`, which owns one of these and decides when the review shows. Which of those
+// values the review shows is the layout's `lapReview` (`LapReview`).
 //
 // Every delta is actual minus target, so negative is better for lap time and fuel alike.
 
 use serde::Deserialize;
 
 use crate::model::{DashTargets, TelemetryFrame};
+use crate::widgets::{SectorState, sector_state, virtual_energy_percent};
 
-/// What one finished lap came to. Each delta is `None` when there is nothing to compare against.
-/// Deserializes from the JSON the TypeScript `LapSummary` serializes to (the lap summary banner).
-#[derive(Clone, Copy, Debug, PartialEq, Deserialize)]
+/// What one finished lap came to. A value is `None` when the game did not report it, and a delta
+/// when there is nothing to compare against. Deserializes from the JSON the TypeScript
+/// `DashLapSummaryPopup` serializes to (the lap review banner).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LapSummary {
     pub lap: f64,
-    /// The session's lap limit, for "LAP 12 OF 24"; `None` when the session has none.
+    /// The session's lap limit, for "12 /24"; `None` when the session has none.
     pub total_laps: Option<f64>,
     /// The race position as the lap finished; `None` when the game reports none.
     pub position: Option<f64>,
+    /// The cars in the session, for "P4 /22"; `None` when the game reports none.
+    pub total_positions: Option<f64>,
     pub lap_time: f64,
     /// False when the game flagged the lap invalid; it never counts as a best.
     pub valid: bool,
     /// Lap time minus the best valid lap before it. Negative is a new best.
     pub lap_delta: Option<f64>,
+    /// The best valid lap once this one is counted (this lap's own time when it is the best).
+    pub best_lap: Option<f64>,
     /// Lap time minus the plan's lap-time target the lap was driven with. Negative is faster.
     pub target_delta: Option<f64>,
+    /// The lap's three sector times, rated against the bests the game reports.
+    #[serde(default)]
+    pub sectors: [Option<LapSector>; 3],
     /// Liters the lap used, or `None` when the lap's start was not seen or the car was refueled.
     pub fuel_used: Option<f64>,
     /// Fuel used minus the plan's per-lap target. Positive means over target.
     pub fuel_delta: Option<f64>,
+    /// Laps the fuel left lasts at the game's per-lap average.
+    pub fuel_left_laps: Option<f64>,
+    /// Virtual energy the lap used, percentage points; `None` for a car without it, a lap whose
+    /// start was not seen, or one it was topped up on.
+    pub energy_used: Option<f64>,
+    /// The wear left on the most worn tyre, % (100 is new), as the tyre widgets read it.
+    pub tyre_wear_left: Option<f64>,
+    /// Seconds to the car ahead; `None` when there is none.
+    pub gap_ahead: Option<f64>,
+}
+
+/// One sector of a finished lap: its time and how it compares (purple, green or yellow).
+#[derive(Clone, Copy, Debug, PartialEq, Deserialize)]
+pub struct LapSector {
+    pub seconds: f64,
+    pub rating: SectorState,
+}
+
+/// One cell of the lap review (`lapReview.cells` on the layout), by its wire id.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LapReviewField {
+    Sector1,
+    Sector2,
+    Sector3,
+    Target,
+    BestLap,
+    Position,
+    GapAhead,
+    Lap,
+    FuelUsed,
+    FuelLeft,
+    EnergyUsed,
+    TyreWear,
+    /// An empty cell: nothing drawn, not even a frame.
+    Empty,
+}
+
+impl LapReviewField {
+    /// Every field, in the editor's order (`dashLapReviewFields` in lapReview.ts; a test checks it).
+    pub const ALL: [LapReviewField; 13] = [
+        LapReviewField::Sector1,
+        LapReviewField::Sector2,
+        LapReviewField::Sector3,
+        LapReviewField::Target,
+        LapReviewField::BestLap,
+        LapReviewField::Position,
+        LapReviewField::GapAhead,
+        LapReviewField::Lap,
+        LapReviewField::FuelUsed,
+        LapReviewField::FuelLeft,
+        LapReviewField::EnergyUsed,
+        LapReviewField::TyreWear,
+        LapReviewField::Empty,
+    ];
+
+    pub fn id(self) -> &'static str {
+        match self {
+            LapReviewField::Sector1 => "sector1",
+            LapReviewField::Sector2 => "sector2",
+            LapReviewField::Sector3 => "sector3",
+            LapReviewField::Target => "target",
+            LapReviewField::BestLap => "best_lap",
+            LapReviewField::Position => "position",
+            LapReviewField::GapAhead => "gap_ahead",
+            LapReviewField::Lap => "lap",
+            LapReviewField::FuelUsed => "fuel_used",
+            LapReviewField::FuelLeft => "fuel_left",
+            LapReviewField::EnergyUsed => "energy_used",
+            LapReviewField::TyreWear => "tyre_wear",
+            LapReviewField::Empty => "none",
+        }
+    }
+
+    pub fn parse(id: &str) -> Option<LapReviewField> {
+        LapReviewField::ALL.into_iter().find(|field| field.id() == id)
+    }
+}
+
+/// What the lap review shows under its fixed top row: six cells, rows 2 and 3 left to right.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct LapReview {
+    pub cells: [LapReviewField; 6],
+}
+
+impl LapReview {
+    /// The review of a layout that sets none, like an F1 lap recap: the three sectors, then the
+    /// position, the fuel used and the lap time against the target.
+    pub const DEFAULT: LapReview = LapReview {
+        cells: [
+            LapReviewField::Sector1,
+            LapReviewField::Sector2,
+            LapReviewField::Sector3,
+            LapReviewField::Position,
+            LapReviewField::FuelUsed,
+            LapReviewField::Target,
+        ],
+    };
+}
+
+impl Default for LapReview {
+    fn default() -> Self {
+        LapReview::DEFAULT
+    }
 }
 
 /// The game can publish a finished lap's time a few frames after the lap counter moves (see the
@@ -46,13 +161,19 @@ fn lap_limit(max_laps: f64) -> Option<f64> {
     (max_laps > 0.0 && max_laps < NO_LAP_LIMIT).then_some(max_laps)
 }
 
+/// What the lap left the car with, read on the frame the lap counter moves.
 #[derive(Clone, Copy, Debug)]
 struct PendingLap {
     lap: f64,
     total_laps: Option<f64>,
     position: Option<f64>,
+    total_positions: Option<f64>,
     valid: bool,
     fuel_used: Option<f64>,
+    fuel_left_laps: Option<f64>,
+    energy_used: Option<f64>,
+    tyre_wear_left: Option<f64>,
+    gap_ahead: Option<f64>,
     /// The plan's targets the lap was driven with, kept from its last frame: the host latches the
     /// next lap's targets at the line, before this lap's time arrives.
     targets: Option<DashTargets>,
@@ -74,6 +195,8 @@ struct SeenLap {
 pub struct LapSummaryWatcher {
     prev: Option<SeenLap>,
     lap_start_fuel: Option<f64>,
+    /// The virtual energy (%) the lap being driven started with.
+    lap_start_energy: Option<f64>,
     /// The best valid lap so far, kept here so a lap is compared with the best before it,
     /// whenever the game updates its own.
     best: f64,
@@ -97,18 +220,28 @@ impl LapSummaryWatcher {
 
         if lap.current_lap > prev.current_lap && prev.current_lap > 0.0 {
             let used = self.lap_start_fuel.map(|start| start - frame.car.fuel);
+            let energy = virtual_energy_percent(frame);
+            // A car without virtual energy reads 0 all lap.
+            let energy_used = self.lap_start_energy.filter(|start| *start > 0.0).map(|start| start - energy);
+            let positive = |value: f64| (value > 0.0).then_some(value);
             self.pending = Some(PendingLap {
                 lap: prev.current_lap,
                 total_laps: lap_limit(frame.session.max_laps),
-                position: (frame.race.position > 0.0).then_some(frame.race.position),
+                position: positive(frame.race.position),
+                total_positions: positive(frame.race.total_positions),
                 valid: prev.is_valid,
                 fuel_used: used.filter(|used| *used >= 0.0),
+                fuel_left_laps: positive(frame.car.fuel_per_lap).map(|per_lap| frame.car.fuel.max(0.0) / per_lap),
+                energy_used: energy_used.filter(|used| *used >= 0.0),
+                tyre_wear_left: frame.tires.iter().map(|tire| tire.wear_percent).filter(|left| *left > 0.0).min_by(f64::total_cmp),
+                gap_ahead: positive(frame.race.gap_ahead),
                 targets: prev.targets,
                 report: !prev.is_out_lap,
                 since: now,
             });
-            // Fuel is measured from here on; a lap the watcher joined mid-way reports none.
+            // Fuel and energy are measured from here on; a lap the watcher joined mid-way reports none.
             self.lap_start_fuel = Some(frame.car.fuel);
+            self.lap_start_energy = Some(energy);
         }
 
         let pending = self.pending?;
@@ -124,16 +257,31 @@ impl LapSummaryWatcher {
                 return None;
             }
             let targets = pending.targets.unwrap_or_default();
+            // The sectors arrive with the lap time, rated against the bests the game holds then.
+            let sectors = std::array::from_fn(|i| {
+                lap.last_lap_sectors_seconds
+                    .get(i)
+                    .copied()
+                    .filter(|seconds| *seconds > 0.0)
+                    .map(|seconds| LapSector { seconds, rating: sector_state(lap, i, seconds) })
+            });
             return Some(LapSummary {
                 lap: pending.lap,
                 total_laps: pending.total_laps,
                 position: pending.position,
+                total_positions: pending.total_positions,
                 lap_time,
                 valid: pending.valid,
                 lap_delta: (best_before > 0.0).then_some(lap_time - best_before),
+                best_lap: (self.best > 0.0).then_some(self.best),
                 target_delta: targets.lap_time_seconds.map(|target| lap_time - target),
+                sectors,
                 fuel_used: pending.fuel_used,
                 fuel_delta: pending.fuel_used.zip(targets.fuel_per_lap_liters).map(|(used, target)| used - target),
+                fuel_left_laps: pending.fuel_left_laps,
+                energy_used: pending.energy_used,
+                tyre_wear_left: pending.tyre_wear_left,
+                gap_ahead: pending.gap_ahead,
             });
         }
 
@@ -143,11 +291,12 @@ impl LapSummaryWatcher {
         None
     }
 
-    /// Forgets the previous frame, the fuel baseline and any pending lap. The best and the last
-    /// matched lap time are re-read from the next frame.
+    /// Forgets the previous frame, the fuel and energy baselines and any pending lap. The best and
+    /// the last matched lap time are re-read from the next frame.
     pub fn reset(&mut self) {
         self.prev = None;
         self.lap_start_fuel = None;
+        self.lap_start_energy = None;
         self.pending = None;
     }
 }
@@ -198,6 +347,35 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn a_lap_keeps_its_sectors_rated_like_a_timing_screen_and_what_it_left_the_car_with() {
+        let mut watcher = LapSummaryWatcher::default();
+        watcher.observe(&at(3.0, 0.0, 60.0, |f| f.lap.best_lap_time = 125.2), 0.0, None);
+        // Lap 4 starts with 62 % virtual energy (the game's 0-1 scale).
+        watcher.observe(&at(4.0, 125.2, 60.0, |f| f.energy.virtual_energy = 0.62), 1000.0, None);
+        let crossing = at(5.0, 125.2, 57.5, |f| {
+            (f.energy.virtual_energy, f.car.fuel_per_lap) = (0.578, 2.5);
+            (f.race.position, f.race.total_positions, f.race.gap_ahead) = (4.0, 22.0, 1.384);
+            for (tire, left) in f.tires.iter_mut().zip([84.0, 81.0, 88.0, 86.0]) {
+                tire.wear_percent = left;
+            }
+        });
+        watcher.observe(&crossing, 2000.0, None);
+        let timed = at(5.0, 124.912, 57.5, |f| {
+            f.lap.last_lap_sectors_seconds = vec![38.412, 44.187, 42.313];
+            f.lap.personal_best_sectors = vec![Some(38.412), Some(44.187), Some(42.1)];
+            f.lap.session_best_sectors = vec![Some(38.2), Some(44.187), Some(41.9)];
+        });
+        let summary = watcher.observe(&timed, 2100.0, None).expect("a summary");
+        let sectors = summary.sectors.map(|sector| sector.map(|s| (s.seconds, s.rating)));
+        assert_eq!(sectors, [Some((38.412, SectorState::PersonalBest)), Some((44.187, SectorState::Fastest)), Some((42.313, SectorState::Slower))]);
+        assert_eq!(summary.best_lap, Some(124.912), "the new best is this lap");
+        assert_eq!((summary.total_positions, summary.gap_ahead), (Some(22.0), Some(1.384)));
+        assert_eq!(summary.tyre_wear_left, Some(81.0), "the most worn corner");
+        assert!(close(summary.fuel_left_laps, 23.0), "57.5 L at 2.5 a lap: {:?}", summary.fuel_left_laps);
+        assert!(close(summary.energy_used, 4.2), "62 % down to 57.8 %: {:?}", summary.energy_used);
+    }
+
+    #[test]
     fn a_lap_is_scored_against_the_targets_it_was_driven_with_not_the_ones_that_latched_at_the_line() {
         let (driven, next) = (plan(209.5, 4.4), plan(208.0, 5.0));
         let mut watcher = LapSummaryWatcher::default();
@@ -228,6 +406,32 @@ pub(crate) mod tests {
             watcher.observe(&at(3.0, 0.0, 60.0, |f| f.session.max_laps = max_laps), 0.0, None);
             let summary = watcher.observe(&at(4.0, 210.0, 56.0, |f| f.session.max_laps = max_laps), 100.0, None).expect("a summary");
             assert_eq!((summary.total_laps, summary.position), (None, None), "max laps {max_laps}");
+            // Nothing else is reported (no field, wear, fuel average or sectors) or measured.
+            assert_eq!(
+                (summary.total_positions, summary.gap_ahead, summary.energy_used, summary.tyre_wear_left, summary.fuel_left_laps),
+                (None, None, None, None, None)
+            );
+            assert_eq!(summary.sectors, [None, None, None]);
+        }
+    }
+
+    #[test]
+    fn the_editor_offers_exactly_these_review_fields_in_this_order_and_the_same_default() {
+        let source = include_str!("../../src/lapReview.ts");
+        let block = |start: &str| {
+            let from = source.find(start).unwrap_or_else(|| panic!("{start} in lapReview.ts")) + start.len();
+            &source[from..from + source[from..].find(']').expect("its end")]
+        };
+        let ids: Vec<&str> = block("dashLapReviewFields: readonly { id: DashLapReviewField; label: string }[] = [")
+            .split("id: '")
+            .skip(1)
+            .filter_map(|entry| entry.split('\'').next())
+            .collect();
+        assert_eq!(ids, LapReviewField::ALL.map(LapReviewField::id));
+        let defaults: Vec<&str> = block("DEFAULT_LAP_REVIEW_CELLS: readonly DashLapReviewField[] = [").split('\'').skip(1).step_by(2).collect();
+        assert_eq!(defaults, LapReview::DEFAULT.cells.map(LapReviewField::id));
+        for field in LapReviewField::ALL {
+            assert_eq!(LapReviewField::parse(field.id()), Some(field));
         }
     }
 

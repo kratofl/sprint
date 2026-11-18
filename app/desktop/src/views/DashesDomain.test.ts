@@ -207,6 +207,13 @@ test('a stored dash style survives parsing; a missing or unknown one is left uns
   assert.equal(parseDashLayout(row)?.dashStyle, undefined)
 })
 
+test("a dash's lap review boxes survive parsing; a malformed one is left unset", () => {
+  const row = { id: 'd', gridCols: 20, gridRows: 12, pages: [], alerts: [] }
+  assert.deepEqual(parseDashLayout({ ...row, lapReview: { cells: ['lap', 7, 'none'] } })?.lapReview, { cells: ['lap', 'none'] })
+  assert.equal(parseDashLayout({ ...row, lapReview: ['lap'] })?.lapReview, undefined)
+  assert.equal(parseDashLayout(row)?.lapReview, undefined)
+})
+
 // ── Categories and New dash ──────────────────────────────────────────────
 
 test('a stored category survives parsing; null, blank and the retired default flag leave none', () => {

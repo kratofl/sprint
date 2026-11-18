@@ -827,6 +827,33 @@ public sealed class RuntimeCoordinatorTests
         }
     }
 
+    [Fact]
+    public void DashSave_KeepsTheDashsOwnLapReviewBoxes_AcrossARestart()
+    {
+        RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
+        try
+        {
+            DashLayout dash = runtime.DashLayouts.First();
+            string layout = """
+                {"name":"Review","gridCols":20,"gridRows":12,"pages":[{"id":"main","name":"Main","widgets":[]}],"alerts":[],
+                 "lapReview":{"cells":["sector1","sector2","sector3","energy_used","fuel_used","none"]}}
+                """;
+            bool ok = coordinator.Execute(Command($$"""{"type":"dash.save","dashId":"{{dash.Id}}","layout":{{layout}} }"""), out string error);
+
+            Assert.True(ok, error);
+            // The host does not model the boxes; it keeps them for the renderer and the designer as they came.
+            DashLayout saved = new DesktopRuntime(dataRoot, PresetRoot).DashLayouts.Single(candidate => candidate.Id == dash.Id);
+            Assert.NotNull(saved.ExtensionData);
+            Assert.Equal(
+                ["sector1", "sector2", "sector3", "energy_used", "fuel_used", "none"],
+                saved.ExtensionData["lapReview"].GetProperty("cells").EnumerateArray().Select(cell => cell.GetString()));
+        }
+        finally
+        {
+            Cleanup(dataRoot);
+        }
+    }
+
     /// <summary>The dash seeded from the default preset (the presets seed it and Hypercar).</summary>
     private static DashLayout DefaultDash(DesktopRuntime runtime) => runtime.DashLayouts.Single(dash => dash.Id == "default");
 
