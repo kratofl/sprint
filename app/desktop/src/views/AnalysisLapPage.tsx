@@ -5,18 +5,19 @@ import { tyreHeat } from '../pitwall/carDomain'
 import { CarSvg } from '../pitwall/tiles/CarSvg'
 import { CORNER_NAMES, carHere } from './AnalysisCar'
 import type { CornerHere } from './AnalysisCar'
-import { buildAddLapNote, buildDeleteLapNote, buildUpdateLapNote, carLine, formatGap, formatLapSeconds, fuelText, tyreText } from './AnalysisDomain'
+import { buildAddLapNote, buildDeleteLapNote, buildUpdateLapNote, formatGap, formatLapSeconds, fuelText, tyreText } from './AnalysisDomain'
+import { CarName, TrackName } from './CarBadges'
 import type { CorpusLap, CorpusRun, CorpusSession, LapChannelTrace, LapNote, TraceGrid } from './AnalysisDomain'
 import { LapTraceChartStack, LineKey } from './AnalysisChart'
 import type { ChartMark } from './AnalysisChart'
 import { buildLapCharts, chartRecorded, cornerGapLabel, lapCorners, lapMapComparison, shadeAt, verdict } from './AnalysisLapCharts'
 import type { GainShade, LapMapComparison, LapPanelOf } from './AnalysisLapCharts'
 import { LAP_CHART_GROUPS, LAP_CHART_TITLES, TYRE_BANDS, moveChart, removeChart, storedLapLayout, toggleChart } from './AnalysisLapLayout'
-import type { LapChartId, LapLayout } from './AnalysisLapLayout'
+import type { LapChartId, LapLayout, MapView } from './AnalysisLapLayout'
 import { lapMeters, lapPins, placeLabel, settingChanges } from './AnalysisLapMarks'
 import { CarSettingsLanes, NoteBubble, NoteEditor, PinRows, pinLines, pinRowsHeight, popoverLeft } from './AnalysisLapPins'
 import type { PinRow } from './AnalysisLapPins'
-import { WHOLE_LAP, isZoomed } from './AnalysisPlot'
+import { WHOLE_LAP, isZoomed, mapFrame } from './AnalysisPlot'
 import type { LapWindow } from './AnalysisPlot'
 import { MenuLayer, type MenuAnchor } from '../shell/Menu'
 import { FriendBadge, shortDay } from './OnTrackPages'
@@ -275,7 +276,15 @@ function ComparePicker({
       </button>
       {menuAt && (
         <MenuLayer anchor={menuAt} label="Compare with" width={PICKER_WIDTH} onClose={close}>
-          <div className="analysis-pick-scope">{[carLine(session.context), session.context.trackCourse].filter(Boolean).join(' · ')}</div>
+          <div className="analysis-pick-scope">
+            <CarName marks={session.marks} />
+            {session.context.trackCourse && (
+              <>
+                {' · '}
+                <TrackName track={session.context.trackCourse} country={session.marks.country} />
+              </>
+            )}
+          </div>
           {mine.length > 0 && <div className="analysis-pick-head">Your laps</div>}
           {mine.map(row)}
           {shared.length > 0 && <div className="analysis-pick-head">Shared laps</div>}
@@ -332,6 +341,8 @@ function LapBody({
               compared={comparison && otherLabel ? { comparison, lapLabel, otherLabel } : null}
               cursor={cursor}
               view={view}
+              mapView={layout.mapView}
+              onMapView={(mapView) => onLayout({ ...layout, mapView })}
               onRemove={() => onLayout({ ...layout, map: false })}
             />
           )}
@@ -373,6 +384,11 @@ type MapStroke = 'brake' | 'throttle' | 'coast' | (typeof GAIN_STROKES)[number] 
 const GAIN_STROKES = ['gain strength-1', 'gain strength-2', 'gain strength-3'] as const
 const LOSS_STROKES = ['loss strength-1', 'loss strength-2', 'loss strength-3'] as const
 
+const MAP_VIEWS: readonly (readonly [MapView, string, string])[] = [
+  ['track', 'Whole track', 'Always the whole lap'],
+  ['corner', 'Corner', 'Close up on the stretch the charts are zoomed on'],
+]
+
 // A corner label's width on the map, near enough: 11px semibold.
 const LABEL_CHAR = 6.5
 
@@ -381,7 +397,9 @@ const LABEL_CHAR = 6.5
  * throttle was flat, red under braking, grey in between. While comparing it is coloured instead
  * by where this lap gains (green) or loses (red) on the other, stronger the faster, grey where
  * even, and each corner's label carries its gap. The dot follows the charts' cursor; while the
- * charts are zoomed, a quiet band under the line marks the stretch they show.
+ * charts are zoomed, a quiet band under the line marks the stretch they show. "Corner" frames that
+ * stretch close up, so zooming the charts onto a corner zooms the map onto it too; "Whole track"
+ * always shows the lap.
  */
 function TrackMapCard({
   trace,
@@ -389,6 +407,8 @@ function TrackMapCard({
   compared,
   cursor,
   view,
+  mapView,
+  onMapView,
   onRemove,
 }: {
   trace: LapChannelTrace
@@ -396,18 +416,20 @@ function TrackMapCard({
   compared: MapCompared | null
   cursor: number | null
   view: LapWindow
+  mapView: MapView
+  onMapView: (mapView: MapView) => void
   onRemove: () => void
 }) {
   const xs = trace.channels.worldX
   const zs = trace.channels.worldZ
   const throttle = trace.channels.throttle ?? []
   const brake = trace.channels.brake ?? []
-  const minX = Math.min(...xs)
-  const maxX = Math.max(...xs)
-  const minZ = Math.min(...zs)
-  const maxZ = Math.max(...zs)
-  // As tall as the track's shape asks, within reason, so a wide track leaves no empty band.
-  const height = Math.min(480, Math.max(240, ((maxZ - minZ) / (maxX - minX || 1)) * (MAP_WIDTH - MAP_PAD * 2) + MAP_PAD * 2))
+  const whole = mapFrame(xs, zs, trace.positionStep, null)
+  // As tall as the whole track's shape asks, within reason, so a wide track leaves no empty band;
+  // the close-up keeps that height, so the card does not jump as the charts zoom.
+  const height = Math.min(480, Math.max(240, ((whole.maxZ - whole.minZ) / (whole.maxX - whole.minX || 1)) * (MAP_WIDTH - MAP_PAD * 2) + MAP_PAD * 2))
+  const close = mapView === 'corner' && isZoomed(view)
+  const { minX, maxX, minZ, maxZ } = close ? mapFrame(xs, zs, trace.positionStep, view) : whole
   const scale = Math.min((MAP_WIDTH - MAP_PAD * 2) / (maxX - minX || 1), (height - MAP_PAD * 2) / (maxZ - minZ || 1))
   const offsetX = (MAP_WIDTH - (maxX - minX) * scale) / 2
   const offsetY = (height - (maxZ - minZ) * scale) / 2
@@ -459,6 +481,14 @@ function TrackMapCard({
     <section className="card analysis-map-card" aria-label="On the track">
       <div className="card-header">
         <h2 className="card-title">On the track</h2>
+        <span className="analysis-spacer" />
+        <div className="segmented" role="radiogroup" aria-label="Map shows">
+          {MAP_VIEWS.map(([option, name, hint]) => (
+            <button key={option} type="button" role="radio" className="segmented-item" aria-checked={mapView === option} title={hint} onClick={() => onMapView(option)}>
+              {name}
+            </button>
+          ))}
+        </div>
         <WidgetMenu label="Track map" onRemove={onRemove} removeLabel="Remove map" />
       </div>
       <svg viewBox={`0 0 ${MAP_WIDTH} ${height}`} className="analysis-map-svg" role="img" aria-label={shown ? `${lineLabel}, the stretch the charts show marked` : lineLabel}>

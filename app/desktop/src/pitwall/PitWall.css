@@ -535,6 +535,10 @@
   box-shadow: inset 3px 0 0 var(--blue-500);
 }
 
+.pw-trow.yellow {
+  box-shadow: inset 3px 0 0 var(--yellow-500);
+}
+
 .pw-trow.out {
   color: var(--label-tertiary);
 }
@@ -549,6 +553,11 @@
 .pw-blue {
   flex: none;
   color: var(--blue-500);
+}
+
+.pw-yellow {
+  flex: none;
+  color: var(--yellow-500);
 }
 
 /* An out car's "DNF · lap 22" takes the gap and interval columns. */
@@ -580,19 +589,21 @@
   color: var(--danger-text);
 }
 
+/* A class's own colour (--tag, from its class-* tone in CarBadges.css) on its bars and dots; a
+   class without one keeps a shade by its place on the board. */
 .pw-classbar {
   align-self: stretch;
   margin: 6px 0;
   border-radius: 2px;
-  background: var(--label);
+  background: var(--tag, var(--label));
 }
 
 .pw-classbar.c1 {
-  background: var(--label-tertiary);
+  background: var(--tag, var(--label-tertiary));
 }
 
 .pw-classbar.c2 {
-  background: var(--label-secondary);
+  background: var(--tag, var(--label-secondary));
 }
 
 .pw-tyre {
@@ -707,17 +718,17 @@
 }
 
 .pw-car {
-  fill: var(--label);
+  fill: var(--tag, var(--label));
   stroke: var(--surface);
   stroke-width: 2;
 }
 
 .pw-car.c1 {
-  fill: var(--label-tertiary);
+  fill: var(--tag, var(--label-tertiary));
 }
 
 .pw-car.c2 {
-  fill: var(--label-secondary);
+  fill: var(--tag, var(--label-secondary));
 }
 
 .pw-car.you {
@@ -756,7 +767,7 @@
   height: 10px;
   flex: none;
   border-radius: 50%;
-  background: var(--label);
+  background: var(--tag, var(--label));
 }
 
 .pw-dot.you {
@@ -764,11 +775,11 @@
 }
 
 .pw-dot.c1 {
-  background: var(--label-tertiary);
+  background: var(--tag, var(--label-tertiary));
 }
 
 .pw-dot.c2 {
-  background: var(--label-secondary);
+  background: var(--tag, var(--label-secondary));
 }
 
 .pw-dot.ghost {
@@ -1635,4 +1646,102 @@
 
 .pw-sep {
   margin: 4px 0;
+}
+
+/* ── Radio and Windows tiles (tiles/EngineerTiles.tsx) ───────────────────── */
+
+.pw-radio {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.pw-radio-calls {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  flex: none;
+}
+
+.pw-radio-calls .button {
+  justify-content: center;
+  min-width: 0;
+}
+
+.pw-radio-target,
+.pw-radio-compose {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+}
+
+.pw-radio-label {
+  flex: 1;
+  font-weight: 600;
+}
+
+.pw-stepper {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border-radius: var(--radius-control);
+  background: var(--track);
+}
+
+.pw-stepper-value {
+  min-width: 52px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.pw-radio-compose .input {
+  flex: 1;
+}
+
+.pw-radio-sent,
+.pw-windows-list {
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  list-style: none;
+}
+
+.pw-radio-sent li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 8px;
+  align-items: center;
+  padding: 5px 0;
+  border-top: 1px solid var(--divider);
+  font-size: 12px;
+}
+
+.pw-radio-text,
+.pw-windows-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pw-windows-hint {
+  margin: 0;
+  font-size: 12px;
+}
+
+.pw-windows-list li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  gap: 6px;
+  align-items: center;
+  padding: 2px 0;
+}
+
+.pw-menu-heading {
+  padding: 6px 10px 2px;
+  color: var(--label-secondary);
+  font-size: 11px;
+  font-weight: 600;
 }

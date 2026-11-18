@@ -120,6 +120,9 @@ public sealed record PeerLinkState
 
     /// <summary>Engineer: the pit wall, once the driver's first board arrived.</summary>
     public PitWallState? PitWall { get; init; }
+
+    /// <summary>The engineer's radio to the driver while connected or interrupted (<see cref="PeerRadioState"/>); null otherwise.</summary>
+    public PeerRadioState? Radio { get; init; }
 }
 
 /// <summary>How the other side's build compares with this one's, by what their links carry. Crosses the wire by name.</summary>
@@ -164,11 +167,15 @@ public static class PeerLinkRules
     /// What this build's link carries. Raise it when one side starts needing something an older
     /// peer does not send: 1 the telemetry (builds that put no level in their pings), 2 the pit wall,
     /// 3 its flags, penalties and race control (session phase and clock, sector yellows, each car's
-    /// blue flag, penalties and finish), 4 the shared plan's race fuel (<c>raceFuel</c>, the stint tile).
+    /// blue flag, penalties and finish), 4 the shared plan's race fuel (<c>raceFuel</c>, the stint tile),
+    /// 5 the engineer's radio (<c>radio</c>, <c>radioAnswer</c>).
     /// </summary>
-    public const int Level = 4;
+    public const int Level = 5;
 
-    /// <summary>How often the worker steps; also the most a sample waits before it is sent.</summary>
+    /// <summary>The first level that understands the engineer's radio.</summary>
+    public const int RadioLevel = 5;
+
+    /// <summary>The longest the worker waits between steps; a new sample or packet steps it at once (timeouts, probes, pings).</summary>
     public static readonly TimeSpan Step = TimeSpan.FromMilliseconds(50);
 
     /// <summary>Probes to every candidate while connecting.</summary>
@@ -251,12 +258,19 @@ public static class PeerLinkRules
 /// Threads: commands call <see cref="Invite"/>, <see cref="TryJoin"/>, <see cref="TryComplete"/>
 /// and <see cref="Close"/>; the telemetry loop calls <see cref="Update"/> and <see cref="Observe"/>.
 /// All of them only queue or set fields. One worker calls <see cref="Step"/>, which owns the
-/// socket and every per-link field, and publishes <see cref="State"/>.
+/// socket and every per-link field, and publishes <see cref="State"/>. It steps at least every
+/// <see cref="PeerLinkRules.Step"/>, and at once when a sample is taken or a packet arrives, so a
+/// sample neither waits to be sent nor, on the engineer's side, to be read.
 /// </para>
 /// <para>
 /// Beside the samples the driver sends the engineer's pit wall: a board twice a second, radar ten
 /// times a second and, while <see cref="SetSharePlan"/> allows it, the plan <paramref name="share"/>
 /// offers and its target lap. Those exceed a datagram, so they travel as <see cref="PeerBlobs"/>.
+/// </para>
+/// <para>
+/// The other way, the engineer's radio (<see cref="TrySendRadio"/>): short messages and new target
+/// laps for the driver's wheel, each sent again until the driver's PC answers how it ended
+/// (<see cref="RadioOutbox"/>, <see cref="RadioInbox"/>).
 /// </para>
 /// </summary>
 /// <param name="share">
@@ -276,7 +290,11 @@ public sealed class PeerLink(
     private readonly ConcurrentQueue<Request> _requests = new();
     private readonly Lock _bufferGate = new();
     private readonly List<LiveSample> _buffer = [];
-    private readonly LiveSampleGate _gate = new();
+    private readonly LiveSampleGate _gate = new(LiveSampleGate.Link);
+
+    // Released by a new sample or packet; the worker waits on it between steps. At most one
+    // release is pending, so a burst of packets is one extra step, not one each.
+    private readonly SemaphoreSlim _wake = new(0, 1);
 
     // Written by the telemetry loop, read by the worker.
     private volatile LiveTarget? _target;
@@ -351,6 +369,44 @@ public sealed class PeerLink(
     /// <summary>Whether the driver shares the session plan and its target lap. On until switched off.</summary>
     public void SetSharePlan(bool share) => this._sharePlan = share;
 
+    /// <summary>
+    /// Engineer: sends the driver a radio message, optionally with a new target lap (seconds). Refused
+    /// unless this PC is the linked engineer and the text and target are ones the driver can be shown.
+    /// </summary>
+    public bool TrySendRadio(string? text, double? targetLapSeconds, out string error)
+    {
+        if (this._state is not { Role: PeerRole.Engineer, Phase: PeerLinkPhase.Connected or PeerLinkPhase.Interrupted })
+        {
+            error = "Link to a driver first.";
+            return false;
+        }
+
+        if (this._state.Radio is { CanSend: false })
+        {
+            error = "The driver needs to update Sprint to get radio messages.";
+            return false;
+        }
+
+        if (!RadioRules.TryText(text, out string clean, out error))
+            return false;
+        if (targetLapSeconds is { } target && !RadioRules.IsTargetLap(target))
+        {
+            error = $"A target lap is {RadioRules.MinTargetLap:0} to {RadioRules.MaxTargetLap:0} seconds.";
+            return false;
+        }
+
+        this._requests.Enqueue(new RadioRequest(clean, targetLapSeconds));
+        this.Wake();
+        return true;
+    }
+
+    /// <summary>Driver: a wheel button was pressed while a radio message showed, so it was seen.</summary>
+    public void AcknowledgeRadio()
+    {
+        this._requests.Enqueue(new AcknowledgeRequest());
+        this.Wake();
+    }
+
     /// <summary>Engineer: one lap's traces for the pit wall; empty when there is no such lap or no link.</summary>
     public PitWallTrace Trace(PitWallTraceLap lap) => this._pitWall?.Trace(lap) ?? PitWallTrace.Empty;
 
@@ -364,7 +420,7 @@ public sealed class PeerLink(
             this._target = target;
     }
 
-    /// <summary>A new telemetry frame. Cheap: notes the time and, while sharing, keeps a sample at up to 20 Hz.</summary>
+    /// <summary>A new telemetry frame. Cheap: notes the time and, while sharing, keeps a sample at up to 33 Hz and wakes the worker to send it.</summary>
     public void Observe(TelemetryFrame frame)
     {
         this._frame = frame;
@@ -379,6 +435,8 @@ public sealed class PeerLink(
                 this._buffer.RemoveAt(0);
             this._buffer.Add(sample);
         }
+
+        this.Wake();
     }
 
     /// <summary>One worker step at <paramref name="now"/>: applies requests, reads the socket, sends what is due and publishes the state.</summary>
@@ -401,14 +459,17 @@ public sealed class PeerLink(
         this.Publish();
     }
 
-    /// <summary>Steps every <see cref="PeerLinkRules.Step"/> until <paramref name="stop"/>, then closes the link, telling the peer.</summary>
+    /// <summary>
+    /// Steps whenever a sample or packet wakes it, and at least every <see cref="PeerLinkRules.Step"/>,
+    /// until <paramref name="stop"/>; then closes the link, telling the peer.
+    /// </summary>
     public async Task RunAsync(CancellationToken stop)
     {
-        using PeriodicTimer timer = new(PeerLinkRules.Step);
         try
         {
-            while (await timer.WaitForNextTickAsync(stop).ConfigureAwait(false))
+            while (true)
             {
+                await this._wake.WaitAsync(PeerLinkRules.Step, stop).ConfigureAwait(false);
                 try
                 {
                     this.Step(DateTimeOffset.UtcNow);
@@ -426,6 +487,20 @@ public sealed class PeerLink(
 
         this.Shut();
         this.Publish();
+    }
+
+    /// <summary>Steps the worker now rather than at its next timeout. Safe from any thread.</summary>
+    private void Wake()
+    {
+        try
+        {
+            if (this._wake.CurrentCount == 0)
+                this._wake.Release();
+        }
+        catch (SemaphoreFullException)
+        {
+            // Another thread released it first; one pending step is enough.
+        }
     }
 
     private void Apply(Request request, DateTimeOffset now)
@@ -448,6 +523,13 @@ public sealed class PeerLink(
             case CloseRequest:
                 this.Shut();
                 break;
+            case RadioRequest radio when this._link is { Outbox: { } outbox }:
+                outbox.Add(radio.Text, radio.TargetLapSeconds, now);
+                break;
+            case AcknowledgeRequest when this._link is { Inbox: { } inbox, Remote: { } remote } link:
+                foreach (long id in inbox.Acknowledge(now))
+                    this.Send(link, new PeerRadioAnswer(id, RadioDelivery.Seen), remote);
+                break;
         }
     }
 
@@ -456,7 +538,7 @@ public sealed class PeerLink(
         IPeerSocket socket;
         try
         {
-            socket = open();
+            socket = open(this.Wake);
         }
         catch (SocketException ex)
         {
@@ -512,6 +594,7 @@ public sealed class PeerLink(
             Latest = null,
             SharedPlan = null,
             PitWall = null,
+            Radio = null,
             Detail = detail,
         };
         link.Release();
@@ -565,6 +648,7 @@ public sealed class PeerLink(
         {
             case PeerPing ping:
                 link.Peer = PeerBuild.Of(ping.Level, ping.App);
+                link.PeerLevel = Math.Max(1, ping.Level ?? 1);
                 long held = Math.Max(0, (long)(now - datagram.ReceivedAt).TotalMilliseconds);
                 this.Send(link, new PeerPong(ping.Sent, held), datagram.From);
                 break;
@@ -576,7 +660,9 @@ public sealed class PeerLink(
                     link.RoundTripMs = (int)roundTrip;
                 break;
             case PeerSessionMessage session when link.Role == PeerRole.Engineer:
-                link.Session = session.Session;
+                // The wire does not check a session's fields; one an older or broken peer left out
+                // makes it no session, since everything past here reads a LiveTarget as complete.
+                link.Session = session.Session is { SessionKey: not null, Game: not null, Track: not null, Car: not null, SessionType: not null } whole ? whole : null;
                 break;
             case PeerSampleMessage sample when link.Role == PeerRole.Engineer:
                 link.Latest = sample.Sample;
@@ -589,6 +675,13 @@ public sealed class PeerLink(
                 break;
             case PeerRadarMessage radar when link is { Role: PeerRole.Engineer, PitWall: { } wall }:
                 wall.Radar(PitWallWire.Clean(radar.Cars), now);
+                break;
+            case PeerRadioMessage radio when link is { Inbox: { } inbox }:
+                if (inbox.Receive(radio.Id, radio.Text, radio.TargetLap, now) is { } state)
+                    this.Send(link, new PeerRadioAnswer(radio.Id, state), datagram.From);
+                break;
+            case PeerRadioAnswer answer when link is { Outbox: { } outbox }:
+                outbox.Answer(answer.Id, answer.State);
                 break;
             case PeerBye:
                 this.End(
@@ -712,6 +805,12 @@ public sealed class PeerLink(
             link.LastPing = now;
             this.Send(link, Ping(now), remote);
             link.CloseWindow(now);
+        }
+
+        if (link.Outbox is { } outbox)
+        {
+            foreach (RadioSent sent in outbox.Due(now))
+                this.Send(link, new PeerRadioMessage(sent.Id, sent.Text, sent.TargetLapSeconds), remote);
         }
 
         if (link.Role != PeerRole.Driver)
@@ -889,8 +988,23 @@ public sealed class PeerLink(
             SharingPlan = this._sharePlan,
             SharedPlan = link.Role == PeerRole.Driver && link.Offer is { } offer ? new PeerSharedPlan(offer.PlanId, offer.PlanName) : null,
             PitWall = up ? link.PitWall?.State(this._stepAt) : null,
+            Radio = up ? this.RadioOf(link) : null,
         };
     }
+
+    private PeerRadioState RadioOf(Link link) => link.Role == PeerRole.Engineer
+        ? new PeerRadioState
+        {
+            Sent = [.. link.Outbox?.Sent ?? []],
+            // Unknown until the driver's first ping says what its link carries.
+            CanSend = link.PeerLevel >= PeerLinkRules.RadioLevel,
+        }
+        : new PeerRadioState
+        {
+            Received = [.. link.Inbox?.Received ?? []],
+            Showing = link.Inbox?.Showing(this._stepAt),
+            TargetLapSeconds = link.Inbox?.TargetLapSeconds,
+        };
 
     private abstract record Request;
 
@@ -901,6 +1015,10 @@ public sealed class PeerLink(
     private sealed record CompleteRequest(PeerCode Reply) : Request;
 
     private sealed record CloseRequest : Request;
+
+    private sealed record RadioRequest(string Text, double? TargetLapSeconds) : Request;
+
+    private sealed record AcknowledgeRequest : Request;
 
     /// <summary>One link attempt and everything it owns. Touched by the worker only.</summary>
     private sealed class Link
@@ -922,6 +1040,8 @@ public sealed class PeerLink(
             this.Socket = socket;
             this.PhaseSince = now;
             this.PitWall = role == PeerRole.Engineer ? new PitWallAccumulator() : null;
+            this.Outbox = role == PeerRole.Engineer ? new RadioOutbox() : null;
+            this.Inbox = role == PeerRole.Driver ? new RadioInbox() : null;
         }
 
         public PeerRole Role { get; }
@@ -971,6 +1091,9 @@ public sealed class PeerLink(
         /// <summary>The other side's build, from its newest ping; null before the first.</summary>
         public PeerBuild? Peer { get; set; }
 
+        /// <summary>The link level the other side's newest ping named; 0 before the first.</summary>
+        public int PeerLevel { get; set; }
+
         public double SampleRate { get; private set; }
 
         public double? LossPercent { get; private set; }
@@ -983,6 +1106,12 @@ public sealed class PeerLink(
         public PitWallAccumulator? PitWall { get; }
 
         public PeerBlobAssembler Blobs { get; } = new();
+
+        /// <summary>Engineer: the radio messages sent this link.</summary>
+        public RadioOutbox? Outbox { get; }
+
+        /// <summary>Driver: the radio messages received this link.</summary>
+        public RadioInbox? Inbox { get; }
 
         /// <summary>Driver: builds the boards, remembering start places and the impact lap.</summary>
         public PitWallBoardBuilder Board { get; } = new();

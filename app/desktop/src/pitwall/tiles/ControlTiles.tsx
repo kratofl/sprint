@@ -65,7 +65,7 @@ export function RaceControlTile({ data, frame }: { data: TileData; frame: FrameP
 }
 
 /** "#88", or "#88 GT3" when it races in another class than ours. */
-const nameIn = (player: FieldEntry) => (entry: FieldEntry): string => (entry.carClass && entry.carClass !== player.carClass ? `#${carNumber(entry)} ${entry.carClass}` : `#${carNumber(entry)}`)
+const nameIn = (player: FieldEntry) => (entry: FieldEntry): string => (entry.carClass && entry.carClass !== player.carClass ? `#${carNumber(entry)} ${entry.classTag}` : `#${carNumber(entry)}`)
 
 const between = (ahead: Near | null, behind: Near | null, name: (entry: FieldEntry) => string): string =>
   [ahead && `${name(ahead.entry)} (${signed(ahead.seconds)} s)`, behind && `${name(behind.entry)} (${signed(behind.seconds)} s)`].filter(Boolean).join(' and ')
@@ -91,7 +91,7 @@ export function PitStopTile({ data, frame }: { data: TileData; frame: FrameProps
   if (loss === null) {
     return (
       <TileFrame frame={frame} title={title}>
-        <TileEmpty title={`Lane loss ${pitLoss.lane.toFixed(1)} s`} text={`The standing time needs a stop by us or another ${player.carClass || 'car of our class'}.`} />
+        <TileEmpty title={`Lane loss ${pitLoss.lane.toFixed(1)} s`} text={`The standing time needs a stop by us or another ${player.classTag || 'car of our class'}.`} />
       </TileFrame>
     )
   }
@@ -145,7 +145,7 @@ export function PitStopTile({ data, frame }: { data: TileData; frame: FrameProps
       </div>
       <span className="muted pw-note">
         Lane loss from {pitLoss.laneStops} {pitLoss.laneStops === 1 ? 'stop' : 'stops'} this session · stop time from{' '}
-        {pitLoss.standingFromOwn ? `#${carNumber(player)}’s own ${pitLoss.standingStops === 1 ? 'stop' : 'stops'}` : `${pitLoss.standingStops} ${player.carClass} ${pitLoss.standingStops === 1 ? 'stop' : 'stops'}`}
+        {pitLoss.standingFromOwn ? `#${carNumber(player)}’s own ${pitLoss.standingStops === 1 ? 'stop' : 'stops'}` : `${pitLoss.standingStops} ${player.classTag} ${pitLoss.standingStops === 1 ? 'stop' : 'stops'}`}
       </span>
     </TileFrame>
   )

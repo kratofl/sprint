@@ -2,6 +2,8 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { loadDashWasm } from './dashWasm.js'
+import { previewAlertBanner } from './alerts'
+import { defaultDashPalette } from './palette'
 
 // The build the test script writes first (scripts/build-dash-renderer.mjs --wasm).
 const wasm = await loadDashWasm(readFileSync(new URL('../generated/sprint_dash.wasm', import.meta.url)))
@@ -31,6 +33,28 @@ test("a dash the renderer cannot draw throws the renderer's own message and keep
   assert.throws(() => wasm.renderStill('', '{"kind":"setting"}', 0), /./, 'a malformed banner')
   wasm.renderStill('', '', 0)
   assert.deepEqual([wasm.width, wasm.height], [4, 2])
+})
+
+test("the app's sample lap review is a banner the renderer reads", () => {
+  wasm.setScene(scene({}))
+  const lapReview = { id: 'lr', type: 'lap_summary', enabled: true, col: 0, row: 0, colSpan: 1, rowSpan: 1 }
+  const banner = previewAlertBanner({ ...layout, mode: 'basic', alerts: [lapReview] }, lapReview, defaultDashPalette)
+  assert.equal(banner?.kind, 'lapSummary')
+  assert.deepEqual(wasm.renderStill('', JSON.stringify(banner), 0), { timeDependent: false })
+})
+
+test('acknowledging takes down an alert held until acknowledged', () => {
+  const tcAlert = { id: 'tc', type: 'tc_change', enabled: true, col: 0, row: 0, colSpan: 1, rowSpan: 1, displayMode: 'full', untilAck: true }
+  // Big enough that the popup's lettering stays clear of the top-left pixel.
+  wasm.setScene(JSON.stringify({ layout: { ...layout, alerts: [tcAlert] }, width: 40, height: 24 }))
+  const frame = (tc: number): string =>
+    JSON.stringify({ session: {}, car: {}, lap: {}, flags: {}, electronics: { tractionControl: tc, tractionControlMax: 9 }, race: {}, energy: {} })
+  wasm.renderLive(frame(2), 0)
+  assert.deepEqual(wasm.renderLive(frame(3), 100), { timeDependent: false }, 'held, it never runs out')
+  assert.deepEqual([...wasm.pixels().subarray(0, 3)], [0x1f, 0x7f, 0xe6], "the TC popup's blue")
+  wasm.acknowledge()
+  wasm.renderLive(frame(3), 200)
+  assert.deepEqual([...wasm.pixels().subarray(0, 3)], [0x08, 0x08, 0x0a], 'the dash again')
 })
 
 test('a crash drops the instance; the next call starts over with the last good scene', () => {

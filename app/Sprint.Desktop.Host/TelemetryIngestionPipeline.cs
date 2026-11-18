@@ -1,4 +1,5 @@
 using Sprint.Desktop.Api.Telemetry;
+using Sprint.Desktop.Features.Dashes;
 using Sprint.Desktop.Features.Diagnostics;
 using Sprint.Desktop.Features.Live;
 using Sprint.Desktop.Features.Peer;
@@ -51,6 +52,7 @@ public sealed class TelemetryIngestionPipeline
     private readonly ILog _log;
     private readonly LiveUplink? _liveUplink;
     private readonly PeerLink? _peerLink;
+    private readonly DashPageAutomation? _dashPages;
     private TelemetryFrame? _lastPolled;
 
     public TelemetryIngestionPipeline(
@@ -61,7 +63,8 @@ public sealed class TelemetryIngestionPipeline
         Action<DeltaReference?> requestPlanReference,
         ILog? log = null,
         LiveUplink? liveUplink = null,
-        PeerLink? peerLink = null)
+        PeerLink? peerLink = null,
+        DashPageAutomation? dashPages = null)
     {
         this._runtime = runtime ?? throw new ArgumentNullException(nameof(runtime));
         this._planner = planner ?? throw new ArgumentNullException(nameof(planner));
@@ -71,6 +74,7 @@ public sealed class TelemetryIngestionPipeline
         this._log = log ?? NullLog.Instance;
         this._liveUplink = liveUplink;
         this._peerLink = peerLink;
+        this._dashPages = dashPages;
     }
 
     /// <summary>How many times <see cref="Ingest"/> actually ran. A test seam for the
@@ -120,6 +124,11 @@ public sealed class TelemetryIngestionPipeline
         if (this._peerLink is { } link)
         {
             this.SafeRun("live link", () => link.Observe(frame));
+        }
+
+        if (this._dashPages is { } pages)
+        {
+            this.SafeRun("dash pages", () => pages.Observe(frame));
         }
     }
 

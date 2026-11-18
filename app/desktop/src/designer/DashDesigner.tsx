@@ -1,27 +1,29 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { Redo2, Undo2 } from 'lucide-react'
-import type { DashLayout } from '@sprint/dashboard'
+import type { DashLayout, DashPreviewState } from '@sprint/dashboard'
 import type { TelemetryFrame } from '@sprint/types'
-import { bridge, type DashCategoryLists, type SprintCommand, type SprintState } from '../bridge'
+import { bridge, type DashCategoryLists, type DashMode, type SprintCommand, type SprintState } from '../bridge'
 import { buildDashCreate, buildDashDelete, buildDashReset, buildDashSetCategory, buildDashSetScreenProfile, layoutScreenProfile, parseDashLayouts, screenChoices, type ScreenChoice } from '../views/DashesDomain'
 import { deviceScreenSizes } from '../views/DevicesDomain'
 import { openDashDesigner } from '../views/dashDesigner'
 import { useDesignerDoc, type DesignerDocApi } from './useDesignerDoc'
-import { AlertsSection } from './AlertsSection'
 import { LayoutSection } from './LayoutSection'
 import { SettingsSection } from './SettingsSection'
 import { ThemeSection } from './ThemeSection'
 import { isInOverlay, isTypingTarget } from './keys'
 import { shownPage } from './layoutOps'
+import { newModeId } from './pageModes'
+import type { CanvasView } from './CanvasViews'
+import { ViewTools } from './ViewTools'
+import type { ModeActions } from './PageInspector'
 import '../views/DashesView.css'
 import './DashDesigner.css'
 
-type Section = 'layout' | 'alerts' | 'theme' | 'settings'
+type Section = 'layout' | 'theme' | 'settings'
 
 const SECTIONS: readonly { id: Section; label: string }[] = [
   { id: 'layout', label: 'Layout' },
-  { id: 'alerts', label: 'Alerts' },
   { id: 'theme', label: 'Theme' },
   { id: 'settings', label: 'Settings' },
 ]
@@ -92,6 +94,7 @@ export function DashDesigner({ dashId }: { dashId: string }) {
       host={host}
       frame={sprint.telemetry.frame}
       categories={sprint.dashCategories}
+      modes={sprint.dashModes}
       screens={screenChoices(deviceScreenSizes(sprint.devices))}
       losses={sprint.dashRefitLosses[host.id] ?? {}}
       send={send}
@@ -104,6 +107,7 @@ function DesignerWindow({
   host,
   frame,
   categories,
+  modes,
   screens,
   losses,
   send,
@@ -112,6 +116,8 @@ function DesignerWindow({
   host: DashLayout
   frame: TelemetryFrame | null
   categories: DashCategoryLists
+  /** The driver's own dash modes (app-wide). */
+  modes: DashMode[]
   screens: { fitting: ScreenChoice[]; other: ScreenChoice[] }
   /** Screen profile id → widgets a change to that size would leave out of the dash as saved. */
   losses: Readonly<Record<string, number>>
@@ -123,10 +129,27 @@ function DesignerWindow({
   const { layout, undo, redo } = doc
   const [section, setSection] = useState<Section>('layout')
   const [chosenPageId, setChosenPageId] = useState(() => host.pages[0]?.id ?? host.idlePage?.id ?? '')
+  // The page dock's Lap review stop instead of a page; kept here, like the page, across sections.
+  const [reviewing, setReviewing] = useState(false)
+  // How the Layout section shows the dash; kept here so it survives a trip to another section.
+  const [view, setView] = useState<CanvasView>('outline')
+  const [previewState, setPreviewState] = useState<DashPreviewState>('live')
+  const [showGrid, setShowGrid] = useState(false)
   const page = shownPage(layout, chosenPageId)
   const idle = page !== null && page.id === layout.idlePage?.id
   const [actionError, setActionError] = useState<string | null>(null)
   const tabsId = useId()
+  // The host owns the modes; the designer makes a new one's id up so a page can join it at once.
+  const modeActions: ModeActions = {
+    modes,
+    create: async (name) => {
+      const id = newModeId(name, modes)
+      await send({ type: 'dash.mode.create', id, name })
+      return id
+    },
+    rename: (id, name) => send({ type: 'dash.mode.rename', id, name }),
+    remove: (id) => send({ type: 'dash.mode.delete', id }),
+  }
 
   // The window title is the dash's name (Electron shows the page title).
   useEffect(() => {
@@ -178,8 +201,24 @@ function DesignerWindow({
       <div className="designer-dragband" />
 
       <div className="designer-stage" role="tabpanel" id={`${tabsId}-panel`} aria-labelledby={`${tabsId}-${section}`}>
-        {section === 'layout' && <LayoutSection doc={doc} frame={frame} chosenPageId={chosenPageId} onChoosePage={setChosenPageId} />}
-        {section === 'alerts' && <AlertsSection layout={layout} apply={doc.apply} frame={frame} page={page} idle={idle} />}
+        {section === 'layout' && (
+          <LayoutSection
+            doc={doc}
+            frame={frame}
+            chosenPageId={chosenPageId}
+            onChoosePage={(pageId) => {
+              setReviewing(false)
+              setChosenPageId(pageId)
+            }}
+            reviewing={reviewing}
+            onReview={() => setReviewing(true)}
+            onOpenDashSettings={() => void bridge.openDashSettings()}
+            modes={modeActions}
+            view={view}
+            previewState={previewState}
+            showGrid={showGrid}
+          />
+        )}
         {section === 'theme' && <ThemeSection layout={layout} apply={doc.apply} frame={frame} page={page} idle={idle} />}
         {section === 'settings' && (
           <SettingsSection
@@ -192,38 +231,46 @@ function DesignerWindow({
             onScreenProfile={(profileId) => void runAfterSave(() => send(buildDashSetScreenProfile(layout.id, profileId)), 'The screen size could not be changed.')}
             onDuplicate={() => void runAfterSave(duplicate, 'The dash could not be duplicated.')}
             onReset={() => void runAfterSave(() => send(buildDashReset(layout.id)), 'The dash could not be reset.')}
+            onOpenDashSettings={() => void bridge.openDashSettings()}
             onDelete={() => void send(buildDashDelete(layout.id)).catch((error: unknown) => setActionError(error instanceof Error ? error.message : 'The dash could not be deleted.'))}
           />
         )}
       </div>
 
-      <NamePill doc={doc} />
+      <div className="designer-toolbar">
+        <NamePill doc={doc} />
 
-      <div className="designer-glass designer-tabs" role="tablist" aria-label="Designer sections" onKeyDown={onTabKeyDown}>
-        {SECTIONS.map((candidate) => (
-          <button
-            key={candidate.id}
-            type="button"
-            role="tab"
-            id={`${tabsId}-${candidate.id}`}
-            aria-selected={section === candidate.id}
-            aria-controls={`${tabsId}-panel`}
-            tabIndex={section === candidate.id ? 0 : -1}
-            className="designer-tab"
-            onClick={() => setSection(candidate.id)}
-          >
-            {candidate.label}
-          </button>
-        ))}
-      </div>
+        <div className="designer-glass designer-tabs" role="tablist" aria-label="Designer sections" onKeyDown={onTabKeyDown}>
+          {SECTIONS.map((candidate) => (
+            <button
+              key={candidate.id}
+              type="button"
+              role="tab"
+              id={`${tabsId}-${candidate.id}`}
+              aria-selected={section === candidate.id}
+              aria-controls={`${tabsId}-panel`}
+              tabIndex={section === candidate.id ? 0 : -1}
+              className="designer-tab"
+              onClick={() => setSection(candidate.id)}
+            >
+              {candidate.label}
+            </button>
+          ))}
+        </div>
 
-      <div className="designer-glass designer-tools">
-        <button type="button" className="icon-button" aria-label="Undo" title="Undo (Ctrl+Z)" disabled={!doc.canUndo} onClick={undo}>
-          <Undo2 size={16} />
-        </button>
-        <button type="button" className="icon-button" aria-label="Redo" title="Redo (Ctrl+Y)" disabled={!doc.canRedo} onClick={redo}>
-          <Redo2 size={16} />
-        </button>
+        <div className="designer-trail">
+          {section === 'layout' && !reviewing && (
+            <ViewTools view={view} onView={setView} previewState={previewState} onPreviewState={setPreviewState} showGrid={showGrid} onToggleGrid={() => setShowGrid((value) => !value)} />
+          )}
+          <div className="designer-glass designer-tools">
+            <button type="button" className="icon-button" aria-label="Undo" title="Undo (Ctrl+Z)" disabled={!doc.canUndo} onClick={undo}>
+              <Undo2 size={16} />
+            </button>
+            <button type="button" className="icon-button" aria-label="Redo" title="Redo (Ctrl+Y)" disabled={!doc.canRedo} onClick={redo}>
+              <Redo2 size={16} />
+            </button>
+          </div>
+        </div>
       </div>
 
       {actionError && (

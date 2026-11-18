@@ -1,8 +1,9 @@
 import { useEffect, useState, type KeyboardEvent } from 'react'
 import { ChevronLeft } from 'lucide-react'
-import { DashCanvas, multiDialInk, multiDialSwatches, type DashLayout } from '@sprint/dashboard'
-import type { MultiDial, MultiDialLabel, SprintCommand } from '../bridge'
-import { Switch } from '../shell/Switch'
+import { multiDialInk, multiDialSwatches, type DashAlertSettings, type DashLayout } from '@sprint/dashboard'
+import type { DashMode, MultiDial, MultiDialLabel, SprintCommand } from '../bridge'
+import { dialPopupHint } from './DashSettingsDomain'
+import { ScaledDash } from './ScaledDash'
 import { blurOnEnter } from './SettingsLayout'
 import {
   CONTROL_ZOOM,
@@ -29,11 +30,16 @@ const MAX_LABEL_LENGTH = 8
  */
 export function DeviceControls({
   dial,
+  dashModes,
+  popup,
   image,
   screenSize,
   send,
 }: {
   dial: MultiDial
+  dashModes: readonly DashMode[]
+  /** The app-wide `dial_change` alert: how the popup looks (Dashes > Settings). */
+  popup: DashAlertSettings
   image: DeviceImageKey | null
   /** The wheel screen's logical size, so the popup preview has its shape. */
   screenSize: { width: number; height: number }
@@ -57,7 +63,7 @@ export function DeviceControls({
       <ControlsStage dial={dial} image={image} zoomed={zoomed} selected={selected} onZoom={setZoomed} onSelect={setSelected} />
       <div className="controls-panel">
         {zoomed ? (
-          <DialEditor key={selected} dial={dial} index={selected} screenSize={screenSize} send={send} />
+          <DialEditor key={selected} dial={dial} dashModes={dashModes} popup={popup} index={selected} screenSize={screenSize} send={send} />
         ) : (
           <ControlsList dial={dial} onOpen={() => setZoomed(true)} />
         )}
@@ -199,14 +205,22 @@ function ControlsList({ dial, onOpen }: { dial: MultiDial; onOpen: () => void })
   )
 }
 
-/** Name, colour and popup of one dial position, with the device-wide invert switch. */
+/**
+ * Name, colour, dash mode and popup of one dial position. The popup shows as the `dial_change`
+ * alert is set, app-wide. While the dial sits on a position with a dash mode, the wheel cycles
+ * only that mode's pages.
+ */
 function DialEditor({
   dial,
+  dashModes,
+  popup,
   index,
   screenSize,
   send,
 }: {
   dial: MultiDial
+  dashModes: readonly DashMode[]
+  popup: DashAlertSettings
   index: number
   screenSize: { width: number; height: number }
   send: (command: SprintCommand) => Promise<void>
@@ -236,7 +250,6 @@ function DialEditor({
   }
 
   const preview = screenSize.width > 0 && screenSize.height > 0 ? screenSize : { width: 800, height: 480 }
-  const previewScale = PREVIEW_WIDTH / preview.width
   return (
     <>
       <div className="controls-panel-head">
@@ -290,31 +303,40 @@ function DialEditor({
         </span>
       </div>
 
+      <label className="controls-field">
+        <span>Dash mode</span>
+        <select
+          value={dial.modes[index] ?? ''}
+          disabled={dashModes.length === 0}
+          onChange={(event) => void send({ type: 'devices.multiDial', deviceId: dial.deviceId, position: index, mode: event.target.value === '' ? null : event.target.value })}
+        >
+          <option value="">None</option>
+          {dashModes.map((mode) => (
+            <option key={mode.id} value={mode.id}>
+              {mode.name}
+            </option>
+          ))}
+        </select>
+        <span className="field-hint">
+          {dashModes.length === 0
+            ? 'Make your modes in the dash designer: a page’s panel, Every session off, Your modes, New.'
+            : 'While the dial sits here, the dash cycles only the pages in this mode.'}
+        </span>
+      </label>
+
       <div className="controls-field">
         <span>Popup on the wheel</span>
         <div className="controls-preview" aria-hidden="true">
-          <DashCanvas
+          {/* Drawn at the screen's size, so a strip shows as the wheel shows it. */}
+          <ScaledDash
             layout={PREVIEW_LAYOUT}
-            width={PREVIEW_WIDTH}
-            height={Math.round(preview.height * previewScale)}
-            alertBanner={{ kind: 'multiDial', caption: dial.label, label: position.label, color: position.color, inverted: dial.invertPopup }}
+            size={preview}
+            maxWidth={PREVIEW_WIDTH}
+            maxHeight={PREVIEW_WIDTH}
+            banner={{ kind: 'multiDial', caption: dial.label, label: position.label, color: position.color, inverted: popup.invertColors, displayMode: popup.size }}
           />
         </div>
-      </div>
-
-      <div className="controls-invert">
-        <span className="controls-invert-text">
-          <span id="controls-invert-title">Invert colours</span>
-          <span className="muted" id="controls-invert-description">
-            For every position
-          </span>
-        </span>
-        <Switch
-          checked={dial.invertPopup}
-          onChange={(invertPopup) => void send({ type: 'devices.multiDial', deviceId: dial.deviceId, invertPopup })}
-          aria-labelledby="controls-invert-title"
-          aria-describedby="controls-invert-description"
-        />
+        <span className="field-hint">{dialPopupHint(popup)}</span>
       </div>
     </>
   )

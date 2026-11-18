@@ -503,8 +503,9 @@
 }
 
 /* Dash designer window: the traffic lights sit at its top left (electron/main.ts
-   TRAFFIC_LIGHT_POSITION), so the name pill starts after them. */
-:where([data-platform="mac"]) .designer-pill {
+   TRAFFIC_LIGHT_POSITION), so its toolbar starts after them. Two classes deep, because the
+   window's own CSS lands after this file. */
+:where([data-platform="mac"]) .designer > .designer-toolbar {
   left: 88px;
 }
 
@@ -515,4 +516,10 @@
 :where([data-platform="mac"]) .debug-root > .debug-bar {
   height: 52px;
   padding-left: 88px;
+}
+
+/* Dashes > Settings: the preview column stays in view below the toolbar the content scrolls
+   under. Two classes deep, because the view's own CSS lands after this file. */
+:where([data-platform="mac"]) .dash-settings-split > .dash-settings-side {
+  top: 60px;
 }

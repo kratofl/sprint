@@ -208,6 +208,39 @@ public sealed class PitWallTests
     }
 
     [Fact]
+    public void ANewLapStartsAtTheLineThoughItsFirstSamplesStillSayTheLastLapsPosition()
+    {
+        PitWallAccumulator wall = new();
+        for (int index = 0; index < 1000; index++)
+            wall.Sample(new LiveSample { Lap = 1, TrackPosition = index / 1000.0, SpeedKph = 200 });
+
+        // LMU's lap number ticks over before the track position wraps.
+        foreach (double position in new[] { 0.998, 0.999, 0.002, 0.01 })
+            wall.Sample(new LiveSample { Lap = 2, TrackPosition = position, SpeedKph = 200 });
+
+        PitWallTrace current = wall.Trace(PitWallTraceLap.Current);
+        Assert.Equal(2, current.Lap);
+        Assert.Equal([0.002, 0.01], current.Distance);
+    }
+
+    [Fact]
+    public void TheSectorLinesAreNarrowedDownFromCarsCrossingThem()
+    {
+        PitWallAccumulator wall = new();
+        wall.Board(Board(Entry(1, 1) with { Sector = 1, LapFraction = 0.30 }, Entry(2, 2) with { Sector = 2, LapFraction = 0.60 }), T0);
+        Assert.Null(wall.State(T0)!.SectorStarts);
+
+        // Car 1 crosses the first line between 0.30 and 0.36, car 2 the second between 0.60 and 0.66.
+        wall.Board(Board(Entry(1, 1) with { Sector = 2, LapFraction = 0.36 }, Entry(2, 2) with { Sector = 3, LapFraction = 0.66 }), T0);
+        Assert.Equal([0.33, 0.63], wall.State(T0)!.SectorStarts!);
+
+        // Another crossing of the first line, between 0.32 and 0.38, narrows it to 0.32–0.36.
+        wall.Board(Board(Entry(1, 1) with { Sector = 1, LapFraction = 0.32 }, Entry(2, 2) with { Sector = 3, LapFraction = 0.70 }), T0);
+        wall.Board(Board(Entry(1, 1) with { Sector = 2, LapFraction = 0.38 }, Entry(2, 2) with { Sector = 3, LapFraction = 0.75 }), T0);
+        Assert.Equal([0.34, 0.63], wall.State(T0)!.SectorStarts!);
+    }
+
+    [Fact]
     public void PressuresAreKeptPerLapAndAPitStopStartsANewStint()
     {
         PitWallAccumulator wall = new();
@@ -680,6 +713,17 @@ public sealed class PitWallTests
         Place = place,
         ClassPlace = place,
     };
+
+    [Theory]
+    [InlineData("Hyper", "Porsche Penske Motorsport #6:LM", "HYP")]
+    [InlineData("GT3", "Manthey #92", "LMGT3")]
+    [InlineData("LMP2_ELMS", "Algarve Pro Racing #25", "LMP2 ELMS")]
+    [InlineData("LMP2", "Algarve Pro Racing #25:ELMS25", "LMP2 ELMS")]
+    [InlineData("LMP2", "United Autosports #22:LM", "LMP2")]
+    public void ACarOnTheWallCarriesItsClassTag(string carClass, string car, string tag)
+    {
+        Assert.Equal(tag, (Entry(1, 1) with { CarClass = carClass, Car = car }).ClassTag);
+    }
 
     private static PitWallCar Entry(int id, int place) => new() { Id = id, Place = place };
 

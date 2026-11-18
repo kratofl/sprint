@@ -1,6 +1,6 @@
 import type { PitWall } from '../pitWallData'
 import { pitLossTotal, rejoin } from '../pitStop'
-import { carNumber, classesOf, classShade, isOut, playerOf, sectorStarts } from '../timing'
+import { carNumber, classLabel, classMark, classesOf, isOut, playerOf, sectorStarts } from '../timing'
 import { TileFrame, type FrameProps, type TileData } from '../tileFrame'
 
 // The circle track: the lap as a ring with every car on it by how far round it is (start/finish
@@ -69,7 +69,8 @@ function ghostOf(wall: PitWall): number | null {
 }
 
 function Ring({ wall, legend }: { wall: PitWall; legend: boolean }) {
-  const starts = sectorStarts(wall.field)
+  // The lines the cars were seen crossing; until both were, a guess from where the cars are.
+  const starts = wall.sectorStarts ?? sectorStarts(wall.field)
   const yellows = wall.session.yellowSectors
   const ghost = ghostOf(wall)
   const bounds: number[] = starts ? [0, starts[0], starts[1], 1] : [0, 1]
@@ -105,7 +106,7 @@ function Ring({ wall, legend }: { wall: PitWall; legend: boolean }) {
         {map &&
           cars.map((car) => {
             const [x, y] = map.place(car.x, car.z)
-            return <circle key={`m${car.id}`} cx={x} cy={y} r={car.isPlayer ? 4 : 2.5} className={car.isPlayer ? 'pw-car you' : `pw-car c${classShade(wall.field, car.carClass)}`} />
+            return <circle key={`m${car.id}`} cx={x} cy={y} r={car.isPlayer ? 4 : 2.5} className={car.isPlayer ? 'pw-car you' : `pw-car ${classMark(wall.field, car.carClass)}`} />
           })}
         {cars
           .filter((car) => car.stopped)
@@ -139,7 +140,7 @@ function Ring({ wall, legend }: { wall: PitWall; legend: boolean }) {
               cx={x}
               cy={y}
               r={car.isPlayer ? 6.5 : 4.5}
-              className={`${car.isPlayer ? 'pw-car you' : `pw-car c${classShade(wall.field, car.carClass)}`}${car.inPit ? ' pitted' : ''}`}
+              className={`${car.isPlayer ? 'pw-car you' : `pw-car ${classMark(wall.field, car.carClass)}`}${car.inPit ? ' pitted' : ''}`}
             >
               <title>{car.driver}</title>
             </circle>
@@ -152,10 +153,10 @@ function Ring({ wall, legend }: { wall: PitWall; legend: boolean }) {
             <i className="pw-dot you" />
             {player ? `#${carNumber(player)}` : 'Our car'}
           </span>
-          {classes.slice(0, 3).map((carClass, index) => (
+          {classes.slice(0, 3).map((carClass) => (
             <span key={carClass}>
-              <i className={`pw-dot c${index}`} />
-              {carClass}
+              <i className={`pw-dot ${classMark(wall.field, carClass)}`} />
+              {classLabel(wall.field, carClass)}
             </span>
           ))}
           {ghost !== null && (

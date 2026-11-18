@@ -14,9 +14,15 @@ export type PageAction = 'detach' | 'rename' | 'duplicate' | 'delete'
 /** The wall's own bar (tabs, Edit layout, Close), or a page's or tile's window's (its name and the way back). */
 type BarMode = { kind: 'main'; editing: boolean } | { kind: 'own'; title: string; onBack: () => void }
 
-/** The link in a word for the bar: linked with its round trip, reconnecting, or not linked. */
+/**
+ * The link in a word for the bar: linked with its round trip and the telemetry frames arriving per
+ * second (TFPS), reconnecting, or not linked.
+ */
 function linkPill(link: LiveLink): { tone: StatusTone; label: string } {
-  if (link.phase === 'Connected') return { tone: 'success', label: link.health.roundTripMs !== null ? `Linked · ${link.health.roundTripMs} ms` : 'Linked' }
+  if (link.phase === 'Connected') {
+    const { roundTripMs, sampleRate } = link.health
+    return { tone: 'success', label: ['Linked', ...(roundTripMs !== null ? [`${roundTripMs} ms`] : []), `${sampleRate.toFixed(0)} TFPS`].join(' · ') }
+  }
   if (link.phase === 'Interrupted') return { tone: 'warning', label: 'Reconnecting' }
   return { tone: 'neutral', label: 'Not linked' }
 }
@@ -26,7 +32,19 @@ function linkPill(link: LiveLink): { tone: StatusTone; label: string } {
  * leaves room for the OS caption buttons). On the wall: page tabs (a page in its own window is
  * marked ↗ and brings that window forward), + to add a page, a menu per page (right-click, ⋯,
  * Shift+F10), the car followed, the link, Edit layout and Close. In Edit layout: Cancel and Done.
+ * A page's or tile's own window shows the link too, beside the way back.
  */
+/** The link pill; TFPS is spelled out on hover. */
+function LinkPill({ pill }: { pill: { tone: StatusTone; label: string } }) {
+  return (
+    <span className="pw-linkpill">
+      <Status tone={pill.tone} quiet title="Round trip · telemetry frames per second (TFPS)">
+        {pill.label}
+      </Status>
+    </span>
+  )
+}
+
 export function PitWallBar({
   mode,
   layout,
@@ -141,9 +159,12 @@ export function PitWallBar({
       )}
       <span className="pw-bar-right">
         {mode.kind === 'own' ? (
-          <button type="button" className="button subtle" onClick={mode.onBack}>
-            Back into the pit wall
-          </button>
+          <>
+            <LinkPill pill={pill} />
+            <button type="button" className="button subtle" onClick={mode.onBack}>
+              Back into the pit wall
+            </button>
+          </>
         ) : editing ? (
           <>
             <button type="button" className="button subtle" onClick={onCancelEdit}>
@@ -155,11 +176,7 @@ export function PitWallBar({
           </>
         ) : (
           <>
-            <span className="pw-linkpill">
-              <Status tone={pill.tone} quiet>
-                {pill.label}
-              </Status>
-            </span>
+            <LinkPill pill={pill} />
             <button type="button" className="button subtle" onClick={onEdit}>
               <LayoutDashboard /> Edit layout
             </button>

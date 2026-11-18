@@ -6,9 +6,29 @@ import { parsePlan, parseRaceFuelEstimate, type SessionPlan } from '../views/Ses
 // everything inward of it trusts the result.
 
 /** Every tile the pit wall has. A tile slot holds one (a plain tile) or several (a stack). */
-export type TileKind = 'session' | 'timing' | 'track' | 'stint' | 'fuel' | 'relative' | 'target' | 'tyres' | 'pressure' | 'damage' | 'radar' | 'traces' | 'control' | 'pitstop'
+export type TileKind = 'session' | 'timing' | 'track' | 'stint' | 'fuel' | 'relative' | 'target' | 'tyres' | 'pressure' | 'damage' | 'radar' | 'traces' | 'control' | 'pitstop' | 'radio' | 'windows'
 
-export const TILE_KINDS: readonly TileKind[] = ['session', 'timing', 'track', 'stint', 'fuel', 'relative', 'target', 'tyres', 'pressure', 'damage', 'radar', 'traces', 'control', 'pitstop']
+export const TILE_KINDS: readonly TileKind[] = ['session', 'timing', 'track', 'stint', 'fuel', 'relative', 'target', 'tyres', 'pressure', 'damage', 'radar', 'traces', 'control', 'pitstop', 'radio', 'windows']
+
+/** A tile's name in the stack inspector, the tray and a stack's "next" hint. */
+export const KIND_LABEL: Record<TileKind, string> = {
+  session: 'Session',
+  timing: 'Timing',
+  track: 'Track',
+  stint: 'Stint plan',
+  fuel: 'Fuel & energy',
+  relative: 'Relative',
+  target: 'Target lap',
+  tyres: 'Tyres',
+  pressure: 'Tyre pressure',
+  damage: 'Damage',
+  radar: 'Radar',
+  traces: 'Telemetry',
+  control: 'Race control',
+  pitstop: 'Pit stop',
+  radio: 'Radio',
+  windows: 'Windows',
+}
 
 /** Mirrors `SessionType` in Sprint.Desktop.Api; the host sends enum names. */
 export type SessionKind = 'Practice' | 'Qualify' | 'Race' | 'Warmup' | 'Unknown'
@@ -65,6 +85,8 @@ export type FieldEntry = {
   driver: string
   car: string
   carClass: string
+  /** The class as racing tags it ("HYP", "LMP2 ELMS"), for its colour and its name on the wall; the game's own class from an older host. */
+  classTag: string
   isPlayer: boolean
   place: number
   classPlace: number
@@ -161,6 +183,8 @@ export type PitWall = {
   car: PitWallCar
   radar: RadarCar[]
   outline: { x: number; z: number }[]
+  /** Where sectors 2 and 3 start (lap fractions), learnt from cars crossing the lines; null until both were seen. */
+  sectorStarts: readonly [number, number] | null
   pressures: TyrePressures[]
   /** The driver's session plan while they share it. */
   plan: SessionPlan | null
@@ -296,6 +320,7 @@ const parseFieldEntry = (value: unknown): FieldEntry[] => {
       driver: text(value.driver),
       car: text(value.car),
       carClass: text(value.carClass),
+      classTag: text(value.classTag) || text(value.carClass),
       isPlayer: value.isPlayer === true,
       place: finite(value.place),
       classPlace: finite(value.classPlace),
@@ -383,6 +408,7 @@ export const parsePitWall = (value: unknown): PitWall | null => {
         )
       : [],
     outline: Array.isArray(value.outline) ? value.outline.flatMap((row: unknown) => (isRecord(row) ? [{ x: finite(row.x), z: finite(row.z) }] : [])) : [],
+    sectorStarts: sectorStartsOf(value.sectorStarts),
     pressures: Array.isArray(value.pressures)
       ? value.pressures.flatMap((row: unknown) =>
           isRecord(row) ? [{ lap: finite(row.lap), fl: finite(row.fl), fr: finite(row.fr), rl: finite(row.rl), rr: finite(row.rr) }] : [],
@@ -394,6 +420,12 @@ export const parsePitWall = (value: unknown): PitWall | null => {
     pitLoss: parsePitLoss(value.pitLoss),
     receivedAt: finite(value.receivedAt),
   }
+}
+
+const sectorStartsOf = (value: unknown): readonly [number, number] | null => {
+  if (!Array.isArray(value) || value.length !== 2) return null
+  const [second, third]: unknown[] = value
+  return typeof second === 'number' && typeof third === 'number' && Number.isFinite(second) && Number.isFinite(third) ? [second, third] : null
 }
 
 const parseBounds = (value: unknown): Bounds | null =>

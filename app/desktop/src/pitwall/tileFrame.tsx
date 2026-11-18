@@ -1,29 +1,31 @@
 import type { PointerEvent as ReactPointerEvent, ReactNode } from 'react'
 import { ChevronLeft, ChevronRight, ExternalLink, GripVertical, Layers, Pause, X } from 'lucide-react'
-import type { LinkHealth, LinkSample } from '../bridge'
-import type { PitWall, TileKind } from './pitWallData'
+import type { LinkHealth, LinkRadio, LinkSample, SprintCommand } from '../bridge'
+import { KIND_LABEL, type PitWall, type PitWallLayout, type TileKind } from './pitWallData'
 import type { StackView } from './stack'
 
-/** What every tile renders from: the driver's board (null until one arrives) and the link's newest sample. */
-export type TileData = { pitWall: PitWall | null; latest: LinkSample | null; health: LinkHealth | null }
-
-/** A tile's name in the stack inspector, the tray and a stack's "next" hint. */
-export const KIND_LABEL: Record<TileKind, string> = {
-  session: 'Session',
-  timing: 'Timing',
-  track: 'Track',
-  stint: 'Stint plan',
-  fuel: 'Fuel & energy',
-  relative: 'Relative',
-  target: 'Target lap',
-  tyres: 'Tyres',
-  pressure: 'Tyre pressure',
-  damage: 'Damage',
-  radar: 'Radar',
-  traces: 'Telemetry',
-  control: 'Race control',
-  pitstop: 'Pit stop',
+/** What the Radio and Windows tiles act with: the host's commands and the layout's windows. */
+export type WallActions = {
+  send: (command: SprintCommand) => Promise<void>
+  layout: PitWallLayout
+  /** Puts a page or a tile in its own window (`out`), or back on the wall. */
+  place: (target: { kind: 'page' | 'tile'; id: string }, out: boolean) => void
 }
+
+/**
+ * What every tile renders from: the driver's board (null until one arrives), the link's newest
+ * sample and health, the engineer's radio, and what the Radio and Windows tiles act with.
+ */
+export type TileData = {
+  pitWall: PitWall | null
+  latest: LinkSample | null
+  health: LinkHealth | null
+  radio: Extract<LinkRadio, { side: 'Engineer' }> | null
+  actions: WallActions | null
+}
+
+/** A tile's name in the stack inspector, the tray and a stack's "next" hint (kept with the data, for the pure modules). */
+export { KIND_LABEL }
 
 /** A stack's header controls: which layer shows, its countdown, and the dots and arrows to pick one. */
 export type StackHead = { layers: readonly TileKind[]; view: StackView; onPick: (index: number) => void; onStep: (delta: -1 | 1) => void }

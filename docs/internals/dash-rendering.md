@@ -44,6 +44,14 @@ Conditions are modeled separately from the colors that render them:
 - A condition may fill a widget's whole frame (delta gaining, tyre temperature, low fuel)
   because a fill reads at a glance on washed-out USB panels. Values on a fill turn to the
   dark canvas color. A neutral value never gets a fill.
+- Bar widgets carry no label and no value (the driver's call, 2026-11): twenty segments, and
+  an energy bar's segments each wear their zone's color (red below a fifth, amber below half,
+  green above), lit or as a dim tint, so the scale reads at a glance even when full. The fuel
+  bar measures against the tank's size when the game reports it.
+- A flat frame's edge is the text color, white by default (the driver's call, 2026-11, after a
+  works team's wheel): a white outline separates values on a washed-out panel where a grey one
+  disappears. A label on an edged box is cut into its top edge, so the value keeps the box's
+  height; only an edgeless box puts its label above the value. The corner radius is the dash's.
 
 ## Setting identity colors
 
@@ -116,9 +124,9 @@ painted, and it reproduces that picture on purpose; the parts below look arbitra
 are not.
 
 - **The frame is the host's telemetry JSON**, `Sprint.Desktop.Api`'s `TelemetryFrame` as
-  `HostJson` writes it (C# names, enums as names), without the other cars (`DashFrameJson`). The
-  model keeps the `@sprint/types` names and `model.rs` maps onto them with `parseHostFrame`'s
-  rules; the editor converts its mirror frames back with `toHostFrame`
+  `HostJson` writes it (C# names, enums as names), the other cars included for the relative
+  widget (`DashFrameJson`). The model keeps the `@sprint/types` names and `model.rs` maps onto
+  them with `parseHostFrame`'s rules; the editor converts its mirror frames back with `toHostFrame`
   (`packages/dashboard/src/hostFrame.ts`). The boundary reads a misnamed field as 0 without a
   word, so `renderer/tests/fixtures/host-frame.json`, the host's own output kept current by
   `HostFrameFixtureTests`, must reach the model value for value (`tests/host_frame.rs`).
@@ -142,12 +150,29 @@ are not.
   keeps the alert, lap-timer and multi-dial popup state between frames and says when the picture
   depends on time; `render_still` (the editor) keeps none. The dial reading is not in the frame:
   the host hands it over with `set_multi_dial` when it changes, so a turn shows without a game.
+- **Alerts are app-wide but the renderer reads only the layout.** The host stamps the driver's
+  alert settings onto a copy of every layout it hands a renderer (`AppDashAlerts.Stamp` in
+  `Sprint.Desktop.Core`, the app's previews `dashAlertFromSettings` in `src/alerts.ts`); a layout's
+  own `alerts`/`alertConfig` are never read, and a stamped copy is never saved. A
+  `strip` is a band a third of the screen tall across its middle; under 100 logical px (a screen
+  under 300 px tall) it is drawn full screen instead, decided at draw time (`overlays::strip_fits`),
+  so a preview drawn smaller than its panel can fall back where the wheel shows the strip. Alerts
+  that are up stack, one per type, newest on top, so one held until Ack is never lost under a
+  passing one. A held alert never makes the picture time dependent: whoever calls `acknowledge`
+  renders again. While the flag alert is up the flag overlay is not drawn; it would name the
+  flag twice.
+- **The lap review draws only what the lap left behind.** The `lap_summary` alert's six cells
+  are the layout's `lapReview.cells` (`LapReview` in `lap_summary.rs`; a missing or unknown cell
+  is the default's in its place). `LapSummaryWatcher` captures every value a cell can show as the
+  lap finishes (the sectors and best with the lap time, the rest on the frame the lap counter
+  moves), and the screen draws from that capture, never from the live frame, so a review held
+  for 15 s still shows the lap it is about.
 - **A panic is an error, not a crash.** Every C ABI entry point catches panics, which needs
   `panic = "unwind"` in the release profile; in WebAssembly a panic traps and
   `src/dashWasm.js` starts a fresh instance.
 - **The editor's copies are guarded.** The widget types the editor offers
-  (`src/widgetTypes.ts`) are checked against what the renderer draws by a Rust test that reads that
-  file. Palette, grid math and groups exist in both languages because the WebAssembly build only
+  (`src/widgetTypes.ts`), the alert types (`src/alerts.ts`) and the lap review fields
+  (`src/lapReview.ts`) are checked against the renderer's by Rust tests that read those files. Palette, grid math and groups exist in both languages because the WebAssembly build only
   turns a scene into pixels, and the editor needs those answers itself while editing (swatches, the
   selection overlay that must line up to the pixel, the group tree). Each Rust module's tests are
   ported from the TypeScript ones; a change to one side is a change to both, tests included.
@@ -156,7 +181,9 @@ are not.
 
 `cargo run --release --example render -- --dash <layout.json> <out.png>` in the crate draws one page
 of a layout at 800x480 against a fixed mid-race frame (`--page`, `--style panels|grid|bars` and
-`--size` override; `--banner <banner.json>` draws an alert popup over it). Render the presets in
+`--size` override; `--banner <banner.json>` draws an alert popup over it, `--alert penalty:full:invert`
+the app's preview of an alert type, `--level 35` puts fuel, virtual energy and charge at 35% for the
+bars' colors). Render the presets in
 `app/Sprint.Desktop.Host/presets/dash/` at the panel size and look at the PNG: layout, alignment,
 clip direction, weights and color, not the telemetry values. There is no reference image set in the
 repo.

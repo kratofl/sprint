@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
 import { Check, ChevronLeft, ChevronRight, CircleDot, CircleOff, Download, Flag, ListChecks, NotebookPen, Pencil, Play, Plus, Route, Settings, Square, Timer, Trash2, Zap } from 'lucide-react'
 import { bridge } from '../bridge'
+import { parseCarMarks, type CarMarks } from '../carMarks'
 import type { EstimateFigure, PlanContextChoices, PlanDetection, PlanFuelPreview, PlanFuelRequest, PlanTargetOption, PlanTargetScopeGroup, RaceFuelEstimate, SprintCommand } from '../bridge'
 import type { RuntimeState } from '../shell/runtime'
 import { ConfirmDialog, ContentDialog } from '../shell/ContentDialog'
@@ -10,6 +11,7 @@ import { Status } from '../shell/Status'
 import { SuggestBox } from '../shell/SuggestBox'
 import { Switch } from '../shell/Switch'
 import { ListRow } from './SettingsLayout'
+import { CarName, TrackName } from './CarBadges'
 import {
   PLAN_STATUS_TONE,
   activePlan,
@@ -113,6 +115,7 @@ export function SessionPlannerView({
 }) {
   const plans = runtime.kind === 'ready' ? parsePlans(runtime.sprint.plans) : []
   const planFuel = runtime.kind === 'ready' ? runtime.sprint.planFuel : {}
+  const planMarks = runtime.kind === 'ready' ? runtime.sprint.planMarks : {}
   const settings = readPlannerSettings(runtime.kind === 'ready' ? runtime.sprint.settings : {})
   const [openId, setOpenId] = useState<string | null>(null)
   const [form, setForm] = useState<PlanForm | null>(null)
@@ -237,6 +240,7 @@ export function SessionPlannerView({
         <PlanDetail
           plan={opened}
           fuel={planFuel[opened.id] ?? null}
+          marks={marksOf(planMarks, opened)}
           blockedBy={blockedBy}
           onBack={() => setOpenId(null)}
           onCommand={(command) => void runAction(command)}
@@ -250,7 +254,7 @@ export function SessionPlannerView({
           </div>
         </div>
       ) : (
-        <PlanLists plans={plans} onOpen={setOpenId} />
+        <PlanLists plans={plans} marks={planMarks} onOpen={setOpenId} />
       )}
 
       {(form?.kind === 'create' || form?.kind === 'quick') && (
@@ -404,30 +408,47 @@ function WeekendTimeline({ plan, compact = false }: { plan: SessionPlan; compact
 
 // ── Plan list (the page's landing) ─────────────────────────────────────────
 
-function PlanLists({ plans, onOpen }: { plans: readonly SessionPlan[]; onOpen: (planId: string) => void }) {
+/** How a plan's car and track are shown; just its car's name from a host that sent no marks. */
+const marksOf = (planMarks: Record<string, CarMarks>, plan: SessionPlan): CarMarks => planMarks[plan.id] ?? parseCarMarks(null, plan.car)
+
+/** The plan's car and track with their marks, "·" between; nothing for a plan with neither. */
+function PlanContext({ plan, marks }: { plan: SessionPlan; marks: CarMarks }) {
+  return (
+    <>
+      {plan.car && <CarName marks={marks} />}
+      {plan.car && plan.track && ' · '}
+      {plan.track && <TrackName track={plan.track} country={marks.country} />}
+    </>
+  )
+}
+
+function PlanLists({ plans, marks, onOpen }: { plans: readonly SessionPlan[]; marks: Record<string, CarMarks>; onOpen: (planId: string) => void }) {
   const { open, finished } = groupPlans(plans)
   const upNext = upNextPlan(plans)
 
   return (
     <>
-      {upNext && <UpNextCard plan={upNext} onOpen={() => onOpen(upNext.id)} />}
-      <PlanListCard title="Open" plans={open} emptyText="No open plans. Arm a finished plan again, or create a new one." onOpen={onOpen} />
-      {finished.length > 0 && <PlanListCard title="Done" plans={finished} onOpen={onOpen} />}
+      {upNext && <UpNextCard plan={upNext} marks={marksOf(marks, upNext)} onOpen={() => onOpen(upNext.id)} />}
+      <PlanListCard title="Open" plans={open} marks={marks} emptyText="No open plans. Arm a finished plan again, or create a new one." onOpen={onOpen} />
+      {finished.length > 0 && <PlanListCard title="Done" plans={finished} marks={marks} onOpen={onOpen} />}
     </>
   )
 }
 
 /** The plan that's next: its name, how far along the weekend it is, and what it chases. */
-function UpNextCard({ plan, onOpen }: { plan: SessionPlan; onOpen: () => void }) {
+function UpNextCard({ plan, marks, onOpen }: { plan: SessionPlan; marks: CarMarks; onOpen: () => void }) {
   const target = headlineTarget(plan)
   const kind = openSegment(plan)?.kind ?? nextSegment(plan)
-  const context = [plan.car, plan.track].filter((value) => value.length > 0).join(' · ')
   return (
     <section className="card planner-upnext" aria-label="Up next">
       <div className="planner-upnext-main">
         <span className="planner-kicker">{plan.status === 'Tracking' ? 'Live' : 'Up next'}</span>
         <span className="planner-upnext-name">{plan.name}</span>
-        {context && <span className="muted">{context}</span>}
+        {(plan.car || plan.track) && (
+          <span className="muted">
+            <PlanContext plan={plan} marks={marks} />
+          </span>
+        )}
       </div>
       <WeekendTimeline plan={plan} compact />
       <div className="planner-upnext-facts">
@@ -447,7 +468,19 @@ function UpNextCard({ plan, onOpen }: { plan: SessionPlan; onOpen: () => void })
   )
 }
 
-function PlanListCard({ title, plans, emptyText, onOpen }: { title: string; plans: readonly SessionPlan[]; emptyText?: string; onOpen: (planId: string) => void }) {
+function PlanListCard({
+  title,
+  plans,
+  marks,
+  emptyText,
+  onOpen,
+}: {
+  title: string
+  plans: readonly SessionPlan[]
+  marks: Record<string, CarMarks>
+  emptyText?: string
+  onOpen: (planId: string) => void
+}) {
   return (
     <section className="card list-card" aria-label={title}>
       <div className="card-header">
@@ -468,7 +501,7 @@ function PlanListCard({ title, plans, emptyText, onOpen }: { title: string; plan
       ) : (
         <div className="list-rows">
           {plans.map((plan) => (
-            <PlanRow key={plan.id} plan={plan} onOpen={() => onOpen(plan.id)} />
+            <PlanRow key={plan.id} plan={plan} marks={marksOf(marks, plan)} onOpen={() => onOpen(plan.id)} />
           ))}
         </div>
       )}
@@ -476,7 +509,7 @@ function PlanListCard({ title, plans, emptyText, onOpen }: { title: string; plan
   )
 }
 
-function PlanRow({ plan, onOpen }: { plan: SessionPlan; onOpen: () => void }) {
+function PlanRow({ plan, marks, onOpen }: { plan: SessionPlan; marks: CarMarks; onOpen: () => void }) {
   const context = [plan.car, plan.track].filter((value) => value.length > 0).join(' · ')
   const { laps } = planLapStats(plan)
   const target = headlineTarget(plan)
@@ -496,7 +529,7 @@ function PlanRow({ plan, onOpen }: { plan: SessionPlan; onOpen: () => void }) {
         {when && <span className="planner-sub">{when}</span>}
       </span>
       <span className="planner-row-context" title={context}>
-        {context || 'No car or track'}
+        {context ? <PlanContext plan={plan} marks={marks} /> : 'No car or track'}
       </span>
       <PlanStatusLabel status={plan.status} />
       <span className="muted">{nextStepLabel(plan)}</span>
@@ -562,17 +595,18 @@ function usePlanTargets(plan: SessionPlan): PlanTargetScopeGroup[] | null {
 function PlanDetail({
   plan,
   fuel,
+  marks,
   blockedBy,
   onBack,
   onCommand,
 }: {
   plan: SessionPlan
   fuel: RaceFuelEstimate | null
+  marks: CarMarks
   blockedBy: SessionPlan | null
   onBack: () => void
   onCommand: (command: SprintCommand) => void
 }) {
-  const context = [plan.car, plan.track].filter((value) => value.length > 0).join(' · ')
   const tracking = openSegment(plan)
   const warning = plan.warnings.length > 0 ? plan.warnings[plan.warnings.length - 1] : null
   const canArm = plan.status !== 'Armed' && plan.status !== 'Tracking'
@@ -592,7 +626,11 @@ function PlanDetail({
           <PlanStatusLabel status={plan.status} />
           {plan.mode === 'Quick' && <span className="chip chip-muted">Quick</span>}
         </div>
-        {context && <span className="muted">{context}</span>}
+        {(plan.car || plan.track) && (
+          <span className="muted">
+            <PlanContext plan={plan} marks={marks} />
+          </span>
+        )}
       </div>
 
       {tracking ? (

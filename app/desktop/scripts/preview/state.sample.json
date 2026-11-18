@@ -21,6 +21,8 @@
         "gear": 5,
         "rpm": 7420,
         "maxRpm": 8600,
+        "waterTempCelsius": 87.6,
+        "oilTempCelsius": 103.4,
         "throttle": 0.86,
         "brake": 0,
         "clutch": 0,
@@ -91,6 +93,12 @@
           53.62,
           35.7
         ],
+        "currentLapSectorsSeconds": [36.22],
+        "personalBestSectorsSeconds": [36.22, 53.4, 35.7],
+        "sessionBestSectorsSeconds": [35.98, 53.11, 35.52],
+        "classBestSectorsSeconds": [36.22, 53.11, 35.52],
+        "sessionBestLapTime": 124.61,
+        "classBestLapTime": 124.85,
         "isValid": true,
         "trackPosition": 0.51
       },
@@ -116,7 +124,9 @@
         "position": 4,
         "totalPositions": 22,
         "gapAhead": 1.84,
-        "gapBehind": 0.62
+        "gapBehind": 0.62,
+        "carLeftMeters": null,
+        "carRightMeters": -1.4
       },
       "energy": {
         "virtualEnergy": 0.62,
@@ -135,7 +145,10 @@
         "trackGripLevel": null,
         "fuelMultiplier": null,
         "tireMultiplier": null,
-        "fixedSetup": null
+        "fixedSetup": null,
+        "airTemperatureCelsius": 19.5,
+        "trackTemperatureCelsius": 27.0,
+        "raining": 0
       }
     },
     "status": {
@@ -272,6 +285,10 @@
       "offsetY": 0,
       "margin": 5,
       "dashId": "default",
+      "dashRules": [
+        { "kind": "class", "value": "Hypercar", "dashId": "sprint-race" },
+        { "kind": "car", "value": "LMGT3 Porsche", "dashId": "hotlap" }
+      ],
       "captureRegion": {
         "x": 0,
         "y": 0,
@@ -285,6 +302,10 @@
         {
           "input": "button:26",
           "command": "dash.page.next"
+        },
+        {
+          "input": "button:7",
+          "command": "acknowledge"
         }
       ],
       "disabled": false
@@ -318,6 +339,7 @@
     }
   ],
   "dashLayouts": [
+    {"id":"zoned-race","name":"Zoned race (sample)","category":"Endurance","mode":"basic","zoned":true,"dashStyle":"flat","colorSystem":"functional","gridCols":11,"gridRows":9,"alerts":[],"pages":[{"id":"race","name":"Race","groups":[{"id":"tyres","name":"Tyres","mode":"together","style":{"border":"thin","label":"capsule","align":"center"}}],"widgets":[{"id":"rpm","type":"bar","col":1,"row":0,"colSpan":9,"rowSpan":1,"config":{"channel":"rpm"}},{"id":"ve","type":"bar","col":0,"row":0,"colSpan":1,"rowSpan":9,"config":{"channel":"ve"}},{"id":"fuel","type":"bar","col":10,"row":0,"colSpan":1,"rowSpan":9,"config":{"channel":"fuel"}},{"id":"tc","type":"tc","col":1,"row":1,"colSpan":2,"rowSpan":2},{"id":"abs","type":"abs","col":3,"row":1,"colSpan":2,"rowSpan":2},{"id":"slip","type":"slip","col":1,"row":3,"colSpan":2,"rowSpan":1},{"id":"cut","type":"cut","col":3,"row":3,"colSpan":2,"rowSpan":1},{"id":"map","type":"engine_map","col":1,"row":4,"colSpan":2,"rowSpan":1},{"id":"bias","type":"brake_bias","col":3,"row":4,"colSpan":2,"rowSpan":1},{"id":"fl","type":"tyre","col":1,"row":5,"colSpan":2,"rowSpan":2,"config":{"corner":"fl"},"group":"tyres","style":{"border":"none","label":"off"}},{"id":"fr","type":"tyre","col":3,"row":5,"colSpan":2,"rowSpan":2,"config":{"corner":"fr"},"group":"tyres","style":{"border":"none","label":"off"}},{"id":"rl","type":"tyre","col":1,"row":7,"colSpan":2,"rowSpan":2,"config":{"corner":"rl"},"group":"tyres","style":{"border":"none","label":"off"}},{"id":"rr","type":"tyre","col":3,"row":7,"colSpan":2,"rowSpan":2,"config":{"corner":"rr"},"group":"tyres","style":{"border":"none","label":"off"}},{"id":"delta","type":"delta","col":5,"row":4,"colSpan":1,"rowSpan":2},{"id":"sectors","type":"sectors","col":5,"row":6,"colSpan":1,"rowSpan":1},{"id":"last","type":"lap_time","col":5,"row":7,"colSpan":1,"rowSpan":1,"config":{"show":"last"}},{"id":"time-left","type":"time_left","col":5,"row":8,"colSpan":1,"rowSpan":1},{"id":"pos","type":"position","col":6,"row":1,"colSpan":2,"rowSpan":1},{"id":"lap","type":"laps","col":8,"row":1,"colSpan":2,"rowSpan":1},{"id":"best","type":"lap_time","col":6,"row":2,"colSpan":4,"rowSpan":2,"config":{"show":"best"}},{"id":"ahead","type":"gaps","col":6,"row":4,"colSpan":2,"rowSpan":2,"config":{"side":"ahead"}},{"id":"behind","type":"gaps","col":8,"row":4,"colSpan":2,"rowSpan":2,"config":{"side":"behind"}},{"id":"fuel-laps","type":"fuel_laps","col":6,"row":6,"colSpan":2,"rowSpan":1},{"id":"ve-laps","type":"ve_laps","col":8,"row":6,"colSpan":2,"rowSpan":1},{"id":"soc","type":"soc","col":6,"row":7,"colSpan":2,"rowSpan":1},{"id":"speed","type":"speed","col":8,"row":7,"colSpan":2,"rowSpan":1},{"id":"target","type":"fuel_target","col":6,"row":8,"colSpan":4,"rowSpan":1}]}]},
     {
       "id": "default",
       "name": "Driver Focus",
@@ -2252,6 +2274,568 @@
         }
       ],
       "alerts": []
+    },
+    {
+      "id": "hypercar",
+      "name": "Hypercar",
+      "category": "Endurance",
+      "mode": "basic",
+      "dashStyle": "panels",
+      "gridCols": 20,
+      "gridRows": 12,
+      "idlePage": {
+        "id": "idle-hypercar",
+        "name": "Idle",
+        "widgets": [
+          {
+            "id": "idle-hypercar-name",
+            "type": "text",
+            "col": 4,
+            "row": 3,
+            "colSpan": 12,
+            "rowSpan": 3,
+            "config": {
+              "content": "Your Name",
+              "binding": "profile.driverName"
+            }
+          },
+          {
+            "id": "idle-hypercar-number",
+            "type": "text",
+            "col": 7,
+            "row": 6,
+            "colSpan": 6,
+            "rowSpan": 2,
+            "style": {
+              "textColor": "ember"
+            },
+            "config": {
+              "content": "#22",
+              "binding": "profile.driverNumber"
+            }
+          }
+        ]
+      },
+      "pages": [
+        {
+          "id": "practice",
+          "name": "Practice",
+          "widgets": [
+            {
+              "id": "practice-last",
+              "type": "lap_time",
+              "col": 0,
+              "row": 0,
+              "colSpan": 6,
+              "rowSpan": 3,
+              "config": {
+                "show": "last"
+              }
+            },
+            {
+              "id": "practice-best",
+              "type": "lap_time",
+              "col": 0,
+              "row": 3,
+              "colSpan": 6,
+              "rowSpan": 3,
+              "config": {
+                "show": "best"
+              }
+            },
+            {
+              "id": "practice-gear",
+              "type": "gear_speed",
+              "col": 6,
+              "row": 0,
+              "colSpan": 8,
+              "rowSpan": 6
+            },
+            {
+              "id": "practice-delta",
+              "type": "delta",
+              "col": 14,
+              "row": 0,
+              "colSpan": 6,
+              "rowSpan": 3
+            },
+            {
+              "id": "practice-predicted",
+              "type": "predictive_lap",
+              "col": 14,
+              "row": 3,
+              "colSpan": 6,
+              "rowSpan": 3
+            },
+            {
+              "id": "practice-tyres",
+              "type": "tyre_temp",
+              "col": 0,
+              "row": 6,
+              "colSpan": 6,
+              "rowSpan": 6
+            },
+            {
+              "id": "practice-energy",
+              "type": "virtual_energy",
+              "col": 6,
+              "row": 6,
+              "colSpan": 8,
+              "rowSpan": 3,
+              "config": {
+                "mode": "budget"
+              }
+            },
+            {
+              "id": "practice-fuel",
+              "type": "fuel",
+              "col": 6,
+              "row": 9,
+              "colSpan": 8,
+              "rowSpan": 3
+            },
+            {
+              "id": "practice-tc",
+              "type": "tc",
+              "col": 14,
+              "row": 6,
+              "colSpan": 3,
+              "rowSpan": 3
+            },
+            {
+              "id": "practice-abs",
+              "type": "abs",
+              "col": 17,
+              "row": 6,
+              "colSpan": 3,
+              "rowSpan": 3
+            },
+            {
+              "id": "practice-bias",
+              "type": "brake_bias",
+              "col": 14,
+              "row": 9,
+              "colSpan": 3,
+              "rowSpan": 3
+            },
+            {
+              "id": "practice-map",
+              "type": "engine_map",
+              "col": 17,
+              "row": 9,
+              "colSpan": 3,
+              "rowSpan": 3
+            }
+          ],
+          "showIn": [
+            "practice"
+          ]
+        },
+        {
+          "id": "tyres",
+          "name": "Tyres",
+          "widgets": [
+            {
+              "id": "tyres-temps",
+              "type": "tyre_temp",
+              "col": 0,
+              "row": 0,
+              "colSpan": 10,
+              "rowSpan": 12
+            },
+            {
+              "id": "tyres-pressures",
+              "type": "tyre_pressure",
+              "col": 10,
+              "row": 0,
+              "colSpan": 10,
+              "rowSpan": 8
+            },
+            {
+              "id": "tyres-gear",
+              "type": "gear_speed",
+              "col": 10,
+              "row": 8,
+              "colSpan": 10,
+              "rowSpan": 4
+            }
+          ],
+          "showIn": [
+            "practice"
+          ]
+        },
+        {
+          "id": "energy",
+          "name": "Energy",
+          "widgets": [
+            {
+              "id": "energy-budget",
+              "type": "virtual_energy",
+              "col": 0,
+              "row": 0,
+              "colSpan": 10,
+              "rowSpan": 6,
+              "config": {
+                "mode": "budget"
+              }
+            },
+            {
+              "id": "energy-battery",
+              "type": "battery",
+              "col": 10,
+              "row": 0,
+              "colSpan": 10,
+              "rowSpan": 6
+            },
+            {
+              "id": "energy-fuel",
+              "type": "fuel",
+              "col": 0,
+              "row": 6,
+              "colSpan": 10,
+              "rowSpan": 6
+            },
+            {
+              "id": "energy-target",
+              "type": "fuel_target",
+              "col": 10,
+              "row": 6,
+              "colSpan": 10,
+              "rowSpan": 6
+            }
+          ],
+          "showIn": [
+            "practice"
+          ]
+        },
+        {
+          "id": "outlap",
+          "name": "Out lap",
+          "widgets": [
+            {
+              "id": "outlap-temps",
+              "type": "tyre_temp",
+              "col": 0,
+              "row": 0,
+              "colSpan": 7,
+              "rowSpan": 12
+            },
+            {
+              "id": "outlap-gear",
+              "type": "gear_speed",
+              "col": 7,
+              "row": 0,
+              "colSpan": 6,
+              "rowSpan": 6
+            },
+            {
+              "id": "outlap-gaps",
+              "type": "gaps",
+              "col": 7,
+              "row": 6,
+              "colSpan": 6,
+              "rowSpan": 6
+            },
+            {
+              "id": "outlap-pressures",
+              "type": "tyre_pressure",
+              "col": 13,
+              "row": 0,
+              "colSpan": 7,
+              "rowSpan": 12
+            }
+          ],
+          "jump": "outLap",
+          "showIn": [
+            "qualifying"
+          ]
+        },
+        {
+          "id": "push",
+          "name": "Push",
+          "widgets": [
+            {
+              "id": "push-rpm",
+              "type": "rpm_bar",
+              "col": 0,
+              "row": 0,
+              "colSpan": 20,
+              "rowSpan": 2
+            },
+            {
+              "id": "push-delta",
+              "type": "delta",
+              "col": 0,
+              "row": 2,
+              "colSpan": 6,
+              "rowSpan": 10
+            },
+            {
+              "id": "push-gear",
+              "type": "gear_speed",
+              "col": 6,
+              "row": 2,
+              "colSpan": 8,
+              "rowSpan": 10
+            },
+            {
+              "id": "push-battery",
+              "type": "battery",
+              "col": 14,
+              "row": 2,
+              "colSpan": 6,
+              "rowSpan": 5
+            },
+            {
+              "id": "push-map",
+              "type": "engine_map",
+              "col": 14,
+              "row": 7,
+              "colSpan": 6,
+              "rowSpan": 5
+            }
+          ],
+          "jump": "flyingLap",
+          "showIn": [
+            "qualifying"
+          ]
+        },
+        {
+          "id": "race",
+          "name": "Race",
+          "widgets": [
+            {
+              "id": "race-last",
+              "type": "lap_time",
+              "col": 0,
+              "row": 0,
+              "colSpan": 6,
+              "rowSpan": 4,
+              "config": {
+                "show": "last"
+              },
+              "group": "race-left"
+            },
+            {
+              "id": "race-best",
+              "type": "lap_time",
+              "col": 0,
+              "row": 4,
+              "colSpan": 6,
+              "rowSpan": 4,
+              "config": {
+                "show": "best"
+              },
+              "group": "race-left"
+            },
+            {
+              "id": "race-current",
+              "type": "lap_time",
+              "col": 0,
+              "row": 8,
+              "colSpan": 6,
+              "rowSpan": 4,
+              "config": {
+                "show": "current"
+              },
+              "group": "race-left"
+            },
+            {
+              "id": "race-gear",
+              "type": "gear_speed",
+              "col": 6,
+              "row": 0,
+              "colSpan": 8,
+              "rowSpan": 8
+            },
+            {
+              "id": "race-delta",
+              "type": "delta",
+              "col": 6,
+              "row": 8,
+              "colSpan": 8,
+              "rowSpan": 4
+            },
+            {
+              "id": "race-position",
+              "type": "position",
+              "col": 14,
+              "row": 0,
+              "colSpan": 6,
+              "rowSpan": 3,
+              "group": "race-right"
+            },
+            {
+              "id": "race-relative",
+              "type": "relative",
+              "col": 14,
+              "row": 3,
+              "colSpan": 6,
+              "rowSpan": 9,
+              "group": "race-right"
+            }
+          ],
+          "groups": [
+            {
+              "id": "race-left",
+              "name": "Lap times",
+              "mode": "together"
+            },
+            {
+              "id": "race-right",
+              "name": "Relative",
+              "mode": "together"
+            }
+          ],
+          "showIn": [
+            "race"
+          ]
+        },
+        {
+          "id": "car",
+          "name": "Car",
+          "widgets": [
+            {
+              "id": "car-temps",
+              "type": "tyre_temp",
+              "col": 0,
+              "row": 0,
+              "colSpan": 7,
+              "rowSpan": 8
+            },
+            {
+              "id": "car-pressures",
+              "type": "tyre_pressure",
+              "col": 0,
+              "row": 8,
+              "colSpan": 7,
+              "rowSpan": 4
+            },
+            {
+              "id": "car-damage",
+              "type": "damage",
+              "col": 7,
+              "row": 0,
+              "colSpan": 6,
+              "rowSpan": 6
+            },
+            {
+              "id": "car-fuel",
+              "type": "fuel",
+              "col": 7,
+              "row": 6,
+              "colSpan": 6,
+              "rowSpan": 3
+            },
+            {
+              "id": "car-target",
+              "type": "fuel_target",
+              "col": 7,
+              "row": 9,
+              "colSpan": 6,
+              "rowSpan": 3
+            },
+            {
+              "id": "car-energy",
+              "type": "virtual_energy",
+              "col": 13,
+              "row": 0,
+              "colSpan": 7,
+              "rowSpan": 4,
+              "config": {
+                "mode": "budget"
+              }
+            },
+            {
+              "id": "car-battery",
+              "type": "battery",
+              "col": 13,
+              "row": 4,
+              "colSpan": 7,
+              "rowSpan": 4
+            },
+            {
+              "id": "car-bias",
+              "type": "brake_bias",
+              "col": 13,
+              "row": 8,
+              "colSpan": 4,
+              "rowSpan": 4
+            },
+            {
+              "id": "car-tc",
+              "type": "tc",
+              "col": 17,
+              "row": 8,
+              "colSpan": 3,
+              "rowSpan": 4
+            }
+          ],
+          "showIn": [
+            "race"
+          ]
+        }
+      ],
+      "alerts": [
+        {
+          "id": "alert-tc",
+          "type": "tc_change",
+          "col": 6,
+          "row": 3,
+          "colSpan": 8,
+          "rowSpan": 6
+        },
+        {
+          "id": "alert-abs",
+          "type": "abs_change",
+          "col": 6,
+          "row": 3,
+          "colSpan": 8,
+          "rowSpan": 6
+        },
+        {
+          "id": "alert-bias",
+          "type": "bias_change",
+          "col": 6,
+          "row": 3,
+          "colSpan": 8,
+          "rowSpan": 6
+        },
+        {
+          "id": "alert-engine-map",
+          "type": "enginemap_change",
+          "col": 6,
+          "row": 3,
+          "colSpan": 8,
+          "rowSpan": 6
+        },
+        {
+          "id": "alert-lap-summary",
+          "type": "lap_summary",
+          "col": 0,
+          "row": 0,
+          "colSpan": 20,
+          "rowSpan": 12
+        }
+      ],
+      "alertConfig": {
+        "displayMode": "full",
+        "durationSeconds": 1.5,
+        "colorToken": "auto",
+        "invertColors": false
+      },
+      "screenProfile": "landscape-800x480",
+      "colorSystem": "Functional"
+    }
+  ],
+  "dashModes": [
+    {
+      "id": "fuel-save",
+      "name": "Fuel save"
+    },
+    {
+      "id": "wet",
+      "name": "Wet"
     }
   ],
   "dashCategories": {
@@ -2460,89 +3044,6 @@
       "group": "Fuel"
     }
   ],
-  "engineerControls": [
-    {
-      "key": "tcCut",
-      "label": "TC cut",
-      "min": 0,
-      "max": 12,
-      "step": 1,
-      "unit": "",
-      "carValue": 4,
-      "stagedValue": 4
-    },
-    {
-      "key": "tcSlip",
-      "label": "TC slip",
-      "min": 0,
-      "max": 12,
-      "step": 1,
-      "unit": "",
-      "carValue": 6,
-      "stagedValue": 6
-    },
-    {
-      "key": "abs",
-      "label": "ABS",
-      "min": 0,
-      "max": 12,
-      "step": 1,
-      "unit": "",
-      "carValue": 7,
-      "stagedValue": 7
-    },
-    {
-      "key": "brakeBias",
-      "label": "Brake bias",
-      "min": 48,
-      "max": 64,
-      "step": 0.5,
-      "unit": "%",
-      "carValue": 56.5,
-      "stagedValue": 57
-    },
-    {
-      "key": "engineMap",
-      "label": "Engine map",
-      "min": 1,
-      "max": 8,
-      "step": 1,
-      "unit": "",
-      "carValue": 3,
-      "stagedValue": 3
-    },
-    {
-      "key": "fuelTarget",
-      "label": "Fuel target",
-      "min": 1,
-      "max": 6,
-      "step": 0.1,
-      "unit": "L",
-      "carValue": 2.6,
-      "stagedValue": 2.6
-    }
-  ],
-  "radioLog": [
-    {
-      "message": "Box this lap",
-      "detail": "Fuel only, no tyres",
-      "lap": 11,
-      "status": "ACK"
-    },
-    {
-      "message": "Brake bias",
-      "detail": "Staged 57.0 % for the next stint",
-      "lap": 10,
-      "status": "DASH"
-    },
-    {
-      "message": "Radio check",
-      "detail": "Crew channel confirmed",
-      "lap": 1,
-      "status": "ACK"
-    }
-  ],
-  "engineerPushState": "Idle",
   "plans": [
     {
       "id": "plan-spa-6h",
@@ -4799,7 +5300,7 @@
     "directory": "C:\\Users\\Driver\\AppData\\Roaming\\Sprint\\diagnostics"
   },
   "updates": {
-    "version": "0.1.0",
+    "version": "1.0.0",
     "channel": "stable"
   },
   "storage": {
@@ -4807,6 +5308,71 @@
     "traceLaps": 1284,
     "traceExpiryDays": 0
   },
+  "buttons": {
+    "functions": {
+      "sample-omega": [
+        {
+          "id": "dash.page.next",
+          "label": "Next dash page"
+        },
+        {
+          "id": "dash.page.prev",
+          "label": "Previous dash page"
+        },
+        {
+          "id": "dash.page.goto:driving-default",
+          "label": "Go to Driving"
+        },
+        {
+          "id": "dash.page.goto:endurance-default",
+          "label": "Go to Endurance"
+        },
+        {
+          "id": "dash.page.goto:timing-default",
+          "label": "Go to Timing"
+        },
+        {
+          "id": "dash.page.goto:vehicle-default",
+          "label": "Go to Vehicle"
+        },
+        {
+          "id": "acknowledge",
+          "label": "Acknowledge"
+        },
+        {
+          "id": "compare.hud.toggle",
+          "label": "Show or hide the HUD"
+        }
+      ],
+      "sample-usbd480": [
+        {
+          "id": "acknowledge",
+          "label": "Acknowledge"
+        },
+        {
+          "id": "compare.hud.toggle",
+          "label": "Show or hide the HUD"
+        }
+      ]
+    },
+    "listening": null
+  },
+  "dashAlerts": [
+    { "type": "tc_change", "enabled": true, "size": "full", "invertColors": false, "durationSeconds": 2, "untilAck": false },
+    { "type": "abs_change", "enabled": true, "size": "full", "invertColors": false, "durationSeconds": 2, "untilAck": false },
+    { "type": "bias_change", "enabled": true, "size": "strip", "invertColors": false, "durationSeconds": 2, "untilAck": false },
+    { "type": "enginemap_change", "enabled": true, "size": "strip", "invertColors": false, "durationSeconds": 2, "untilAck": false },
+    { "type": "migration_change", "enabled": true, "size": "strip", "invertColors": false, "durationSeconds": 2, "untilAck": false },
+    { "type": "arb_change", "enabled": false, "size": "strip", "invertColors": false, "durationSeconds": 2, "untilAck": false },
+    { "type": "dial_change", "enabled": true, "size": "strip", "invertColors": false, "durationSeconds": 2, "untilAck": false },
+    { "type": "pit_limiter", "enabled": true, "size": "strip", "invertColors": false, "durationSeconds": 3, "untilAck": true },
+    { "type": "flag", "enabled": true, "size": "strip", "invertColors": false, "durationSeconds": 3, "untilAck": false },
+    { "type": "penalty", "enabled": true, "size": "full", "invertColors": true, "durationSeconds": 5, "untilAck": true },
+    { "type": "damage", "enabled": true, "size": "full", "invertColors": false, "durationSeconds": 5, "untilAck": false },
+    { "type": "engine_warning", "enabled": true, "size": "full", "invertColors": true, "durationSeconds": 5, "untilAck": true },
+    { "type": "fuel_low", "enabled": true, "size": "strip", "invertColors": false, "durationSeconds": 3, "untilAck": true, "lapsLeft": 2 },
+    { "type": "lap_summary", "enabled": true, "size": "full", "invertColors": false, "durationSeconds": 5, "untilAck": false }
+  ],
   "multiDials": [
     {
       "deviceId": "sample-omega",
@@ -4824,7 +5390,7 @@
         { "label": "BOX", "color": "#F02744" },
         { "label": "DIFF", "color": "#16B566" }
       ],
-      "invertPopup": false,
+      "modes": [null, null, null, "fuel-save", null, null, null, null],
       "position": 0,
       "changes": 0
     }

@@ -4,16 +4,16 @@
 // decided, as `Overlays`.
 
 use crate::alerts::DashAlertBanner;
-use crate::chrome::{CHROME_CELL_PX, ChromeContext, WidgetFrame, bare_content, grid_outer_frame, widget_frame};
+use crate::chrome::{CHROME_CELL_PX, ChromeContext, WidgetFrame, bare_content, grid_outer_frame, group_frame, widget_frame};
 use crate::draw::{Builder, DrawOp};
-use crate::grid::{GridSpan, PixelRect, grid_rect, page_has_race_logic_lap_timer, select_page};
+use crate::grid::{GEAR_SPOT, GridSpan, PixelRect, grid_rect, page_has_race_logic_lap_timer, select_page, zoned_rect};
 use crate::groups::drawn_widgets;
 use crate::model::{DashStyle, DashWidget, DashWidgetStyle, Scene, TelemetryFrame};
 use crate::overlays::{alert_banner, flag_overlay, race_logic_lap_timer_overlay};
 use crate::palette::{DashPaletteColors, Rgba, effective_color_system, resolve_dash_palette, resolve_style_color};
 use crate::racelogic::RaceLogicLapTimerView;
 use crate::text::Fonts;
-use crate::widgets::{WidgetChrome, WidgetContext, widget_chrome, widget_content};
+use crate::widgets::{WidgetChrome, WidgetContext, widget_chrome, widget_content, zoned_gear};
 
 /// The layout id of the focused RaceLogic purpose screen, which keeps a pure black canvas.
 const PURPOSE_LAP_TIMES: &str = "purpose-lap-times";
@@ -62,7 +62,12 @@ fn widget_tile(b: &mut Builder, widget: &DashWidget, rect: PixelRect, inputs: &T
         return;
     }
     let tile_palette = style_palette(inputs.palette, widget.style.as_ref());
-    let chrome = inputs.chrome;
+    // The flat chrome: the widget's own edge and label win over the dash's.
+    let mut chrome = inputs.chrome;
+    if let Some(style) = &widget.style {
+        chrome.flat.border = style.border.unwrap_or(chrome.flat.border);
+        chrome.flat.label = style.label.unwrap_or(chrome.flat.label);
+    }
     let content = |b: &mut Builder, width: f64, height: f64, palette: &DashPaletteColors| {
         let ctx = WidgetContext {
             widget,
@@ -78,7 +83,14 @@ fn widget_tile(b: &mut Builder, widget: &DashWidget, rect: PixelRect, inputs: &T
     };
     let cell = PixelRect::new(0.0, 0.0, rect.width, rect.height);
 
-    b.translated(rect.left, rect.top, |b| match widget_chrome(widget, inputs.frame, &tile_palette) {
+    // Mockup: the flat delta colors its value instead of filling its frame.
+    let kind = match widget_chrome(widget, inputs.frame, &tile_palette) {
+        WidgetChrome::Framed { title, accent, .. } if chrome.style.is_flat() && widget.widget_type == "delta" => {
+            WidgetChrome::Framed { title, accent, fill: None }
+        }
+        kind => kind,
+    };
+    b.translated(rect.left, rect.top, |b| match kind {
         WidgetChrome::Framed { title, accent, fill } => {
             let title_color = resolve_style_color(widget.style.as_ref().and_then(|s| s.label_color.as_deref()), inputs.palette);
             let frame = WidgetFrame { ctx: chrome, rect: cell, title: Some(title), accent, fill, title_color, palette: tile_palette };
@@ -97,6 +109,27 @@ fn widget_tile(b: &mut Builder, widget: &DashWidget, rect: PixelRect, inputs: &T
     });
 }
 
+fn union_rect(a: PixelRect, b: PixelRect) -> PixelRect {
+    let (left, top) = (a.left.min(b.left), a.top.min(b.top));
+    let right = (a.left + a.width).max(b.left + b.width);
+    let bottom = (a.top + a.height).max(b.top + b.height);
+    PixelRect::new(left, top, right - left, bottom - top)
+}
+
+fn inset_rect(r: PixelRect, by: f64) -> PixelRect {
+    PixelRect::new(r.left + by, r.top + by, (r.width - by * 2.0).max(0.0), (r.height - by * 2.0).max(0.0))
+}
+
+/// `rect` pulled in by `pad` on each side it shares with its group's `outer` edge.
+fn inset_touching(rect: PixelRect, outer: PixelRect, pad: f64) -> PixelRect {
+    let near = |a: f64, b: f64| (a - b).abs() < 0.5;
+    let left = rect.left + if near(rect.left, outer.left) { pad } else { 0.0 };
+    let top = rect.top + if near(rect.top, outer.top) { pad } else { 0.0 };
+    let right = rect.left + rect.width - if near(rect.left + rect.width, outer.left + outer.width) { pad } else { 0.0 };
+    let bottom = rect.top + rect.height - if near(rect.top + rect.height, outer.top + outer.height) { pad } else { 0.0 };
+    PixelRect::new(left, top, (right - left).max(0.0), (bottom - top).max(0.0))
+}
+
 /// Builds the display list for one page of `scene` against `frame`, with the given overlays on
 /// top. An error where the React renderer threw (a theme color `dimColor` cannot parse).
 pub fn build_display_list(fonts: &Fonts, scene: &Scene, frame: &TelemetryFrame, overlays: Overlays, ops: &mut Vec<DrawOp>) -> Result<(), String> {
@@ -112,7 +145,10 @@ pub fn build_display_list(fonts: &Fonts, scene: &Scene, frame: &TelemetryFrame, 
     // flag overlay never covers it.
     let focused_lap_timer = layout.id == PURPOSE_LAP_TIMES;
     let background = if focused_lap_timer { Rgba::BLACK } else { palette.background };
-    let chrome = ChromeContext { style: layout.dash_style.unwrap_or_default(), scale: (width / cols).min(height / rows) / CHROME_CELL_PX };
+    let style = layout.dash_style.unwrap_or_default();
+    // The flat chrome is authored at 800x480 whatever the grid (the zones are a fine grid).
+    let scale = if style.is_flat() || layout.zoned { (width / 800.0).min(height / 480.0) } else { (width / cols).min(height / rows) / CHROME_CELL_PX };
+    let chrome = ChromeContext { style, scale, flat: layout.chrome };
     // The grid style rounds the whole canvas, so corner cells clip to its outer frame.
     let ruled = chrome.style == DashStyle::Grid && !focused_lap_timer;
     let canvas_color = if scene.transparent { Rgba::TRANSPARENT } else { background };
@@ -122,8 +158,33 @@ pub fn build_display_list(fonts: &Fonts, scene: &Scene, frame: &TelemetryFrame, 
     let inputs = TileInputs { frame, scene, palette: &palette, chrome };
     // Drawn widgets never overlap (only layers of one stack may, and a stack draws one), so
     // their order never shows.
-    for widget in page.map(drawn_widgets).unwrap_or_default() {
-        let rect = grid_rect(width, height, cols, rows, GridSpan::from(widget));
+    let drawn = page.map(drawn_widgets).unwrap_or_default();
+    let rect_of = |widget: &DashWidget| {
+        if layout.zoned { zoned_rect(width, height, GridSpan::from(widget)) } else { grid_rect(width, height, cols, rows, GridSpan::from(widget)) }
+    };
+    // Mockup v2: a styled group draws its frame round its widgets' cells, and they step inside it.
+    let mut framed_groups: Vec<(&str, PixelRect, f64)> = Vec::new();
+    if style.is_flat()
+        && let Some(page) = page
+    {
+        for group in &page.groups {
+            let Some(group_style) = group.style else { continue };
+            let Some(union) = drawn.iter().filter(|w| w.group.as_deref() == Some(group.id.as_str())).map(|w| rect_of(w)).reduce(union_rect) else { continue };
+            let outline = inset_rect(union, 3.0 * scale);
+            group_frame(&mut b, chrome, outline, group_style, &group.name.to_uppercase(), &palette);
+            framed_groups.push((group.id.as_str(), union, 5.0 * scale));
+        }
+    }
+    // A zoned page's gear is always there; no widget may cover its spot.
+    if layout.zoned && page.is_some() {
+        let spot = zoned_rect(width, height, GEAR_SPOT);
+        b.translated(spot.left, spot.top, |b| zoned_gear(b, &frame.car, &palette, spot.width, spot.height));
+    }
+    for widget in drawn {
+        let mut rect = rect_of(widget);
+        if let Some((_, union, pad)) = framed_groups.iter().find(|(id, ..)| widget.group.as_deref() == Some(*id)) {
+            rect = inset_touching(rect, *union, *pad);
+        }
         widget_tile(&mut b, widget, rect, &inputs);
     }
     if ruled {
@@ -132,14 +193,15 @@ pub fn build_display_list(fonts: &Fonts, scene: &Scene, frame: &TelemetryFrame, 
         grid_outer_frame(&mut b, chrome, width, height, &palette);
     }
     // Over everything, outside the grid style's rounded clip: the lap timer island, the alert
-    // banner, then the flag overlay (never on the focused lap-timer screen).
+    // banner, then the flag overlay (never on the focused lap-timer screen, and not while the
+    // flag alert is up: it names the flag itself, so the overlay would say it twice).
     if let Some(view) = overlays.lap_timer {
         race_logic_lap_timer_overlay(&mut b, view, frame, &palette, width, height);
     }
     if let Some(banner) = overlays.banner {
-        alert_banner(&mut b, banner, frame, &palette, chrome, width, height);
+        alert_banner(&mut b, banner, &layout.lap_review, &palette, chrome, width, height);
     }
-    if !focused_lap_timer {
+    if !focused_lap_timer && !overlays.banner.is_some_and(DashAlertBanner::is_flag_alert) {
         flag_overlay(&mut b, frame, &palette, width, height);
     }
     b.into_failure().map_or(Ok(()), Err)

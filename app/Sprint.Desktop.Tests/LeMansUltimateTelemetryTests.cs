@@ -552,6 +552,8 @@ public sealed class LeMansUltimateTelemetryTests
         WriteDouble(buffer, telemetry + 200, 6.0);
         WriteInt32(buffer, telemetry + 352, 5);
         WriteDouble(buffer, telemetry + 356, 6500.0);
+        WriteDouble(buffer, telemetry + 364, 87.5);
+        WriteDouble(buffer, telemetry + 372, 104.25);
         WriteDouble(buffer, telemetry + 388, 0.9);
         WriteDouble(buffer, telemetry + 396, 0.4);
         WriteDouble(buffer, telemetry + 404, -0.3);
@@ -629,6 +631,8 @@ public sealed class LeMansUltimateTelemetryTests
         Assert.Equal(4.0, parsed.Telemetry.LocalVelocity.X);
         Assert.Equal(5, parsed.Telemetry.Gear);
         Assert.Equal(6500.0, parsed.Telemetry.EngineRpm);
+        Assert.Equal(87.5, parsed.Telemetry.EngineWaterTemp);
+        Assert.Equal(104.25, parsed.Telemetry.EngineOilTemp);
         Assert.Equal(0.9, parsed.Telemetry.UnfilteredThrottle);
         Assert.Equal(0.4, parsed.Telemetry.UnfilteredBrake);
         Assert.Equal(-0.3, parsed.Telemetry.UnfilteredSteering);

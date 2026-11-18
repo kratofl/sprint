@@ -194,6 +194,9 @@ internal static class LmuParser
             LocalRotation = ParseVector3(bytes, 304),
             Gear = LmuBinary.ReadInt32(bytes, 352),
             EngineRpm = LmuBinary.ReadDouble(bytes, 356),
+            // Then mEngineWaterTemp, mEngineOilTemp and mClutchRPM@380 up to mUnfilteredThrottle.
+            EngineWaterTemp = LmuBinary.ReadDouble(bytes, 364),
+            EngineOilTemp = LmuBinary.ReadDouble(bytes, 372),
             UnfilteredThrottle = LmuBinary.ReadDouble(bytes, 388),
             UnfilteredBrake = LmuBinary.ReadDouble(bytes, 396),
             UnfilteredSteering = LmuBinary.ReadDouble(bytes, 404),

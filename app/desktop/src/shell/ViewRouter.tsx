@@ -7,7 +7,6 @@ import { DashesView } from '../views/DashesView'
 import { DevicesView } from '../views/DevicesView'
 import { SetupsView } from '../views/SetupsView'
 import { RaceEngineerView } from '../views/RaceEngineerView'
-import { LiveLinkView } from '../views/LiveLinkView'
 import { OnTrackView } from '../views/OnTrackView'
 import { SettingsView } from '../views/SettingsView'
 import { HelpView } from '../views/HelpView'
@@ -26,10 +25,10 @@ export type NavigationTarget =
   | { view: 'Analysis'; sessionId?: string }
   | { view: 'Dashes'; dashId?: string }
   | { view: 'Dashes'; newDash: true }
+  | { view: 'Dashes'; settings: true }
   | { view: 'Devices'; deviceId?: string }
   | { view: 'Setups' }
   | { view: 'RaceEngineer' }
-  | { view: 'LiveLink' }
   | { view: 'Settings' }
   | { view: 'Help' }
 
@@ -87,15 +86,21 @@ export function ViewRouter({
         />
       )
     case 'Dashes':
-      return <DashesView runtime={runtime} send={send} focusDashId={focus?.view === 'Dashes' && 'dashId' in focus ? focus.dashId : undefined} openNewDash={focus?.view === 'Dashes' && 'newDash' in focus} />
+      return (
+        <DashesView
+          runtime={runtime}
+          send={send}
+          focusDashId={focus?.view === 'Dashes' && 'dashId' in focus ? focus.dashId : undefined}
+          openNewDash={focus?.view === 'Dashes' && 'newDash' in focus}
+          openSettings={focus?.view === 'Dashes' && 'settings' in focus}
+        />
+      )
     case 'Devices':
       return <DevicesView runtime={runtime} send={send} focusDeviceId={focus?.view === 'Devices' ? focus.deviceId : undefined} />
     case 'Setups':
-      return <SetupsView />
+      return <SetupsView send={send} />
     case 'RaceEngineer':
-      return <RaceEngineerView runtime={runtime} send={send} onNavigate={onNavigate} />
-    case 'LiveLink':
-      return <LiveLinkView runtime={runtime} send={send} onNavigate={onNavigate} />
+      return <RaceEngineerView runtime={runtime} send={send} />
     case 'Settings':
       return <SettingsView runtime={runtime} send={send} onSetUpCloud={onSetUpCloud} updateStatus={updateStatus} />
     case 'Help':

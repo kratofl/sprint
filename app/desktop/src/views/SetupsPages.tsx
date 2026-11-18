@@ -1,10 +1,13 @@
-import { useRef, useState } from 'react'
+import { useRef, useState, type ReactNode } from 'react'
 import { ArrowLeftRight, Check, ChevronDown, ChevronLeft, GitCompareArrows, History } from 'lucide-react'
 import { Popover } from '../shell/Menu'
 import { PageHeader } from '../shell/PageHeader'
 import { formatLapSeconds, fuelText } from './AnalysisDomain'
-import { TABS, carAtTrack, compareBlocks, dateTime, differenceCounts, drivenRows, lapsLine, searchSetups, sheetBlocks, shortDate, tyresLine } from './SetupsDomain'
-import type { SetupDriven, SetupItem, SetupRef, SetupSheet, SetupTab } from './SetupsDomain'
+import { TABS, compareBlocks, dateTime, differenceCounts, drivenRows, lapsLine, searchSetups, sheetBlocks, shortDate, tyresLine } from './SetupsDomain'
+import type { SetupDriven, SetupItem, SetupRef, SetupSheet, SetupTab, SetupTagValue, TagSetup } from './SetupsDomain'
+import { CarAtTrack, ClassTag, MakerLogo } from './CarBadges'
+import { SessionChip } from './SessionChip'
+import { SetupTagButton } from './SetupTagMenu'
 import { moveInSearchList } from './searchListKeys'
 import { useSetupDriven, useSetupSheet } from './useSetups'
 import type { SheetState } from './useSetups'
@@ -22,7 +25,7 @@ function BackToSetups({ onBack }: { onBack: () => void }) {
 export function SetupTags({ setup, session = true }: { setup: SetupItem; session?: boolean }) {
   return (
     <span className="setups-tags">
-      {session && setup.session && <span className="chip">{setup.session}</span>}
+      {session && setup.session && <SessionChip kind={setup.session} />}
       {setup.style && <span className={setup.style === 'Wet' ? 'chip chip-info' : 'chip'}>{setup.style}</span>}
       {setup.version && <span className="chip chip-muted">v{setup.version}</span>}
     </span>
@@ -54,19 +57,27 @@ function SetupTabs({ tab, onTab, counts }: { tab: SetupTab; onTab: (tab: SetupTa
  */
 export function SetupPage({
   setup,
+  refresh,
+  notice,
+  onTag,
   canCompare,
   onBack,
   onVersion,
   onCompare,
 }: {
   setup: SetupRef
+  /** Changes after a tag, so the sheet is read again. */
+  refresh: number
+  /** Shown under the header: why the last tag was not saved. */
+  notice: ReactNode
+  onTag: TagSetup
   canCompare: boolean
   onBack: () => void
   onVersion: (version: string | null) => void
   onCompare: (first: SetupRef, second: SetupRef | null) => void
 }) {
   const [tab, setTab] = useState<SetupTab>('Suspension')
-  const state = useSetupSheet(setup)
+  const state = useSetupSheet(setup, refresh)
   const driven = useSetupDriven(setup.id)
 
   return (
@@ -77,6 +88,7 @@ export function SetupPage({
         </button>
       </PageHeader>
       <BackToSetups onBack={onBack} />
+      {notice}
       {state.kind === 'loading' ? (
         <>
           <div className="card skeleton setups-head-skeleton" />
@@ -95,6 +107,7 @@ export function SetupPage({
           driven={driven}
           tab={tab}
           onTab={setTab}
+          onTag={(value) => onTag(setup.id, value)}
           onVersion={onVersion}
           onCompareNow={() => onCompare({ id: setup.id, version: state.sheet.versionId }, { id: setup.id, version: null })}
         />
@@ -108,6 +121,7 @@ function SetupSheetView({
   driven,
   tab,
   onTab,
+  onTag,
   onVersion,
   onCompareNow,
 }: {
@@ -116,6 +130,7 @@ function SetupSheetView({
   driven: SetupDriven[] | null
   tab: SetupTab
   onTab: (tab: SetupTab) => void
+  onTag: (tag: SetupTagValue) => void
   onVersion: (version: string | null) => void
   onCompareNow: () => void
 }) {
@@ -129,15 +144,17 @@ function SetupSheetView({
   return (
     <>
       <header className="setups-head">
+        <MakerLogo make={setup.make} />
         <div className="setups-head-main">
           <h2 className="setups-head-title">{setup.name}</h2>
           <span className="setups-dim">
-            {carAtTrack(setup)}
-            {setup.carClass ? ` · ${setup.carClass}` : ''}
+            <CarAtTrack car={setup.car} track={setup.trackName} country={setup.country} />
             {setup.season ? ` · ${setup.season}` : ''}
           </span>
         </div>
-        <SetupTags setup={setup} />
+        <ClassTag tag={setup.classTag} />
+        <SetupTagButton setup={setup} onTag={onTag} />
+        <SetupTags setup={setup} session={false} />
         <span className="setups-dim setups-head-saved">Saved in the game {dateTime(setup.savedAt)}</span>
       </header>
 
@@ -487,9 +504,10 @@ function SetupPicker({
           setOpen(true)
         }}
       >
+        {sheet && <MakerLogo make={sheet.setup.make} small />}
         <span className="setups-picker-text">
           <strong>{sheet ? sheetName(sheet) : '…'}</strong>
-          <span className="setups-dim">{sheet ? carAtTrack(sheet.setup) : ''}</span>
+          <span className="setups-dim">{sheet && <CarAtTrack car={sheet.setup.car} track={sheet.setup.trackName} country={sheet.setup.country} />}</span>
         </span>
         <ChevronDown />
       </button>
@@ -529,9 +547,12 @@ function SetupPicker({
                   }}
                 >
                   <span className="setups-menu-check">{picked && <Check />}</span>
+                  <MakerLogo make={setup.make} small />
                   <span className="setups-picker-text">
                     <span>{setup.name}</span>
-                    <span className="setups-dim">{carAtTrack(setup)}</span>
+                    <span className="setups-dim">
+                      <CarAtTrack car={setup.car} track={setup.trackName} country={setup.country} />
+                    </span>
                   </span>
                 </button>
               )

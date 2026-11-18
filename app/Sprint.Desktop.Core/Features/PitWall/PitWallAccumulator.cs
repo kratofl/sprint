@@ -7,7 +7,7 @@ namespace Sprint.Desktop.Features.PitWall;
 /// <summary>
 /// The engineer's side of the pit wall: takes what arrives over the live link (boards, radar, the
 /// shared plan, the target lap and the driver's samples) and keeps what a single board cannot
-/// say — each car's best sectors, the track outline seen so far, the stint's pressures per lap,
+/// say — each car's best sectors, where the sectors start, the track outline seen so far, the stint's pressures per lap,
 /// the lap traces, which cars stand still on track, race control's feed (from the changes between
 /// boards) and what a pit stop costs (from the stops it watched). A new session (another track or
 /// session type) starts all of that over. Everything timed runs on the game's clock
@@ -40,11 +40,18 @@ public sealed class PitWallAccumulator
     private const double MinLaneLoss = 2;
     private const double MaxLaneLoss = 120;
 
+    /// <summary>The furthest a car may move between two boards (a lap fraction) for its sector change to place the line.</summary>
+    private const double MaxCrossing = 0.1;
+
     private readonly Lock _gate = new();
     private readonly Dictionary<int, double?[]> _bestSectors = [];
     private readonly List<PitWallLapPressures> _pressures = [];
     private readonly PitWallLapTraces _traces = new();
     private PitWallPoint?[] _outline = new PitWallPoint?[OutlinePoints];
+
+    // Where sectors 2 and 3 start, as a stretch of the lap the line lies in: each car seen changing
+    // sector between two boards brackets it, and the brackets narrow it down. Per track.
+    private readonly SectorLine?[] _sectorLines = new SectorLine?[2];
     private readonly List<PitWallEvent> _events = [];
     private readonly Dictionary<int, Still> _still = [];
     private readonly HashSet<int> _stopped = [];
@@ -93,7 +100,10 @@ public sealed class PitWallAccumulator
                 this.KeepPressures(own, board.Car);
 
             if (previous is not null)
+            {
+                this.KeepSectorLines(previous, board);
                 this.Note(previous, board, stoppedBefore);
+            }
 
             this._board = board;
             this._receivedAt = at.ToUnixTimeMilliseconds();
@@ -158,6 +168,7 @@ public sealed class PitWallAccumulator
                 Car = board.Car,
                 Radar = this._radar,
                 Outline = [.. this._outline.OfType<PitWallPoint>()],
+                SectorStarts = this.SectorStarts(),
                 Pressures = [.. this._pressures],
                 Plan = this._plan,
                 RaceControl = [.. this._events],
@@ -200,8 +211,39 @@ public sealed class PitWallAccumulator
         this._laneLosses.Clear();
         this._standings.Clear();
         if (trackChanged)
+        {
             this._outline = new PitWallPoint?[OutlinePoints];
+            Array.Clear(this._sectorLines);
+        }
     }
+
+    /// <summary>
+    /// Narrows down where sectors 2 and 3 start from the cars that changed sector since the last
+    /// board. The game says which sector a car is in but not where the lines are, and the track
+    /// tile needs them to colour a yellow sector.
+    /// </summary>
+    private void KeepSectorLines(PitWallBoard previous, PitWallBoard board)
+    {
+        Dictionary<int, PitWallCar> before = [];
+        foreach (PitWallCar car in previous.Field)
+            before.TryAdd(car.Id, car);
+
+        foreach (PitWallCar car in board.Field)
+        {
+            if (car.InPit || car.Sector is not (2 or 3) || !before.TryGetValue(car.Id, out PitWallCar? was) || was.InPit || was.Sector != car.Sector - 1)
+                continue;
+            if (car.LapFraction <= was.LapFraction || car.LapFraction - was.LapFraction > MaxCrossing)
+                continue;
+
+            int line = car.Sector - 2;
+            SectorLine seen = new(was.LapFraction, car.LapFraction);
+            this._sectorLines[line] = this._sectorLines[line] is { } held ? held.Narrowed(seen) : seen;
+        }
+    }
+
+    /// <summary>Where sectors 2 and 3 start, once a car was seen crossing each line; null before.</summary>
+    private IReadOnlyList<double>? SectorStarts() =>
+        this._sectorLines is [{ } second, { } third] && second.Middle < third.Middle ? [Math.Round(second.Middle, 4), Math.Round(third.Middle, 4)] : null;
 
     private void KeepBestSectors(PitWallCar car)
     {
@@ -418,6 +460,20 @@ public sealed class PitWallAccumulator
     }
 
     /// <summary>Where a car was first seen standing, and when.</summary>
+    /// <summary>A stretch of the lap a sector line lies in.</summary>
+    private sealed record SectorLine(double From, double To)
+    {
+        public double Middle => (this.From + this.To) / 2;
+
+        /// <summary>Where both stretches overlap; when they do not (one board was off), the shorter one.</summary>
+        public SectorLine Narrowed(SectorLine other)
+        {
+            double from = Math.Max(this.From, other.From);
+            double to = Math.Min(this.To, other.To);
+            return from < to ? new SectorLine(from, to) : other.To - other.From < this.To - this.From ? other : this;
+        }
+    }
+
     private sealed record Still(double Fraction, double Since);
 
     /// <summary>A stop under way: when and where the car entered the lane, the time it stood so far, and since when it stands now.</summary>

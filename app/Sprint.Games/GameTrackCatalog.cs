@@ -35,68 +35,85 @@ public static class GameTrackCatalog
 {
     private sealed record LayoutDefinition(string Label, IReadOnlyList<string> Aliases);
 
-    private sealed record CircuitDefinition(string Id, string Name, IReadOnlyList<LayoutDefinition> Layouts);
+    // Country is the ISO 3166-1 alpha-2 code of where the circuit is, for its flag.
+    private sealed record CircuitDefinition(string Id, string Name, string Country, IReadOnlyList<LayoutDefinition> Layouts);
 
     private static readonly IReadOnlyList<CircuitDefinition> LeMansUltimateCircuits =
     [
-        new("algarve", "Algarve International Circuit",
+        new("algarve", "Algarve International Circuit", "PT",
         [
             new("Grand Prix", ["Algarve International Circuit", "Portimao", "Portimão"]),
         ]),
-        new("bahrain", "Bahrain International Circuit",
+        new("bahrain", "Bahrain International Circuit", "BH",
         [
             new("Grand Prix", ["Bahrain International Circuit", "Bahrain"]),
         ]),
-        new("barcelona", "Circuit de Barcelona-Catalunya",
+        new("barcelona", "Circuit de Barcelona-Catalunya", "ES",
         [
             new("Grand Prix", ["Circuit de Barcelona", "Circuit de Barcelona-Catalunya", "Barcelona", "Catalunya"]),
         ]),
-        new("cota", "Circuit of the Americas",
+        new("cota", "Circuit of the Americas", "US",
         [
             new("Grand Prix", ["Circuit of the Americas", "COTA", "Austin"]),
         ]),
-        new("daytona", "Daytona International Speedway",
+        new("daytona", "Daytona International Speedway", "US",
         [
-            new("Road Course", ["Daytona International Speedway Road Course", "Daytona International Speedway", "Daytona"]),
+            // "Daytonarc" is the road course's setup folder.
+            new("Road Course", ["Daytona International Speedway Road Course", "Daytona International Speedway", "Daytona", "Daytonarc"]),
         ]),
-        new("fuji", "Fuji Speedway",
+        new("fuji", "Fuji Speedway", "JP",
         [
             new("Grand Prix", ["Fuji Speedway", "Fuji"]),
             new("Classic", ["Fuji Speedway Classic"]),
         ]),
-        new("imola", "Autodromo Enzo e Dino Ferrari",
+        new("imola", "Autodromo Enzo e Dino Ferrari", "IT",
         [
             new("Grand Prix", ["Autodromo Enzo e Dino Ferrari", "Imola"]),
         ]),
-        new("interlagos", "Autódromo José Carlos Pace",
+        new("interlagos", "Autódromo José Carlos Pace", "BR",
         [
             new("Grand Prix", ["Autódromo José Carlos Pace", "Interlagos"]),
         ]),
-        new("le-mans", "Circuit de la Sarthe",
+        new("le-mans", "Circuit de la Sarthe", "FR",
         [
             new("24 Heures du Mans", ["Circuit de la Sarthe", "Circuit des 24 Heures du Mans", "Le Mans"]),
             new("Mulsanne", ["Circuit de la Sarthe Mulsanne"]),
         ]),
-        new("monza", "Autodromo Nazionale Monza",
+        new("long-beach", "Long Beach Street Circuit", "US",
+        [
+            new("Street Circuit", ["Long Beach Street Circuit", "Streets of Long Beach", "Long Beach"]),
+        ]),
+        new("lusail", "Lusail International Circuit", "QA",
+        [
+            new("Grand Prix", ["Lusail International Circuit", "Losail International Circuit", "Lusail", "Qatar"]),
+        ]),
+        new("monza", "Autodromo Nazionale Monza", "IT",
         [
             new("Grand Prix", ["Autodromo Nazionale Monza", "Monza"]),
             new("Curva Grande", ["Monza Curva Grande Circuit", "Monza Curva Grande"]),
         ]),
-        new("paul-ricard", "Circuit Paul Ricard",
+        new("paul-ricard", "Circuit Paul Ricard", "FR",
         [
             new("Grand Prix", ["Circuit Paul Ricard", "Paul Ricard"]),
             new("ELMS", ["Paul Ricard - ELMS", "Circuit Paul Ricard - ELMS"]),
         ]),
-        new("sebring", "Sebring International Raceway",
+        new("road-atlanta", "Michelin Raceway Road Atlanta", "US",
+        [
+            new("Grand Prix", ["Michelin Raceway Road Atlanta", "Road Atlanta"]),
+        ]),
+        new("sebring", "Sebring International Raceway", "US",
         [
             new("International", ["Sebring International Raceway", "Sebring"]),
         ]),
-        new("silverstone", "Silverstone Circuit",
+        new("silverstone", "Silverstone Circuit", "GB",
         [
             new("Grand Prix", ["Silverstone Grand Prix Circuit", "Silverstone"]),
             new("Grand Prix · ELMS", ["Silverstone Grand Prix Circuit - ELMS"]),
+            // The setup folders of the shorter layouts ("Silverstone_National" as LMU files them).
+            new("National", ["Silverstone National"]),
+            new("International", ["Silverstone International"]),
         ]),
-        new("spa", "Circuit de Spa-Francorchamps",
+        new("spa", "Circuit de Spa-Francorchamps", "BE",
         [
             new("Grand Prix", ["Circuit de Spa-Francorchamps", "Spa-Francorchamps", "Spa"]),
             new("Endurance", ["Circuit de Spa-Francorchamps Endurance", "Spa-Francorchamps Endurance"]),
@@ -165,6 +182,16 @@ public static class GameTrackCatalog
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(trackName);
         return Find(game, trackName)?.Layout.Label ?? trackName.Trim();
+    }
+
+    /// <summary>
+    /// Where the circuit is, as an ISO 3166-1 alpha-2 code ("BE"), or null for a track the catalog
+    /// does not know: a flag is never guessed from a name.
+    /// </summary>
+    public static string? Country(string? game, string trackName)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(trackName);
+        return Find(game, trackName)?.Circuit.Country;
     }
 
     /// <summary>Whether the catalog recognises this track name for this game.</summary>

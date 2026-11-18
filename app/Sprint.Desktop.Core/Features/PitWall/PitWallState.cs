@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Sprint.Desktop.Api.Telemetry;
+using Sprint.Desktop.Features.SessionPlanning;
 
 namespace Sprint.Desktop.Features.PitWall;
 
@@ -57,6 +58,13 @@ public sealed record PitWallCar
     public string Car { get; init; } = "";
 
     public string CarClass { get; init; } = "";
+
+    /// <summary>
+    /// The class as racing tags it ("HYP", "LMP2 ELMS"), for its colour on the wall. An ELMS LMP2
+    /// is told by the game's class or by the entry's name ("… #25:ELMS25"). Derived, never read back.
+    /// </summary>
+    public string ClassTag =>
+        CarNames.Tag(this.CarClass, CarNames.Name(this.CarClass, (this.Car ?? "").Contains("ELMS", StringComparison.OrdinalIgnoreCase) ? "ELMS" : null, null));
 
     public bool IsPlayer { get; init; }
 
@@ -257,6 +265,9 @@ public sealed record PitWallState
 
     /// <summary>The track outline seen so far, in lap order.</summary>
     public IReadOnlyList<PitWallPoint> Outline { get; init; } = [];
+
+    /// <summary>Where sectors 2 and 3 start, as lap fractions, learnt from cars crossing the lines; null until both were seen.</summary>
+    public IReadOnlyList<double>? SectorStarts { get; init; }
 
     /// <summary>Per completed lap of the current stint.</summary>
     public IReadOnlyList<PitWallLapPressures> Pressures { get; init; } = [];

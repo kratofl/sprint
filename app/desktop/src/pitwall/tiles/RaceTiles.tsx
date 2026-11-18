@@ -3,7 +3,7 @@ import { headlineTarget, targetSummary } from '../../views/SessionPlannerDomain'
 import type { PitWall } from '../pitWallData'
 import { liveDelta } from '../carDomain'
 import { planStints, range, stintRows, strategy } from '../fuel'
-import { carNumber, classShade, lapClock, lapsLeft, playerOf, relativeRows, signed } from '../timing'
+import { carNumber, classMark, lapClock, lapsLeft, playerOf, relativeRows, signed } from '../timing'
 import { TileEmpty, TileFrame, type FrameProps, type TileData } from '../tileFrame'
 import { useTraces } from '../useTraces'
 import { FlagStrip } from './ControlTiles'
@@ -92,7 +92,7 @@ export function RelativeTile({ data, frame }: { data: TileData; frame: FrameProp
           {rows.map((row) => (
             <li key={row.entry.id} className={row.entry.isPlayer ? 'pw-rel-row you' : 'pw-rel-row'}>
               <span className="tabular pw-num">{row.entry.isPlayer ? '' : signed(row.seconds)}</span>
-              <span className={`pw-classbar c${classShade(wall.field, row.entry.carClass)}`} aria-hidden="true" />
+              <span className={`pw-classbar ${classMark(wall.field, row.entry.carClass)}`} aria-hidden="true" />
               <span className="tabular muted">{carNumber(row.entry)}</span>
               <span className="pw-ellipsis">{row.entry.driver}</span>
               <span className="muted pw-note">{row.note ?? ''}</span>

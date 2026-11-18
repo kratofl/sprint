@@ -1757,6 +1757,62 @@ a:hover {
 .meter.danger > span { background: var(--red-500); }
 .meter.info > span { background: var(--blue-500); }
 
+/* ── Slider (shell/Slider.tsx) ────────────────────────────────────────────────
+   A native range: arrow keys, Page Up/Down, Home and End step it. A 4px --track
+   track filled in brand up to the thumb's centre (`--slider-fill`, 0–1, set by the
+   component), the value as text beside it. The input is the thumb's height, so the
+   focus ring rounds the whole control, not the thin track. */
+
+.slider-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.slider {
+  width: 160px;
+  height: 16px;
+  flex: none;
+  margin: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  appearance: none;
+}
+
+.slider::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 2px;
+  background: linear-gradient(
+    to right,
+    var(--brand-500) calc(8px + (100% - 16px) * var(--slider-fill, 0)),
+    var(--track) calc(8px + (100% - 16px) * var(--slider-fill, 0))
+  );
+}
+
+.slider::-webkit-slider-thumb {
+  width: 16px;
+  height: 16px;
+  margin-top: -6px;
+  border: 1px solid var(--control-stroke);
+  border-radius: var(--radius-pill);
+  background: var(--brand-500);
+  appearance: none;
+}
+
+.slider:disabled::-webkit-slider-runnable-track {
+  background: var(--track);
+}
+
+.slider:disabled::-webkit-slider-thumb {
+  background: var(--label-disabled);
+}
+
+.slider-value {
+  min-width: 64px;
+  color: var(--label-secondary);
+  text-align: right;
+}
+
 /* ── Content states ───────────────────────────────────────────────────────── */
 
 /* Centred empty state for a view or panel with nothing to show yet. */

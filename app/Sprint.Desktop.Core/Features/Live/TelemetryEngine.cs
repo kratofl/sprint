@@ -40,7 +40,8 @@ public sealed record EngineOptions
 /// owns a background reader thread that drives Connect/TryRead, a 5s probe/reconnect
 /// loop that idles on a dropped link, a <see cref="RateMeter"/> measuring the real
 /// frame cadence, and a <see cref="DeltaTracker"/> that augments each frame with
-/// lap delta — then publishes the latest value into a buffer the UI drains at ~30Hz
+/// lap delta (then <see cref="SectorBestsTracker"/> the session bests and <see cref="Spotter"/>
+/// the cars alongside) — then publishes the latest value into a buffer the UI drains at ~30Hz
 /// (a decoupled latest-value handoff, not a per-frame UI callback). Avalonia-free, so
 /// it is unit- and headless-testable; the synchronous <see cref="Step"/> exposes one
 /// loop iteration for deterministic tests.
@@ -58,6 +59,7 @@ public sealed class TelemetryEngine : IDisposable
     private readonly Func<DateTimeOffset> _clock;
     private readonly RateMeter _rate;
     private readonly DeltaTracker _delta = new();
+    private readonly SectorBestsTracker _sectorBests = new();
     private readonly CancellationTokenSource _cts = new();
 
     private Thread? _thread;
@@ -247,7 +249,7 @@ public sealed class TelemetryEngine : IDisposable
             if (this._source.TryRead(out TelemetryFrame? frame))
             {
                 this._rate.Sample(now);
-                this._lastAugmented = this._delta.Augment(frame);
+                this._lastAugmented = Spotter.Augment(this._sectorBests.Augment(this._delta.Augment(frame)));
                 this.Publish(this._lastAugmented, this._source.Status, this._rate.Hz);
                 return StepOutcome.ReadFrame;
             }

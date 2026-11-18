@@ -1,27 +1,33 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { bridge, type LiveLink, type SprintState } from '../bridge'
+import { bridge, type LiveLink, type SprintCommand, type SprintState } from '../bridge'
 import { ConfirmDialog } from '../shell/ContentDialog'
 import { addPage, deletePage, duplicatePage, findTile, nextPageName, overDraft, renamePage, setDetached, shownPage } from './layoutOps'
 import type { PitWallLayout } from './pitWallData'
 import type { PitWallRoute } from './route'
-import type { TileData } from './tileFrame'
+import type { TileData, WallActions } from './tileFrame'
 import { KIND_LABEL } from './tileFrame'
 import { PitWallBar, RenameDialog, type PageAction } from './PitWallBar'
 import { PitWallGrid } from './PitWallGrid'
 import { PitWallSlot } from './PitWallSlot'
 import { waiting } from './waiting'
 import './PitWall.css'
+// The class colours the wall's bars and dots wear (classMark).
+import '../views/CarBadges.css'
 
 /** How long a saved layout is shown before the host's copy is trusted again, if the two never match. */
 const PENDING_MS = 3000
 
 const newId = (): string => crypto.randomUUID()
 
-/** The board, the newest sample and the link's health, for the tiles; empty unless this PC is the linked engineer. */
-const tileData = (link: LiveLink): TileData =>
+/** The board, the newest sample, the link's health and the radio, for the tiles; empty unless this PC is the linked engineer. */
+const tileData = (link: LiveLink, actions: WallActions): TileData =>
   (link.phase === 'Connected' || link.phase === 'Interrupted') && link.role === 'Engineer'
-    ? { pitWall: link.pitWall, latest: link.latest, health: link.health }
-    : { pitWall: null, latest: null, health: null }
+    ? { pitWall: link.pitWall, latest: link.latest, health: link.health, radio: link.radio?.side === 'Engineer' ? link.radio : null, actions }
+    : { pitWall: null, latest: null, health: null, radio: null, actions }
+
+const send = async (command: SprintCommand): Promise<void> => {
+  await bridge.sendCommand(command)
+}
 
 /**
  * A pit wall window's page (`?pitwall=main|page:<id>|tile:<id>`, electron/pitWallWindows.ts): the
@@ -80,7 +86,8 @@ export function PitWallRoot({ route }: { route: PitWallRoute }) {
   }, [layout, route])
 
   if (!sprint || !layout) return <div className="pw-root" />
-  const data = tileData(sprint.link)
+  // Windows a tile opens or puts back save at once, from any window, like a page's ↗.
+  const data = tileData(sprint.link, { send, layout, place: (target, out) => void change((latestLayout) => setDetached(latestLayout, target, out)) })
   switch (route.kind) {
     case 'main':
       return <MainWall layout={layout} link={sprint.link} data={data} save={save} change={change} error={error} onDismissError={() => setError(null)} />

@@ -1,6 +1,7 @@
 import type { DashCategoryLists, DashRefitLosses, SprintCommand } from '../bridge'
-import { LAP_SUMMARY_SECONDS, MIN_ALERT_SECONDS, maxAlertSeconds, dashboardWidgetTypes, groupParents, isDashStyle, isDashWidgetGroup, isDashWidgetType, mayOverlap, stackLayers, styleColorTokens, dashAlertTypes, type DashAlertType } from '@sprint/dashboard'
-import type { DashAlert, DashColorSystem, DashLayout, DashStyle, DashPage, DashTheme, DashWidget, DashWidgetStyle, DashWidgetType } from '@sprint/dashboard'
+import { dashboardWidgetTypes, groupParents, isDashStyle, parseDashChrome, fitsZone, dropRect, isDashWidgetGroup, isDashWidgetType, mayOverlap, stackLayers, styleColorTokens } from '@sprint/dashboard'
+import { DEFAULT_DASH_CHROME, ZONED_COLS, ZONED_ROWS } from '@sprint/dashboard'
+import type { DashAlert, DashChrome, DashColorSystem, DashLayout, DashStyle, DashPage, DashTheme, DashWidget, DashWidgetStyle, DashWidgetType, LayoutGrid } from '@sprint/dashboard'
 import type { TelemetryFrame } from '@sprint/types'
 
 /**
@@ -15,10 +16,9 @@ import type { TelemetryFrame } from '@sprint/types'
  * whole via `dash.save` (see the command builders at the bottom), mirroring how
  * `DashEditorController.cs` mutates its in-memory layout before persisting.
  *
- * The widget-type catalog and alert-type catalog are each hand-mirrored too,
- * but from different (and differently-durable) sources — see the comments at
- * `WIDGET_CATALOG` and `AlertTypeId` below for what each one still needs to
- * stay in sync with, and why neither is read from published host state yet.
+ * The widget-type catalog is hand-mirrored too — see the comment at
+ * `WIDGET_CATALOG` below for what it still needs to stay in sync with, and why
+ * it is not read from published host state yet.
  */
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null
@@ -50,7 +50,9 @@ function isDashPageRow(value: unknown): value is DashPage {
 
 /**
  * One raw alert row, or null when it lacks its identity or rectangle. The host writes an absent
- * look field as null; it is dropped here, so inward code sees "absent" one way only.
+ * look field as null; it is dropped here, so inward code sees "absent" one way only. A dash's own
+ * alerts only ride along so a save keeps them: alerts are app-wide now (Dashes > Settings), and
+ * whoever draws a dash stamps those on instead (`stampDashAlerts`).
  */
 function parseDashAlert(value: unknown): DashAlert | null {
   if (!isRecord(value)) return null
@@ -58,7 +60,7 @@ function parseDashAlert(value: unknown): DashAlert | null {
   if (typeof id !== 'string' || typeof type !== 'string' || typeof enabled !== 'boolean') return null
   if (typeof col !== 'number' || typeof row !== 'number' || typeof colSpan !== 'number' || typeof rowSpan !== 'number') return null
   const alert: DashAlert = { id, type, enabled, col, row, colSpan, rowSpan }
-  if (value.displayMode === 'full' || value.displayMode === 'center') alert.displayMode = value.displayMode
+  if (value.displayMode === 'full' || value.displayMode === 'strip' || value.displayMode === 'center') alert.displayMode = value.displayMode
   if (typeof value.colorToken === 'string') alert.colorToken = value.colorToken
   if (typeof value.durationSeconds === 'number') alert.durationSeconds = value.durationSeconds
   if (typeof value.invertColors === 'boolean') alert.invertColors = value.invertColors
@@ -86,10 +88,15 @@ export function parseDashLayout(row: Record<string, unknown>): DashLayout | null
   if (typeof row.category === 'string' && row.category.length > 0) layout.category = row.category
   if (row.colorSystem === 'functional' || row.colorSystem === 'styled') layout.colorSystem = row.colorSystem
   if (isDashStyle(row.dashStyle)) layout.dashStyle = row.dashStyle
+  if (row.zoned === true) layout.zoned = true
+  const chrome = parseDashChrome(row.chrome)
+  if (chrome) layout.chrome = chrome
   if (isRecord(row.theme)) {
     layout.theme = Object.fromEntries(Object.entries(row.theme).filter((entry): entry is [string, string] => typeof entry[1] === 'string'))
   }
   if (isRecord(row.alertConfig)) layout.alertConfig = row.alertConfig
+  // The renderer reads each cell defensively (lapReviewCells); only the shape is checked here.
+  if (isRecord(row.lapReview) && Array.isArray(row.lapReview.cells)) layout.lapReview = { cells: row.lapReview.cells.filter((cell): cell is string => typeof cell === 'string') }
 
   return layout
 }
@@ -135,7 +142,9 @@ const matchScreenProfileToGrid = (gridCols: number, gridRows: number): ScreenPro
   return [...SCREEN_PROFILES].sort((a, b) => Math.abs(a.width / a.height - aspect) - Math.abs(b.width / b.height - aspect))[0]
 }
 
-export const layoutScreenProfile = (layout: DashLayout): ScreenProfile => (layout.screenProfile ? resolveScreenProfile(layout.screenProfile) : matchScreenProfileToGrid(layout.gridCols, layout.gridRows))
+// A zoned dash's grid says nothing about its screen: without a profile it is the default one.
+export const layoutScreenProfile = (layout: DashLayout): ScreenProfile =>
+  layout.screenProfile ? resolveScreenProfile(layout.screenProfile) : layout.zoned ? SCREEN_PROFILES[0] : matchScreenProfileToGrid(layout.gridCols, layout.gridRows)
 
 /**
  * Scales a screen size down (or up) to fit inside a box, keeping its aspect ratio. Every dash
@@ -243,6 +252,43 @@ const LAP_TIME_CONFIG: readonly DashConfigField[] = [
       { value: 'current', label: 'Current lap' },
       { value: 'last', label: 'Last lap' },
       { value: 'best', label: 'Best lap' },
+      { value: 'session', label: 'Session best (anyone)' },
+      { value: 'class', label: 'Class best' },
+    ],
+  },
+]
+
+const BAR_CONFIG: readonly DashConfigField[] = [
+  {
+    key: 'channel',
+    label: 'Shows',
+    kind: 'select',
+    default: 'fuel',
+    options: [
+      { value: 'fuel', label: 'Fuel' },
+      { value: 've', label: 'Virtual energy' },
+      { value: 'soc', label: 'Battery charge' },
+      { value: 'delta', label: 'Delta' },
+      { value: 'inputs', label: 'Throttle and brake' },
+      { value: 'rpm', label: 'RPM' },
+      { value: 'gap', label: 'Gaps ahead and behind' },
+      { value: 'fuel_ve', label: 'Fuel and virtual energy' },
+      { value: 'spotter', label: 'Spotter' },
+    ],
+  },
+]
+
+const TYRE_CONFIG: readonly DashConfigField[] = [
+  {
+    key: 'corner',
+    label: 'Tyre',
+    kind: 'select',
+    default: 'fl',
+    options: [
+      { value: 'fl', label: 'Front left' },
+      { value: 'fr', label: 'Front right' },
+      { value: 'rl', label: 'Rear left' },
+      { value: 'rr', label: 'Rear right' },
     ],
   },
 ]
@@ -285,6 +331,33 @@ const WIDGET_CATALOG: Readonly<Record<DashWidgetType, DashWidgetDefinition>> = {
   racelogic_lap_timer: { type: 'racelogic_lap_timer', name: 'RaceLogic Lap Timer', idleCapable: false, config: NO_CONFIG },
   tyre_pressure: { type: 'tyre_pressure', name: 'Tyre Pressure', idleCapable: true, config: NO_CONFIG },
   virtual_energy: { type: 'virtual_energy', name: 'Virtual Energy', idleCapable: false, config: VIRTUAL_ENERGY_CONFIG },
+  battery: { type: 'battery', name: 'Battery', idleCapable: false, config: NO_CONFIG },
+  relative: { type: 'relative', name: 'Relative', idleCapable: false, config: NO_CONFIG },
+  damage: { type: 'damage', name: 'Damage', idleCapable: false, config: NO_CONFIG },
+  bar: { type: 'bar', name: 'Bar', idleCapable: false, config: BAR_CONFIG },
+  tyre: { type: 'tyre', name: 'Tyre', idleCapable: true, config: TYRE_CONFIG },
+  sectors: { type: 'sectors', name: 'Sector Colours', idleCapable: false, config: NO_CONFIG },
+  speed: { type: 'speed', name: 'Speed', idleCapable: true, config: NO_CONFIG },
+  laps: { type: 'laps', name: 'Lap', idleCapable: false, config: NO_CONFIG },
+  fuel_laps: { type: 'fuel_laps', name: 'Fuel Laps Left', idleCapable: false, config: NO_CONFIG },
+  ve_laps: { type: 've_laps', name: 'Energy Laps Left', idleCapable: false, config: NO_CONFIG },
+  time_left: { type: 'time_left', name: 'Time Left', idleCapable: false, config: NO_CONFIG },
+  soc: { type: 'soc', name: 'Battery Charge', idleCapable: false, config: NO_CONFIG },
+  slip: { type: 'slip', name: 'TC Slip', idleCapable: false, config: NO_CONFIG },
+  cut: { type: 'cut', name: 'TC Cut', idleCapable: false, config: NO_CONFIG },
+  fuel_avg: { type: 'fuel_avg', name: 'Fuel Per Lap', idleCapable: false, config: NO_CONFIG },
+  fuel_time: { type: 'fuel_time', name: 'Fuel Time Left', idleCapable: false, config: NO_CONFIG },
+  laps_left: { type: 'laps_left', name: 'Race Laps Left', idleCapable: false, config: NO_CONFIG },
+  refuel: { type: 'refuel', name: 'Refuel', idleCapable: false, config: NO_CONFIG },
+  clock: { type: 'clock', name: 'Clock', idleCapable: true, config: NO_CONFIG },
+  weather: { type: 'weather', name: 'Weather', idleCapable: true, config: NO_CONFIG },
+  oil_temp: { type: 'oil_temp', name: 'Oil Temperature', idleCapable: true, config: NO_CONFIG },
+  water_temp: { type: 'water_temp', name: 'Water Temperature', idleCapable: true, config: NO_CONFIG },
+  migration: { type: 'migration', name: 'Brake Migration', idleCapable: false, config: NO_CONFIG },
+  arb: { type: 'arb', name: 'Anti-Roll Bars', idleCapable: false, config: NO_CONFIG },
+  penalty: { type: 'penalty', name: 'Penalties', idleCapable: false, config: NO_CONFIG },
+  tyre_wear: { type: 'tyre_wear', name: 'Tyre Wear', idleCapable: true, config: NO_CONFIG },
+  sector_time: { type: 'sector_time', name: 'Sector Time', idleCapable: false, config: NO_CONFIG },
 }
 
 /** Single source of truth for the widget type list — do not redefine it locally; see the section comment above. */
@@ -294,6 +367,45 @@ export const widgetDefinition = (type: string): DashWidgetDefinition | null => (
 
 export const widgetDisplayName = (type: string): string => widgetDefinition(type)?.name ?? type
 
+/** The label of the option a widget picked for one of its select fields; null when it has none. */
+function chosenOptionLabel(widget: DashWidget, key: string): string | null {
+  const field = widgetDefinition(widget.type)?.config.find((candidate) => candidate.key === key)
+  if (!field) return null
+  const raw = widget.config?.[key]
+  const value = typeof raw === 'string' ? raw : field.default
+  return field.options.find((option) => option.value === value)?.label ?? null
+}
+
+/**
+ * What one placed widget is called in the designer (sidebar, canvas tag, inspector): its catalog
+ * name, or what it shows when its config makes the catalog name ambiguous ("Fuel bar", "Front
+ * left tyre", "Best lap", "Gap ahead").
+ */
+export function widgetName(widget: DashWidget): string {
+  const name = widgetDisplayName(widget.type)
+  switch (widget.type) {
+    case 'bar': {
+      const channel = chosenOptionLabel(widget, 'channel')
+      return channel ? `${channel} bar` : name
+    }
+    case 'tyre': {
+      const corner = chosenOptionLabel(widget, 'corner')
+      return corner ? `${corner} tyre` : name
+    }
+    case 'lap_time': {
+      const show = widget.config?.show
+      if (show === 'session') return 'Session best'
+      return show === 'current' || show === 'last' || show === 'best' || show === 'class' ? (chosenOptionLabel(widget, 'show') ?? name) : name
+    }
+    case 'gaps': {
+      const side = widget.config?.side
+      return side === 'ahead' ? 'Gap ahead' : side === 'behind' ? 'Gap behind' : name
+    }
+    default:
+      return name
+  }
+}
+
 /**
  * Selectable widget colour tokens. `styleColorTokens` is the authoritative list,
  * exported by `@sprint/dashboard` (ported from the retired DashPalette); only the
@@ -301,37 +413,6 @@ export const widgetDisplayName = (type: string): string => widgetDefinition(type
  */
 export const WIDGET_STYLE_COLOR_TOKENS: readonly { value: string; label: string }[] =
   styleColorTokens.map((value) => ({ value, label: value.charAt(0).toUpperCase() + value.slice(1) }))
-
-// ── Alert catalog ──
-//
-// `AlertTypeId` is `DashAlertType` from `@sprint/dashboard`, the authoritative
-// set the renderer fires on. Only the labels below are UI copy; adding an alert
-// type to the package without labelling it here is a compile error, so the two
-// cannot drift silently.
-
-export type AlertTypeId = DashAlertType
-
-const ALERT_TYPE_LABELS: Record<AlertTypeId, string> = {
-  tc_change: 'Traction control change',
-  abs_change: 'ABS change',
-  bias_change: 'Brake bias change',
-  enginemap_change: 'Engine map change',
-  lap_summary: 'Lap summary',
-}
-
-export const ALERT_TYPES: readonly { type: AlertTypeId; label: string }[] =
-  dashAlertTypes.map((type) => ({ type, label: ALERT_TYPE_LABELS[type] }))
-
-export const ALERT_COLOR_TOKENS: readonly { value: string; label: string }[] = [
-  { value: 'auto', label: 'Automatic' },
-  { value: 'ember', label: 'Ember' },
-  { value: 'ice', label: 'Ice' },
-  { value: 'viper', label: 'Viper' },
-  { value: 'suzuki', label: 'Suzuki' },
-  { value: 'crimson', label: 'Crimson' },
-  { value: 'mono', label: 'Mono' },
-  { value: 'yellow', label: 'Yellow' },
-]
 
 // ── Geometry helpers (DashLayoutEditor.cs Intersects/WouldOverlap) ──────────
 
@@ -355,9 +436,13 @@ export function pageOverlaps(page: DashPage, candidate: GridRect, id: string, gr
   )
 }
 
-/** Whether every widget on the page is inside the grid and shares cells only as `pageOverlaps` allows. */
-export function pageFits(page: DashPage, cols: number, rows: number): boolean {
-  return page.widgets.every((widget) => isValidRect(widget, cols, rows) && !pageOverlaps(page, widget, widget.id, widget.group ?? null))
+/** Whether a widget of `type` may sit at `rect`: inside the grid, and on a zoned dash in a zone that takes it (`fitsZone`). */
+export const fitsLayout = (layout: LayoutGrid, type: string, rect: GridRect): boolean =>
+  isValidRect(rect, layout.gridCols, layout.gridRows) && (!layout.zoned || fitsZone(type, rect))
+
+/** Whether every widget on the page sits where `fitsLayout` allows and shares cells only as `pageOverlaps` allows. */
+export function pageFits(page: DashPage, layout: LayoutGrid): boolean {
+  return page.widgets.every((widget) => fitsLayout(layout, widget.type, widget) && !pageOverlaps(page, widget, widget.id, widget.group ?? null))
 }
 
 function firstFit(cols: number, rows: number, colSpan: number, rowSpan: number, occupied: (rect: GridRect) => boolean, within?: GridRect): GridRect | null {
@@ -484,6 +569,14 @@ export function applyThemePreset(layout: DashLayout, theme: DashTheme, colorSyst
 }
 
 /** Sets how every widget is framed — mirrors `DashEditorController.SetDashStyle`. The layout itself does not change. */
+/** Changes the flat style's dash-wide look (corners, edge, label); null when nothing changes. */
+export function setDashChrome(layout: DashLayout, patch: Partial<DashChrome>): DashLayout | null {
+  const current = layout.chrome ?? DEFAULT_DASH_CHROME
+  const chrome: DashChrome = { ...current, ...patch }
+  if (chrome.radius === current.radius && chrome.border === current.border && chrome.label === current.label) return null
+  return { ...cloneLayout(layout), chrome }
+}
+
 export function setDashStyle(layout: DashLayout, dashStyle: DashStyle): DashLayout | null {
   if ((layout.dashStyle ?? 'panels') === dashStyle) return null
   const next = cloneLayout(layout)
@@ -508,16 +601,17 @@ function newWidget(page: DashPage, type: DashWidgetType, rect: GridRect, group: 
   return widget
 }
 
-/** Adds a widget at the first free grid cell — mirrors `DashLayoutEditor.TryAddWidget`. */
+/** Adds a widget at the first free grid cell — mirrors `DashLayoutEditor.TryAddWidget`. On a zoned dash, the first free place its zones take it (`dropRect`). */
 export function addWidget(layout: DashLayout, pageId: string, type: DashWidgetType, target: WidgetTarget = ON_PAGE): { layout: DashLayout; widget: DashWidget } | null {
   const next = cloneLayout(layout)
   const page = findPage(next, pageId)
   if (!page) return null
 
   const occupied = (candidate: GridRect): boolean => pageOverlaps(page, candidate, '', target.group)
-  const rect =
-    (target.within && firstFit(next.gridCols, next.gridRows, DEFAULT_WIDGET_COL_SPAN, DEFAULT_WIDGET_ROW_SPAN, occupied, target.within)) ||
-    firstFit(next.gridCols, next.gridRows, DEFAULT_WIDGET_COL_SPAN, DEFAULT_WIDGET_ROW_SPAN, occupied)
+  const rect = next.zoned
+    ? firstZonedFit(type, occupied, target.within)
+    : (target.within && firstFit(next.gridCols, next.gridRows, DEFAULT_WIDGET_COL_SPAN, DEFAULT_WIDGET_ROW_SPAN, occupied, target.within)) ||
+      firstFit(next.gridCols, next.gridRows, DEFAULT_WIDGET_COL_SPAN, DEFAULT_WIDGET_ROW_SPAN, occupied)
   if (!rect) return null
 
   const widget = newWidget(page, type, rect, target.group)
@@ -525,11 +619,36 @@ export function addWidget(layout: DashLayout, pageId: string, type: DashWidgetTy
   return { layout: next, widget }
 }
 
-/** Non-mutating placement check for a not-yet-created widget (palette drag ghost) — mirrors `DashLayoutEditor.CanPlaceNewWidget`. */
-export function canPlaceNewWidget(layout: DashLayout, pageId: string, rect: GridRect, group: string | null = null): boolean {
+/** The first free place on a zoned dash a widget of `type` drops into, preferring `within` (a stack's region). */
+function firstZonedFit(type: string, occupied: (rect: GridRect) => boolean, within?: GridRect): GridRect | null {
+  const candidates: GridRect[] = []
+  for (let row = 0; row < ZONED_ROWS; row++) {
+    for (let col = 0; col < ZONED_COLS; col++) {
+      const rect = dropRect(type, col, row)
+      if (rect && !occupied(rect)) candidates.push(rect)
+    }
+  }
+  const inWithin = within ? candidates.find((rect) => rectsIntersect(rect, within)) : undefined
+  return inWithin ?? candidates[0] ?? null
+}
+
+/** Non-mutating placement check for a not-yet-created widget of `type` (palette drag ghost) — mirrors `DashLayoutEditor.CanPlaceNewWidget`. */
+export function canPlaceNewWidget(layout: DashLayout, pageId: string, type: string, rect: GridRect, group: string | null = null): boolean {
   const page = findPage(layout, pageId)
-  if (!page || !isValidRect(rect, layout.gridCols, layout.gridRows)) return false
+  if (!page || !fitsLayout(layout, type, rect)) return false
   return !pageOverlaps(page, rect, '', group)
+}
+
+/**
+ * Where a new widget of `type` dropped on cell (`col`, `row`) goes: the default size from that
+ * cell, pulled back inside the grid; on a zoned dash, where its zone puts it (`dropRect`), or null
+ * when that zone does not take it.
+ */
+export function newWidgetRect(layout: LayoutGrid, type: string, col: number, row: number): GridRect | null {
+  if (layout.zoned) return dropRect(type, col, row)
+  const colSpan = Math.min(DEFAULT_WIDGET_COL_SPAN, layout.gridCols)
+  const rowSpan = Math.min(DEFAULT_WIDGET_ROW_SPAN, layout.gridRows)
+  return { col: Math.max(0, Math.min(col, layout.gridCols - colSpan)), row: Math.max(0, Math.min(row, layout.gridRows - rowSpan)), colSpan, rowSpan }
 }
 
 /** Adds a widget at an explicit grid cell (drag-drop placement) — mirrors `DashLayoutEditor.TryAddWidgetAt`. The requested cell is clamped in-bounds; placement is rejected (no fallback) if it would overlap, so a drop onto an occupied cell fails rather than silently jumping. */
@@ -538,10 +657,8 @@ export function addWidgetAt(layout: DashLayout, pageId: string, type: DashWidget
   const page = findPage(next, pageId)
   if (!page) return null
 
-  const colSpan = Math.min(DEFAULT_WIDGET_COL_SPAN, next.gridCols)
-  const rowSpan = Math.min(DEFAULT_WIDGET_ROW_SPAN, next.gridRows)
-  const rect: GridRect = { col: Math.max(0, Math.min(col, next.gridCols - colSpan)), row: Math.max(0, Math.min(row, next.gridRows - rowSpan)), colSpan, rowSpan }
-  if (pageOverlaps(page, rect, '', group)) return null
+  const rect = newWidgetRect(next, type, col, row)
+  if (!rect || pageOverlaps(page, rect, '', group)) return null
 
   const widget = newWidget(page, type, rect, group)
   page.widgets.push(widget)
@@ -550,14 +667,14 @@ export function addWidgetAt(layout: DashLayout, pageId: string, type: DashWidget
 
 export type ResizeHandle = { hx: -1 | 0 | 1; hy: -1 | 0 | 1 }
 
-/** Snaps a pointer-drag delta (in whole grid cells) onto a moved widget's rectangle, clamped to the grid — mirrors the old Avalonia editor's `PreviewGeometry` move branch. Pure pixel/grid math shared by the widget canvas and the alert canvas. */
+/** Snaps a pointer-drag delta (in whole grid cells) onto a moved widget's rectangle, clamped to the grid — mirrors the old Avalonia editor's `PreviewGeometry` move branch. Pure pixel/grid math for the widget canvas. */
 export function previewMoveRect(start: GridRect, deltaCol: number, deltaRow: number, cols: number, rows: number): GridRect {
   const col = Math.max(0, Math.min(start.col + deltaCol, Math.max(0, cols - start.colSpan)))
   const row = Math.max(0, Math.min(start.row + deltaRow, Math.max(0, rows - start.rowSpan)))
   return { col, row, colSpan: start.colSpan, rowSpan: start.rowSpan }
 }
 
-/** Snaps a pointer-drag delta onto a resized widget's rectangle for one of 8 edge/corner handles (or the alert canvas's single bottom-right handle), clamped to the grid and to a minimum span of one cell — mirrors the old editor's `ResizeGeometry`. */
+/** Snaps a pointer-drag delta onto a resized widget's rectangle for one of 8 edge/corner handles, clamped to the grid and to a minimum span of one cell — mirrors the old editor's `ResizeGeometry`. */
 export function previewResizeRect(start: GridRect, handle: ResizeHandle, deltaCol: number, deltaRow: number, cols: number, rows: number): GridRect {
   let { col, row, colSpan, rowSpan } = start
   if (handle.hx > 0) {
@@ -580,9 +697,25 @@ export function setWidgetGeometry(layout: DashLayout, pageId: string, widgetId: 
   const next = cloneLayout(layout)
   const page = findPage(next, pageId)
   const widget = page?.widgets.find((item) => item.id === widgetId)
-  if (!page || !widget || !isValidRect(rect, next.gridCols, next.gridRows) || pageOverlaps(page, rect, widget.id, widget.group ?? null)) return null
+  if (!page || !widget || !fitsLayout(next, widget.type, rect) || pageOverlaps(page, rect, widget.id, widget.group ?? null)) return null
   Object.assign(widget, rect)
   return next
+}
+
+/**
+ * Swaps two widgets' places: each takes the other's cells. Refused when either would not fit there
+ * (`pageFits`: its zone, or an overlap a different size makes).
+ */
+export function swapWidgets(layout: DashLayout, pageId: string, firstId: string, secondId: string): DashLayout | null {
+  const next = cloneLayout(layout)
+  const page = findPage(next, pageId)
+  const first = page?.widgets.find((item) => item.id === firstId)
+  const second = page?.widgets.find((item) => item.id === secondId)
+  if (!page || !first || !second || first === second) return null
+  const firstRect: GridRect = { col: first.col, row: first.row, colSpan: first.colSpan, rowSpan: first.rowSpan }
+  Object.assign(first, { col: second.col, row: second.row, colSpan: second.colSpan, rowSpan: second.rowSpan })
+  Object.assign(second, firstRect)
+  return pageFits(page, next) ? next : null
 }
 
 export function clearPage(layout: DashLayout, pageId: string): DashLayout | null {
@@ -616,137 +749,9 @@ export function setWidgetConfig(layout: DashLayout, pageId: string, widgetId: st
 
 export function setWidgetStyle(layout: DashLayout, pageId: string, widgetId: string, patch: Partial<DashWidgetStyle>): DashLayout | null {
   return withWidget(layout, pageId, widgetId, (widget) => {
-    const style: DashWidgetStyle = { ...(widget.style ?? {}), ...patch }
-    widget.style = style.textColor || style.labelColor ? style : undefined
+    const style: DashWidgetStyle = Object.fromEntries(Object.entries({ ...(widget.style ?? {}), ...patch }).filter((entry) => entry[1] !== undefined && entry[1] !== ''))
+    widget.style = Object.keys(style).length > 0 ? style : undefined
   })
-}
-
-// ── Alerts (DashEditorController alert methods) ─────────────────────────────
-
-export function findAlert(layout: DashLayout, type: AlertTypeId): DashAlert | null {
-  return layout.alerts.find((alert) => alert.type === type) ?? null
-}
-
-/** A change-alert as it is first turned on: in the default box, wearing the defaults. */
-const newAlert = (type: AlertTypeId): DashAlert => ({ id: type, type, enabled: true, col: 6, row: 3, colSpan: 8, rowSpan: 6 })
-
-/** Enables/disables a change-alert, creating it with default geometry the first time — mirrors `DashEditorController.SetAlert`. */
-export function setAlertEnabled(layout: DashLayout, type: AlertTypeId, enabled: boolean): DashLayout {
-  const next = cloneLayout(layout)
-  const alert = findAlert(next, type)
-  if (!alert) {
-    if (enabled) next.alerts.push(newAlert(type))
-  } else {
-    alert.enabled = enabled
-  }
-
-  return next
-}
-
-export function setAlertGeometry(layout: DashLayout, type: AlertTypeId, rect: GridRect): DashLayout | null {
-  const next = cloneLayout(layout)
-  const alert = findAlert(next, type)
-  if (!alert) return null
-  const colSpan = Math.min(Math.max(2, rect.colSpan), next.gridCols)
-  const rowSpan = Math.min(Math.max(2, rect.rowSpan), next.gridRows)
-  alert.col = Math.min(Math.max(0, rect.col), next.gridCols - colSpan)
-  alert.row = Math.min(Math.max(0, rect.row), next.gridRows - rowSpan)
-  alert.colSpan = colSpan
-  alert.rowSpan = rowSpan
-  return next
-}
-
-/** Where an alert shows: over the whole dash, or in its own box on it. */
-export type AlertDisplayMode = 'full' | 'center'
-
-export type AlertOverride = { displayMode?: AlertDisplayMode; colorToken?: string; durationSeconds?: number; invertColors?: boolean }
-
-export function setAlertOverride(layout: DashLayout, type: AlertTypeId, patch: AlertOverride): DashLayout | null {
-  const next = cloneLayout(layout)
-  const alert = findAlert(next, type)
-  if (!alert) return null
-  if (patch.displayMode !== undefined) alert.displayMode = patch.displayMode
-  if (patch.colorToken !== undefined) alert.colorToken = patch.colorToken
-  if (patch.durationSeconds !== undefined) alert.durationSeconds = Math.min(maxAlertSeconds(type), Math.max(MIN_ALERT_SECONDS, Math.round(patch.durationSeconds * 10) / 10))
-  if (patch.invertColors !== undefined) alert.invertColors = patch.invertColors
-  return next
-}
-
-/** Switches an alert between its own look (starting from the defaults) and the layout's global alert defaults — mirrors `DashEditorController.SetAlertUseGlobal`. */
-export function setAlertUseGlobal(layout: DashLayout, type: AlertTypeId, useGlobal: boolean): DashLayout | null {
-  const next = cloneLayout(layout)
-  const alert = findAlert(next, type)
-  if (!alert) return null
-
-  if (useGlobal) {
-    alert.displayMode = undefined
-    alert.colorToken = undefined
-    alert.durationSeconds = undefined
-    alert.invertColors = undefined
-    return next
-  }
-
-  const global = globalAlertConfig(next)
-  alert.displayMode = global.displayMode
-  alert.colorToken = global.colorToken
-  alert.durationSeconds = global.durationSeconds
-  alert.invertColors = global.invertColors
-  return next
-}
-
-export type GlobalAlertConfig = { displayMode: AlertDisplayMode; durationSeconds: number; invertColors: boolean; colorToken: string }
-
-const DEFAULT_GLOBAL_ALERT_CONFIG: GlobalAlertConfig = { displayMode: 'full', durationSeconds: 1.5, invertColors: false, colorToken: 'auto' }
-
-export function globalAlertConfig(layout: DashLayout): GlobalAlertConfig {
-  const raw = layout.alertConfig
-  if (!isRecord(raw)) return DEFAULT_GLOBAL_ALERT_CONFIG
-  return {
-    displayMode: raw.displayMode === 'center' ? 'center' : 'full',
-    durationSeconds: typeof raw.durationSeconds === 'number' ? raw.durationSeconds : DEFAULT_GLOBAL_ALERT_CONFIG.durationSeconds,
-    invertColors: raw.invertColors === true,
-    colorToken: typeof raw.colorToken === 'string' ? raw.colorToken : DEFAULT_GLOBAL_ALERT_CONFIG.colorToken,
-  }
-}
-
-export function setGlobalAlertConfig(layout: DashLayout, patch: Partial<GlobalAlertConfig>): DashLayout {
-  const next = cloneLayout(layout)
-  const merged = { ...globalAlertConfig(next), ...patch }
-  if (patch.durationSeconds !== undefined) merged.durationSeconds = Math.min(5, Math.max(0.5, Math.round(patch.durationSeconds * 10) / 10))
-  next.alertConfig = { ...merged, enabledTypes: next.alerts.filter((alert) => alert.enabled).map((alert) => alert.type) }
-  return next
-}
-
-/** An alert's look as it fires: `own` when it has its own, otherwise the defaults every alert shares. */
-export type AlertLook = GlobalAlertConfig & { own: boolean }
-
-/**
- * The look `type` fires with. The lap summary has only a duration of its own: it always fills
- * the screen in its own colours, and stays up `LAP_SUMMARY_SECONDS` unless it says otherwise.
- */
-export function alertLook(layout: DashLayout, type: AlertTypeId): AlertLook {
-  const global = globalAlertConfig(layout)
-  const alert = findAlert(layout, type)
-  if (type === 'lap_summary') return { ...global, displayMode: 'full', durationSeconds: alert?.durationSeconds ?? LAP_SUMMARY_SECONDS, own: false }
-  if (!alert) return { ...global, own: false }
-  return {
-    displayMode: alert.displayMode ?? global.displayMode,
-    colorToken: alert.colorToken ?? global.colorToken,
-    durationSeconds: alert.durationSeconds ?? global.durationSeconds,
-    invertColors: alert.invertColors ?? global.invertColors,
-    own: alert.displayMode !== undefined || alert.colorToken !== undefined || alert.durationSeconds !== undefined || alert.invertColors !== undefined,
-  }
-}
-
-/**
- * The alert the designer plays for a selection: that alert (or a new one in the default box
- * while it has never been on), or for "All alerts" (null) the first setting alert that is on,
- * stripped of any look of its own so it shows the defaults.
- */
-export function alertToPlay(layout: DashLayout, type: AlertTypeId | null): DashAlert {
-  if (type !== null) return findAlert(layout, type) ?? newAlert(type)
-  const { id, type: firstType, enabled, col, row, colSpan, rowSpan } = layout.alerts.find((alert) => alert.enabled && alert.type !== 'lap_summary') ?? newAlert('tc_change')
-  return { id, type: firstType, enabled, col, row, colSpan, rowSpan }
 }
 
 // ── Command builders (RuntimeCoordinator: dash.*) ───────────────────────────

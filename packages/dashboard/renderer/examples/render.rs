@@ -1,6 +1,8 @@
 // Renders dashes and parity cases with the Rust renderer, to check a rendering change by eye.
 //
-//   cargo run --release --example render -- --dash <layout.json> <out.png> [--page <id>] [--style panels|grid|bars] [--size 800x480] [--banner <banner.json>]
+//   cargo run --release --example render -- --dash <layout.json> <out.png> [--page <id>] [--style panels|grid|bars] [--size 800x480]
+//                                           [--banner <banner.json> | --alert <type>[:full|strip|center][:invert]]
+//                                           [--level <percent>] [--radius <px>]
 //   cargo run --release --example render -- <case.json> <out.png>
 //   cargo run --release --example render -- --all <cases-dir> <out-dir> [name-filter]
 //   cargo run --release --example render -- --bench <case.json> [iterations]
@@ -9,7 +11,10 @@
 // --dash draws one page of a dash layout (a preset such as app/Sprint.Desktop.Host/presets/dash/
 // default.json) against the fixed race frame below; --style overrides the layout's own style, so
 // one layout can be checked in every style; --banner draws an alert banner over it (the JSON
-// `render_still` takes, e.g. `{ "kind": "lapSummary", ... }`), so a popup can be checked too.
+// `render_still` takes, e.g. `{ "kind": "lapSummary", ... }`), so a popup can be checked too;
+// --level puts the fuel (of a 90 L tank), virtual energy and charge all at that percentage, for the
+// bars' level colours; --radius overrides the dash's corner radius.
+// --alert draws the designer's preview of an alert type (`tc_change:strip`, `penalty:full:invert`).
 //
 // A case is `{ name, width, height, layout, pageId?, idle?, settings?, targets?, frame, banner?,
 // nowMs }`: its scene fields go to `set_scene` as they are (the scene parser ignores the rest),
@@ -80,27 +85,41 @@ fn render_one(case_path: &Path, out: &Path) -> Result<(), String> {
 fn sample_frame() -> Value {
     let tire = |position: &str, t: f64, p: f64| {
         json!({ "position": position, "tempInnerCelsius": t + 6.0, "tempMiddleCelsius": t, "tempOuterCelsius": t - 4.0, "tempSurfaceCelsius": t,
-                "tempCoreCelsius": t - 2.0, "pressureKPa": p, "wearPercent": 4, "compound": "M" })
+                "tempCoreCelsius": t - 2.0, "pressureKPa": p, "wearPercent": 100.0 - t / 10.0, "brakeTempCelsius": t * 4.6, "compound": "M" })
     };
     json!({
         "timestamp": "2026-06-14T15:02:00+00:00",
         "session": { "game": "LMU", "track": "Circuit de la Sarthe", "trackLengthMeters": 13626, "car": "Porsche 963", "carClass": "Hypercar", "sessionType": "Race",
                      "sessionTime": 3720, "totalSessionTime": 21600, "sessionTimeRemaining": 17880, "bestLapTime": 208.44, "maxLaps": 0, "inCar": true },
-        "car": { "speedMetersPerSecond": 78.3, "gear": 6, "rpm": 7450, "maxRpm": 9000, "throttle": 0.92, "brake": 0, "clutch": 0, "steering": -0.12,
+        "car": { "speedMetersPerSecond": 78.3, "gear": 6, "rpm": 7450, "maxRpm": 9000, "waterTempCelsius": 88.4, "oilTempCelsius": 106.2, "throttle": 0.92, "brake": 0, "clutch": 0, "steering": -0.12,
                  "fuelLiters": 62.4, "fuelPerLapLiters": 4.6, "positionX": 0, "positionY": 0, "positionZ": 0, "brakeBiasRear": 0.462,
                  "inGarage": null, "inPitLane": null, "pitState": null, "pitLimiter": null },
         "tires": [tire("FrontLeft", 88.0, 172.0), tire("FrontRight", 94.0, 174.0), tire("RearLeft", 91.0, 168.0), tire("RearRight", 97.0, 170.0)],
         "lap": { "currentLap": 14, "currentLapTime": 92.345, "lastLapTime": 210.117, "bestLapTime": 208.44, "targetLapTime": 209.0, "delta": -0.412,
-                 "sector": 2, "lastLapSectorsSeconds": [68.2, 71.9, 70.0], "isValid": true, "trackPosition": 0.44 },
+                 "sector": 2, "lastLapSectorsSeconds": [68.2, 71.9, 70.0], "currentLapSectorsSeconds": [67.9],
+                 "personalBestSectorsSeconds": [67.9, 71.3, 69.8], "sessionBestSectorsSeconds": [67.4, 71.0, 69.5],
+                 "classBestSectorsSeconds": [67.9, 71.1, 69.6], "sessionBestLapTime": 207.12, "classBestLapTime": 207.86,
+                 "isValid": true, "trackPosition": 0.44 },
         "flags": { "yellow": false, "doubleYellow": false, "red": false, "safetyCar": false, "virtualSafetyCar": false, "checkered": false },
         "electronics": { "tractionControlActive": true, "tractionControl": 4, "tractionControlMax": 9, "tractionControlSlip": 2, "tractionControlSlipMax": 9,
-                         "tractionControlCut": 3, "tractionControlCutMax": 9, "abs": 3, "absMax": 9, "motorMap": 5, "motorMapMax": 9, "migration": 0,
-                         "migrationMax": 0, "frontAntiRollBar": 0, "frontAntiRollBarMax": 0, "rearAntiRollBar": 0, "rearAntiRollBarMax": 0, "drsActive": false },
-        "race": { "position": 4, "totalPositions": 38, "gapAhead": 2.41, "gapBehind": 5.08 },
+                         "tractionControlCut": 3, "tractionControlCutMax": 9, "abs": 3, "absMax": 9, "motorMap": 5, "motorMapMax": 9, "migration": 2,
+                         "migrationMax": 5, "frontAntiRollBar": 3, "frontAntiRollBarMax": 6, "rearAntiRollBar": 4, "rearAntiRollBarMax": 6, "drsActive": false },
+        "race": { "position": 4, "totalPositions": 38, "gapAhead": 0.81, "gapBehind": 1.42, "carLeftMeters": null, "carRightMeters": -1.6 },
         "energy": { "virtualEnergy": 61.2, "virtualEnergyPerLap": 4.4, "stateOfCharge": 0.58, "regenPower": 120, "deployPower": 340 },
         "penalties": { "incidents": 1, "trackLimitSteps": 0, "pitStops": 2 },
-        "conditions": { "pathWetness": null, "trackGripLevel": null, "fuelMultiplier": null, "tireMultiplier": null, "fixedSetup": null },
-        "field": null,
+        "conditions": { "pathWetness": null, "trackGripLevel": null, "fuelMultiplier": null, "tireMultiplier": null, "fixedSetup": null,
+                        "airTemperatureCelsius": 22.4, "trackTemperatureCelsius": 31.8, "raining": 0 },
+        "damage": { "dents": [0, 1, 0, 0, 0, 0, 0, 2], "lastImpactSessionTime": 3650.2, "lastImpactMagnitude": 820, "overheating": false, "detachedParts": false },
+        // Made-up cars round ours (P4, 6 km into lap 14): three ahead, three behind, the last a lap down.
+        "field": [
+            { "id": 1, "driver": "R. Okafor", "isPlayer": false, "place": 2, "lapsCompleted": 13, "lapDistanceMeters": 6480 },
+            { "id": 2, "driver": "L. Brandt", "isPlayer": false, "place": 3, "lapsCompleted": 13, "lapDistanceMeters": 6310 },
+            { "id": 3, "driver": "T. Varga", "isPlayer": false, "place": 11, "lapsCompleted": 13, "lapDistanceMeters": 6150 },
+            { "id": 4, "driver": "You", "isPlayer": true, "place": 4, "lapsCompleted": 13, "lapDistanceMeters": 6000, "penalties": 1 },
+            { "id": 5, "driver": "K. Ito", "isPlayer": false, "place": 5, "lapsCompleted": 13, "lapDistanceMeters": 5930 },
+            { "id": 6, "driver": "S. Novak", "isPlayer": false, "place": 9, "lapsCompleted": 13, "lapDistanceMeters": 5720 },
+            { "id": 7, "driver": "M. Duarte", "isPlayer": false, "place": 31, "lapsCompleted": 12, "lapDistanceMeters": 5600 },
+        ],
     })
 }
 
@@ -109,11 +128,11 @@ fn sample_frame() -> Value {
 fn render_dash(layout_path: &Path, out: &Path, options: &[&str]) -> Result<(), String> {
     let text = fs::read(layout_path).map_err(|e| format!("{}: {e}", layout_path.display()))?;
     let mut layout: Value = serde_json::from_slice(&text).map_err(|e| format!("{}: {e}", layout_path.display()))?;
-    let (mut page_id, mut width, mut height, mut banner) = (None, 800.0, 480.0, None);
+    let (mut page_id, mut width, mut height, mut banner, mut alert, mut level) = (None, 800.0, 480.0, None, None, None);
     for pair in options.chunks(2) {
         match pair {
             ["--page", id] => page_id = Some(*id),
-            ["--style", style @ ("panels" | "grid" | "bars")] => {
+            ["--style", style @ ("panels" | "grid" | "bars" | "flat")] => {
                 layout.as_object_mut().ok_or("the layout is not a JSON object")?.insert("dashStyle".to_owned(), json!(style));
             }
             ["--size", size] => {
@@ -121,15 +140,56 @@ fn render_dash(layout_path: &Path, out: &Path, options: &[&str]) -> Result<(), S
                 (width, height) = parsed.ok_or_else(|| format!("not a size: {size} (expected e.g. 800x480)"))?;
             }
             ["--banner", path] => banner = Some(fs::read(path).map_err(|e| format!("{path}: {e}"))?),
+            ["--alert", spec] => alert = Some(*spec),
+            ["--level", pct] => level = Some(pct.parse::<f64>().map_err(|_| format!("not a percentage: {pct}"))?),
+            ["--radius", px] => {
+                let px: f64 = px.parse().map_err(|_| format!("not a radius: {px}"))?;
+                let chrome = layout.as_object_mut().ok_or("the layout is not a JSON object")?.entry("chrome").or_insert(json!({}));
+                chrome["radius"] = json!(px);
+            }
             _ => return Err(format!("unknown option: {}", pair.join(" "))),
         }
     }
-    let scene =
-        json!({ "layout": layout, "width": width, "height": height, "pageId": page_id, "targets": { "lapTimeSeconds": 209, "fuelPerLapLiters": 4.42 } });
-    let case = Case { scene: scene.to_string().into_bytes(), frame: sample_frame().to_string().into_bytes(), banner, now_ms: 0.0 };
+    let scene = json!({ "layout": layout, "width": width, "height": height, "pageId": page_id, "settings": { "utcOffsetMinutes": 60 },
+                "targets": { "lapTimeSeconds": 209, "fuelPerLapLiters": 4.42 } });
+    let mut frame = sample_frame();
+    if let Some(pct) = level {
+        frame["car"]["fuelCapacityLiters"] = json!(90.0);
+        frame["car"]["fuelLiters"] = json!(90.0 * pct / 100.0);
+        frame["energy"]["virtualEnergy"] = json!(pct);
+        frame["energy"]["stateOfCharge"] = json!(pct / 100.0);
+    }
+    let case = Case { scene: scene.to_string().into_bytes(), frame: frame.to_string().into_bytes(), banner, now_ms: 0.0 };
     let mut renderer = Renderer::new();
-    render(&mut renderer, &case)?;
+    match alert {
+        None => render(&mut renderer, &case)?,
+        Some(spec) => {
+            let preview = alert_preview(&case.scene, spec)?;
+            renderer.set_scene(&case.scene).map_err(|e| e.to_string())?;
+            renderer.render_still_with(&case.frame, Some(&preview), case.now_ms).map_err(|e| e.to_string())?;
+        }
+    }
     write_png(&renderer, out)
+}
+
+/// `--alert <type>[:full|strip|center][:invert]`: the designer's preview of that alert type on the
+/// scene's layout, in that size (the layout's own when unset).
+fn alert_preview(scene_json: &[u8], spec: &str) -> Result<sprint_dash::alerts::DashAlertBanner, String> {
+    let scene = sprint_dash::model::parse_scene(scene_json)?;
+    let mut parts = spec.split(':');
+    let alert_type = parts.next().unwrap_or_default();
+    let mut fields = json!({ "id": "preview", "type": alert_type, "enabled": true, "col": 6, "row": 3, "colSpan": 8, "rowSpan": 6 });
+    for part in parts {
+        match part {
+            "full" | "strip" | "center" => fields["displayMode"] = json!(part),
+            "invert" => fields["invertColors"] = json!(true),
+            _ => return Err(format!("not an alert option: {part} (expected full, strip, center or invert)")),
+        }
+    }
+    let fields = fields.as_object().cloned().unwrap_or_default();
+    let alert = sprint_dash::model::DashAlert { id: "preview".to_owned(), alert_type: alert_type.to_owned(), fields };
+    sprint_dash::alerts::preview_alert_banner(&scene.layout, &alert, &sprint_dash::dash::scene_palette(&scene))
+        .ok_or_else(|| format!("not an alert type: {alert_type}"))
 }
 
 fn render_all(cases: &Path, out_dir: &Path, filter: &str) -> Result<(), String> {
@@ -207,7 +267,8 @@ fn main() {
         ["--bench", case] => bench(Path::new(case), 3000),
         ["--bench", case, n] => n.parse().map_err(|_| format!("not a count: {n}")).and_then(|n| bench(Path::new(case), n)),
         [case, out] if !case.starts_with("--") => render_one(Path::new(case), Path::new(out)),
-        _ => Err("usage: render --dash <layout.json> <out.png> [--page <id>] [--style panels|grid|bars] [--size WxH] [--banner <banner.json>] \
+        _ => Err("usage: render --dash <layout.json> <out.png> [--page <id>] [--style panels|grid|bars] [--size WxH] \
+                  [--banner <banner.json> | --alert <type>[:full|strip|center][:invert]] [--level <percent>] [--radius <px>] \
                   | <case.json> <out.png> \
                   | --all <cases-dir> <out-dir> [filter] | --bench <case.json> [iterations] | --ops <case.json>"
             .to_owned()),

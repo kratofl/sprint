@@ -163,4 +163,20 @@ public sealed class InputBindingTests
             Directory.Delete(dataRoot, recursive: true);
         }
     }
+
+    [Fact]
+    public void AButtonWaitedForIsAssignedOnceAndTheRequestLapsesAfterTenSeconds()
+    {
+        DateTimeOffset t0 = new(2026, 11, 15, 12, 0, 0, TimeSpan.Zero);
+        HardwareInputEvent press = new(1, 2, "button:3");
+        ButtonAssignment buttons = new();
+
+        buttons.Listen("wheel", "dash.page.next", t0);
+        Assert.Equal(new ButtonPress.Assign("wheel", "dash.page.next", "button:3"), buttons.Press(press, t0.AddSeconds(1)));
+        Assert.IsType<ButtonPress.Run>(buttons.Press(press, t0.AddSeconds(2)));
+
+        buttons.Listen("wheel", "dash.page.next", t0);
+        Assert.Null(buttons.Current(t0 + ButtonAssignment.Timeout));
+        Assert.IsType<ButtonPress.Run>(buttons.Press(press, t0 + ButtonAssignment.Timeout));
+    }
 }

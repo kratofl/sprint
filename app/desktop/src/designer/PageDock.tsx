@@ -1,10 +1,12 @@
 import { useRef, useState } from 'react'
 import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent } from 'react'
-import { ArrowLeft, ArrowRight, Eraser, Eye, Grid2x2, Moon, MoreHorizontal, Pencil, Plus, Trash2 } from 'lucide-react'
-import { dashPreviewStates, type DashLayout, type DashPage, type DashPreviewState } from '@sprint/dashboard'
+import { ArrowLeft, ArrowRight, Eraser, Layers, Moon, MoreHorizontal, Pencil, Plus, Timer, Trash2 } from 'lucide-react'
+import type { DashLayout, DashPage } from '@sprint/dashboard'
 import { MenuLayer, type MenuAnchor } from '../shell/Menu'
 import { addIdlePage, addPage, clearPage, deletePage, removeIdlePage, renamePage } from '../views/DashesDomain'
+import type { DashMode } from '../bridge'
 import { movePage } from './layoutOps'
+import { cycledPages, SESSIONS } from './pageModes'
 import type { Mutate } from './useDesignerDoc'
 
 type Apply = (mutate: Mutate, group?: string) => boolean
@@ -12,33 +14,33 @@ type Apply = (mutate: Mutate, group?: string) => boolean
 type DockMenu = { kind: 'page'; pageId: string; anchor: MenuAnchor } | { kind: 'add'; anchor: MenuAnchor }
 
 /**
- * The dock at the bottom of the stage: the pages (idle page first) to switch between, their
- * actions (rename, move, clear, delete — the ⋯ or a right-click), a new page, the one primary
- * action "Widget" that opens the library, what the dash shows meanwhile (live or a sample
- * state), and the grid.
+ * The dock at the bottom of the stage: "Pages in" — which pages the wheel cycles in a session or
+ * one of the driver's modes, the others struck through — the pages (idle page first) to switch between, their
+ * actions (rename, move, clear, delete — the ⋯ or a right-click) and a new page; after the pages,
+ * set apart, the dash's lap review (`reviewing` while it is on the stage). How the dash is shown
+ * is the toolbar's (`ViewTools`).
  */
 export function PageDock({
   layout,
   pageId,
   onSelectPage,
+  reviewing,
+  onReview,
   apply,
-  libraryOpen,
-  onToggleLibrary,
-  previewState,
-  onPreviewState,
-  showGrid,
-  onToggleGrid,
+  cyclePreview,
+  onCyclePreview,
+  modes,
 }: {
   layout: DashLayout
   pageId: string
   onSelectPage: (pageId: string) => void
+  reviewing: boolean
+  onReview: () => void
   apply: Apply
-  libraryOpen: boolean
-  onToggleLibrary: () => void
-  previewState: DashPreviewState
-  onPreviewState: (state: DashPreviewState) => void
-  showGrid: boolean
-  onToggleGrid: () => void
+  /** `all`, a session id or a mode id. */
+  cyclePreview: string
+  onCyclePreview: (preview: string) => void
+  modes: readonly DashMode[]
 }) {
   const [menu, setMenu] = useState<DockMenu | null>(null)
   const [renaming, setRenaming] = useState<string | null>(null)
@@ -63,16 +65,18 @@ export function PageDock({
     action()
   }
 
-  // Left/Right move between the pages (WAI-ARIA tabs pattern).
+  // Left/Right move between the pages and the lap review after them (WAI-ARIA tabs pattern).
   const onPagesKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>): void => {
     if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
     if (event.target instanceof HTMLInputElement) return
     event.preventDefault()
-    const index = pages.findIndex((page) => page.id === pageId)
-    const next = pages[(index + (event.key === 'ArrowRight' ? 1 : pages.length - 1)) % pages.length]
-    if (!next) return
-    onSelectPage(next.id)
-    event.currentTarget.querySelector<HTMLElement>(`[data-page-id="${CSS.escape(next.id)}"]`)?.focus()
+    const stops = [...pages.map((page) => page.id), null]
+    const index = reviewing ? stops.length - 1 : stops.indexOf(pageId)
+    const next = stops[(index + (event.key === 'ArrowRight' ? 1 : stops.length - 1)) % stops.length]
+    if (next === undefined) return
+    if (next === null) onReview()
+    else onSelectPage(next)
+    event.currentTarget.querySelector<HTMLElement>(next === null ? '[data-lap-review]' : `[data-page-id="${CSS.escape(next)}"]`)?.focus()
   }
 
   const menuPage = menu?.kind === 'page' ? (pages.find((page) => page.id === menu.pageId) ?? null) : null
@@ -84,10 +88,35 @@ export function PageDock({
   return (
     <>
       <div className="designer-glass designer-dock">
+        <label className="designer-preview designer-cycle-preview" title="Which pages the wheel cycles in a session or one of your modes">
+          <Layers size={14} aria-hidden="true" />
+          <select aria-label="Pages in" value={cyclePreview} onChange={(event) => onCyclePreview(event.target.value)}>
+            <option value="all">All pages</option>
+            <optgroup label="Sessions">
+              {SESSIONS.map((session) => (
+                <option key={session.id} value={session.id}>
+                  {session.label}
+                </option>
+              ))}
+            </optgroup>
+            {modes.length > 0 && (
+              <optgroup label="Your modes">
+                {modes.map((mode) => (
+                  <option key={mode.id} value={mode.id}>
+                    {mode.name}
+                  </option>
+                ))}
+              </optgroup>
+            )}
+          </select>
+        </label>
+        <span className="designer-dock-sep" aria-hidden="true" />
         <div className="designer-pages" role="tablist" aria-label="Pages" onKeyDown={onPagesKeyDown}>
           {pages.map((page) => {
-            const selected = page.id === pageId
+            const cycled = cycledPages(layout.pages, cyclePreview)
+            const selected = !reviewing && page.id === pageId
             const isIdle = page.id === layout.idlePage?.id
+            const skipped = !isIdle && !cycled.has(page.id)
             if (renaming === page.id) {
               return (
                 <input
@@ -120,8 +149,8 @@ export function PageDock({
                 data-page-id={page.id}
                 aria-selected={selected}
                 tabIndex={selected ? 0 : -1}
-                className="designer-page"
-                title={isIdle ? 'Shown while you are in the menus or the garage' : undefined}
+                className={skipped ? 'designer-page is-skipped' : 'designer-page'}
+                title={isIdle ? 'Shown while you are in the menus or the garage' : skipped ? 'The wheel does not cycle this page there' : undefined}
                 onClick={() => onSelectPage(page.id)}
                 onDoubleClick={() => setRenaming(page.id)}
                 onContextMenu={(event) => {
@@ -135,11 +164,26 @@ export function PageDock({
               </button>
             )
           })}
+          <span className="designer-dock-sep" aria-hidden="true" />
+          <button
+            type="button"
+            role="tab"
+            data-lap-review
+            aria-selected={reviewing}
+            tabIndex={reviewing ? 0 : -1}
+            className="designer-page"
+            title="What the dash shows after each timed lap"
+            onClick={onReview}
+          >
+            <Timer size={13} aria-hidden="true" />
+            Lap review
+          </button>
         </div>
         <button
           type="button"
           className="icon-button"
           aria-label="Page actions"
+          disabled={reviewing}
           title="Rename, move or delete this page"
           aria-haspopup="menu"
           onClick={(event) => setMenu({ kind: 'page', pageId, anchor: anchorAbove(event, pageId === layout.idlePage?.id ? 120 : 190) })}
@@ -150,32 +194,6 @@ export function PageDock({
           <Plus size={16} />
         </button>
 
-        <span className="designer-dock-sep" aria-hidden="true" />
-        <button type="button" className="button primary" aria-expanded={libraryOpen} onClick={onToggleLibrary}>
-          <Plus /> Widget
-        </button>
-        <span className="designer-dock-sep" aria-hidden="true" />
-
-        <label className="designer-preview" title="What the dash shows while you design">
-          <Eye size={14} aria-hidden="true" />
-          <select
-            aria-label="Preview"
-            value={previewState}
-            onChange={(event) => {
-              const match = dashPreviewStates.find((option) => option.state === event.target.value)
-              if (match) onPreviewState(match.state)
-            }}
-          >
-            {dashPreviewStates.map((option) => (
-              <option key={option.state} value={option.state}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <button type="button" className="icon-button designer-toggle" aria-label="Grid" title="Show the grid" aria-pressed={showGrid} onClick={onToggleGrid}>
-          <Grid2x2 size={16} />
-        </button>
       </div>
 
       {menu?.kind === 'add' && (

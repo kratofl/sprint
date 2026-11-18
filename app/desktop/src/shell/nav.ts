@@ -17,11 +17,8 @@ export type NavIcon = typeof Home
 /** The sidebar's section headings, in order. Overview and the footer stand outside them. */
 export type NavGroup = 'Drive' | 'Car & rig' | 'Team'
 
-/**
- * One sidebar row. `also` lists pages the row stands for without a row of their own (Live link
- * is a tab of Race engineer), so the row stays selected on them and the toolbar names them by it.
- */
-export type NavItem = { view: AppView; label: string; icon: NavIcon; group?: NavGroup; also?: readonly AppView[] }
+/** One sidebar row. */
+export type NavItem = { view: AppView; label: string; icon: NavIcon; group?: NavGroup }
 
 // Primary rail order, which is also the Alt+1..8 / ⌘1..8 order. Settings and Help are pinned to
 // the bottom of the rail separately as a dedicated footer group.
@@ -33,7 +30,7 @@ export const primaryNav: NavItem[] = [
   { view: 'Setups', label: 'Setups', icon: SlidersHorizontal, group: 'Car & rig' },
   { view: 'Dashes', label: 'Dashes', icon: LayoutDashboard, group: 'Car & rig' },
   { view: 'Devices', label: 'Devices', icon: Cpu, group: 'Car & rig' },
-  { view: 'RaceEngineer', label: 'Race engineer', icon: Radio, group: 'Team', also: ['LiveLink'] },
+  { view: 'RaceEngineer', label: 'Race engineer', icon: Radio, group: 'Team' },
 ]
 
 export const footerNav: NavItem[] = [
@@ -41,9 +38,8 @@ export const footerNav: NavItem[] = [
   { view: 'Help', label: 'Help & diagnostics', icon: CircleHelp },
 ]
 
-/** The row that stands for a page: its own, or the one listing it in `also`. */
-export const navItemFor = (view: AppView): NavItem | undefined =>
-  [...primaryNav, ...footerNav].find((item) => item.view === view || item.also?.includes(view))
+/** The row that stands for a page. */
+export const navItemFor = (view: AppView): NavItem | undefined => [...primaryNav, ...footerNav].find((item) => item.view === view)
 
 /** The label a page goes by in the navigation pane; the toolbar shows it as the page title. */
 export const viewLabel = (view: AppView): string => navItemFor(view)?.label ?? view

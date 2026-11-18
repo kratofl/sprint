@@ -22,11 +22,11 @@ test('a chart moves one place, and stays put at either end', () => {
 
 test('a stored layout keeps what it knows and drops what it does not', () => {
   assert.deepEqual(parseLapLayout(null), DEFAULT_LAP_LAYOUT)
-  const stored = { map: false, car: false, charts: ['gear', 'boost', 'gear', 'speed'], pedalsSeparate: true, applied: false, tyreBand: 'Core', seen: ['speed', 'pedals', 'steering', 'gear', 'settings'] }
-  assert.deepEqual(parseLapLayout(stored), { map: false, car: false, charts: ['gear', 'speed'], pedalsSeparate: true, applied: false, tyreBand: 'Core' })
+  const stored = { map: false, mapView: 'corner', car: false, charts: ['gear', 'boost', 'gear', 'speed'], pedalsSeparate: true, applied: false, tyreBand: 'Core', seen: ['speed', 'pedals', 'steering', 'gear', 'settings'] }
+  assert.deepEqual(parseLapLayout(stored), { map: false, mapView: 'corner', car: false, charts: ['gear', 'speed'], pedalsSeparate: true, applied: false, tyreBand: 'Core' })
   // Stored before the car was on the page: its card shows, its charts wait to be added.
   const older = parseLapLayout({ map: true, charts: ['speed'], pedalsSeparate: false, applied: true, tyreBand: 'Tread', seen: ['speed', 'pedals', 'steering', 'gear', 'settings'] })
-  assert.deepEqual(older, { map: true, car: true, charts: ['speed'], pedalsSeparate: false, applied: true, tyreBand: 'Middle' })
+  assert.deepEqual(older, { map: true, mapView: 'track', car: true, charts: ['speed'], pedalsSeparate: false, applied: true, tyreBand: 'Middle' })
 })
 
 test('a chart added since the layout was stored joins it once; one the driver removed stays removed', () => {

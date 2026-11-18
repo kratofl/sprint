@@ -1,8 +1,8 @@
-/* Race engineer: PageHeader + CommandBar (push, revert, push status), InfoBars for
-   the telemetry link and failures, the car controls table beside staged changes and
-   quick messages, then the radio log table. Builds on the shared primitives in
-   styles.css (.card.list-card, .list-header, .list-row, .status, .infobar) and only
-   lays them out. Tokens come from @sprint/tokens/desktop.css only. */
+/* Race engineer: the live link on one page. Not linked, one card with the two ways in; linked as
+   the engineer, the pit wall card, a card per pit wall page and what was sent; as the driver,
+   the health chips, the sharing card and what arrived. The setup steps are LinkSetup.css. Builds
+   on the shared primitives in styles.css (.card, .status, .empty-state, .list-row) and only lays
+   them out. Tokens come from @sprint/tokens/desktop.css only. */
 
 .engineer {
   display: flex;
@@ -13,142 +13,46 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
-}
-
-.engineer-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1.7fr) minmax(260px, 1fr);
-  align-items: start;
-  gap: 12px;
-}
-
-.engineer-side {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  min-width: 0;
-}
-
-.engineer-skeleton-tall {
-  min-height: 360px;
+  max-width: 960px;
 }
 
 .engineer-skeleton {
-  min-height: 120px;
-}
-
-.engineer-card {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+  min-height: 160px;
 }
 
 .engineer-secondary {
+  margin: 0;
   color: var(--label-secondary);
 }
 
-.engineer-control-columns {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 72px 152px;
-  gap: 12px;
+/* ── Not linked: the two ways in ─────────────────────────────────────────── */
+
+.engineer-hero {
+  padding: 40px 24px;
 }
 
-.list-row.engineer-control-columns {
-  height: 32px;
+.engineer-hero p {
+  max-width: 480px;
 }
 
-.engineer-numeric {
-  text-align: right;
-}
-
-.engineer-staged-head {
-  text-align: center;
-}
-
-.engineer-control-label {
-  overflow: hidden;
-  font-weight: 600;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.engineer-stepper {
+.engineer-hero-actions {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  gap: 8px;
 }
 
-.engineer-stepper .icon-button {
-  width: 24px;
-  height: 24px;
-}
-
-.engineer-control-value {
-  flex: 1;
-  text-align: center;
-}
-
-/* A staged value that differs from the car reads in the brand link colour. */
-.engineer-control-value.staged {
-  color: var(--link);
-  font-weight: 600;
-}
-
-/* ── Staged changes, quick message ────────────────────────────────────────── */
-
-.engineer-diff-list {
+.engineer-watch {
   display: flex;
   flex-direction: column;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.engineer-diff-list li {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  min-height: 32px;
-}
-
-.engineer-diff-list li + li {
-  border-top: 1px solid var(--divider);
-}
-
-.engineer-quick-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-}
-
-/* ── Radio log ────────────────────────────────────────────────────────────── */
-
-.engineer-radio-columns {
-  display: grid;
-  grid-template-columns: 48px minmax(0, 1.2fr) minmax(0, 2fr) 132px;
   gap: 12px;
+  max-width: 720px;
 }
 
-.list-row.engineer-radio-columns {
-  height: 32px;
+.engineer-back {
+  align-self: flex-start;
+  margin: -4px 0 0 -8px;
 }
 
-.engineer-radio-message {
-  overflow: hidden;
-  font-weight: 600;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.engineer-radio-detail {
-  overflow: hidden;
-  color: var(--label-secondary);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* ── Linked as the engineer: the way into the pit wall ───────────────────── */
+/* ── Linked as the engineer ──────────────────────────────────────────────── */
 
 .engineer-pitwall {
   display: flex;
@@ -164,6 +68,52 @@
   min-width: 0;
 }
 
-.engineer-pitwall-text p {
-  margin: 0;
+.engineer-pages {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px;
+}
+
+.engineer-page {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.engineer-page .engineer-secondary {
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.engineer-page-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: auto;
+  padding-top: 6px;
+}
+
+.engineer-page-foot .button.small {
+  align-self: center;
+}
+
+.engineer-radio-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 12px;
+  align-items: center;
+}
+
+.engineer-radio-row .button.small {
+  align-self: center;
+}
+
+/* ── Linked as the driver ────────────────────────────────────────────────── */
+
+.engineer-health {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
 }

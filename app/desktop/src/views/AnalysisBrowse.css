@@ -1,0 +1,197 @@
+/* Analysis's first page (AnalysisBrowse.tsx): the car pane on the left, scrolling on its own,
+   and the picked car's circuits on the right. Rows, groups and the filter bar are Setups' list
+   (SetupsView.css) and the session row is the Analysis one (AnalysisView.css); this lays out the
+   panes and adds the class tags, badges and flags. Tokens only. */
+
+.browse {
+  display: grid;
+  grid-template-columns: 300px minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+}
+
+.browse-cars {
+  position: sticky;
+  top: 0;
+  max-height: calc(100vh - 160px);
+  padding-bottom: 6px;
+  overflow-y: auto;
+}
+
+.browse-game {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 16px 6px;
+}
+
+.browse-game-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.browse-game .setups-dim {
+  font-size: 12px;
+}
+
+.browse-caption {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 16px 4px;
+  color: var(--label-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 16px;
+}
+
+.browse-caption > svg {
+  width: 12px;
+  height: 12px;
+}
+
+.browse-recent {
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--divider);
+}
+
+.browse-pane-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 10px 16px 6px 12px;
+  border: 0;
+  background: transparent;
+  color: var(--label);
+  font: inherit;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.browse-pane-head > svg {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  color: var(--label-secondary);
+}
+
+.browse-pane-head:hover > svg {
+  color: var(--label);
+}
+
+.browse-pane-head > .class-tag {
+  flex: none;
+}
+
+/* A class's cars hang off a rail in the class colour (--tag from its class-* tone), indented under
+   the header's tag; a class without a colour gets a plain divider rail. */
+.browse-class {
+  padding-bottom: 4px;
+}
+
+.browse-class-cars {
+  margin: 0 0 6px 18px;
+  padding-left: 2px;
+  border-left: 3px solid var(--tag, var(--divider));
+}
+
+.browse-pane-head-name {
+  flex: 1;
+  min-width: 0;
+}
+
+.browse-pane-head-count {
+  color: var(--label-secondary);
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.browse-car {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  margin: 1px 6px;
+  padding: 6px 10px;
+}
+
+.browse-car .setups-row-name {
+  flex: 1;
+  min-width: 0;
+}
+
+.browse-car .setups-dim {
+  font-size: 12px;
+}
+
+.browse-more {
+  display: block;
+  width: calc(100% - 12px);
+  margin: 2px 6px 6px;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: var(--radius-control-small);
+  background: transparent;
+  color: var(--link);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.browse-more:hover {
+  background: var(--subtle-hover);
+}
+
+.browse-more.indent {
+  grid-column: 1 / -1;
+  justify-self: start;
+  align-self: flex-start;
+  width: auto;
+  margin-left: 64px;
+}
+
+.browse-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.browse-detail-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.browse-detail-title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 24px;
+}
+
+.browse-circuit-head .setups-group-text {
+  flex: 1;
+}
+
+.browse-layout-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 6px 16px 0 60px;
+  padding: 6px 0 2px;
+  border-top: 1px solid var(--divider);
+  color: var(--label-secondary);
+  font-size: 12px;
+}
+
+.browse-layout-head strong {
+  color: var(--label);
+  font-weight: 600;
+}

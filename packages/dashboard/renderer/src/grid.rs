@@ -1,6 +1,8 @@
 // Pure grid/layout math: grid-rect placement and page selection. Port of
 // `packages/dashboard/src/grid.ts`.
 
+use serde::Deserialize;
+
 use crate::groups::drawn_widgets;
 use crate::model::{DashLayout, DashPage, DashWidget};
 
@@ -66,8 +68,35 @@ pub fn grid_rect(width: f64, height: f64, cols: f64, rows: f64, span: GridSpan) 
     PixelRect { left, top, width: right - left, height: bottom - top }
 }
 
-/// An alert's span on its layout grid (`alertPanelRect`'s argument).
-#[derive(Clone, Copy, Debug, PartialEq)]
+/// A zoned layout's fixed tracks, in pixels at 800x480: the bar spots, the left grid's four
+/// columns, the centre column and the right grid's four; the top bar spot, then eight rows. Every
+/// zoned dash keeps these proportions at any size (`packages/dashboard/src/grid.ts` has the same).
+pub const ZONE_COLS: [f64; 11] = [40.0, 68.0, 68.0, 68.0, 68.0, 176.0, 68.0, 68.0, 68.0, 68.0, 40.0];
+pub const ZONE_ROWS: [f64; 9] = [36.0, 55.5, 55.5, 55.5, 55.5, 55.5, 55.5, 55.5, 55.5];
+
+/// The gear's spot on a zoned layout: the centre column's top three rows, drawn on every page.
+pub const GEAR_SPOT: GridSpan = GridSpan { col: 5.0, row: 1.0, col_span: 1.0, row_span: 3.0 };
+
+/// Where grid line `edge` of `tracks` falls on a `total`-pixel side.
+fn track_edge(total: f64, tracks: &[f64], edge: f64) -> f64 {
+    let sum: f64 = tracks.iter().sum();
+    let lines = edge.clamp(0.0, tracks.len() as f64) as usize;
+    js_round(tracks[..lines].iter().sum::<f64>() * total / sum)
+}
+
+/// A widget's rectangle in pixels on a zoned layout (the 11x9 track grid above).
+pub fn zoned_rect(width: f64, height: f64, span: GridSpan) -> PixelRect {
+    let left = track_edge(width, &ZONE_COLS, span.col);
+    let right = track_edge(width, &ZONE_COLS, span.col + span.col_span);
+    let top = track_edge(height, &ZONE_ROWS, span.row);
+    let bottom = track_edge(height, &ZONE_ROWS, span.row + span.row_span);
+    PixelRect { left, top, width: (right - left).max(0.0), height: (bottom - top).max(0.0) }
+}
+
+/// An alert's span on its layout grid (`alertPanelRect`'s argument), as a centered popup's JSON
+/// carries it.
+#[derive(Clone, Copy, Debug, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AlertSpan {
     pub col: f64,
     pub row: f64,
@@ -150,6 +179,15 @@ mod tests {
     }
 
     #[test]
+    fn a_zoned_layout_keeps_its_track_proportions_at_any_size() {
+        // The centre column (col 5) and the centre cells under the gear (rows 4..8).
+        assert_eq!(zoned_rect(800.0, 480.0, span(5.0, 4.0, 1.0, 5.0)), PixelRect::new(312.0, 203.0, 176.0, 277.0));
+        assert_eq!(zoned_rect(800.0, 480.0, span(0.0, 0.0, 11.0, 9.0)), PixelRect::new(0.0, 0.0, 800.0, 480.0));
+        // Twice the panel, twice every track.
+        assert_eq!(zoned_rect(1600.0, 960.0, span(1.0, 1.0, 4.0, 8.0)), PixelRect::new(80.0, 72.0, 544.0, 888.0));
+    }
+
+    #[test]
     fn select_page_prefers_the_idle_page_when_idle_is_requested_falling_back_to_the_first_page() {
         let with_idle = DashLayout { idle_page: Some(page("idle")), pages: vec![page("p1")], ..DashLayout::default() };
         assert_eq!(select_page(&with_idle, None, true).map(|p| p.id.as_str()), Some("idle"));
@@ -174,8 +212,15 @@ mod tests {
             hidden,
             ..DashWidget::default()
         };
-        let stack =
-            DashWidgetGroup { id: "stack".to_owned(), name: "Stack".to_owned(), parent: None, mode: GroupMode::OneAtATime, shown_first: None, hidden: false };
+        let stack = DashWidgetGroup {
+            id: "stack".to_owned(),
+            name: "Stack".to_owned(),
+            parent: None,
+            mode: GroupMode::OneAtATime,
+            shown_first: None,
+            hidden: false,
+            style: None,
+        };
         let with = |widgets: Vec<DashWidget>, groups: Vec<DashWidgetGroup>| DashPage { widgets, groups, ..page("p") };
         let timer = widget("t", "racelogic_lap_timer", Some("stack"), false);
         let fuel = widget("f", "fuel", Some("stack"), false);

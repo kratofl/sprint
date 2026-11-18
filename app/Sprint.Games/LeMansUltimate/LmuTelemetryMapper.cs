@@ -122,6 +122,8 @@ internal sealed class LmuTelemetryMapper
                 Gear = telemetry.Gear,
                 Rpm = ToF32(telemetry.EngineRpm),
                 MaxRpm = ToF32(telemetry.EngineMaxRpm),
+                WaterTempCelsius = EngineTemperature(telemetry.EngineWaterTemp),
+                OilTempCelsius = EngineTemperature(telemetry.EngineOilTemp),
                 Throttle = ToF32(telemetry.UnfilteredThrottle),
                 Brake = ToF32(telemetry.UnfilteredBrake),
                 Clutch = ToF32(telemetry.UnfilteredClutch),
@@ -152,6 +154,7 @@ internal sealed class LmuTelemetryMapper
                 BestLapTime = ToF64(scoring.BestLapTime),
                 Sector = (telemetry.CurrentSectorRaw & 0x7FFFFFFF) + 1,
                 LastLapSectorsSeconds = SectorDurations(scoring),
+                CurrentLapSectorsSeconds = CurrentSectorDurations(scoring),
                 IsValid = scoring.CountLapFlag == 2,
                 TrackPosition = TrackPosition(scoring.LapDistance, parsed.ScoringInfo.LapDistance)
             },
@@ -272,19 +275,7 @@ internal sealed class LmuTelemetryMapper
     private static FieldCar MapFieldCar(LmuVehicleScoring vehicle, int classPlace, string? compound)
     {
         IReadOnlyList<double> lastSectors = SectorDurations(vehicle);
-        // mSector: 0 is sector 3, then 1 and 2. A current-lap mark only counts once the car has
-        // left that sector, since the fields can still hold the previous lap's marks before then.
-        int sector = vehicle.Sector switch
-        {
-            1 => 1,
-            2 => 2,
-            0 => 3,
-            _ => 0
-        };
-        double firstMark = ToF64(vehicle.CurrentSector1);
-        double secondMark = ToF64(vehicle.CurrentSector2);
-        bool firstDone = sector >= 2 && firstMark > 0;
-        bool secondDone = sector == 3 && firstDone && secondMark > firstMark;
+        IReadOnlyList<double> currentSectors = CurrentSectorDurations(vehicle);
 
         return new FieldCar
         {
@@ -297,14 +288,14 @@ internal sealed class LmuTelemetryMapper
             ClassPlace = classPlace,
             LapsCompleted = Math.Max(0, (int)vehicle.TotalLaps),
             LapDistanceMeters = ToF64(vehicle.LapDistance),
-            Sector = sector,
+            Sector = ScoredSector(vehicle),
             BestLapTime = PositiveOrNull(vehicle.BestLapTime),
             LastLapTime = PositiveOrNull(vehicle.LastLapTime),
             LastLapSector1 = lastSectors.Count == 3 ? lastSectors[0] : null,
             LastLapSector2 = lastSectors.Count == 3 ? lastSectors[1] : null,
             LastLapSector3 = lastSectors.Count == 3 ? lastSectors[2] : null,
-            CurrentLapSector1 = firstDone ? firstMark : null,
-            CurrentLapSector2 = secondDone ? secondMark - firstMark : null,
+            CurrentLapSector1 = currentSectors.Count >= 1 ? currentSectors[0] : null,
+            CurrentLapSector2 = currentSectors.Count >= 2 ? currentSectors[1] : null,
             GapToLeader = ToF64(vehicle.TimeBehindLeader),
             LapsToLeader = vehicle.LapsBehindLeader,
             GapToNext = ToF64(vehicle.TimeBehindNext),
@@ -398,6 +389,10 @@ internal sealed class LmuTelemetryMapper
     /// <summary>A filtered pedal (what reached the car), clamped to 0–1; null when the reading is not a number.</summary>
     private static float? Applied(double value) =>
         double.IsFinite(value) ? (float)Math.Clamp(value, 0, 1) : null;
+
+    /// <summary>An engine fluid temperature, °C; null when the game left it at zero (no engine model) or it is not a number.</summary>
+    private static float? EngineTemperature(double celsius) =>
+        double.IsFinite(celsius) && celsius != 0 ? (float)celsius : null;
 
     /// <summary>The class byte in scoring's own spelling, the one history already stores; empty for the pace car or an unknown class.</summary>
     private static string ClassName(LmuVehicleClass vehicleClass) => vehicleClass switch
@@ -950,6 +945,30 @@ internal sealed class LmuTelemetryMapper
         }
 
         return [firstMark, secondMark - firstMark, lapTime - secondMark];
+    }
+
+    /// <summary>mSector as 1–3 (the game counts 0 for sector 3); 0 when unknown.</summary>
+    private static int ScoredSector(LmuVehicleScoring scoring) => scoring.Sector switch
+    {
+        1 => 1,
+        2 => 2,
+        0 => 3,
+        _ => 0
+    };
+
+    /// <summary>
+    /// Durations of the sectors done on the lap being driven (none to two). A current-lap mark only
+    /// counts once the car has left that sector, since the fields can still hold the previous lap's
+    /// marks before then.
+    /// </summary>
+    private static IReadOnlyList<double> CurrentSectorDurations(LmuVehicleScoring scoring)
+    {
+        int sector = ScoredSector(scoring);
+        double firstMark = ToF64(scoring.CurrentSector1);
+        double secondMark = ToF64(scoring.CurrentSector2);
+        bool firstDone = sector >= 2 && firstMark > 0;
+        bool secondDone = sector == 3 && firstDone && secondMark > firstMark;
+        return secondDone ? [firstMark, secondMark - firstMark] : firstDone ? [firstMark] : [];
     }
 
     private static double ClampNonNegative(double value) => value < 0 ? 0 : value;

@@ -9,6 +9,9 @@ namespace Sprint.Desktop.Features.LiveCompare;
 public sealed record LiveCompareCourse(string Game, string TrackCourse, string CarModel)
 {
     public static LiveCompareCourse Of(LapHistoryContext context) => new(context.Game, context.TrackCourse, context.CarModel);
+
+    /// <summary>How the page shows the car and the track; derived, so not part of what makes two courses the same.</summary>
+    public CarMarks Marks => CarMarks.Of(this.Game, this.TrackCourse, this.CarModel);
 }
 
 /// <summary>What the On track page shows: the courses, the laps on the chosen one, the target and the HUD.</summary>

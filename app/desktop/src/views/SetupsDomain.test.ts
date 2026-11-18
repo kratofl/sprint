@@ -1,7 +1,22 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { NO_FILTERS, compareBlocks, comparePair, difference, drivenRows, filterSetups, groupSetups, searchSetups, sheetBlocks, toggleFilter } from './SetupsDomain'
+import {
+  NO_FILTERS,
+  compareBlocks,
+  comparePair,
+  difference,
+  drivenRows,
+  filterChoices,
+  filterSetups,
+  searchSetups,
+  setupCars,
+  setupCircuits,
+  sheetBlocks,
+  toggleFilter,
+  buildTagSetup,
+} from './SetupsDomain'
 import type { SetupDriven, SetupItem, SetupReading } from './SetupsDomain'
+import { classSections } from './AnalysisBrowseDomain'
 
 const reading = (group: string, label: string, display: string, step: number | null, tab: SetupReading['tab'] = 'Suspension'): SetupReading => ({
   section: group.toUpperCase(),
@@ -63,6 +78,9 @@ const item = (id: string, car: string, trackName: string, savedAt: string, extra
   name: id,
   track: trackName,
   trackName,
+  circuitId: trackName.toLowerCase(),
+  circuitName: trackName,
+  layout: trackName,
   car,
   carClass: 'Hypercar',
   season: null,
@@ -71,6 +89,10 @@ const item = (id: string, car: string, trackName: string, savedAt: string, extra
   session: null,
   style: null,
   version: null,
+  taggedByDriver: false,
+  classTag: 'HYP',
+  make: null,
+  country: null,
   ...extra,
 })
 
@@ -81,20 +103,58 @@ const setups = [
   item('ba-499', 'Ferrari 499P', 'Le Mans', '2026-10-05T09:00:00Z', { session: 'Race', style: 'Wet' }),
 ]
 
-test('setups group by car and track, newest group first, and filter by every chip and the search', () => {
+test('cars by class, the ELMS and WEC Oreca apart; a car by circuit, its layouts apart', () => {
+  const field = [
+    ...setups,
+    item('elms', 'Oreca 07', 'Silverstone National', '2026-10-20T09:00:00Z', { classTag: 'LMP2 ELMS', circuitId: 'silverstone', circuitName: 'Silverstone', layout: 'National' }),
+    item('elms-gp', 'Oreca 07', 'Silverstone', '2026-10-21T09:00:00Z', { classTag: 'LMP2 ELMS', circuitId: 'silverstone', circuitName: 'Silverstone', layout: 'Grand Prix' }),
+    item('wec', 'Oreca 07', 'Spa', '2026-10-22T09:00:00Z', { classTag: 'LMP2' }),
+  ]
+  const cars = setupCars(field)
   assert.deepEqual(
-    groupSetups(setups, 'newest').map((group) => [group.key.replace('\u0000', ' · '), group.setups.map((setup) => setup.id)]),
+    classSections(cars, (car) => car.setups.length).map((section) => [section.name, section.cars.map((car) => `${car.car} (${car.setups.length})`)]),
     [
-      ['Porsche 963 · Monza', ['low-drag']],
-      ['Porsche 963 · Spa', ['race-v3', 'quali']],
-      ['Ferrari 499P · Le Mans', ['ba-499']],
+      ['Hypercar', ['Porsche 963 (3)', 'Ferrari 499P (1)']],
+      ['LMP2 · WEC', ['Oreca 07 (1)']],
+      ['LMP2 · ELMS', ['Oreca 07 (2)']],
     ],
   )
 
+  const elms = cars.find((car) => car.classTag === 'LMP2 ELMS')
+  assert.deepEqual(
+    setupCircuits(elms?.setups ?? [], 'newest').map((circuit) => [circuit.name, circuit.layouts.map((layout) => [layout.label, layout.setups.map((setup) => setup.id)])]),
+    [['Silverstone', [['Grand Prix', ['elms-gp']], ['National', ['elms']]]]],
+  )
+
+  const porsche = cars.find((car) => car.car === 'Porsche 963')
+  assert.deepEqual(
+    setupCircuits(porsche?.setups ?? [], 'newest').map((circuit) => [circuit.name, circuit.count]),
+    [
+      ['Monza', 1],
+      ['Spa', 2],
+    ],
+  )
+  assert.deepEqual(setupCircuits(porsche?.setups ?? [], 'name').map((circuit) => circuit.name), ['Monza', 'Spa'])
+})
+
+test('setups filter by every chip and the search', () => {
   const races = toggleFilter(NO_FILTERS, 'session', 'Race')
   assert.deepEqual(filterSetups(setups, races).map((setup) => setup.id), ['race-v3', 'ba-499'])
-  assert.deepEqual(filterSetups(setups, toggleFilter(races, 'car', 'Porsche 963')).map((setup) => setup.id), ['race-v3'])
+  assert.deepEqual(filterSetups(setups, toggleFilter(races, 'track', 'Spa')).map((setup) => setup.id), ['race-v3'])
   assert.deepEqual(filterSetups(setups, { ...NO_FILTERS, search: 'spa porsche' }).map((setup) => setup.id), ['race-v3', 'quali'])
+})
+
+test('each chip offers only what the other chips leave, keeping what is already chosen', () => {
+  const field = [...setups, item('m4', 'BMW M4 LMGT3', 'Spa', '2026-10-01T09:00:00Z', { season: 'WEC 2025' })]
+  const wec25 = toggleFilter(NO_FILTERS, 'season', 'WEC 2025')
+  assert.deepEqual(filterChoices(field, 'track', wec25), [{ value: 'Spa', count: 1 }])
+
+  const wec25AtMonza = toggleFilter(wec25, 'track', 'Monza')
+  assert.deepEqual(filterChoices(field, 'track', wec25AtMonza), [{ value: 'Monza', count: 0 }, { value: 'Spa', count: 1 }])
+  assert.deepEqual(
+    filterChoices([...field, item('elms', 'Oreca 07', 'Spa', '2026-10-01T09:00:00Z', { season: 'ELMS 2026' })], 'season', NO_FILTERS),
+    [{ value: 'ELMS 2026', count: 1 }, { value: 'WEC 2025', count: 1 }],
+  )
 })
 
 test('compare opens on a setup against the next one for the same car at the same track', () => {
@@ -130,4 +190,9 @@ test('two setups compare by how they drove: times and fuel as first minus second
     ],
   )
   assert.deepEqual(drivenRows(driven(125, 125, 3, 9), driven(null, null, null, 0))[2], { label: 'Laps', first: '9 laps in 1 session', second: '—', difference: '' })
+})
+
+test('a tag is sent as setups.tag, and taking it off as setups.untag', () => {
+  assert.deepEqual(buildTagSetup('file-a', { session: null, style: null }), { type: 'setups.tag', setupId: 'file-a', session: null, style: null })
+  assert.deepEqual(buildTagSetup('file-a', null), { type: 'setups.untag', setupId: 'file-a' })
 })

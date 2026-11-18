@@ -22,6 +22,8 @@
     "gear": 1,
     "rpm": 7250,
     "maxRpm": 8750,
+    "waterTempCelsius": 90.5,
+    "oilTempCelsius": 105.5,
     "throttle": 0.75,
     "brake": 0.25,
     "clutch": 0.125,
@@ -63,7 +65,7 @@
       "longitudinalForceNewtons": 0,
       "camberRadians": 0,
       "radiusMeters": 0,
-      "brakeTempCelsius": 0,
+      "brakeTempCelsius": 430.5,
       "suspensionDeflectionMeters": 0,
       "rideHeightMeters": 0,
       "surface": "Dry",
@@ -91,7 +93,7 @@
       "longitudinalForceNewtons": 0,
       "camberRadians": 0,
       "radiusMeters": 0,
-      "brakeTempCelsius": 0,
+      "brakeTempCelsius": 400.5,
       "suspensionDeflectionMeters": 0,
       "rideHeightMeters": 0,
       "surface": "Dry",
@@ -119,7 +121,7 @@
       "longitudinalForceNewtons": 0,
       "camberRadians": 0,
       "radiusMeters": 0,
-      "brakeTempCelsius": 0,
+      "brakeTempCelsius": 420.5,
       "suspensionDeflectionMeters": 0,
       "rideHeightMeters": 0,
       "surface": "Dry",
@@ -147,7 +149,7 @@
       "longitudinalForceNewtons": 0,
       "camberRadians": 0,
       "radiusMeters": 0,
-      "brakeTempCelsius": 0,
+      "brakeTempCelsius": 410.5,
       "suspensionDeflectionMeters": 0,
       "rideHeightMeters": 0,
       "surface": "Dry",
@@ -168,6 +170,26 @@
       35.25,
       37.5
     ],
+    "currentLapSectorsSeconds": [
+      30.5
+    ],
+    "personalBestSectorsSeconds": [
+      31.25,
+      null,
+      36.75
+    ],
+    "sessionBestSectorsSeconds": [
+      30.25,
+      34.5,
+      null
+    ],
+    "classBestSectorsSeconds": [
+      30.75,
+      34.75,
+      36.5
+    ],
+    "sessionBestLapTime": 101.25,
+    "classBestLapTime": 102.5,
     "isValid": false,
     "trackPosition": 0.4375
   },
@@ -206,7 +228,9 @@
     "position": 25,
     "totalPositions": 31,
     "gapAhead": 1.5,
-    "gapBehind": 2.25
+    "gapBehind": 2.25,
+    "carLeftMeters": -2.5,
+    "carRightMeters": 3.5
   },
   "energy": {
     "virtualEnergy": 68.5,
@@ -246,5 +270,39 @@
     "overheating": true,
     "detachedParts": true
   },
-  "field": null
+  "field": [
+    {
+      "id": 9,
+      "driver": "Someone Else",
+      "car": "Other Car",
+      "carClass": "Fixture Class",
+      "isPlayer": true,
+      "place": 4,
+      "classPlace": 4,
+      "lapsCompleted": 23,
+      "lapDistanceMeters": 2500.5,
+      "sector": 0,
+      "bestLapTime": null,
+      "lastLapTime": null,
+      "lastLapSector1": null,
+      "lastLapSector2": null,
+      "lastLapSector3": null,
+      "currentLapSector1": null,
+      "currentLapSector2": null,
+      "gapToLeader": 0,
+      "lapsToLeader": 0,
+      "gapToNext": 0,
+      "lapsToNext": 0,
+      "inPitLane": false,
+      "inGarage": false,
+      "pitState": "None",
+      "pitStops": 0,
+      "finishStatus": "None",
+      "penalties": 2,
+      "blueFlag": true,
+      "compound": null,
+      "positionX": 0,
+      "positionZ": 0
+    }
+  ]
 }

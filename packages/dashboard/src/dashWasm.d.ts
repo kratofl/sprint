@@ -27,6 +27,12 @@ export class DashWasm {
   renderStill(frameJson: string, bannerJson: string, nowMs: number): DashRenderInfo
   /** A live picture: alerts are tracked from the frames seen so far ('' or 'null' is no data). */
   renderLive(frameJson: string, nowMs: number): DashRenderInfo
+  /**
+   * The driver pressed Ack: the alert up now goes at once (live renders only; not the engineer's
+   * message). Render again afterwards: an alert held until acknowledged never makes the picture
+   * time dependent, so nothing else redraws it.
+   */
+  acknowledge(): void
   /** The picture's size in device pixels (0 before the first scene). */
   readonly width: number
   readonly height: number

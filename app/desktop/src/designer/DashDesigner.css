@@ -109,20 +109,45 @@
 
 /* ── Top: name pill, section tabs, undo / redo ───────────────────────── */
 
-/* All three sit in the 48px title band, level with the OS caption buttons. */
+/* The 48px title band, level with the OS caption buttons and left of them (the titlebar-area env()
+   values describe the space left for the page, as in the main window's toolbar; outside Electron
+   they fall back to a 12px inset). The tabs stay centred while there is room; when the trailing
+   groups need it they move left rather than overlap. */
+.designer-toolbar {
+  position: absolute;
+  top: 6px;
+  right: calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw) + 12px);
+  left: 12px;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(max-content, 1fr);
+  gap: 12px;
+  align-items: center;
+  pointer-events: none;
+}
+
+.designer-toolbar > *,
+.designer-trail > * {
+  pointer-events: auto;
+}
+
+.designer-toolbar .designer-glass {
+  position: static;
+}
+
 .designer-pill,
 .designer-tabs,
-.designer-tools {
-  top: 6px;
+.designer-tools,
+.designer-view-tools {
   display: flex;
   align-items: center;
   height: 36px;
 }
 
 .designer-pill {
-  left: 12px;
+  justify-self: start;
   gap: 8px;
-  max-width: calc(50% - 220px);
+  max-width: 100%;
   padding: 0 14px;
 }
 
@@ -155,10 +180,8 @@
 }
 
 .designer-tabs {
-  left: 50%;
   gap: 2px;
   padding: 0 3px;
-  transform: translateX(-50%);
 }
 
 .designer-tab {
@@ -182,12 +205,35 @@
   font-weight: 600;
 }
 
-/* Left of the OS caption buttons: the titlebar-area env() values describe the space left for the
-   page (as in the main window's toolbar); outside Electron they fall back to a 12px inset. */
-.designer-tools {
-  right: calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw) + 12px);
+/* Trailing: the view group (Layout only), then undo / redo, split by space. */
+.designer-trail {
+  display: flex;
+  justify-self: end;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.designer-tools,
+.designer-view-tools {
   gap: 2px;
   padding: 0 3px;
+}
+
+.designer-view-tools .segmented {
+  margin: 0 2px;
+}
+
+.designer-view-caption {
+  padding: 0 6px 0 9px;
+  color: var(--label-secondary);
+  font-size: 12px;
+}
+
+/* A narrow window keeps the switch and drops its caption. */
+@media (max-width: 1180px) {
+  .designer-view-caption {
+    display: none;
+  }
 }
 
 /* ── Layout: sidebar, bezel, inspector, dock ──────────────────────────── */
@@ -208,12 +254,6 @@
   gap: 6px;
   padding: 0 2px 6px 6px;
   border-bottom: 1px solid var(--divider);
-}
-
-.designer-sidebar-group {
-  width: 26px;
-  height: 26px;
-  margin-left: auto;
 }
 
 .designer-sidebar-page {
@@ -238,160 +278,22 @@
   margin: 4px 6px;
 }
 
-.designer-tree {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.designer-node {
-  display: flex;
-  align-items: center;
-  height: 28px;
-  padding-right: 2px;
-  border-radius: var(--radius-control);
-}
-
-.designer-node:hover {
-  background: var(--subtle-hover);
-}
-
-.designer-node.selected {
-  background: color-mix(in srgb, var(--brand-500) 22%, transparent);
-}
-
-.designer-node-main {
-  display: flex;
-  flex: 1;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  height: 28px;
-  padding: 0 6px 0 2px;
-  border: 0;
-  border-radius: var(--radius-control);
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  text-align: left;
-}
-
-.designer-node-main > svg {
+.designer-node-icon {
   flex: none;
   color: var(--label-secondary);
-}
-
-.designer-node-box {
-  width: 11px;
-  height: 11px;
-  flex: none;
-  border: 1.5px solid var(--label-secondary);
-  border-radius: 2px;
 }
 
 /* A widget that is a layer of a stack wears the stack's blue. */
-.designer-node-box.is-layer {
-  border-color: var(--blue-500);
-}
-
-.designer-node-indent {
-  flex: none;
-}
-
-/* The fold chevron, or the same width of nothing, so names line up. */
-.designer-node-fold {
-  display: grid;
-  width: 18px;
-  height: 28px;
-  flex: none;
-  place-items: center;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: var(--label-secondary);
-}
-
-.designer-node-fold svg {
-  transition: transform var(--motion-fast) var(--ease-out);
-}
-
-.designer-node-fold svg.is-open {
-  transform: rotate(90deg);
-}
-
-.designer-node-main > svg.designer-node-folder {
-  color: var(--yellow-500);
-}
-
-.designer-node-main > svg.designer-node-stack {
+.designer-node-icon.is-layer {
   color: var(--blue-500);
 }
 
-.designer-node-main > svg.designer-node-star {
+svg.designer-node-folder {
   color: var(--yellow-500);
-  fill: var(--yellow-500);
 }
 
-.designer-node-meta {
-  flex: none;
-  color: var(--label-tertiary);
-  font-size: 12px;
-}
-
-.designer-node.is-hidden .designer-node-main {
-  color: var(--label-tertiary);
-}
-
-.designer-node-rename {
-  flex: 1;
-  min-width: 0;
-  height: 24px;
-  margin-right: 4px;
-}
-
-/* Where a dragged row will land: a line above or below, or the whole group outlined. */
-.designer-node.drop-before {
-  box-shadow: inset 0 2px 0 var(--brand-500);
-}
-
-.designer-node.drop-after {
-  box-shadow: inset 0 -2px 0 var(--brand-500);
-}
-
-.designer-node.drop-into {
-  box-shadow: inset 0 0 0 1.5px var(--brand-500);
-}
-
-/* Hide and delete take the place of the count while the row is hovered or focused. */
-.designer-node-actions {
-  display: none;
-  flex: none;
-}
-
-.designer-node:hover .designer-node-actions,
-.designer-node:has(:focus-visible) .designer-node-actions {
-  display: flex;
-}
-
-.designer-node:hover .designer-node-meta,
-.designer-node:has(:focus-visible) .designer-node-meta,
-.designer-node:hover .designer-node-hidden,
-.designer-node:has(:focus-visible) .designer-node-hidden {
-  display: none;
-}
-
-.designer-node-action {
-  width: 24px;
-  height: 24px;
-}
-
-.designer-node-hidden {
-  flex: none;
-  margin-right: 6px;
-  color: var(--label-tertiary);
+svg.designer-node-stack {
+  color: var(--blue-500);
 }
 
 /* A stack's layers in its inspector, the shown one marked with a star. */
@@ -470,10 +372,14 @@
 
 .designer-segmented-full {
   display: flex;
+  width: 100%;
 }
 
+/* Spread evenly; up to five short choices fit the inspector's width. */
 .designer-segmented-full > .segmented-item {
   flex: 1;
+  min-width: 0;
+  padding: 0 4px;
 }
 
 .designer-group > .button.small {
@@ -510,6 +416,70 @@
   max-height: calc(100% - 136px);
   padding: 14px;
   overflow-y: auto;
+}
+
+/* The page panel (PageInspector.tsx). */
+.designer-page-count {
+  font-size: 12px;
+}
+
+.designer-switch-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.designer-switch-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.designer-switch-title {
+  font-weight: 600;
+}
+
+.designer-switch-hint {
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.designer-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.designer-chip-field {
+  width: 120px;
+  height: 24px;
+  font-size: 12px;
+}
+
+.designer-modes-title {
+  margin-top: 4px;
+}
+
+.designer-jump {
+  width: 100%;
+}
+
+.designer-jump .segmented-item {
+  display: inline-flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.designer-jump .segmented-item > svg {
+  width: 13px;
+  height: 13px;
+}
+
+.designer-inspector p.designer-jump-hint {
+  margin: 0;
 }
 
 .designer-inspector p.field-hint {
@@ -649,6 +619,16 @@
   font-weight: 600;
 }
 
+/* A page the wheel skips in the dock's "Pages in" session or mode. */
+.designer-page.is-skipped {
+  color: var(--label-disabled);
+  text-decoration: line-through;
+}
+
+.designer-cycle-preview select {
+  font-weight: 600;
+}
+
 .designer-page-rename {
   width: 128px;
   height: 28px;
@@ -692,31 +672,38 @@
   color: var(--link);
 }
 
-.designer-library {
-  top: 60px;
-  bottom: 76px;
-  left: 12px;
-  z-index: 3;
+/* The library's filter and its sections. */
+.designer-library-search {
+  position: relative;
   display: flex;
-  flex-direction: column;
-  gap: 6px;
-  width: 250px;
-  padding: 10px 6px 8px;
+  align-items: center;
+  margin: 8px 2px 0;
+  color: var(--label-tertiary);
 }
 
-.designer-library .designer-panel-head,
-.designer-library-hint {
-  margin: 0;
-  padding: 0 6px;
+.designer-library-search svg {
+  position: absolute;
+  left: 9px;
+  pointer-events: none;
 }
 
-/* Over the sidebar, so the whole dash stays in sight to drop onto. */
-.designer-library-grid {
+.designer-library-search .input {
+  width: 100%;
+  padding-left: 30px;
+}
+
+.designer-library-section {
   display: flex;
   flex-direction: column;
   gap: 1px;
-  min-height: 0;
-  overflow-y: auto;
+}
+
+.designer-library-head {
+  margin: 0 0 2px 8px;
+  color: var(--label-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 16px;
 }
 
 .designer-library-item {
@@ -740,9 +727,284 @@
   background: var(--subtle-hover);
 }
 
-.designer-grip {
+/* ── Lap review (LapReviewEditor.tsx) ─────────────────────────────────────
+   The library lists fields to click, not widgets to drag; boxes over the six cells pick which. */
+
+.designer-review-library .designer-library-item {
+  cursor: pointer;
+}
+
+.designer-library-item.on {
+  font-weight: 600;
+}
+
+.designer-review-check {
+  margin-left: auto;
+  color: var(--brand-500);
+}
+
+.designer-review-sep {
+  display: block;
+  margin: 4px 8px;
+  border-top: 1px solid var(--divider);
+}
+
+.designer-review {
+  position: relative;
+  display: block;
+}
+
+.designer-review-boxes {
+  position: absolute;
+  inset: 0;
+}
+
+.designer-review-box {
+  position: absolute;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: var(--radius-control);
+  background: transparent;
+  cursor: pointer;
+}
+
+.designer-review-box:hover {
+  border-color: var(--label-secondary);
+}
+
+.designer-review-box:focus-visible {
+  border-color: var(--label-secondary);
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.designer-review-box[aria-pressed='true'] {
+  border-color: var(--brand-500);
+}
+
+.designer-review-reset {
+  align-self: flex-start;
+}
+
+/* ── Canvas views (CanvasViews.tsx) ─────────────────────────────────────
+   The app's own look over or instead of the dash, never the dash's: what the Layout section edits on. */
+
+.designer-canvas-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+}
+
+.designer-canvas-layer > span {
+  position: absolute;
+  box-sizing: border-box;
+}
+
+/* A free cell: a dot at its centre. */
+.designer-free-cell::before {
+  position: absolute;
+  top: calc(50% - 2px);
+  left: calc(50% - 2px);
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--label-tertiary);
+  content: "";
+}
+
+/* Outline: hairline regions on the window colour, in place of the dash. */
+.designer-outline {
+  position: relative;
+  border-radius: 8px;
+  background: var(--layer);
+}
+
+.designer-region {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 8px 9px;
+  border: 2px solid transparent;
+}
+
+.designer-region::before {
+  position: absolute;
+  inset: 0;
+  border: 1px solid var(--control-stroke);
+  border-radius: 6px;
+  background: var(--surface);
+  content: "";
+}
+
+.designer-region > * {
+  position: relative;
+}
+
+.designer-region-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--label-secondary);
+}
+
+.designer-region-head svg {
   flex: none;
+}
+
+.designer-region-name {
+  overflow: hidden;
+  color: var(--label);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.designer-region-size {
+  align-self: flex-end;
   color: var(--label-tertiary);
+  font-size: 11px;
+  line-height: 14px;
+}
+
+/* A side bar reads its name downwards. */
+.designer-region.is-upright {
+  align-items: center;
+  padding: 8px 0;
+}
+
+.designer-region.is-upright .designer-region-head {
+  flex-direction: column;
+  gap: 8px;
+}
+
+.designer-region.is-upright .designer-region-name {
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+}
+
+/* The gear: always there, so hatched rather than a region to fill. */
+.designer-region.is-gear {
+  align-items: center;
+  justify-content: center;
+}
+
+.designer-region.is-gear::before {
+  border-style: dashed;
+  background: repeating-linear-gradient(135deg, transparent 0 6px, color-mix(in srgb, var(--label-tertiary) 14%, transparent) 6px 7px);
+}
+
+.designer-region.is-gear .designer-region-name {
+  color: var(--label-secondary);
+}
+
+.designer-region.is-gear .designer-region-size {
+  align-self: center;
+}
+
+.designer-region-group {
+  border: 1px dashed var(--label-tertiary);
+  border-radius: 8px;
+}
+
+.designer-region-group-name {
+  position: absolute;
+  top: -8px;
+  left: 10px;
+  padding: 0 4px;
+  background: var(--layer);
+  color: var(--label-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 14px;
+}
+
+/* Labels: the dash faded back, a glass chip names each widget. */
+.designer-canvas.is-labels .dash-canvas {
+  opacity: 0.3;
+  filter: grayscale(1);
+}
+
+.designer-label-cell {
+  display: grid;
+  place-items: center;
+}
+
+.designer-labels.is-labels .designer-label-cell::before {
+  position: absolute;
+  inset: 2px;
+  border: 1px solid color-mix(in srgb, var(--label) 14%, transparent);
+  border-radius: 6px;
+  content: "";
+}
+
+.designer-chip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: calc(100% - 12px);
+  padding: 4px 10px;
+  border: 1px solid var(--acrylic-stroke);
+  border-radius: 8px;
+  background: var(--acrylic);
+  box-shadow: var(--shadow-flyout);
+  backdrop-filter: blur(14px);
+  color: var(--label);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 15px;
+}
+
+.designer-chip svg {
+  flex: none;
+  color: var(--label-secondary);
+}
+
+/* A long name wraps onto a second line rather than being cut. */
+.designer-chip-name {
+  display: -webkit-box;
+  overflow: hidden;
+  text-align: center;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.designer-chip.is-upright {
+  padding: 6px;
+}
+
+.designer-chip.is-quiet {
+  color: var(--label-secondary);
+}
+
+/* Preview: the dash as it is, a dashed brand hairline and a name tag per widget. */
+.designer-labels.is-preview .designer-label-cell::before {
+  position: absolute;
+  inset: 2px;
+  border: 1px dashed color-mix(in srgb, var(--brand-500) 55%, transparent);
+  border-radius: 6px;
+  content: "";
+}
+
+.designer-tag {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  max-width: calc(100% - 12px);
+  padding: 1px 6px;
+  overflow: hidden;
+  border-radius: 4px;
+  background: var(--acrylic);
+  color: var(--label);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* ── Canvas overlays ──────────────────────────────────────────────────── */
@@ -886,6 +1148,72 @@
 .designer-ghost.is-invalid {
   border-color: var(--red-500);
   background: color-mix(in srgb, var(--red-500) 18%, transparent);
+}
+
+/* A zoned dash's zones: a quiet outline each; the ones a dragged widget may go into light up. */
+/* A zone lights up only while a drag can drop into it; the canvas views show free space themselves. */
+.designer-zone {
+  position: absolute;
+  pointer-events: none;
+}
+
+.designer-zone.is-target {
+  outline: 2px solid color-mix(in srgb, var(--brand-500) 70%, transparent);
+  outline-offset: -2px;
+  background-color: color-mix(in srgb, var(--brand-500) 10%, transparent);
+}
+
+/* A widget hidden on the wheel, where it sits: no picture, a dashed outline and a crossed-out eye. */
+.designer-hidden-widget {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  outline: 1px dashed var(--label-tertiary);
+  outline-offset: -3px;
+  border-radius: 6px;
+  color: var(--label-tertiary);
+  cursor: pointer;
+}
+
+/* The gear's spot: always the gear, never a drop. */
+.designer-gear-spot {
+  position: absolute;
+  pointer-events: none;
+}
+
+/* A widget the dragged one may swap with. */
+.designer-swap-target {
+  position: absolute;
+  pointer-events: none;
+  border: 1px dashed var(--brand-500);
+  border-radius: 2px;
+}
+
+/* Over another widget: dropping swaps the two. */
+.designer-ghost.is-swap {
+  display: grid;
+  place-items: center;
+}
+
+.designer-ghost.is-swap .designer-ghost-label {
+  background: var(--brand-500);
+}
+
+/* Over another widget with Alt: dropping stacks the two there, in the stacks' blue. */
+.designer-ghost.is-stack {
+  display: grid;
+  place-items: center;
+  border-color: var(--blue-500);
+  background: color-mix(in srgb, var(--blue-500) 18%, transparent);
+}
+
+.designer-ghost-label {
+  padding: 2px 8px;
+  border-radius: var(--radius-control-small);
+  background: var(--blue-500);
+  color: var(--on-brand);
+  font-size: 12px;
+  font-weight: 600;
 }
 
 /* ── Shared by the sections' own panels (Alerts, Theme) ───────────────── */

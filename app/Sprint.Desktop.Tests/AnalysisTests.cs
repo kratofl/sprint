@@ -149,6 +149,36 @@ public sealed class AnalysisTests
     }
 
     [Fact]
+    public void ASessionSaysItsCircuitLayoutAndCountryAndAnUnknownTrackGuessesNone()
+    {
+        CorpusSession endurance = new CorpusSession(
+            "hs-1",
+            new LapHistoryContext { Game = "LeMansUltimate", TrackCourse = "Circuit de Spa-Francorchamps Endurance", CarModel = "LMP2 ELMS", CarClass = "LMP2_ELMS", CarType = "Oreca 07" },
+            HistorySessionKind.Race,
+            LapHistoryOrigin.Recorded,
+            Evening,
+            LapCount: 20,
+            TracedLapCount: 20,
+            BestLapSeconds: 130.2,
+            SharedFrom: null);
+        Assert.Equal(("spa", "Circuit de Spa-Francorchamps", "Endurance", "BE"), (endurance.CircuitId, endurance.CircuitName, endurance.Layout, endurance.Country));
+        Assert.Equal(("LMP2 ELMS", "Oreca"), (endurance.ClassTag, endurance.Make));
+
+        CorpusSession unknown = endurance with { Context = new LapHistoryContext { Game = "LeMansUltimate", TrackCourse = "Nürburgring Nordschleife" } };
+        Assert.Equal(("Nürburgring Nordschleife", "Nürburgring Nordschleife", null), (unknown.CircuitName, unknown.Layout, unknown.Country));
+    }
+
+    [Theory]
+    [InlineData("Daytonarc", "daytona", "Road Course")]
+    [InlineData("Long Beach", "long-beach", "Street Circuit")]
+    public void TheSetupFoldersOfTheAmericanCircuitsAreKnown(string folder, string circuitId, string layout)
+    {
+        Assert.Equal(circuitId, GameTrackCatalog.CircuitId(Lmu, folder));
+        Assert.Equal(layout, GameTrackCatalog.LayoutLabel(Lmu, folder));
+        Assert.Equal("US", GameTrackCatalog.Country(Lmu, folder));
+    }
+
+    [Fact]
     public void PickingACircuitWithSeveralLayoutsLeavesTheLayoutUnanswered()
     {
         LapCorpusFilter filter = Filter(

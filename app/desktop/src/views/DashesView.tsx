@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent } from 'react'
-import { ChevronRight, LayoutDashboard, LayoutGrid, List, MoreHorizontal, Plus, X } from 'lucide-react'
-import type { DashLayout } from '@sprint/dashboard'
-import type { DashCategoryLists, DashRefitLosses, SprintCommand, SprintState } from '../bridge'
+import { ChevronRight, LayoutDashboard, LayoutGrid, List, MoreHorizontal, Plus, Settings, X } from 'lucide-react'
+import type { DashAlertSettings, DashLayout } from '@sprint/dashboard'
+import type { ButtonState, DashCategoryLists, DashRefitLosses, SprintCommand, SprintState } from '../bridge'
 import type { RuntimeState } from '../shell/runtime'
 import { ConfirmDialog } from '../shell/ContentDialog'
 import { CommandDivider, PageHeader } from '../shell/PageHeader'
+import { usePageUp } from '../shell/pageUp'
 import {
   ALL_DASHES,
   buildDashCategoryCreate,
@@ -31,12 +32,13 @@ import {
   visibleDashGroups,
 } from './DashesDomain'
 import type { DashGroup, DashesFilter, DashesViewMode } from './DashesDomain'
-import { deviceScreenSizes } from './DevicesDomain'
+import { deviceScreenSizes, parseDevices, type Device } from './DevicesDomain'
 import { CategoryMenu, DashMenu } from './DashesMenus'
 import type { MenuAnchor } from '../shell/Menu'
 import { CategoryNameDialog, DuplicateDashDialog, NewDashDialog } from './DashesDialogs'
 import type { NewDash } from './DashesDialogs'
 import { DashStill } from './DashStill'
+import { DashSettings } from './DashSettings'
 import { openDashDesigner } from './dashDesigner'
 import './DevicesView.css'
 import './DashesView.css'
@@ -49,6 +51,10 @@ type LoadedState = {
   /** Per dash, what each screen size would leave out of a copy (the Duplicate dialog's warning). */
   refitLosses: DashRefitLosses
   viewMode: DashesViewMode
+  /** For Dashes > Settings: the devices (Ack buttons, the preview's dash), the alerts and the button state. */
+  devices: Device[]
+  alerts: DashAlertSettings[]
+  buttons: ButtonState
 }
 
 const toLoadedState = (sprint: SprintState): LoadedState => ({
@@ -57,6 +63,9 @@ const toLoadedState = (sprint: SprintState): LoadedState => ({
   screens: deviceScreenSizes(sprint.devices),
   refitLosses: sprint.dashRefitLosses,
   viewMode: parseDashesViewMode(sprint.settings),
+  devices: parseDevices(sprint.devices),
+  alerts: sprint.dashAlerts,
+  buttons: sprint.buttons,
 })
 
 /** The one dialog open over the overview, if any. */
@@ -79,13 +88,15 @@ const ROW_STILL = { width: 60, height: 36 }
  * by one. Nothing here says which device shows a dash — that lives on the Devices page. A click
  * or Enter opens the dash in the designer (`openDashDesigner`); its ⋯, a right-click or Shift+F10
  * opens its menu, and Delete asks to delete it. This view owns creating, duplicating, filing and
- * deleting dashes, and the user's own categories.
+ * deleting dashes, and the user's own categories. Dash settings in the toolbar opens what every
+ * dash shares (DashSettings.tsx), one level down: "All dashes" and Alt+Left return here.
  */
 export function DashesView({
   runtime = { kind: 'loading' },
   send = () => Promise.resolve(),
   focusDashId,
   openNewDash = false,
+  openSettings = false,
 }: {
   runtime?: RuntimeState
   send?: (command: SprintCommand) => Promise<void>
@@ -93,6 +104,8 @@ export function DashesView({
   focusDashId?: string
   /** Opens the New dash dialog on mount (the command palette's "Create dash"), applied once like `focusDashId`. */
   openNewDash?: boolean
+  /** Opens Dashes > Settings on mount (the designer's "Alerts and Ack"), applied once like `focusDashId`. */
+  openSettings?: boolean
 } = {}) {
   const [chosenFilter, setChosenFilter] = useState<DashesFilter>(ALL_DASHES)
   // The saved layout arrives with the next state poll; this shows a click at once meanwhile.
@@ -100,6 +113,7 @@ export function DashesView({
   const [dialog, setDialog] = useState<Dialog | null>(null)
   const [menu, setMenu] = useState<OpenMenu | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
+  const [showSettings, setShowSettings] = useState(openSettings)
   // What raised the open menu; focus returns there when it closes.
   const menuOrigin = useRef<HTMLElement | null>(null)
   // Set right before a create is sent; the effect below opens the dash whose id it does not
@@ -119,6 +133,12 @@ export function DashesView({
   useEffect(() => {
     if (openNewDash) setDialog({ kind: 'newDash' })
   }, [openNewDash])
+
+  useEffect(() => {
+    if (openSettings) setShowSettings(true)
+  }, [openSettings])
+
+  usePageUp(showSettings ? 'All dashes' : null, () => setShowSettings(false))
 
   useEffect(() => {
     const known = pendingCreateIds.current
@@ -141,6 +161,10 @@ export function DashesView({
         </div>
       </div>
     )
+  }
+
+  if (showSettings) {
+    return <DashSettings layouts={layouts} devices={state.devices} alerts={state.alerts} buttons={state.buttons} send={send} onBack={() => setShowSettings(false)} />
   }
 
   const { categories } = state
@@ -227,6 +251,10 @@ export function DashesView({
             </div>
           </>
         )}
+        <CommandDivider />
+        <button type="button" className="button subtle dashes-settings-open" onClick={() => setShowSettings(true)}>
+          <Settings /> Dash settings
+        </button>
       </PageHeader>
 
       {actionError && (

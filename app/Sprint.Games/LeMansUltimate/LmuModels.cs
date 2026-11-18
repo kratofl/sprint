@@ -49,6 +49,10 @@ internal sealed record LmuVehicleTelemetry
     public LmuVector3 LocalRotation { get; init; }
     public int Gear { get; init; }
     public double EngineRpm { get; init; }
+
+    /// <summary>mEngineWaterTemp and mEngineOilTemp, °C.</summary>
+    public double EngineWaterTemp { get; init; }
+    public double EngineOilTemp { get; init; }
     public double EngineMaxRpm { get; init; }
     public double UnfilteredThrottle { get; init; }
     public double UnfilteredBrake { get; init; }

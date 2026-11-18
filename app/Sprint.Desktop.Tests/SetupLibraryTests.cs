@@ -87,7 +87,7 @@ public sealed class SetupLibraryTests : IDisposable
 
     [Theory]
     [InlineData("Hypercar Porsche_963 WEC2024", "Porsche 963", "Hypercar", "WEC 2024")]
-    [InlineData("ELMS2025 LMP2_ELMS Oreca_07", "Oreca 07", "LMP2", "ELMS 2025")]
+    [InlineData("ELMS2025 LMP2_ELMS Oreca_07", "Oreca 07", "LMP2 ELMS", "ELMS 2025")]
     [InlineData("BMW_M4_LMGT3 GT3 WEC2026", "BMW M4 LMGT3", "GT3", "WEC 2026")]
     public void A_vehicle_descriptor_splits_into_car_class_and_season(string descriptor, string car, string carClass, string season)
     {
@@ -98,17 +98,18 @@ public sealed class SetupLibraryTests : IDisposable
     [InlineData("bA2_963_BAHE_E_Q_V2_0_0", SetupSession.Quali, SetupStyle.Esport, "2.0.0")]
     [InlineData("bA2_911_GT3_R_SPA_W_R_V1_1_0", SetupSession.Race, SetupStyle.Wet, "1.1.0")]
     [InlineData("bA_963_SPA_S_R06", SetupSession.Race, SetupStyle.Safe, "6")]
-    [InlineData("Race wet", SetupSession.Race, SetupStyle.Wet, null)]
-    [InlineData("Quali v3", SetupSession.Quali, null, "3")]
-    public void A_setup_name_says_its_session_style_and_version(string name, SetupSession session, SetupStyle? style, string? version)
+    public void A_bealien_name_says_its_session_style_and_version(string name, SetupSession session, SetupStyle? style, string? version)
     {
         Assert.Equal(new SetupNameParts(session, style, version), SetupNaming.Read(name));
     }
 
-    [Fact]
-    public void A_name_that_says_nothing_has_no_parts()
+    [Theory]
+    [InlineData("Low drag")]
+    [InlineData("Race wet")]
+    [InlineData("Quali v3")]
+    public void A_name_of_the_drivers_own_says_nothing(string name)
     {
-        Assert.Equal(new SetupNameParts(null, null, null), SetupNaming.Read("Low drag"));
+        Assert.Equal(new SetupNameParts(null, null, null), SetupNaming.Read(name));
     }
 
     [Fact]
@@ -120,7 +121,7 @@ public sealed class SetupLibraryTests : IDisposable
         SetupListItem first = Assert.Single(library.List());
         Assert.Equal(1, first.Versions);
         Assert.Equal("Porsche 963", first.Car);
-        Assert.Equal(SetupSession.Race, first.Session);
+        Assert.Equal(("HYP", "Porsche", "BE"), (first.ClassTag, first.Make, first.Country));
 
         File.WriteAllText(path, Svm(28, "-1.2 deg"));
         File.SetLastWriteTimeUtc(path, new DateTime(2026, 10, 30, 19, 12, 0, DateTimeKind.Utc));
@@ -149,10 +150,74 @@ public sealed class SetupLibraryTests : IDisposable
         Assert.Equal(1, Assert.Single(library.List()).Versions);
     }
 
+    [Fact]
+    public void A_drivers_tag_replaces_what_the_name_says_until_taken_off()
+    {
+        this.Write("Spa", "bA2_963_SPA_S_R_V2_0_0", Svm(30, "-1.0 deg"), new DateTime(2026, 10, 28, 9, 0, 0, DateTimeKind.Utc));
+        SetupLibrary library = this.Library(withTags: true);
+        string id = Assert.Single(library.List()).Id;
+
+        Assert.True(library.Tag(id, new SetupTag(SetupSession.Quali, null), out _));
+
+        // The tag replaces the name's as a whole: the name's "Safe" does not stay beside it.
+        SetupListItem tagged = Assert.Single(this.Library(withTags: true).List());
+        Assert.Equal((SetupSession.Quali, (SetupStyle?)null, true), (tagged.Session, tagged.Style, tagged.TaggedByDriver));
+
+        // Unticking both says "neither": the name's tags stay hidden.
+        Assert.True(library.Tag(id, new SetupTag(null, null), out _));
+        SetupListItem neither = Assert.Single(library.List());
+        Assert.Equal(((SetupSession?)null, (SetupStyle?)null, true), (neither.Session, neither.Style, neither.TaggedByDriver));
+
+        // Taking the tag off lets the name speak again.
+        Assert.True(library.Tag(id, null, out _));
+        SetupListItem named = Assert.Single(library.List());
+        Assert.Equal((SetupSession.Race, SetupStyle.Safe, false), (named.Session, named.Style, named.TaggedByDriver));
+
+        Assert.False(library.Tag("file-missing", new SetupTag(SetupSession.Race, null), out string error));
+        Assert.Equal("setup not found", error);
+    }
+
+    [Fact]
+    public void Tags_that_cannot_be_opened_are_never_written_over()
+    {
+        this.Write("Spa", "Race", Svm(30, "-1.0 deg"), new DateTime(2026, 10, 28, 9, 0, 0, DateTimeKind.Utc));
+        string id = Assert.Single(this.Library().List()).Id;
+        Assert.True(this.Library(withTags: true).Tag(id, new SetupTag(SetupSession.Race, null), out _));
+
+        SetupLibrary library = this.Library(withTags: true);
+        using (new FileStream(Path.Combine(this._root, "setup-tags.json"), FileMode.Open, FileAccess.Read, FileShare.None))
+        {
+            Assert.False(library.Tag(id, new SetupTag(null, SetupStyle.Wet), out string error));
+            Assert.Equal("the setup tags could not be saved", error);
+        }
+
+        // Once the file opens again, the earlier tag is still there.
+        SetupListItem setup = Assert.Single(library.List());
+        Assert.Equal((SetupSession.Race, (SetupStyle?)null), (setup.Session, setup.Style));
+    }
+
+    [Fact]
+    public void An_elms_car_and_a_layout_folder_are_told_apart()
+    {
+        string elms = Svm(30, "-1.0 deg").Replace("Hypercar Porsche_963 WEC2024", "ELMS2025 LMP2_ELMS Oreca_07", StringComparison.Ordinal);
+        string wec = Svm(30, "-1.0 deg").Replace("Hypercar Porsche_963 WEC2024", "LMP2 Oreca_07 WEC2025", StringComparison.Ordinal);
+        this.Write("Silverstone_National", "ELMS", elms, new DateTime(2026, 10, 28, 9, 0, 0, DateTimeKind.Utc));
+        this.Write("Silverstone", "WEC", wec, new DateTime(2026, 10, 27, 9, 0, 0, DateTimeKind.Utc));
+
+        IReadOnlyList<SetupListItem> setups = this.Library().List();
+
+        Assert.Equal(
+            [("LMP2 ELMS", "silverstone", "National"), ("LMP2", "silverstone", "Grand Prix")],
+            setups.Select(setup => (setup.ClassTag, setup.CircuitId, setup.Layout)));
+    }
+
     private static string Camber(SetupSheet sheet) => sheet.Readings.Single(reading => reading.Label == "Camber").Display;
 
-    private SetupLibrary Library() =>
-        new(new SetupGame(new LmuSetupRepository(Path.Combine(this._root, "game"))), new LocalSetupSnapshotStore(Path.Combine(this._root, "versions")));
+    private SetupLibrary Library(bool withTags = false) =>
+        new(
+            new SetupGame(new LmuSetupRepository(Path.Combine(this._root, "game"))),
+            new LocalSetupSnapshotStore(Path.Combine(this._root, "versions")),
+            tags: withTags ? new SetupTags(Path.Combine(this._root, "setup-tags.json")) : null);
 
     private string Write(string track, string name, string content, DateTime lastWriteUtc)
     {

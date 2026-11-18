@@ -1,3 +1,4 @@
+import type { SprintCommand } from '../bridge'
 import { formatGap, formatLapSeconds, fuelText, tyreText } from './AnalysisDomain'
 /**
  * Setups: the setups the game stores, read on request from the host (`/api/setups`,
@@ -16,16 +17,31 @@ export type SetupItem = {
   name: string
   track: string
   trackName: string
+  /** The circuit the track belongs to ("silverstone" for Silverstone and Silverstone National); the list groups by it. */
+  circuitId: string
+  circuitName: string
+  /** The layout within the circuit ("National"), or the track's own name when the host's catalog does not know it. */
+  layout: string
   car: string
   carClass: string | null
+  /** The season the file was saved for: "WEC 2025", "ELMS 2025". */
   season: string | null
   /** When the game last wrote the file (ISO). */
   savedAt: string
   /** How many different contents Sprint has seen the file hold; at least one. */
   versions: number
+  /** The driver's tag, else what a Bealien ("bA…") name says; null when neither says. */
   session: SetupSession | null
   style: SetupStyle | null
   version: string | null
+  /** Whether session and style are the driver's tag rather than the name's. */
+  taggedByDriver: boolean
+  /** The class as racing tags it ("HYP", "LMGT3", "LMP2 ELMS"), for its colour. */
+  classTag: string
+  /** The car's make ("Porsche"), for its logo; null when the host could not tell. */
+  make: string | null
+  /** Where the track is (ISO code, "BE"), or null for a track the host's catalog does not know. */
+  country: string | null
 }
 
 export type SetupLibrary =
@@ -83,11 +99,15 @@ const parseItem = (value: unknown): SetupItem | null => {
   const name = text(value.name)
   const savedAt = text(value.savedAt)
   if (!id || name === null || !savedAt) return null
+  const trackName = text(value.trackName) ?? (text(value.track) || 'No track')
   return {
     id,
     name,
     track: text(value.track) ?? '',
-    trackName: text(value.trackName) ?? (text(value.track) || 'No track'),
+    trackName,
+    circuitId: text(value.circuitId) || trackName,
+    circuitName: text(value.circuitName) || trackName,
+    layout: text(value.layout) || trackName,
     car: text(value.car) ?? 'Unknown car',
     carClass: text(value.carClass),
     season: text(value.season),
@@ -96,6 +116,10 @@ const parseItem = (value: unknown): SetupItem | null => {
     session: oneOf(SESSIONS, value.session),
     style: oneOf(STYLES, value.style),
     version: text(value.version),
+    taggedByDriver: value.taggedByDriver === true,
+    classTag: text(value.classTag) ?? 'Other',
+    make: text(value.make),
+    country: text(value.country),
   }
 }
 
@@ -180,41 +204,38 @@ export const parseSetupSheet = (value: unknown): SetupSheet | null => {
 
 export type SetupSort = 'newest' | 'name'
 
-/** What the list is narrowed to. An empty list of choices means "any". */
+/** What the list is narrowed to. An empty list of choices means "any". Cars are picked in the car pane, not filtered. */
 export type SetupFilters = {
   search: string
-  carClass: string[]
-  car: string[]
+  /** Circuit names. */
   track: string[]
   session: SetupSession[]
   style: SetupStyle[]
+  season: string[]
 }
 
-export const NO_FILTERS: SetupFilters = { search: '', carClass: [], car: [], track: [], session: [], style: [] }
+export const NO_FILTERS: SetupFilters = { search: '', track: [], session: [], style: [], season: [] }
 
 export type FilterKey = Exclude<keyof SetupFilters, 'search'>
 
 /** The filter chips, in the order they are shown. */
 export const FILTERS: ReadonlyArray<{ key: FilterKey; label: string }> = [
-  { key: 'carClass', label: 'Class' },
-  { key: 'car', label: 'Car' },
   { key: 'track', label: 'Track' },
   { key: 'session', label: 'Session' },
   { key: 'style', label: 'Style' },
+  { key: 'season', label: 'Season' },
 ]
 
 const valueOf = (setup: SetupItem, key: FilterKey): string | null => {
   switch (key) {
-    case 'carClass':
-      return setup.carClass
-    case 'car':
-      return setup.car
     case 'track':
-      return setup.trackName
+      return setup.circuitName
     case 'session':
       return setup.session
     case 'style':
       return setup.style
+    case 'season':
+      return setup.season
   }
 }
 
@@ -226,23 +247,36 @@ export function filterSetups(setups: readonly SetupItem[], filters: SetupFilters
       const chosen: readonly string[] = filters[key]
       if (chosen.length > 0 && !chosen.includes(valueOf(setup, key) ?? '')) return false
     }
-    const haystack = `${setup.name} ${setup.car} ${setup.trackName} ${setup.carClass ?? ''}`.toLowerCase()
+    const haystack = `${setup.name} ${setup.car} ${setup.trackName} ${setup.circuitName} ${setup.classTag}`.toLowerCase()
     return words.every((word) => haystack.includes(word))
   })
 }
 
-/** The choices a filter chip offers, with how many setups each has: most first, then by name. */
-export function filterChoices(setups: readonly SetupItem[], key: FilterKey): Array<{ value: string; count: number }> {
-  const counts = new Map<string, number>()
-  for (const setup of setups) {
+/** Newest season first ("WEC 2026" before "ELMS 2025"), then by series. */
+const newerSeason = (a: string, b: string): number => b.slice(-4).localeCompare(a.slice(-4)) || a.localeCompare(b)
+
+/**
+ * The choices a filter chip offers, with how many setups each has, among the setups the OTHER chips
+ * leave (pick Session "Quali" and Track offers only tracks with a quali setup). A value already chosen stays, at 0 if the
+ * other chips rule it out, so it can still be unticked. Sessions and styles in their own order, the
+ * rest by name.
+ */
+export function filterChoices(setups: readonly SetupItem[], key: FilterKey, filters: SetupFilters): Array<{ value: string; count: number }> {
+  const chosen: readonly string[] = filters[key]
+  const counts = new Map<string, number>(chosen.map((value) => [value, 0]))
+  for (const setup of filterSetups(setups, { ...filters, search: '', [key]: [] })) {
     const value = valueOf(setup, key)
     if (value) counts.set(value, (counts.get(value) ?? 0) + 1)
   }
   const order: readonly string[] | null = key === 'session' ? SESSIONS : key === 'style' ? STYLES : null
   return [...counts]
     .map(([value, count]) => ({ value, count }))
-    .sort((a, b) => (order ? order.indexOf(a.value) - order.indexOf(b.value) : a.value.localeCompare(b.value)))
+    .sort((a, b) => (order ? order.indexOf(a.value) - order.indexOf(b.value) : key === 'season' ? newerSeason(a.value, b.value) : a.value.localeCompare(b.value)))
 }
+
+/** Each circuit's country, for its flag in the Track filter. */
+export const circuitCountries = (setups: readonly SetupItem[]): ReadonlyMap<string, string | null> =>
+  new Map<string, string | null>(setups.map((setup) => [setup.circuitName, setup.country]))
 
 export const toggleFilter = (filters: SetupFilters, key: FilterKey, value: string): SetupFilters => {
   const chosen: readonly string[] = filters[key]
@@ -252,27 +286,68 @@ export const toggleFilter = (filters: SetupFilters, key: FilterKey, value: strin
 
 export const hasFilters = (filters: SetupFilters): boolean => filters.search.trim() !== '' || FILTERS.some(({ key }) => filters[key].length > 0)
 
-/** One car at one track, with its setups. */
-export type SetupGroup = { key: string; car: string; trackName: string; carClass: string | null; setups: SetupItem[] }
-
 const newer = (a: SetupItem, b: SetupItem) => b.savedAt.localeCompare(a.savedAt)
 const byName = (a: SetupItem, b: SetupItem) => a.name.localeCompare(b.name, undefined, { numeric: true })
 
-/** Setups grouped by car and track: newest group first, or by car then track. */
-export function groupSetups(setups: readonly SetupItem[], sort: SetupSort): SetupGroup[] {
-  const groups = new Map<string, SetupGroup>()
-  for (const setup of setups) {
-    const key = `${setup.car}\u0000${setup.trackName}`
-    const group = groups.get(key) ?? { key, car: setup.car, trackName: setup.trackName, carClass: setup.carClass, setups: [] }
-    group.setups.push(setup)
-    groups.set(key, group)
+/**
+ * One car in the car pane. The ELMS and the WEC LMP2 are both the Oreca 07 but two cars here: the
+ * class tag ("LMP2 ELMS") is part of what a car is.
+ */
+export type SetupCar = { key: string; car: string; classTag: string; make: string | null; setups: SetupItem[] }
+
+/** The cars the setups are for, newest saved first; each car's setups newest first. */
+export function setupCars(setups: readonly SetupItem[]): SetupCar[] {
+  const cars = new Map<string, SetupCar>()
+  for (const setup of [...setups].sort(newer)) {
+    const key = `${setup.classTag}\u0000${setup.car}`
+    const car = cars.get(key) ?? { key, car: setup.car, classTag: setup.classTag, make: setup.make, setups: [] }
+    car.setups.push(setup)
+    cars.set(key, car)
   }
-  const list = [...groups.values()]
-  for (const group of list) group.setups.sort(sort === 'newest' ? newer : byName)
-  return sort === 'newest'
-    ? list.sort((a, b) => newer(a.setups[0], b.setups[0]))
-    : list.sort((a, b) => a.car.localeCompare(b.car) || a.trackName.localeCompare(b.trackName))
+  return [...cars.values()]
 }
+
+/** One layout of a circuit with its setups; `label` is "National", or the track's own name when unknown. */
+export type SetupLayout = { label: string; setups: SetupItem[] }
+
+/** One circuit a car has setups for, its layouts apart (LMU files Silverstone National in a folder of its own). */
+export type SetupCircuit = { id: string; name: string; country: string | null; layouts: SetupLayout[]; count: number }
+
+/**
+ * A car's setups by circuit, then by layout. Newest first: circuits by their newest setup, setups
+ * newest first. By name: circuits and setups alphabetically.
+ */
+export function setupCircuits(setups: readonly SetupItem[], sort: SetupSort): SetupCircuit[] {
+  const circuits = new Map<string, { circuit: SetupCircuit; layouts: Map<string, SetupItem[]> }>()
+  for (const setup of [...setups].sort(sort === 'newest' ? newer : byName)) {
+    let entry = circuits.get(setup.circuitId)
+    if (!entry) {
+      entry = { circuit: { id: setup.circuitId, name: setup.circuitName, country: setup.country, layouts: [], count: 0 }, layouts: new Map() }
+      circuits.set(setup.circuitId, entry)
+    }
+    entry.layouts.set(setup.layout, [...(entry.layouts.get(setup.layout) ?? []), setup])
+    entry.circuit.count += 1
+  }
+  const list = [...circuits.values()].map(({ circuit, layouts }) => ({
+    ...circuit,
+    layouts: [...layouts].map(([label, inLayout]) => ({ label, setups: inLayout })),
+  }))
+  return sort === 'name' ? list.sort((a, b) => a.name.localeCompare(b.name)) : list
+}
+
+/**
+ * The driver's tag on a setup: the session and the style they say it is for, either null for "not
+ * that" (both null: neither, whatever the name says); a null tag takes the driver's tag off so the
+ * name speaks again.
+ */
+export type SetupTagValue = { session: SetupSession | null; style: SetupStyle | null } | null
+
+/** Raises a tag on a setup: the view sends it and fetches the list again. */
+export type TagSetup = (setupId: string, tag: SetupTagValue) => void
+
+/** Tags a setup (`setups.tag`), or with a null tag takes the driver's tag off (`setups.untag`). */
+export const buildTagSetup = (setupId: string, tag: SetupTagValue): SprintCommand =>
+  tag === null ? { type: 'setups.untag', setupId } : { type: 'setups.tag', setupId, session: tag.session, style: tag.style }
 
 /**
  * Compare's opening pair from `from` (or the newest setup): the next setup for the same car at
@@ -467,6 +542,3 @@ export const dateTime = (iso: string): string => DAY_TIME.format(new Date(iso))
 /** "Saved Oct 30 · 3 versions". */
 export const savedLine = (setup: SetupItem): string =>
   `Saved ${shortDate(setup.savedAt)}${setup.versions > 1 ? ` · ${setup.versions} versions` : ''}`
-
-/** "Porsche 963 · Spa". */
-export const carAtTrack = (setup: Pick<SetupItem, 'car' | 'trackName'>): string => `${setup.car} · ${setup.trackName}`

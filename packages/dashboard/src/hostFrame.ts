@@ -61,6 +61,7 @@ const tire = (position: TirePosition, value: unknown): TireState => {
     pressureKPa: num(t.pressureKPa),
     wearPercent: num(t.wearPercent),
     compound: str(t.compound),
+    brakeTemp: num(t.brakeTempCelsius),
   }
 }
 
@@ -81,7 +82,8 @@ const tires = (value: unknown): TelemetryFrame['tires'] => {
   ]
 }
 
-const fieldCar = (value: unknown): FieldCar => {
+/** One of the host's other cars as the mirror's `FieldCar`; what is missing reads as its neutral value. */
+export const parseFieldCar = (value: unknown): FieldCar => {
   const c = bag(value)
   return {
     id: num(c.id),
@@ -109,6 +111,7 @@ const fieldCar = (value: unknown): FieldCar => {
     inGarage: bool(c.inGarage),
     pitState: pitStates.get(str(c.pitState)) ?? 'none',
     pitStops: num(c.pitStops),
+    penalties: num(c.penalties),
     finishStatus: finishStatuses.get(str(c.finishStatus)) ?? 'none',
     positionX: num(c.positionX),
     positionZ: num(c.positionZ),
@@ -155,6 +158,8 @@ export function parseHostFrame(value: unknown): TelemetryFrame | null {
       gear: num(car.gear),
       rpm: num(car.rpm),
       maxRPM: num(car.maxRpm),
+      waterTemp: numOrNull(car.waterTempCelsius),
+      oilTemp: numOrNull(car.oilTempCelsius),
       throttle: num(car.throttle),
       brake: num(car.brake),
       clutch: num(car.clutch),
@@ -183,6 +188,12 @@ export function parseHostFrame(value: unknown): TelemetryFrame | null {
       sector1Time: 0,
       sector2Time: 0,
       lastLapSectorsSeconds: Array.isArray(lap.lastLapSectorsSeconds) ? lap.lastLapSectorsSeconds.map(num) : [],
+      currentLapSectorsSeconds: Array.isArray(lap.currentLapSectorsSeconds) ? lap.currentLapSectorsSeconds.map(num) : [],
+      personalBestSectorsSeconds: Array.isArray(lap.personalBestSectorsSeconds) ? lap.personalBestSectorsSeconds.map(numOrNull) : [],
+      sessionBestSectorsSeconds: Array.isArray(lap.sessionBestSectorsSeconds) ? lap.sessionBestSectorsSeconds.map(numOrNull) : [],
+      classBestSectorsSeconds: Array.isArray(lap.classBestSectorsSeconds) ? lap.classBestSectorsSeconds.map(numOrNull) : [],
+      sessionBestLapTime: numOrNull(lap.sessionBestLapTime),
+      classBestLapTime: numOrNull(lap.classBestLapTime),
       isInLap: false,
       isOutLap: false,
       isValid: bool(lap.isValid, true),
@@ -229,6 +240,8 @@ export function parseHostFrame(value: unknown): TelemetryFrame | null {
       totalPositions: num(race.totalPositions),
       gapAhead: num(race.gapAhead),
       gapBehind: num(race.gapBehind),
+      carLeftMeters: numOrNull(race.carLeftMeters),
+      carRightMeters: numOrNull(race.carRightMeters),
     },
     energy: {
       virtualEnergy: num(energy.virtualEnergy),
@@ -248,14 +261,24 @@ export function parseHostFrame(value: unknown): TelemetryFrame | null {
       fuelMultiplier: numOrNull(conditions.fuelMultiplier),
       tireMultiplier: numOrNull(conditions.tireMultiplier),
       fixedSetup: boolOrNull(conditions.fixedSetup),
+      airTemperature: numOrNull(conditions.airTemperatureCelsius),
+      trackTemperature: numOrNull(conditions.trackTemperatureCelsius),
+      raining: numOrNull(conditions.raining),
     },
-    field: Array.isArray(value.field) ? value.field.map(fieldCar) : [],
+    field: Array.isArray(value.field) ? value.field.map(parseFieldCar) : [],
   }
+}
+
+/** One other car on the wire, as far as the dash renderer reads it (and the ids that name it). */
+export interface HostFieldCar {
+  id: number; driver: string; car: string; carClass: string; isPlayer: boolean; place: number; classPlace: number; lapsCompleted: number; lapDistanceMeters: number
+  penalties: number
 }
 
 /**
  * The host's frame JSON as far as the dash renderer reads it: what `toHostFrame` writes. The
- * real frame carries more (pose, wheel physics, damage, the other cars); the renderer reads none of it.
+ * real frame carries more (pose, wheel physics, the other cars' timing); the renderer reads none of
+ * it. It reads the damage too, but the mirror has none, so the editor's frames never carry any.
  */
 export interface HostTelemetryFrame {
   timestamp: string
@@ -264,17 +287,20 @@ export interface HostTelemetryFrame {
     sessionTime: number; totalSessionTime: number | null; sessionTimeRemaining: number | null; bestLapTime: number; maxLaps: number; inCar: boolean
   }
   car: {
-    speedMetersPerSecond: number; gear: number; rpm: number; maxRpm: number; throttle: number; brake: number; clutch: number; steering: number
+    speedMetersPerSecond: number; gear: number; rpm: number; maxRpm: number; waterTempCelsius: number | null; oilTempCelsius: number | null
+    throttle: number; brake: number; clutch: number; steering: number
     fuelLiters: number; fuelPerLapLiters: number; positionX: number; positionY: number; positionZ: number; brakeBiasRear: number
     inGarage: boolean | null; inPitLane: boolean | null; pitState: HostPitState | null; pitLimiter: boolean | null
   }
   tires: {
     position: HostTirePosition; tempInnerCelsius: number; tempMiddleCelsius: number; tempOuterCelsius: number; tempSurfaceCelsius: number
-    tempCoreCelsius: number; pressureKPa: number; wearPercent: number; compound: string
+    tempCoreCelsius: number; pressureKPa: number; wearPercent: number; compound: string; brakeTempCelsius: number
   }[]
   lap: {
     currentLap: number; currentLapTime: number; lastLapTime: number; bestLapTime: number; targetLapTime: number; delta: number; sector: number
-    lastLapSectorsSeconds: number[]; isValid: boolean; trackPosition: number
+    lastLapSectorsSeconds: number[]; currentLapSectorsSeconds: number[]; personalBestSectorsSeconds: (number | null)[]
+    sessionBestSectorsSeconds: (number | null)[]; classBestSectorsSeconds: (number | null)[]; sessionBestLapTime: number | null; classBestLapTime: number | null
+    isValid: boolean; trackPosition: number
   }
   flags: { yellow: boolean; doubleYellow: boolean; red: boolean; safetyCar: boolean; virtualSafetyCar: boolean; checkered: boolean }
   electronics: {
@@ -283,10 +309,14 @@ export interface HostTelemetryFrame {
     migration: number; migrationMax: number; frontAntiRollBar: number; frontAntiRollBarMax: number; rearAntiRollBar: number; rearAntiRollBarMax: number
     drsActive: boolean
   }
-  race: { position: number; totalPositions: number; gapAhead: number; gapBehind: number }
+  race: { position: number; totalPositions: number; gapAhead: number; gapBehind: number; carLeftMeters: number | null; carRightMeters: number | null }
   energy: { virtualEnergy: number; virtualEnergyPerLap: number; stateOfCharge: number; regenPower: number; deployPower: number }
   penalties: { incidents: number; trackLimitSteps: number; pitStops: number }
-  conditions: { pathWetness: number | null; trackGripLevel: number | null; fuelMultiplier: number | null; tireMultiplier: number | null; fixedSetup: boolean | null }
+  conditions: {
+    pathWetness: number | null; trackGripLevel: number | null; fuelMultiplier: number | null; tireMultiplier: number | null; fixedSetup: boolean | null
+    airTemperatureCelsius: number | null; trackTemperatureCelsius: number | null; raining: number | null
+  }
+  field: HostFieldCar[]
 }
 
 /**
@@ -294,7 +324,7 @@ export interface HostTelemetryFrame {
  * the renderer reads, so the editor's frames (live ones and `previewFrames`) reach the renderer
  * in the one shape it reads. The mirror fields the host does not publish (`positionLapTime`,
  * the sector times, in/out lap, ABS active, the availability flags, which follow the maxima)
- * have no place on the wire, and `field` is left off: no dash widget reads the other cars.
+ * have no place on the wire, and of the other cars only what the renderer reads is written.
  */
 export function toHostFrame(frame: TelemetryFrame): HostTelemetryFrame {
   const { session, car, lap, flags, electronics: e, race, energy, penalties, conditions } = frame
@@ -307,6 +337,8 @@ export function toHostFrame(frame: TelemetryFrame): HostTelemetryFrame {
       gear: car.gear,
       rpm: car.rpm,
       maxRpm: car.maxRPM,
+      waterTempCelsius: car.waterTemp,
+      oilTempCelsius: car.oilTemp,
       throttle: car.throttle,
       brake: car.brake,
       clutch: car.clutch,
@@ -335,6 +367,7 @@ export function toHostFrame(frame: TelemetryFrame): HostTelemetryFrame {
         pressureKPa: t.pressureKPa,
         wearPercent: t.wearPercent,
         compound: t.compound,
+        brakeTempCelsius: t.brakeTemp,
       }]
     }),
     lap: {
@@ -346,6 +379,12 @@ export function toHostFrame(frame: TelemetryFrame): HostTelemetryFrame {
       delta: lap.delta,
       sector: lap.sector,
       lastLapSectorsSeconds: lap.lastLapSectorsSeconds,
+      currentLapSectorsSeconds: lap.currentLapSectorsSeconds,
+      personalBestSectorsSeconds: lap.personalBestSectorsSeconds,
+      sessionBestSectorsSeconds: lap.sessionBestSectorsSeconds,
+      classBestSectorsSeconds: lap.classBestSectorsSeconds,
+      sessionBestLapTime: lap.sessionBestLapTime,
+      classBestLapTime: lap.classBestLapTime,
       isValid: lap.isValid,
       trackPosition: lap.trackPosition,
     },
@@ -373,6 +412,18 @@ export function toHostFrame(frame: TelemetryFrame): HostTelemetryFrame {
     race: { ...race },
     energy: { virtualEnergy: energy.virtualEnergy, virtualEnergyPerLap: energy.virtualEnergyPerLap, stateOfCharge: energy.soc, regenPower: energy.regenPower, deployPower: energy.deployPower },
     penalties: { ...penalties },
-    conditions: { ...conditions },
+    conditions: {
+      pathWetness: conditions.pathWetness,
+      trackGripLevel: conditions.trackGripLevel,
+      fuelMultiplier: conditions.fuelMultiplier,
+      tireMultiplier: conditions.tireMultiplier,
+      fixedSetup: conditions.fixedSetup,
+      airTemperatureCelsius: conditions.airTemperature,
+      trackTemperatureCelsius: conditions.trackTemperature,
+      raining: conditions.raining,
+    },
+    field: frame.field.map(({ id, driver, car, carClass, isPlayer, place, classPlace, lapsCompleted, lapDistanceMeters, penalties }) => ({
+      id, driver, car, carClass, isPlayer, place, classPlace, lapsCompleted, lapDistanceMeters, penalties,
+    })),
   }
 }

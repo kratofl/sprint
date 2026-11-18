@@ -93,8 +93,12 @@ export const LAP_CHART_TITLES: Record<LapChartId, string> = {
 export const TYRE_BANDS = ['Inner', 'Middle', 'Outer', 'Core'] as const
 export type TyreBand = (typeof TYRE_BANDS)[number]
 
+/** The track map's frame: the whole track, or the stretch the charts are zoomed on, close up. */
+export type MapView = 'track' | 'corner'
+
 export type LapLayout = {
   map: boolean
+  mapView: MapView
   /** The car at the cursor, under the map. */
   car: boolean
   /** The charts shown, top to bottom. */
@@ -109,6 +113,7 @@ export type LapLayout = {
 
 export const DEFAULT_LAP_LAYOUT: LapLayout = {
   map: true,
+  mapView: 'track',
   car: true,
   charts: ['speed', 'pedals', 'steering', 'gear', 'settings'],
   pedalsSeparate: false,
@@ -158,6 +163,7 @@ export function parseLapLayout(value: unknown): LapLayout {
   const added = DEFAULT_LAP_LAYOUT.charts.filter((id) => !seen.includes(id))
   return {
     map: typeof record.map === 'boolean' ? record.map : DEFAULT_LAP_LAYOUT.map,
+    mapView: record.mapView === 'corner' ? 'corner' : 'track',
     car: typeof record.car === 'boolean' ? record.car : DEFAULT_LAP_LAYOUT.car,
     charts: [...new Set([...charts, ...added])],
     pedalsSeparate: record.pedalsSeparate === true,

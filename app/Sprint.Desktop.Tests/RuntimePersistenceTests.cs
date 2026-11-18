@@ -12,6 +12,23 @@ namespace Sprint.Desktop.Tests;
 
 public sealed class RuntimePersistenceTests
 {
+    /// <summary>
+    /// Leaves a dash from before the zones in the data folder: a 20 x 12 free grid with no screen
+    /// profile, as older installs and synced files still have. Returns its id.
+    /// </summary>
+    private static string SeedFreeGridDash(string dataRoot)
+    {
+        string layoutsPath = Path.Combine(dataRoot, "dash-layouts");
+        Directory.CreateDirectory(layoutsPath);
+        File.WriteAllText(Path.Combine(layoutsPath, "free.json"), """
+            {"id":"free","name":"Free","gridCols":20,"gridRows":12,"pages":[{"id":"main","name":"Main","widgets":[
+              {"id":"gear","type":"gear_speed","col":6,"row":3,"colSpan":8,"rowSpan":6},
+              {"id":"last","type":"lap_time","col":0,"row":0,"colSpan":6,"rowSpan":3},
+              {"id":"tc","type":"tc","col":14,"row":3,"colSpan":3,"rowSpan":3}]}]}
+            """);
+        return "free";
+    }
+
     [Fact]
     public void DesktopRuntimeExposesSmallRuntimeInterface()
     {
@@ -90,7 +107,7 @@ public sealed class RuntimePersistenceTests
         {
             DesktopRuntime runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
             DashLayout layout = runtime.DashLayouts.Single(candidate => candidate.Id == "default");
-            Assert.Equal(DashStyle.Panels, layout.DashStyle);
+            Assert.Equal(DashStyle.Flat, layout.DashStyle);
 
             layout.DashStyle = DashStyle.Bars;
             runtime.SaveDashLayout(layout);
@@ -118,9 +135,11 @@ public sealed class RuntimePersistenceTests
 
             runtime.ResetDashLayout(layout);
 
+            // The preset is zoned: its zones fit the portrait screen as they are.
             Assert.Equal(portrait.Id, layout.ScreenProfileId);
-            Assert.Equal(portrait.GridCols, layout.GridCols);
-            Assert.Equal(portrait.GridRows, layout.GridRows);
+            Assert.True(layout.Zoned);
+            Assert.Equal(DashZones.Cols, layout.GridCols);
+            Assert.Equal(DashZones.Rows, layout.GridRows);
             Assert.NotEmpty(layout.Pages[0].Widgets);
             Assert.True(DashLayoutValidator.IsValid(layout));
         }
@@ -145,6 +164,7 @@ public sealed class RuntimePersistenceTests
             Assert.Equal(5, layout.Alerts.Count);
 
             DashWidget idleName = layout.IdlePage.Widgets.Single(widget => widget.Id == "idle-name");
+            Assert.True(layout.Zoned);
             Assert.NotNull(idleName.Config);
             Assert.Equal("profile.driverName", idleName.Config["binding"].GetString());
 
@@ -793,8 +813,8 @@ public sealed class RuntimePersistenceTests
 
             DesktopRuntime reloaded = new DesktopRuntime(dataRoot, TestEnv.PresetRoot, legacyRoot);
             Assert.Single(reloaded.Devices);
-            Assert.Single(reloaded.DashLayouts);
-            Assert.Equal("legacy-main", reloaded.DashLayouts[0].Id);
+            // Migrated once; the default stays out (the dashes were not empty), the hypercar preset arrives beside it.
+            Assert.Equal(["hypercar", "legacy-main"], reloaded.DashLayouts.Select(dash => dash.Id).Order(StringComparer.Ordinal).ToArray());
         }
         finally
         {
@@ -912,18 +932,27 @@ public sealed class RuntimePersistenceTests
 
         try
         {
+            string freeId = SeedFreeGridDash(dataRoot);
+            File.WriteAllText(Path.Combine(dataRoot, "dash-layouts", "zoned.json"), """
+                {"id":"zoned","name":"Zoned","zoned":true,"dashStyle":"flat","gridCols":11,"gridRows":9,"pages":[{"id":"main","name":"Main","widgets":[]}]}
+                """);
             DesktopRuntime runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
-            DashLayout layout = runtime.DashLayouts.Single(item => item.Id == "default");
 
-            // Legacy preset has no stored profile, so it is tagged with the best-fit
-            // catalog profile (its 20×12 grid maps to landscape 800×480) without any
-            // change to its grid or widget placement.
+            // A legacy dash has no stored profile, so it is tagged with the best-fit catalog
+            // profile (its 20×12 grid maps to landscape 800×480) without any change to its grid
+            // or widget placement.
+            DashLayout layout = runtime.DashLayouts.Single(item => item.Id == freeId);
             Assert.False(string.IsNullOrWhiteSpace(layout.ScreenProfileId));
             ScreenProfile profile = ScreenProfileCatalog.Resolve(layout.ScreenProfileId);
             Assert.Equal("landscape-800x480", profile.Id);
             Assert.Equal(20, layout.GridCols);
             Assert.Equal(12, layout.GridRows);
             Assert.True(DashLayoutValidator.IsValid(layout));
+
+            // A zoned dash's grid says nothing about its screen: it takes the default.
+            DashLayout zoned = runtime.DashLayouts.Single(item => item.Id == "zoned");
+            Assert.Equal(ScreenProfileCatalog.DefaultId, zoned.ScreenProfileId);
+            Assert.Equal(DashZones.Cols, zoned.GridCols);
         }
         finally
         {
@@ -938,8 +967,9 @@ public sealed class RuntimePersistenceTests
 
         try
         {
+            string freeId = SeedFreeGridDash(dataRoot);
             IDesktopRuntime runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
-            DashLayout layout = runtime.DashLayouts.Single(item => item.Id == "default");
+            DashLayout layout = runtime.DashLayouts.Single(item => item.Id == freeId);
             ScreenProfile portrait = ScreenProfileCatalog.Resolve("portrait-480x854");
 
             runtime.SetDashScreenProfile(layout, portrait);
@@ -962,14 +992,42 @@ public sealed class RuntimePersistenceTests
     }
 
     [Fact]
-    public void DuplicateDashToProfileProducesIndependentRetargetedCopy()
+    public void AZonedDashKeepsItsZonesOnAnyScreen()
     {
         string dataRoot = TestEnv.NewTempDataRoot();
 
         try
         {
             IDesktopRuntime runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
-            DashLayout source = runtime.DashLayouts.Single(item => item.Id == "default");
+            DashLayout layout = runtime.DashLayouts.Single(item => item.Id == "default");
+            int widgets = layout.Pages.Sum(page => page.Widgets.Count);
+            ScreenProfile portrait = ScreenProfileCatalog.Resolve("portrait-480x854");
+
+            Assert.Equal(0, DashLayoutEditor.CountRefitLosses(layout, portrait));
+            runtime.SetDashScreenProfile(layout, portrait);
+
+            Assert.Equal("portrait-480x854", layout.ScreenProfileId);
+            Assert.Equal(DashZones.Cols, layout.GridCols);
+            Assert.Equal(DashZones.Rows, layout.GridRows);
+            Assert.Equal(widgets, layout.Pages.Sum(page => page.Widgets.Count));
+            Assert.True(DashLayoutValidator.IsValid(layout));
+        }
+        finally
+        {
+            Directory.Delete(dataRoot, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void DuplicateDashToProfileProducesIndependentRetargetedCopy()
+    {
+        string dataRoot = TestEnv.NewTempDataRoot();
+
+        try
+        {
+            string freeId = SeedFreeGridDash(dataRoot);
+            IDesktopRuntime runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+            DashLayout source = runtime.DashLayouts.Single(item => item.Id == freeId);
             string? sourceProfile = source.ScreenProfileId;
             ScreenProfile square = ScreenProfileCatalog.Resolve("square-800x800");
 
@@ -1002,7 +1060,7 @@ public sealed class RuntimePersistenceTests
     }
 
     [Fact]
-    public void CreateBlankDashLayoutTargetsTheProfileWithOneEmptyPage()
+    public void CreateBlankDashLayoutIsZonedAndFlatWithOneEmptyPage()
     {
         string dataRoot = TestEnv.NewTempDataRoot();
 
@@ -1013,9 +1071,11 @@ public sealed class RuntimePersistenceTests
 
             DashLayout created = runtime.CreateBlankDashLayout(wide, "Wide", "Race");
 
+            // A zoned dash keeps its zones at any size: the profile names the screen, never the grid.
             Assert.Equal("landscape-1024x600", created.ScreenProfileId);
-            Assert.Equal(wide.GridCols, created.GridCols);
-            Assert.Equal(wide.GridRows, created.GridRows);
+            Assert.True(created.Zoned);
+            Assert.Equal((DashZones.Cols, DashZones.Rows), (created.GridCols, created.GridRows));
+            Assert.Equal(DashStyle.Flat, created.DashStyle);
             Assert.Empty(Assert.Single(created.Pages).Widgets);
             Assert.Equal(("Wide", "Race"), (created.Name, created.Category));
             Assert.True(DashLayoutValidator.IsValid(created));

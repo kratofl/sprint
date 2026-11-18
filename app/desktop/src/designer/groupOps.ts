@@ -1,5 +1,5 @@
 import { nodeWidgets, pageTree, shownChild, type DashGroupNode, type DashNode } from '@sprint/dashboard'
-import type { DashGroupMode, DashLayout, DashPage, DashWidget, DashWidgetGroup } from '@sprint/dashboard'
+import type { DashGroupMode, DashGroupStyle, DashLayout, DashPage, DashWidget, DashWidgetGroup } from '@sprint/dashboard'
 import { findPage, isValidRect, nextId, nextName, pageFits, pageIdTaken, type GridRect, type WidgetTarget } from '../views/DashesDomain'
 
 /**
@@ -133,7 +133,7 @@ function replacePage(layout: DashLayout, pageId: string, page: DashPage): DashLa
 function editPage(layout: DashLayout, pageId: string, edit: (page: DashPage) => DashPage | null): DashLayout | null {
   const page = findPage(layout, pageId)
   const next = page ? edit(page) : null
-  if (!next || !pageFits(next, layout.gridCols, layout.gridRows)) return null
+  if (!next || !pageFits(next, layout)) return null
   return replacePage(layout, pageId, next)
 }
 
@@ -149,26 +149,70 @@ const editTree = (layout: DashLayout, pageId: string, edit: (roots: DashNode[], 
 const groupName = (page: DashPage, base: string): string => nextName(base, (name) => (page.groups ?? []).some((group) => group.name === name))
 
 /**
- * Puts the selection into a new group, where its first node was (Ctrl+G). Refused when that would
- * merge layers of a stack, which overlap, into one.
+ * Puts the selection into a new group, where its first node was (Ctrl+G, "Create group around"),
+ * or into a new stack (`oneAtATime`, "Create stack around"). Refused when that would merge layers
+ * of a stack, which overlap, into one.
  */
-export function groupNodes(layout: DashLayout, pageId: string, ids: readonly string[]): { layout: DashLayout; groupId: string } | null {
+export function groupNodes(layout: DashLayout, pageId: string, ids: readonly string[], mode: DashGroupMode = 'together'): { layout: DashLayout; groupId: string } | null {
+  return wrapNodes(layout, pageId, ids, mode)
+}
+
+/**
+ * A widget dropped onto another widget on the canvas: they share the target's cell as layers of a
+ * stack — the target's stack when it is a layer already, else a new stack where the target was.
+ * The dropped widget takes the target's size and place. Returns the stack's id.
+ */
+export function stackOnto(layout: DashLayout, pageId: string, id: string, targetId: string): { layout: DashLayout; stackId: string } | null {
+  const page = findPage(layout, pageId)
+  if (!page || id === targetId) return null
+  const newStackId = nextId('stack', (candidate) => pageIdTaken(page, candidate))
+  let stackId = newStackId
+  const next = editTree(layout, pageId, (roots) => {
+    const dropped = findNode(roots, id)
+    const target = findNode(roots, targetId)
+    if (dropped?.kind !== 'widget' || target?.kind !== 'widget') return false
+    const from = parentGroup(roots, id)
+    detach(roots, id)
+    if (from?.group.shownFirst === id) from.group = withoutShownFirst(from.group)
+    const { col, row, colSpan, rowSpan } = target.widget
+    dropped.widget = { ...dropped.widget, col, row, colSpan, rowSpan }
+    const parent = parentGroup(roots, targetId)
+    if (parent?.group.mode === 'oneAtATime') {
+      parent.children.push(dropped)
+      stackId = parent.id
+      return true
+    }
+    const siblings = siblingsOf(roots, parent)
+    const stack: DashGroupNode = { kind: 'group', id: newStackId, group: { id: newStackId, name: groupName(page, 'Stack'), mode: 'oneAtATime' }, children: [target, dropped] }
+    siblings.splice(siblings.indexOf(target), 1, stack)
+    if (parent?.group.shownFirst === targetId) parent.group = { ...parent.group, shownFirst: newStackId }
+    return true
+  })
+  return next ? { layout: next, stackId } : null
+}
+
+/**
+ * Wraps the topmost of `ids` in a new group of `mode`, placed where the first of them was. A stack that showed one of them shows the new group instead, or, when
+ * it lost that one to a group elsewhere, its first layer.
+ */
+function wrapNodes(layout: DashLayout, pageId: string, ids: readonly string[], mode: DashGroupMode): { layout: DashLayout; groupId: string } | null {
   const page = findPage(layout, pageId)
   if (!page) return null
-  const id = nextId('group', (candidate) => pageIdTaken(page, candidate))
+  const id = nextId(mode === 'oneAtATime' ? 'stack' : 'group', (candidate) => pageIdTaken(page, candidate))
   const next = editTree(layout, pageId, (roots) => {
     const chosen = topmost(roots, ids)
-    const first = chosen[0]
-    if (!first) return false
-    const parent = parentGroup(roots, first.id)
+    const anchor = chosen[0]
+    if (!anchor) return false
+    const parent = parentGroup(roots, anchor.id)
     const siblings = siblingsOf(roots, parent)
-    const node: DashGroupNode = { kind: 'group', id, group: { id, name: groupName(page, 'Group'), mode: 'together' }, children: [] }
-    siblings.splice(siblings.indexOf(first), 0, node)
+    const node: DashGroupNode = { kind: 'group', id, group: { id, name: groupName(page, mode === 'oneAtATime' ? 'Stack' : 'Group'), mode }, children: [] }
+    siblings.splice(siblings.indexOf(anchor), 0, node)
     for (const item of chosen) {
+      const from = parentGroup(roots, item.id)
+      if (from && from !== parent && from.group.shownFirst === item.id) from.group = withoutShownFirst(from.group)
       detach(roots, item.id)
       node.children.push(item)
     }
-    // A stack that showed one of them now shows the new group.
     if (parent?.group.shownFirst !== undefined && chosen.some((item) => item.id === parent.group.shownFirst)) {
       parent.group = { ...parent.group, shownFirst: id }
     }
@@ -221,6 +265,37 @@ export function moveNode(layout: DashLayout, pageId: string, id: string, parent:
   })
 }
 
+/**
+ * Takes a node out of the group it is in, to just after that group (the group panel's remove).
+ * Null when it is in no group, or would overlap where it lands (a layer of a stack).
+ */
+export function takeOutOfGroup(layout: DashLayout, pageId: string, id: string): DashLayout | null {
+  const page = findPage(layout, pageId)
+  if (!page) return null
+  const tree = pageTree(page)
+  const group = parentGroup(tree, id)
+  if (!group) return null
+  const outer = parentGroup(tree, group.id)
+  const siblings = outer ? outer.children : tree
+  const after = siblings[siblings.indexOf(group) + 1]
+  return moveNode(layout, pageId, id, outer?.id ?? null, after?.id ?? null)
+}
+
+/**
+ * The widgets the wheel leaves out because they, or a group around them, are hidden. A stack's
+ * layers other than the one it shows are not among them: its layer tabs reach those.
+ */
+export function hiddenWidgets(tree: readonly DashNode[]): DashWidget[] {
+  const visit = (node: DashNode, hidden: boolean): DashWidget[] => {
+    if (node.kind === 'widget') return hidden || node.widget.hidden === true ? [node.widget] : []
+    const inside = hidden || node.group.hidden === true
+    if (node.group.mode !== 'oneAtATime') return node.children.flatMap((child) => visit(child, inside))
+    const layer = shownChild(node)
+    return layer ? visit(layer, inside) : []
+  }
+  return tree.flatMap((node) => visit(node, false))
+}
+
 export function renameGroup(layout: DashLayout, pageId: string, groupId: string, name: string): DashLayout | null {
   const trimmed = name.trim()
   const group = findPage(layout, pageId)?.groups?.find((item) => item.id === groupId)
@@ -232,6 +307,11 @@ export function renameGroup(layout: DashLayout, pageId: string, groupId: string,
 export function setGroupMode(layout: DashLayout, pageId: string, groupId: string, mode: DashGroupMode): DashLayout | null {
   if (findPage(layout, pageId)?.groups?.find((group) => group.id === groupId)?.mode === mode) return null
   return editTree(layout, pageId, (roots) => patchGroup(roots, groupId, (group) => ({ ...group, mode })))
+}
+
+/** A group's own frame round its widgets (flat style); null takes it away. */
+export function setGroupStyle(layout: DashLayout, pageId: string, groupId: string, style: DashGroupStyle | null): DashLayout | null {
+  return editTree(layout, pageId, (roots) => patchGroup(roots, groupId, (group) => ({ ...group, style: style ?? undefined })))
 }
 
 /** Which layer a stack shows on the wheel until a button switches it. */
@@ -372,7 +452,7 @@ export function duplicateNodes(layout: DashLayout, pageId: string, ids: readonly
       const siblings = siblingsOf(tree, parent)
       siblings.splice(siblings.findIndex((node) => node.id === last.id) + 1, 0, ...copies)
       const next = writeTree(page, tree)
-      if (pageFits(next, layout.gridCols, layout.gridRows)) return { layout: replacePage(layout, pageId, next), ids: copies.map((node) => node.id) }
+      if (pageFits(next, layout)) return { layout: replacePage(layout, pageId, next), ids: copies.map((node) => node.id) }
       // Not here: give the ids back for the next try.
       taken.clear()
       for (const id of fresh) taken.add(id)

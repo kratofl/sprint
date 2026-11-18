@@ -1,9 +1,10 @@
 using Sprint.Contracts;
+using Sprint.Desktop.Features.SessionPlanning;
 
 namespace Sprint.Desktop.Features.PitWall;
 
 /// <summary>
-/// The engineer's lap traces, built from the driver's 20 Hz <see cref="LiveSample"/>s: the lap
+/// The engineer's lap traces, built from the driver's <see cref="LiveSample"/>s (up to 33 a second): the lap
 /// being driven, the last completed one and the best valid one. Each lap is kept as
 /// <see cref="Points"/> slots by track position, the newest sample in a slot winning, so memory
 /// stays fixed however long the lap. Not thread-safe; <see cref="PitWallAccumulator"/> guards it.
@@ -18,7 +19,12 @@ public sealed class PitWallLapTraces
 
     private Point?[] _current = new Point?[Points];
     private int _lap;
+    private bool _seen;
     private bool _valid = true;
+
+    // The lap being driven began at the line (the lap number went up by one), so its line must
+    // start near it; false for a lap the engineer joined part way round.
+    private bool _fromLine;
     private double _lastLapTime;
 
     // The previous lap's time as the samples of this lap still report it.
@@ -34,16 +40,26 @@ public sealed class PitWallLapTraces
         if (sample.Lap != this._lap)
         {
             // LMU counts laps from 0: the first racing lap is lap 0, so it completes like any other.
-            if (sample.Lap == this._lap + 1)
+            bool next = this._seen && sample.Lap == this._lap + 1;
+            if (next)
                 this.Complete(sample);
             this._current = new Point?[Points];
             this._lap = sample.Lap;
             this._valid = true;
+            this._fromLine = next;
         }
 
+        this._seen = true;
         this._valid &= sample.LapValid;
         this._lastLapTime = sample.CurrentLapTime;
         this._staleLastLap = sample.LastLapTime;
+
+        // LMU's lap number (telemetry) ticks over a few frames before the track position (scoring)
+        // wraps, so a new lap's first samples still say ~0.99. Kept, they would pin the line to the
+        // far right and the car's marker with it; a lap from the line starts near it.
+        if (this._fromLine && sample.TrackPosition > LapCompleteness.StartMax && this._current.All(point => point is null))
+            return;
+
         int slot = Math.Clamp((int)(sample.TrackPosition * Points), 0, Points - 1);
         this._current[slot] = new Point(sample.TrackPosition, sample.SpeedKph, sample.Throttle, sample.Brake, sample.Steering);
     }
@@ -55,6 +71,8 @@ public sealed class PitWallLapTraces
     {
         this._current = new Point?[Points];
         this._lap = 0;
+        this._seen = false;
+        this._fromLine = false;
         this._valid = true;
         this.Last = null;
         this.Best = null;

@@ -75,16 +75,19 @@ public sealed class DevicePurposeTests
         };
         DashLayout[] dashboards = new[] { assigned };
 
-        DashLayout? dashboard = DevicePurposeLayouts.Resolve(ScreenDevice("dash-screen"), dashboards);
+        DashLayout? dashboard = DevicePurposeLayouts.Resolve(ScreenDevice("dash-screen"), dashboards, DriverCar.None);
         DashLayout? flags = DevicePurposeLayouts.Resolve(
             ScreenDevice("flag-screen", DevicePurposes.Flags),
-            dashboards);
+            dashboards,
+            DriverCar.None);
         DashLayout? lapTimer = DevicePurposeLayouts.Resolve(
             ScreenDevice("lap-screen", DevicePurposes.LapTimes),
-            dashboards);
+            dashboards,
+            DriverCar.None);
         DashLayout? mirror = DevicePurposeLayouts.Resolve(
             ScreenDevice("mirror-screen", DevicePurposes.RearViewMirror),
-            dashboards);
+            dashboards,
+            DriverCar.None);
 
         Assert.Same(assigned, dashboard);
         Assert.Equal("purpose-flags", flags!.Id);

@@ -1,4 +1,4 @@
-import type { DashLayout, DashPage } from '@sprint/dashboard'
+import { DASH_ZONES, lapReviewCells, type DashLapReviewField, type DashLayout, type DashPage, type GridSpan } from '@sprint/dashboard'
 import { findPage } from '../views/DashesDomain'
 
 /**
@@ -17,5 +17,39 @@ export function movePage(layout: DashLayout, pageId: string, offset: -1 | 1): Da
   return { ...layout, pages }
 }
 
+/** Puts `field` in the lap review's box `index` (0–5, rows 2 and 3 left to right); null when it is already there. */
+export function setLapReviewCell(layout: DashLayout, index: number, field: DashLapReviewField): DashLayout | null {
+  const cells = lapReviewCells(layout.lapReview)
+  if (index < 0 || index >= cells.length || cells[index] === field) return null
+  return { ...layout, lapReview: { cells: cells.map((cell, at) => (at === index ? field : cell)) } }
+}
+
+/** Whether the dash sets its own lap review boxes, rather than showing the defaults. */
+export const hasOwnLapReview = (layout: DashLayout): boolean => layout.lapReview !== undefined
+
+/** Back to the default lap review boxes; null when the dash already shows them. */
+export function resetLapReview(layout: DashLayout): DashLayout | null {
+  if (!hasOwnLapReview(layout)) return null
+  const { lapReview: _dropped, ...rest } = layout
+  return rest
+}
+
 /** The page the designer shows for a chosen id: that page while it exists, else the first one (undo can take a page away). */
 export const shownPage = (layout: DashLayout, pageId: string): DashPage | null => findPage(layout, pageId) ?? layout.pages[0] ?? layout.idlePage ?? null
+
+const cellsOf = (span: GridSpan): GridSpan[] =>
+  Array.from({ length: span.rowSpan }, (_, row) => Array.from({ length: span.colSpan }, (_, col) => ({ col: span.col + col, row: span.row + row, colSpan: 1, rowSpan: 1 }))).flat()
+
+const overlaps = (a: GridSpan, b: GridSpan): boolean => a.col < b.col + b.colSpan && b.col < a.col + a.colSpan && a.row < b.row + b.rowSpan && b.row < a.row + a.rowSpan
+
+/**
+ * The places on `page` no widget takes (a hidden one or a stack's other layer still does), for the
+ * outline view: on a zoned dash each side bar spot whole and every other free cell alone, on a
+ * free grid every free cell.
+ */
+export function emptyCells(layout: DashLayout, page: DashPage): GridSpan[] {
+  const places = layout.zoned
+    ? [DASH_ZONES.barLeft, DASH_ZONES.barRight, ...cellsOf(DASH_ZONES.top), ...cellsOf(DASH_ZONES.left), ...cellsOf(DASH_ZONES.centre), ...cellsOf(DASH_ZONES.right)]
+    : cellsOf({ col: 0, row: 0, colSpan: layout.gridCols > 0 ? layout.gridCols : 20, rowSpan: layout.gridRows > 0 ? layout.gridRows : 12 })
+  return places.filter((place) => !page.widgets.some((widget) => overlaps(place, widget)))
+}

@@ -5,7 +5,6 @@ using Sprint.Desktop.Features.Charts;
 using Sprint.Desktop.Features.Dashes;
 using Sprint.Desktop.Features.Devices;
 using Sprint.Desktop.Features.Diagnostics;
-using Sprint.Desktop.Features.Engineer;
 using Sprint.Desktop.Features.FirstRun;
 using Sprint.Desktop.Features.Input;
 using Sprint.Desktop.Features.LiveCompare;
@@ -43,6 +42,9 @@ public sealed class RuntimeCoordinator
     private readonly ILapHistoryStore _lapHistory;
     private readonly PitWallLayoutStore _pitWall;
     private readonly LapTraceRetention? _traceRetention;
+    private readonly ButtonAssignment _buttons;
+    private readonly SetupLibrary? _setups;
+    private readonly Acknowledgements _acknowledgements;
 
     /// <summary>
     /// <paramref name="planner"/>/<paramref name="analysis"/>/<paramref name="diagnosticsLog"/> default
@@ -60,7 +62,9 @@ public sealed class RuntimeCoordinator
     /// the host passes its one shared store. <paramref name="pitWall"/> must be the store
     /// <c>/api/state</c> reads <c>pitWallLayout</c> from. With <paramref name="traceRetention"/>,
     /// opting into a trace age limit deletes what is already past it at once rather than at the
-    /// next start.
+    /// next start. <paramref name="buttons"/> must be the instance <c>/api/state</c> reads the
+    /// button waiting to be assigned from. <paramref name="acknowledgements"/> must be the instance
+    /// the dash outputs read, or Ack would take nothing down.
     /// </summary>
     public RuntimeCoordinator(
         IDesktopRuntime runtime,
@@ -73,7 +77,10 @@ public sealed class RuntimeCoordinator
         GameFolder? gameFolder = null,
         ILapHistoryStore? lapHistory = null,
         PitWallLayoutStore? pitWall = null,
-        LapTraceRetention? traceRetention = null)
+        LapTraceRetention? traceRetention = null,
+        ButtonAssignment? buttons = null,
+        SetupLibrary? setups = null,
+        Acknowledgements? acknowledgements = null)
     {
         this._runtime = runtime ?? throw new ArgumentNullException(nameof(runtime));
         this._planner = planner ?? new SessionPlannerService(new LocalSessionPlanStore(Path.Combine(runtime.DataRoot, "session-plans")));
@@ -93,6 +100,9 @@ public sealed class RuntimeCoordinator
         this._lapHistory = lapHistory ?? new LocalLapHistoryStore(Path.Combine(runtime.DataRoot, "lap-history"));
         this._pitWall = pitWall ?? new PitWallLayoutStore(runtime.DataRoot);
         this._traceRetention = traceRetention;
+        this._buttons = buttons ?? new ButtonAssignment();
+        this._setups = setups;
+        this._acknowledgements = acknowledgements ?? new Acknowledgements();
     }
 
     public bool Execute(JsonElement command, out string error)
@@ -110,15 +120,11 @@ public sealed class RuntimeCoordinator
             case "game.setFolder": return this.SetGameFolder(command, out error);
             case "controls.save": this._runtime.SaveControls(); return true;
             case "controls.update": return this.UpdateControls(command, out error);
-            case "engineer.revert": this._runtime.RevertEngineerChanges(); return true;
-            case "engineer.push": this._runtime.PushEngineerChanges(); return true;
-            case "engineer.acknowledge": return this.AcknowledgeEngineer(command, out error);
-            case "engineer.stage": return this.StageEngineerControl(command, out error);
-            case "engineer.message": if (!TryString(command, "message", out string message)) { error = "message is required"; return false; } this._runtime.SendQuickMessage(message); return true;
             case "devices.remove": return this.RemoveDevice(command, out error);
             case "devices.add": return this.AddDevice(command, out error);
             case "devices.addCustom": return this.AddCustomDevice(command, out error);
             case "devices.update": return this.UpdateDevice(command, out error);
+            case "devices.dashRules": return this.UpdateDeviceDashRules(command, out error);
             case "devices.purpose": return this.UpdateDevicePurpose(command, out error);
             case "devices.captureRegion": return this.UpdateDeviceCaptureRegion(command, out error);
             case "devices.refreshHz": return this.UpdateDeviceRefreshHz(command, out error);
@@ -126,6 +132,9 @@ public sealed class RuntimeCoordinator
             case "devices.transparent": return this.UpdateDeviceTransparent(command, out error);
             case "devices.save": return this.SaveDevice(command, out error);
             case "devices.multiDial": return this.UpdateMultiDial(command, out error);
+            case "devices.buttonListen": return this.ListenForButton(command, out error);
+            case "devices.buttonCancel": this._buttons.Cancel(); return true;
+            case "devices.buttonClear": return this.ClearButton(command, out error);
             case "dash.create": return this.CreateDash(command, out error);
             case "dash.save": return this.SaveDash(command, out error);
             case "dash.reset": return this.ResetDash(command, out error);
@@ -134,7 +143,12 @@ public sealed class RuntimeCoordinator
             case "dash.category.create": return this.CreateDashCategory(command, out error);
             case "dash.category.rename": return this.RenameDashCategory(command, out error);
             case "dash.category.delete": return this.DeleteDashCategory(command, out error);
+            case "dash.mode.create": return this.CreateDashMode(command, out error);
+            case "dash.mode.rename": return this.RenameDashMode(command, out error);
+            case "dash.mode.delete": return this.DeleteDashMode(command, out error);
             case "dash.setScreenProfile": return this.SetDashScreenProfile(command, out error);
+            case "dashAlerts.update": return this.UpdateDashAlert(command, out error);
+            case SprintCommands.Acknowledge: this.Acknowledge(); return true;
             case SprintCommands.DashPageNext: return this.CycleDashPage(command, offset: 1, out error);
             case SprintCommands.DashPagePrev: return this.CycleDashPage(command, offset: -1, out error);
             case "setup.duplicate": return this.DuplicateSetup(command, out error);
@@ -156,6 +170,8 @@ public sealed class RuntimeCoordinator
             case "analysis.filter": return this.FilterAnalysis(command, out error);
             case "analysis.selectLap": return this.SelectAnalysisLap(command, out error);
             case "analysis.setRunSetup": return this.SetAnalysisRunSetup(command, out error);
+            case "setups.tag": return this.TagSetup(command, out error);
+            case "setups.untag": return this.UntagSetup(command, out error);
             case "lap.note.add": return this.AddLapNote(command, out error);
             case "lap.note.update": return this.UpdateLapNote(command, out error);
             case "lap.note.delete": return this.DeleteLapNote(command, out error);
@@ -173,6 +189,8 @@ public sealed class RuntimeCoordinator
             case "link.complete": return this.LinkComplete(command, out error);
             case "link.close": return this.LinkClose(out error);
             case "link.sharePlan": return this.LinkSharePlan(command, out error);
+            case "radio.send": return this.RadioSend(command, out error);
+            case "radio.acknowledge": return this.RadioAcknowledge(out error);
             case "pitwall.saveLayout": return this.SavePitWallLayout(command, out error);
             case "pitwall.placeWindow": return this.PlacePitWallWindow(command, out error);
             case "pitwall.resetLayout": this._pitWall.Reset(); return true;
@@ -350,6 +368,24 @@ public sealed class RuntimeCoordinator
         }
 
         this._link?.SetSharePlan(share);
+        return true;
+    }
+
+    /// <summary>The engineer's message to the driver's wheel: <c>text</c>, and <c>targetLapSeconds</c> for a new target lap.</summary>
+    private bool RadioSend(JsonElement command, out string error)
+    {
+        if (this._link is not { } link) { error = LinkUnavailable; return false; }
+        if (!TryString(command, "text", out string text)) { error = "text is required"; return false; }
+        if (!TryOptionalDouble(command, "targetLapSeconds", out double? target, out error)) return false;
+        return link.TrySendRadio(text, target, out error);
+    }
+
+    /// <summary>The driver marks the message on their wheel seen from the app, as a wheel button does.</summary>
+    private bool RadioAcknowledge(out string error)
+    {
+        if (this._link is not { } link) { error = LinkUnavailable; return false; }
+        error = "";
+        link.AcknowledgeRadio();
         return true;
     }
 
@@ -727,6 +763,56 @@ public sealed class RuntimeCoordinator
         return true;
     }
 
+    /// <summary>The car the driver is in, or was last in: what device dash rules match.</summary>
+    private DriverCar CurrentCar => DriverCar.Of(this._runtime.Settings.LastSeenContext);
+
+    /// <summary>
+    /// A device's dashes for a game, class or car: <c>{ deviceId, rules: [{ kind, value, dashId }] }</c>,
+    /// replacing the list. Each rule names a kind (<see cref="DeviceDashRules.IsKind"/>), a value and an
+    /// existing dash; a kind and value appear once.
+    /// </summary>
+    private bool UpdateDeviceDashRules(JsonElement command, out string error)
+    {
+        error = "";
+        if (!this.FindDevice(command, out SavedDevice device, out error)) return false;
+        if (!command.TryGetProperty("rules", out JsonElement rulesElement) || rulesElement.ValueKind != JsonValueKind.Array)
+        {
+            error = "rules must be an array";
+            return false;
+        }
+
+        if (rulesElement.GetArrayLength() > DeviceDashRules.MaxRules)
+        {
+            error = $"a device keeps at most {DeviceDashRules.MaxRules} rules";
+            return false;
+        }
+
+        List<DeviceDashRule> rules = [];
+        HashSet<string> seen = new(StringComparer.OrdinalIgnoreCase);
+        foreach (JsonElement element in rulesElement.EnumerateArray())
+        {
+            if (element.ValueKind != JsonValueKind.Object ||
+                !TryString(element, "kind", out string kind) ||
+                !TryString(element, "value", out string value) ||
+                !TryString(element, "dashId", out string dashId))
+            {
+                error = "each rule needs a kind, a value and a dashId";
+                return false;
+            }
+
+            value = value.Trim();
+            if (!DeviceDashRules.IsKind(kind)) { error = $"unknown rule kind '{kind}'"; return false; }
+            if (value.Length == 0 || value.Length > DeviceDashRules.MaxValueLength) { error = $"a rule's value must be 1 to {DeviceDashRules.MaxValueLength} characters"; return false; }
+            if (!this._runtime.DashLayouts.Any(layout => string.Equals(layout.Id, dashId, StringComparison.OrdinalIgnoreCase))) { error = $"no dash '{dashId}'"; return false; }
+            if (!seen.Add($"{kind}:{value}")) { error = $"'{value}' has two rules"; return false; }
+
+            rules.Add(new DeviceDashRule { Kind = kind, Value = value, DashId = dashId });
+        }
+
+        this._runtime.UpdateDeviceDashRules(device, rules);
+        return true;
+    }
+
     private bool UpdateDevicePurpose(JsonElement command, out string error)
     {
         error = "";
@@ -822,23 +908,28 @@ public sealed class RuntimeCoordinator
 
     /// <summary>
     /// Renames and recolours one dial position (<c>position</c> with <c>label</c> and <c>color</c>),
-    /// and/or turns the inverted dash popup on or off (<c>invertPopup</c>). The colours only colour
-    /// the dash popup; nothing is sent to the wheel.
+    /// or sets the dash mode it switches on (<c>position</c> with <c>mode</c>: a mode id, or null for
+    /// none). The colours only colour the dash popup; nothing is sent to the wheel. How the popup
+    /// shows is the app-wide <c>dial_change</c> alert's (<c>dashAlerts.update</c>).
     /// </summary>
     private bool UpdateMultiDial(JsonElement command, out string error)
     {
         if (!this.FindDevice(command, out SavedDevice device, out error)) return false;
         if (MultiDials.LayoutOf(device, this._runtime.Catalog) is not { } layout) { error = "device has no multi-dial"; return false; }
 
-        bool hasPosition = command.TryGetProperty("position", out _);
-        bool hasInvert = command.TryGetProperty("invertPopup", out _);
-        if (!hasPosition && !hasInvert) { error = "position or invertPopup is required"; return false; }
+        if (!command.TryGetProperty("position", out _)) { error = "position is required"; return false; }
+        if (!TryInt(command, "position", out int index) || index < 0 || index >= layout.Positions.Count) { error = "position is out of range"; return false; }
 
         MultiDialLabel? label = null;
-        int index = 0;
-        if (hasPosition)
+        bool hasMode = command.TryGetProperty("mode", out _);
+        string? modeId = null;
+        if (hasMode)
         {
-            if (!TryInt(command, "position", out index) || index < 0 || index >= layout.Positions.Count) { error = "position is out of range"; return false; }
+            if (!TryOptionalNullableString(command, "mode", out _, out modeId)) { error = "mode must be a mode id or null"; return false; }
+            if (modeId is not null && this._runtime.Settings.DashModes.All(mode => mode.Id != modeId)) { error = "no such mode"; return false; }
+        }
+        else
+        {
             if (!TryString(command, "label", out string name)) { error = "label is required"; return false; }
             name = name.Trim();
             if (name.Length > MultiDials.MaxLabelLength) { error = $"label is longer than {MultiDials.MaxLabelLength} characters"; return false; }
@@ -846,13 +937,11 @@ public sealed class RuntimeCoordinator
             label = new MultiDialLabel(name, color.ToUpperInvariant());
         }
 
-        bool invert = false;
-        if (hasInvert && !TryBool(command, "invertPopup", out invert)) { error = "invertPopup must be true or false"; return false; }
-
         lock (this._runtime.DevicesGate)
         {
-            MultiDialSettings settings = label is null ? device.MultiDial ?? new MultiDialSettings() : MultiDials.WithPosition(layout, device.MultiDial, index, label);
-            device.MultiDial = hasInvert ? settings with { InvertPopup = invert } : settings;
+            device.MultiDial = label is null
+                ? MultiDials.WithMode(layout, device.MultiDial, index, modeId)
+                : MultiDials.WithPosition(layout, device.MultiDial, index, label);
             this._runtime.SaveDevices();
         }
 
@@ -861,6 +950,230 @@ public sealed class RuntimeCoordinator
 
     private static bool IsHexColor(string value) =>
         value.Length == 7 && value[0] == '#' && value.Skip(1).All(Uri.IsHexDigit);
+
+    // ── Dash alerts (app-wide, every dash) ─────────────────────────────────
+
+    /// <summary>
+    /// Patches one alert type's settings: <c>alertType</c> (not <c>type</c>, which names the command)
+    /// and any of <c>enabled</c>, <c>size</c> ("strip" or "full"), <c>invertColors</c>,
+    /// <c>durationSeconds</c> (1 to 30, 15 for <c>lap_summary</c>), <c>untilAck</c> and, on
+    /// <c>fuel_low</c> only, <c>lapsLeft</c> (1 to 9). Everything is checked before anything is
+    /// written. The screens take the change on their next reconcile tick.
+    /// </summary>
+    private bool UpdateDashAlert(JsonElement command, out string error)
+    {
+        error = "";
+        if (!TryString(command, "alertType", out string type)) { error = "alertType is required"; return false; }
+        if (!DashAlertTypes.IsKnown(type)) { error = $"unknown alert type: {type}"; return false; }
+
+        bool? enabled = null;
+        if (command.TryGetProperty("enabled", out _))
+        {
+            if (!TryBool(command, "enabled", out bool value)) { error = "enabled must be true or false"; return false; }
+            enabled = value;
+        }
+
+        DashAlertSize? size = null;
+        if (command.TryGetProperty("size", out _))
+        {
+            if (!TryString(command, "size", out string sizeName) || DashAlertTypes.ParseSize(sizeName) is not { } parsed) { error = "size must be strip or full"; return false; }
+            size = parsed;
+        }
+
+        bool? invert = null;
+        if (command.TryGetProperty("invertColors", out _))
+        {
+            if (!TryBool(command, "invertColors", out bool value)) { error = "invertColors must be true or false"; return false; }
+            invert = value;
+        }
+
+        double? duration = null;
+        if (command.TryGetProperty("durationSeconds", out _))
+        {
+            double max = DashAlertTypes.MaxSeconds(type);
+            if (!TryDouble(command, "durationSeconds", out double value) || !double.IsFinite(value) || value < DashAlertTypes.MinSeconds || value > max)
+            {
+                error = $"durationSeconds must be from {DashAlertTypes.MinSeconds} to {max}";
+                return false;
+            }
+
+            duration = value;
+        }
+
+        bool? untilAck = null;
+        if (command.TryGetProperty("untilAck", out _))
+        {
+            if (!TryBool(command, "untilAck", out bool value)) { error = "untilAck must be true or false"; return false; }
+            untilAck = value;
+        }
+
+        int? lapsLeft = null;
+        if (command.TryGetProperty("lapsLeft", out _))
+        {
+            if (type != DashAlertTypes.FuelLow) { error = "lapsLeft is only for fuel_low"; return false; }
+            if (!TryInt(command, "lapsLeft", out int value) || value < DashAlertTypes.MinLapsLeft || value > DashAlertTypes.MaxLapsLeft)
+            {
+                error = $"lapsLeft must be a whole number from {DashAlertTypes.MinLapsLeft} to {DashAlertTypes.MaxLapsLeft}";
+                return false;
+            }
+
+            lapsLeft = value;
+        }
+
+        if (enabled is null && size is null && invert is null && duration is null && untilAck is null && lapsLeft is null)
+        {
+            error = "no alert settings were provided";
+            return false;
+        }
+
+        lock (this._runtime.SettingsGate)
+        {
+            AppDashAlerts current = this._runtime.Settings.DashAlerts;
+            DashAlertSettings before = current.Of(type);
+            DashAlertSettings after = before with
+            {
+                Enabled = enabled ?? before.Enabled,
+                Size = size ?? before.Size,
+                InvertColors = invert ?? before.InvertColors,
+                DurationSeconds = duration ?? before.DurationSeconds,
+                UntilAck = untilAck ?? before.UntilAck,
+                LapsLeft = lapsLeft ?? before.LapsLeft,
+            };
+            if (after == before)
+            {
+                return true;
+            }
+
+            this._runtime.Settings.DashAlerts = current.With(after);
+            this._runtime.SaveSettings();
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Ack, from any device's button or the app: an app-wide event, not tied to a dash. Takes the
+    /// alert up now down on every dash (wheel screens and browser displays, each on its own thread at
+    /// its next frame) and marks the engineer's message on the wheel seen.
+    /// </summary>
+    private void Acknowledge()
+    {
+        this._acknowledgements.Acknowledge();
+        this._link?.AcknowledgeRadio();
+    }
+
+    // ── Wheel buttons ───────────────────────────────────────────────────────
+
+    /// <summary>What each device's buttons can run, by device id; a browser display has no buttons.</summary>
+    public IReadOnlyDictionary<string, IReadOnlyList<ButtonFunction>> ButtonFunctionsByDevice()
+    {
+        lock (this._runtime.DevicesGate)
+        {
+            return this._runtime.Devices
+                .Where(device => !BrowserDisplays.Is(device))
+                .ToDictionary(device => device.Id, device => ButtonFunctions.For(DevicePurposeLayouts.Resolve(device, this._runtime.DashLayouts, this.CurrentCar)), StringComparer.OrdinalIgnoreCase);
+        }
+    }
+
+    /// <summary>
+    /// A wheel button was pressed (input thread): it is the button being assigned, or it runs the
+    /// function it is bound to on its device (global bindings as the fallback).
+    /// </summary>
+    public void Press(HardwareInputEvent input)
+    {
+        switch (this._buttons.Press(input, DateTimeOffset.UtcNow))
+        {
+            case ButtonPress.Assign assign:
+                SavedDevice? owner = this.DeviceById(assign.DeviceId);
+                if (owner is not null)
+                    this._runtime.BindDeviceButton(owner, assign.Command, assign.Input);
+                break;
+            case ButtonPress.Run run:
+                List<SavedDevice> devices;
+                lock (this._runtime.DevicesGate)
+                    devices = [.. this._runtime.Devices];
+                ResolvedHardwareBinding? bound = HardwareBindingResolver.Resolve(run.Input, devices, this._runtime.Controls.Bindings);
+                // The Ack button runs as itself: it acknowledges the message and the dash alerts with it.
+                if (bound?.Command != SprintCommands.Acknowledge && this.AcknowledgesRadio(run.Input))
+                    this._link?.AcknowledgeRadio();
+                else if (bound is not null)
+                    this.RunButton(bound.Command, bound.DeviceId is { } id ? this.DeviceById(id) : null);
+                break;
+        }
+    }
+
+    /// <summary>
+    /// While the engineer's message is on the driver's wheel, any wheel button acknowledges it
+    /// instead of running what it is bound to (the game still gets the press); the Ack button runs
+    /// as itself, which acknowledges the message as well. Encoders do not.
+    /// </summary>
+    private bool AcknowledgesRadio(HardwareInputEvent input) =>
+        input.Input.StartsWith("button:", StringComparison.Ordinal)
+        && this._link?.State is { Role: PeerRole.Driver, Radio.Showing: not null };
+
+    /// <summary>
+    /// Runs a bound function. The app functions (Ack, the HUD) never look at a dash; only the page
+    /// functions resolve the dash the device shows.
+    /// </summary>
+    private void RunButton(string command, SavedDevice? device)
+    {
+        switch (command)
+        {
+            case SprintCommands.Acknowledge:
+                this.Acknowledge();
+                return;
+            case SprintCommands.CompareHudToggle:
+                this._liveCompare.SetHudOpen(!this._liveCompare.HudOpen, out _);
+                return;
+        }
+
+        if (device is null || DevicePurposeLayouts.Resolve(device, this._runtime.DashLayouts, this.CurrentCar) is not { } layout)
+            return;
+        switch (command)
+        {
+            case SprintCommands.DashPageNext:
+                this._pageCycle.Move(device.Id, layout, 1);
+                break;
+            case SprintCommands.DashPagePrev:
+                this._pageCycle.Move(device.Id, layout, -1);
+                break;
+            default:
+                if (ButtonFunctions.GotoPage(command) is { } pageId)
+                    this._pageCycle.Show(device.Id, layout, pageId);
+                break;
+        }
+    }
+
+    /// <summary><c>{ deviceId, command }</c>: the next button pressed is bound to that function on the device.</summary>
+    private bool ListenForButton(JsonElement command, out string error)
+    {
+        error = "";
+        if (!this.FindDevice(command, out SavedDevice device, out error)) return false;
+        if (!TryString(command, "command", out string function)) { error = "command is required"; return false; }
+        if (!this.ButtonFunctionsByDevice().TryGetValue(device.Id, out IReadOnlyList<ButtonFunction>? functions) || functions.All(candidate => candidate.Id != function))
+        {
+            error = "the device's buttons cannot run that";
+            return false;
+        }
+
+        this._buttons.Listen(device.Id, function, DateTimeOffset.UtcNow);
+        return true;
+    }
+
+    private bool ClearButton(JsonElement command, out string error)
+    {
+        error = "";
+        if (!this.FindDevice(command, out SavedDevice device, out error)) return false;
+        if (!TryString(command, "command", out string function)) { error = "command is required"; return false; }
+        this._runtime.UnbindDeviceButton(device, function);
+        return true;
+    }
+
+    private SavedDevice? DeviceById(string id)
+    {
+        lock (this._runtime.DevicesGate)
+            return this._runtime.Devices.FirstOrDefault(device => string.Equals(device.Id, id, StringComparison.OrdinalIgnoreCase));
+    }
 
     private bool FindDevice(JsonElement command, out SavedDevice device, out string error)
     {
@@ -949,8 +1262,10 @@ public sealed class RuntimeCoordinator
 
         candidate.Id = existing.Id;
         candidate.Category = existing.Category;
-        // A client from before groups may still send widget stacks.
+        // A client from before groups may still send widget stacks, and the designer's undo can
+        // bring back the pick of a mode deleted since.
         DashWidgetStackMigration.Apply(candidate);
+        DashPageModes.ForgetUnknownPicks(candidate, this._runtime.Settings.DashModes);
 
         if (!DashLayoutValidator.IsValid(candidate)) { error = "layout is invalid"; return false; }
 
@@ -1022,6 +1337,49 @@ public sealed class RuntimeCoordinator
         return true;
     }
 
+    /// <summary>
+    /// <c>{ id, name }</c>: adds one of the driver's dash modes. The designer makes the id up, so it
+    /// can put a page in the new mode straight away.
+    /// </summary>
+    private bool CreateDashMode(JsonElement command, out string error)
+    {
+        error = "";
+        if (!TryString(command, "id", out string id) || !DashPageModes.IsValidId(id)) { error = "id must be lowercase letters, digits and dashes"; return false; }
+        if (this._runtime.Settings.DashModes.Any(mode => mode.Id == id)) { error = "a mode with this id already exists"; return false; }
+        if (!TryOptionalNullableString(command, "name", out _, out string? name)) { error = "name must be a string"; return false; }
+        if (!DashPageModes.TryValidateName(name, this._runtime.Settings.DashModes, renaming: null, out string trimmed, out error)) return false;
+        this._runtime.CreateDashMode(new DashMode { Id = id, Name = trimmed });
+        return true;
+    }
+
+    /// <summary><c>{ id, name }</c>: renames a dash mode.</summary>
+    private bool RenameDashMode(JsonElement command, out string error)
+    {
+        if (!this.FindDashMode(command, out DashMode mode, out error)) return false;
+        if (!TryOptionalNullableString(command, "name", out _, out string? name)) { error = "name must be a string"; return false; }
+        if (!DashPageModes.TryValidateName(name, this._runtime.Settings.DashModes, renaming: mode.Id, out string trimmed, out error)) return false;
+        this._runtime.RenameDashMode(mode.Id, trimmed);
+        return true;
+    }
+
+    /// <summary><c>{ id }</c>: deletes a dash mode; its pages and dial positions forget it.</summary>
+    private bool DeleteDashMode(JsonElement command, out string error)
+    {
+        if (!this.FindDashMode(command, out DashMode mode, out error)) return false;
+        this._runtime.DeleteDashMode(mode.Id);
+        return true;
+    }
+
+    private bool FindDashMode(JsonElement command, out DashMode mode, out string error)
+    {
+        mode = new DashMode();
+        error = "";
+        if (!TryString(command, "id", out string id)) { error = "id is required"; return false; }
+        if (this._runtime.Settings.DashModes.FirstOrDefault(candidate => candidate.Id == id) is not { } found) { error = "no such mode"; return false; }
+        mode = found;
+        return true;
+    }
+
     /// <summary>Resolves <c>name</c> to an existing custom category (built-ins cannot be renamed or deleted).</summary>
     private bool FindCustomCategory(JsonElement command, out string name, out string error)
     {
@@ -1074,7 +1432,7 @@ public sealed class RuntimeCoordinator
         error = "";
         if (!this.FindDevice(command, out SavedDevice device, out error)) return false;
 
-        DashLayout? layout = DevicePurposeLayouts.Resolve(device, this._runtime.DashLayouts);
+        DashLayout? layout = DevicePurposeLayouts.Resolve(device, this._runtime.DashLayouts, this.CurrentCar);
         if (layout is null)
         {
             error = "device has no telemetry-backed screen layout to page through";
@@ -1643,6 +2001,41 @@ public sealed class RuntimeCoordinator
         return this._analysis.SetRunSetup(outing, setupId, out error);
     }
 
+    /// <summary>
+    /// Tags a setup with the session ("Quali", "Race") and style ("Esport", "Safe", "Wet") the
+    /// driver says it is for, each a name or null; both null takes the driver's tag off.
+    /// </summary>
+    private bool TagSetup(JsonElement command, out string error)
+    {
+        error = "";
+        if (this._setups is null) { error = "setups are not available"; return false; }
+        if (!TryString(command, "setupId", out string setupId)) { error = "setupId is required"; return false; }
+        if (!TryOptionalEnum(command, "session", out SetupSession? session)) { error = "session must be Quali, Race or null"; return false; }
+        if (!TryOptionalEnum(command, "style", out SetupStyle? style)) { error = "style must be Esport, Safe, Wet or null"; return false; }
+        return this._setups.Tag(setupId, new SetupTag(session, style), out error);
+    }
+
+    /// <summary>Takes the driver's tag off a setup, so what its name says shows again.</summary>
+    private bool UntagSetup(JsonElement command, out string error)
+    {
+        error = "";
+        if (this._setups is null) { error = "setups are not available"; return false; }
+        if (!TryString(command, "setupId", out string setupId)) { error = "setupId is required"; return false; }
+        return this._setups.Tag(setupId, null, out error);
+    }
+
+    /// <summary>An enum member by its exact name, or null when the property is null; anything else is invalid.</summary>
+    private static bool TryOptionalEnum<T>(JsonElement command, string name, out T? value) where T : struct, Enum
+    {
+        value = null;
+        if (!command.TryGetProperty(name, out JsonElement element)) return false;
+        if (element.ValueKind == JsonValueKind.Null) return true;
+        if (element.ValueKind != JsonValueKind.String || element.GetString() is not { } text) return false;
+        if (!Enum.GetNames<T>().Contains(text, StringComparer.Ordinal)) return false;
+        value = Enum.Parse<T>(text);
+        return true;
+    }
+
     // ── Analysis: notes on a lap ─────────────────────────────────────────────
 
     /// <summary>A note at a place on a lap (metres from the line), signed with the driver name in Settings.</summary>
@@ -1693,33 +2086,6 @@ public sealed class RuntimeCoordinator
         if (!TryString(command, "level", out string levelText)) { error = "level is required"; return false; }
         if (!Enum.TryParse(levelText, ignoreCase: true, out LogLevel level)) { error = $"unknown log level: {levelText}"; return false; }
         this._diagnosticsLog.MinimumLevel = level;
-        return true;
-    }
-
-    // ── Engineer ────────────────────────────────────────────────────────────
-
-    private bool AcknowledgeEngineer(JsonElement command, out string error)
-    {
-        error = "";
-        if (!TryBool(command, "succeeded", out bool succeeded)) { error = "succeeded is required"; return false; }
-        this._runtime.AcknowledgeEngineerChanges(succeeded);
-        return true;
-    }
-
-    /// <summary>
-    /// Stages a value against one engineer control (car push is separate; see
-    /// <c>engineer.push</c>). Not part of <see cref="IDesktopRuntime"/> as a named method —
-    /// it mutates <see cref="EngineerControl.StagedValue"/> directly, so this is the
-    /// command-surface equivalent rather than new runtime behavior.
-    /// </summary>
-    private bool StageEngineerControl(JsonElement command, out string error)
-    {
-        error = "";
-        if (!TryString(command, "key", out string key)) { error = "key is required"; return false; }
-        EngineerControl? control = this._runtime.EngineerControls.FirstOrDefault(candidate => string.Equals(candidate.Key, key, StringComparison.OrdinalIgnoreCase));
-        if (control is null) { error = "engineer control not found"; return false; }
-        if (!TryDouble(command, "value", out double value)) { error = "value is required"; return false; }
-        control.StagedValue = Math.Clamp(value, control.Min, control.Max);
         return true;
     }
 

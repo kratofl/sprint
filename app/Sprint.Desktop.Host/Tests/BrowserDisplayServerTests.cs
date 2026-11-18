@@ -7,6 +7,7 @@ using Sprint.Desktop.Features.Dashes;
 using Sprint.Desktop.Features.Devices;
 using Sprint.Desktop.Features.Diagnostics;
 using Sprint.Desktop.Features.Hardware;
+using Sprint.Desktop.Features.Input;
 using Xunit;
 
 namespace Sprint.Desktop.Host.Tests;
@@ -120,6 +121,29 @@ public sealed class BrowserDisplayServerTests
     }
 
     [Fact]
+    public async Task AFeedCarriesTheAppWideAlertsAndPassesAnAckOn()
+    {
+        await using Fixture fixture = Fixture.Start();
+        // A press before the page opened is not one for it.
+        fixture.Acknowledgements.Acknowledge();
+        fixture.Reconcile(BrowserDisplay("b1"));
+        await WaitUntilAsync(() => fixture.Server.Listening);
+
+        await using Feed feed = await fixture.OpenFeedAsync("b1");
+        using (JsonDocument scene = await feed.NextAsync())
+        {
+            JsonElement layout = scene.RootElement.GetProperty("scene").GetProperty("layout");
+            Assert.Equal(
+                DashAlertTypes.Defaults.Select(alert => alert.Type),
+                layout.GetProperty("alerts").EnumerateArray().Select(alert => alert.GetProperty("type").GetString()));
+            Assert.Equal(JsonValueKind.Null, layout.GetProperty("alertConfig").ValueKind);
+        }
+
+        fixture.Acknowledgements.Acknowledge();
+        Assert.True((await feed.NextWithAsync("acknowledge")).GetBoolean());
+    }
+
+    [Fact]
     public async Task EachDisplayHasItsOwnFeed()
     {
         await using Fixture fixture = Fixture.Start();
@@ -225,7 +249,7 @@ public sealed class BrowserDisplayServerTests
     };
 
     private static DashSceneInputs Scenes(params DashLayout[] layouts) =>
-        new(layouts, "Driver", "22", DashTargets.None);
+        new(layouts, DriverCar.None, "Driver", "22", DashTargets.None, AppDashAlerts.Default);
 
     private static int FreePort()
     {
@@ -266,7 +290,8 @@ public sealed class BrowserDisplayServerTests
                 driverFactory: (_, _, _) => new FakeScreenDriver(),
                 telemetry: this.Telemetry,
                 pageCycle: this.Pages,
-                browserServer: this.Server);
+                browserServer: this.Server,
+                acknowledgements: this.Acknowledgements);
             this.Client = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{this.Port}"), Timeout = Timeout };
             this._run = this.Server.RunAsync(this._stop.Token);
         }
@@ -276,6 +301,8 @@ public sealed class BrowserDisplayServerTests
         public DesktopState Telemetry { get; } = new();
 
         public DashPageCycle Pages { get; } = new();
+
+        public Acknowledgements Acknowledgements { get; } = new();
 
         public DashLayout Layout { get; } = TestDash.Layout("dash");
 

@@ -82,8 +82,9 @@ public static class DashWidgetCatalog
         ]),
     ];
 
-    // The lap_time widget reads config["show"]: all three times stacked, or one of them
-    // large so a layout can give the last and best laps their own boxes.
+    // The lap_time widget reads config["show"]: the driver's three times stacked, or one time
+    // large so a layout can give the last and best laps their own boxes (or the session's or the
+    // class's best).
     private static readonly IReadOnlyList<DashConfigDef> LapTimeConfig =
     [
         new DashConfigDef("show", "Show", DashConfigKind.Select, Default: "all", Options:
@@ -92,6 +93,8 @@ public static class DashWidgetCatalog
             new DashConfigOption("current", "Current lap"),
             new DashConfigOption("last", "Last lap"),
             new DashConfigOption("best", "Best lap"),
+            new DashConfigOption("session", "Session best (anyone)"),
+            new DashConfigOption("class", "Class best"),
         ]),
     ];
 
@@ -103,6 +106,36 @@ public static class DashWidgetCatalog
             new DashConfigOption("both", "Ahead and behind"),
             new DashConfigOption("ahead", "Car ahead"),
             new DashConfigOption("behind", "Car behind"),
+        ]),
+    ];
+
+    // The bar widget reads config["channel"]: what fills it. A bar on a zoned dash's side spot
+    // stands upright; across the top it lies down.
+    private static readonly IReadOnlyList<DashConfigDef> BarConfig =
+    [
+        new DashConfigDef("channel", "Shows", DashConfigKind.Select, Default: "fuel", Options:
+        [
+            new DashConfigOption("fuel", "Fuel"),
+            new DashConfigOption("ve", "Virtual energy"),
+            new DashConfigOption("soc", "Battery charge"),
+            new DashConfigOption("delta", "Delta"),
+            new DashConfigOption("inputs", "Throttle and brake"),
+            new DashConfigOption("rpm", "RPM"),
+            new DashConfigOption("gap", "Gaps ahead and behind"),
+            new DashConfigOption("fuel_ve", "Fuel and virtual energy"),
+            new DashConfigOption("spotter", "Spotter"),
+        ]),
+    ];
+
+    // The tyre widget reads config["corner"]: which of the four it shows.
+    private static readonly IReadOnlyList<DashConfigDef> TyreConfig =
+    [
+        new DashConfigDef("corner", "Tyre", DashConfigKind.Select, Default: "fl", Options:
+        [
+            new DashConfigOption("fl", "Front left"),
+            new DashConfigOption("fr", "Front right"),
+            new DashConfigOption("rl", "Rear left"),
+            new DashConfigOption("rr", "Rear right"),
         ]),
     ];
 
@@ -147,7 +180,39 @@ public static class DashWidgetCatalog
             ["tyre_pressure"] = Definition("tyre_pressure", "Tyre Pressure", idleCapable: true, "tires.fl", "tires.fr", "tires.rl", "tires.rr"),
             // LMU virtual-energy budget (replaces the former "ers" widget; legacy layouts
             // are migrated to this type on load). Configurable via VirtualEnergyConfig.
-            ["virtual_energy"] = Definition("virtual_energy", "Virtual Energy", idleCapable: false, VirtualEnergyConfig, "energy.virtual", "energy.perLap", "energy.deploy")
+            ["virtual_energy"] = Definition("virtual_energy", "Virtual Energy", idleCapable: false, VirtualEnergyConfig, "energy.virtual", "energy.perLap", "energy.deploy"),
+            // The hybrid battery, the cars round ours on the road and the car's bodywork: the
+            // renderer reads the frame's energy, other cars (field) and damage for these.
+            ["battery"] = Definition("battery", "Battery", idleCapable: false, "energy.soc", "energy.deploy", "energy.regen"),
+            ["relative"] = Definition("relative", "Relative", idleCapable: false, "race.position"),
+            ["damage"] = Definition("damage", "Damage", idleCapable: false),
+            // The flat, zoned dash's widgets: a bar for the bar spots, one tyre with its stripes
+            // and brake, the sectors as coloured segments and single values.
+            ["bar"] = Definition("bar", "Bar", idleCapable: false, BarConfig, "car.fuelLiters", "energy.virtual", "energy.soc", "lap.delta", "car.rpm"),
+            ["tyre"] = Definition("tyre", "Tyre", idleCapable: true, TyreConfig, "tires.fl", "tires.fr", "tires.rl", "tires.rr"),
+            ["sectors"] = Definition("sectors", "Sector Colours", idleCapable: false, "lap.sector"),
+            ["speed"] = Definition("speed", "Speed", idleCapable: true, "car.speed"),
+            ["laps"] = Definition("laps", "Lap", idleCapable: false, "lap.number"),
+            ["fuel_laps"] = Definition("fuel_laps", "Fuel Laps Left", idleCapable: false, "car.fuelLiters", "car.fuelPerLapLiters"),
+            ["ve_laps"] = Definition("ve_laps", "Energy Laps Left", idleCapable: false, "energy.virtual", "energy.perLap"),
+            ["time_left"] = Definition("time_left", "Time Left", idleCapable: false, "session.timeRemaining"),
+            ["soc"] = Definition("soc", "Battery Charge", idleCapable: false, "energy.soc"),
+            ["slip"] = Definition("slip", "TC Slip", idleCapable: false, "electronics.tcSlip"),
+            ["cut"] = Definition("cut", "TC Cut", idleCapable: false, "electronics.tcCut"),
+            // Strategy, conditions, the car's settings and timing beyond the driver's own laps.
+            ["fuel_avg"] = Definition("fuel_avg", "Fuel Per Lap", idleCapable: false, "car.fuelPerLapLiters"),
+            ["fuel_time"] = Definition("fuel_time", "Fuel Time Left", idleCapable: false, "car.fuelLiters", "car.fuelPerLapLiters", "lap.last"),
+            ["laps_left"] = Definition("laps_left", "Race Laps Left", idleCapable: false, "session.maxLaps", "session.timeRemaining", "lap.last"),
+            ["refuel"] = Definition("refuel", "Refuel", idleCapable: false, "car.fuelLiters", "car.fuelPerLapLiters", "session.timeRemaining"),
+            ["clock"] = Definition("clock", "Clock", idleCapable: true, "frame.timestamp"),
+            ["weather"] = Definition("weather", "Weather", idleCapable: true, "conditions.airTemperature", "conditions.trackTemperature", "conditions.raining"),
+            ["oil_temp"] = Definition("oil_temp", "Oil Temperature", idleCapable: true, "car.oilTemp"),
+            ["water_temp"] = Definition("water_temp", "Water Temperature", idleCapable: true, "car.waterTemp"),
+            ["migration"] = Definition("migration", "Brake Migration", idleCapable: false, "electronics.migration"),
+            ["arb"] = Definition("arb", "Anti-Roll Bars", idleCapable: false, "electronics.frontAntiRollBar", "electronics.rearAntiRollBar"),
+            ["penalty"] = Definition("penalty", "Penalties", idleCapable: false, "field.penalties"),
+            ["tyre_wear"] = Definition("tyre_wear", "Tyre Wear", idleCapable: true, "tires.fl", "tires.fr", "tires.rl", "tires.rr"),
+            ["sector_time"] = Definition("sector_time", "Sector Time", idleCapable: false, "lap.sectors", "lap.sectorBests"),
         };
 
     public static IReadOnlyCollection<DashWidgetDefinition> All => Definitions.Values.ToArray();

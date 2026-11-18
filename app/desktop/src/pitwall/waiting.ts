@@ -21,10 +21,10 @@ export const waiting = (link: LiveLink): Waiting | null => {
       }
       return waitingFor(link.phase === 'Interrupted' ? 'The link dropped: it picks up again on its own.' : 'Linked: the board shows once the driver is in a session.')
     case 'Off':
-      return waitingFor('Not linked: link from the Live link page.')
+      return waitingFor('Not linked: link from the Race engineer page.')
     case 'Failed':
     case 'Ended':
-      return waitingFor('The link ended: link again from the Live link page.')
+      return waitingFor('The link ended: link again from the Race engineer page.')
     case 'Preparing':
     case 'Inviting':
     case 'Joining':

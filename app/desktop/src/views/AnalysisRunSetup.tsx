@@ -1,9 +1,9 @@
-import { useRef, useState } from 'react'
+import { useRef, useState, type ReactNode } from 'react'
 import { Check, ChevronDown, Plus, SlidersHorizontal, X } from 'lucide-react'
 import { Popover } from '../shell/Menu'
 import type { CorpusRun, RunSetup } from './AnalysisDomain'
-import { carAtTrack, searchSetups, shortDate } from './SetupsDomain'
-import type { SetupItem } from './SetupsDomain'
+import { CarAtTrack, MakerLogo } from './CarBadges'
+import { searchSetups, shortDate } from './SetupsDomain'
 import { moveInSearchList } from './searchListKeys'
 import { useSetupLibrary } from './useSetups'
 import './SetupsView.css'
@@ -115,7 +115,13 @@ function RunSetupMenu({
         {showBefore && (
           <>
             <span className="analysis-run-menu-section">Same as before</span>
-            <SetupOption name={before.name} detail="The run before" picked={false} onPick={() => onPick(before.setupId)} />
+            <SetupOption
+              name={before.name}
+              make={library.kind === 'ready' ? (library.setups.find((setup) => setup.id === before.setupId)?.make ?? null) : null}
+              detail="The run before"
+              picked={false}
+              onPick={() => onPick(before.setupId)}
+            />
             <span className="analysis-run-menu-section">All setups</span>
           </>
         )}
@@ -124,7 +130,12 @@ function RunSetupMenu({
           <SetupOption
             key={setup.id}
             name={setup.name}
-            detail={setupDetail(setup)}
+            make={setup.make}
+            detail={
+              <>
+                <CarAtTrack car={setup.car} track={setup.trackName} country={setup.country} /> · saved {shortDate(setup.savedAt)}
+              </>
+            }
             picked={setup.id === current?.setupId}
             onPick={() => (setup.id === current?.setupId ? onClose() : onPick(setup.id))}
           />
@@ -142,10 +153,12 @@ function RunSetupMenu({
   )
 }
 
-function SetupOption({ name, detail, picked, onPick }: { name: string; detail: string; picked: boolean; onPick: () => void }) {
+/** One setup to pick: its maker's badge, its name, and a line under it (the car at the track and when it was saved). */
+function SetupOption({ name, make, detail, picked, onPick }: { name: string; make: string | null; detail: ReactNode; picked: boolean; onPick: () => void }) {
   return (
     <button type="button" role="option" aria-selected={picked} className="menu-item setups-picker-item" onClick={onPick}>
       <span className="setups-menu-check">{picked && <Check />}</span>
+      <MakerLogo make={make} small />
       <span className="setups-picker-text">
         <span>{name}</span>
         <span className="setups-dim">{detail}</span>
@@ -164,4 +177,3 @@ const placeBelowOrAbove = (box: DOMRect): MenuPlace => ({
   vertical: window.innerHeight - box.bottom >= MENU_HEIGHT || box.top < MENU_HEIGHT ? { top: box.bottom + 4 } : { bottom: window.innerHeight - box.top + 4 },
 })
 
-const setupDetail = (setup: SetupItem): string => `${carAtTrack(setup)} · saved ${shortDate(setup.savedAt)}`

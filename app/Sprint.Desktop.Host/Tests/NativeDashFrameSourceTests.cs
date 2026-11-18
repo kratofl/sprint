@@ -104,14 +104,14 @@ public sealed class NativeDashFrameSourceTests
     }
 
     [Fact]
-    public void ADialTurnIsDrawnOnTheNextFrameWithoutAGameAndGoesAfterTheAlertDuration()
+    public void ADialTurnIsDrawnOnTheNextFrameWithoutAGameInTheDialAlertsLookAndGoesAfterItsDuration()
     {
         MultiDialStatus status = MultiDialStatus.Unknown.MoveTo(0);
         DashSceneFeed scenes = new(() => true, () => null, () => status);
-        DashLayout layout = TestDash.Layout("dash");
-        layout.AlertConfig = new DashAlertConfig { DurationSeconds = 0.2 };
-        scenes.Publish(Content(layout));
-        scenes.PublishDial(new DashMultiDial("MULTI", [new MultiDialLabel("DASH", "#1F7FE6"), new MultiDialLabel("TC2", "#E0A30C")], InvertPopup: true));
+        // The app-wide dial_change alert, stamped on as the host does: full, inverted, the shortest duration.
+        AppDashAlerts alerts = AppDashAlerts.Default.With(new DashAlertSettings("dial_change", true, DashAlertSize.Full, true, 1, false));
+        scenes.Publish(Content(alerts.Stamp(TestDash.Layout("dash"))));
+        scenes.PublishDial(new DashMultiDial("MULTI", [new MultiDialLabel("DASH", "#1F7FE6"), new MultiDialLabel("TC2", "#E0A30C")]));
         using NativeDashFrameSource source = new(Config(80, 48), scenes, Json);
         // One frame object throughout, as when no game is running: only the dial moves.
         TelemetryFrame frame = new();
@@ -130,9 +130,37 @@ public sealed class NativeDashFrameSourceTests
         Assert.InRange(corner[1], 0xA3 - 4, 0xA3 + 4);
         Assert.InRange(corner[0], 0x0C - 8, 0x0C + 8);
 
-        // The same dial again is no turn; once the layout's 0.2 s are up the dash is back.
-        Thread.Sleep(TimeSpan.FromMilliseconds(250));
+        // The same dial again is no turn; once the alert's second is up the dash is back.
+        Thread.Sleep(TimeSpan.FromMilliseconds(1100));
         Assert.Equal(before, Draw(source, frame));
+        Assert.Equal(before, Draw(source, frame));
+        Assert.Equal(3, source.RenderCount);
+    }
+
+    [Fact]
+    public void AnAckTakesThePopupDownOnTheNextFrameAndIsNotActedOnTwice()
+    {
+        MultiDialStatus status = MultiDialStatus.Unknown.MoveTo(0);
+        Acknowledgements acknowledgements = new();
+        // A press before the screen started is not one for it.
+        acknowledgements.Acknowledge();
+        DashSceneFeed scenes = new(() => true, () => null, () => status, acknowledgements: acknowledgements);
+        AppDashAlerts alerts = AppDashAlerts.Default.With(new DashAlertSettings("dial_change", true, DashAlertSize.Full, true, 30, false));
+        scenes.Publish(Content(alerts.Stamp(TestDash.Layout("dash"))));
+        scenes.PublishDial(new DashMultiDial("MULTI", [new MultiDialLabel("DASH", "#1F7FE6"), new MultiDialLabel("TC2", "#E0A30C")]));
+        using NativeDashFrameSource source = new(Config(80, 48), scenes, Json);
+        TelemetryFrame frame = new();
+
+        byte[] before = Draw(source, frame);
+        status = status.MoveTo(1);
+        Assert.NotEqual(before, Draw(source, frame));
+        Assert.Equal(2, source.RenderCount);
+
+        acknowledgements.Acknowledge();
+        Assert.Equal(before, Draw(source, frame));
+        Assert.Equal(3, source.RenderCount);
+
+        // Nothing new: the picture stays, and is not drawn again for the same press.
         Assert.Equal(before, Draw(source, frame));
         Assert.Equal(3, source.RenderCount);
     }

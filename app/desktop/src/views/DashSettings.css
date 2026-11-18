@@ -1,0 +1,144 @@
+/* Dashes > Settings (DashSettings.tsx): the alert lists on the left, the picked alert's preview
+   and look on the right, which stays in view while the lists scroll. Built on SettingsLayout's
+   grouped lists (SettingsView.css), .list-row, .card and .slider from styles.css. Tokens only. */
+
+.dash-settings {
+  display: flex;
+  flex-direction: column;
+  container-type: inline-size;
+}
+
+.dash-settings-head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 20px;
+}
+
+.dash-settings-title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 24px;
+}
+
+.dash-settings-infobar {
+  margin-bottom: 16px;
+}
+
+.dash-settings-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+  align-items: start;
+  gap: 32px;
+}
+
+.dash-settings-lists,
+.dash-settings-side {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-width: 0;
+}
+
+.dash-settings-side {
+  position: sticky;
+  top: 0;
+  gap: 12px;
+}
+
+/* Too narrow for two columns: the preview first, then the lists. */
+@container (max-width: 720px) {
+  .dash-settings-split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .dash-settings-side {
+    position: static;
+    order: -1;
+  }
+}
+
+.dash-settings-none {
+  margin: 0;
+}
+
+/* The clear button's place stays when there is nothing to clear, so rows line up. */
+.dash-settings-clear {
+  display: inline-flex;
+  width: 28px;
+  justify-content: center;
+}
+
+/* ── An alert row: pick it (the main button), then its controls ──────────── */
+
+.dash-settings-pick {
+  gap: 12px;
+  min-height: 48px;
+  padding: 0 10px 0 0;
+}
+
+.dash-settings-pick + .dash-settings-pick::before {
+  position: absolute;
+  top: -1px;
+  right: 10px;
+  left: 10px;
+  border-top: 1px solid var(--divider);
+  content: '';
+}
+
+.dash-settings-pick.selected::before,
+.dash-settings-pick.selected + .dash-settings-pick::before {
+  border-top-color: transparent;
+}
+
+.dash-settings-pick-main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: flex-start;
+  align-self: stretch;
+  justify-content: center;
+  min-width: 0;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+
+/* ── Preview ──────────────────────────────────────────────────────────────── */
+
+.dash-settings-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* The dash keeps its own colours: it is hardware output, not app UI. */
+.dash-settings-stage {
+  display: flex;
+  justify-content: center;
+  padding: 16px;
+  border-radius: var(--radius-control);
+  background: var(--layer);
+}
+
+.dash-settings-stage-empty {
+  margin: 48px 0;
+}
+
+.dash-settings-preview-foot {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.dash-settings-preview-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}

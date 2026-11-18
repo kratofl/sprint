@@ -1,10 +1,11 @@
 import { useRef, useState } from 'react'
 import { ChevronLeft, ChevronRight, Crosshair, FileDown, MoreHorizontal, Warehouse } from 'lucide-react'
-import { carLine, dayLabel, formatGap, formatLapSeconds, fuelText, lapTimeStats, lapsByRun, runLine, runTitle, tyreText } from './AnalysisDomain'
+import { dayLabel, formatGap, formatLapSeconds, fuelText, lapTimeStats, lapsByRun, runLine, runTitle, tyreText } from './AnalysisDomain'
 import type { CorpusLap, CorpusRun, CorpusSession } from './AnalysisDomain'
 import { lapTimesPlot, tickLabel } from './AnalysisPlot'
 import type { PlotDot } from './AnalysisPlot'
 import { RunSetupButton } from './AnalysisRunSetup'
+import { CarName, TrackName } from './CarBadges'
 import { MenuLayer, type MenuAnchor } from '../shell/Menu'
 
 /**
@@ -15,9 +16,7 @@ import { MenuLayer, type MenuAnchor } from '../shell/Menu'
 
 /** "‹ All sessions", the session's kind and time, then its car (name and model), track and day. */
 export function SessionHead({ session, onBack }: { session: CorpusSession; onBack: () => void }) {
-  const context = [carLine(session.context), session.context.trackCourse, dayLabel(session.day ?? session.startedAt)]
-    .filter((part): part is string => part !== null && part.length > 0)
-    .join(' · ')
+  const marks = session.marks
   return (
     <div className="analysis-session-head">
       <button type="button" className="button subtle analysis-back" onClick={onBack}>
@@ -27,7 +26,21 @@ export function SessionHead({ session, onBack }: { session: CorpusSession; onBac
         <h2 className="analysis-session-name">{session.label}</h2>
         {session.origin !== 'Recorded' && <span className="chip chip-muted">{session.origin}</span>}
       </div>
-      <span className="analysis-secondary">{context}</span>
+      <span className="analysis-secondary">
+        {marks.car && (
+          <>
+            <CarName marks={marks} />
+            {' · '}
+          </>
+        )}
+        {session.context.trackCourse && (
+          <>
+            <TrackName track={session.context.trackCourse} country={marks.country} />
+            {' · '}
+          </>
+        )}
+        {dayLabel(session.day ?? session.startedAt)}
+      </span>
     </div>
   )
 }

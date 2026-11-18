@@ -12,6 +12,7 @@ import type { RaceFuelEstimate } from '../bridge'
 import { damageRows, liveDelta, pressureRange, tyreHeat, worstZone } from './carDomain'
 import { feedLine, flagState, outCell, stoppedCars, stoppedSummary } from './raceControl'
 import { rejoin, trafficText } from './pitStop'
+import { openable, ownWindows, stepTarget, targetText } from './radio'
 
 /** The planner's race fuel for a 172-lap race, +1 lap reserve: 25 laps a tank at 3.5 L, so six full stints and 23 laps. */
 const spaFuel: RaceFuelEstimate = {
@@ -334,8 +335,8 @@ test('with no board the wall says why once, by the link phase', () => {
     phase: 'Connected', role, reachability: 'Open', health, session: null, latest: null, peer, sharingPlan: true, sharedPlan: null,
     pitWall: withBoard ? parsePitWall({ session: {}, field: [], car: {}, plan: null }) : null,
   })
-  assert.equal(waiting({ phase: 'Off' })?.reason, 'Not linked: link from the Live link page.')
-  assert.equal(waiting({ phase: 'Ended', role: 'Engineer', detail: 'The driver ended the link.' })?.reason, 'The link ended: link again from the Live link page.')
+  assert.equal(waiting({ phase: 'Off' })?.reason, 'Not linked: link from the Race engineer page.')
+  assert.equal(waiting({ phase: 'Ended', role: 'Engineer', detail: 'The driver ended the link.' })?.reason, 'The link ended: link again from the Race engineer page.')
   assert.equal(waiting(linked('Engineer', false))?.reason, 'Linked: the board shows once the driver is in a session.')
   assert.equal(waiting(linked('Engineer', true)), null)
   assert.match(waiting(linked('Driver', false))?.reason ?? '', /engineer’s PC/)
@@ -360,4 +361,22 @@ test('a board from an older or newer driver’s desktop reads with no flags and 
   assert.deepEqual([wall.field[0].finishStatus, wall.field[0].penalties, wall.field[0].stopped], ['None', 0, false])
   assert.deepEqual(wall.raceControl.map((entry) => entry.kind), ['Penalty'])
   assert.equal(wall.pitLoss.lane, null)
+})
+
+test('the target lap steps a tenth at a time inside what the host takes, and reads as the wheel shows it', () => {
+  assert.equal(stepTarget(124.9, -1), 124.8)
+  assert.equal(stepTarget(124.45, 1), 124.6)
+  assert.equal(stepTarget(20, -1), 20)
+  assert.equal(targetText(124.5), 'Target lap 2:04.5')
+})
+
+test('Windows lists what is out, pages first, and offers the rest', () => {
+  const layout = layoutOf(
+    { ...page('race', [tile('t', 0, 0, 4, 4), { ...tile('r', 4, 0, 4, 4, ['radio']), detached: true }]) },
+    { ...page('car', [tile('c', 0, 0, 4, 4, ['tyres'])]), detached: true },
+  )
+  assert.deepEqual(ownWindows(layout).map((window) => window.name), ['car', 'Radio · race'])
+  const offer = openable(layout)
+  assert.deepEqual(offer.pages.map((target) => target.id), ['race'])
+  assert.deepEqual(offer.tiles.map((target) => target.name), ['Timing · race', 'Tyres · car'])
 })

@@ -1,3 +1,4 @@
+import { classTone } from '../carMarks'
 import type { FieldEntry, PitWall } from './pitWallData'
 
 // The field, worked out for the timing, relative and track tiles: places gained, sector colours,
@@ -68,8 +69,19 @@ export function classesOf(field: readonly FieldEntry[]): string[] {
   return [...new Set(ordered.map((car) => car.carClass))]
 }
 
-/** 0 for the first class on the board, 1 the second, 2 any after: the class bar's and dot's shade. */
-export const classShade = (field: readonly FieldEntry[], carClass: string): number => Math.min(2, Math.max(0, classesOf(field).indexOf(carClass)))
+/** How a class is named on the wall: its tag ("HYP"), from the first of its cars; the game's class when none says. */
+export const classLabel = (field: readonly FieldEntry[], carClass: string): string =>
+  field.find((car) => car.carClass === carClass)?.classTag || carClass
+
+/**
+ * The class bar's and dot's colour classes: the class's own colour (views/CarBadges.css), and under
+ * it a shade by the class's place on the board (c0 the first, c1 the second, c2 any after) for a
+ * class without a colour.
+ */
+export function classMark(field: readonly FieldEntry[], carClass: string): string {
+  const shade = Math.min(2, Math.max(0, classesOf(field).indexOf(carClass)))
+  return `c${shade} ${classTone(classLabel(field, carClass))}`
+}
 
 const EPSILON = 0.0005
 
@@ -184,6 +196,10 @@ export function relativeRows(field: readonly FieldEntry[], each = 3): RelativeRo
  * furthest car still in a sector and the nearest car already in the next. Null until every
  * sector has a car in it.
  */
+/** Whether a car on track is in a sector under a local yellow (1–3 index `yellowSectors`). */
+export const inYellow = (car: FieldEntry, yellowSectors: readonly [boolean, boolean, boolean]): boolean =>
+  !car.inPit && !isOut(car) && car.sector >= 1 && car.sector <= 3 && yellowSectors[car.sector - 1]
+
 export function sectorStarts(field: readonly FieldEntry[]): readonly [number, number] | null {
   const inSector = (sector: number) => field.filter((car) => car.sector === sector && !car.inPit).map((car) => car.lapFraction)
   const [one, two, three] = [inSector(1), inSector(2), inSector(3)]

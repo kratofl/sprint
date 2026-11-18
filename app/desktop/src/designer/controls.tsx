@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { Minus, Plus } from 'lucide-react'
-import { MAX_ALERT_SECONDS, MIN_ALERT_SECONDS } from '@sprint/dashboard'
+import type { DashBorder, DashLabelMode } from '@sprint/dashboard'
 import type { GridRect } from '../views/DashesDomain'
 
 /** Small form controls the designer's panels share. */
@@ -64,25 +64,31 @@ function GeometryStepper({ label, value, min = 0, offset = 0, onChange }: { labe
   )
 }
 
-/**
- * An alert's duration, 0.5 s up to `max` (5 s, or 15 s for the lap summary: `maxAlertSeconds`) in
- * `step` seconds (`setAlertOverride`'s clamp/round). Steps in tenths so +/- never drifts on
- * floating-point seconds.
- */
-export function DurationBox({ seconds, max = MAX_ALERT_SECONDS, step = 0.1, onChange }: { seconds: number; max?: number; step?: number; onChange: (seconds: number) => void }) {
-  const tenths = Math.round(seconds * 10)
-  const [minTenths, maxTenths, stepTenths] = [Math.round(MIN_ALERT_SECONDS * 10), Math.round(max * 10), Math.round(step * 10)]
+/** One choice of a few, as a segmented control; picking the current one does nothing. `full` spreads it across its panel. */
+export function Segmented<T extends string>({ label, value, options, full = false, onChange }: { label: string; value: T; options: ReadonlyArray<{ value: T; label: string }>; full?: boolean; onChange: (value: T) => void }) {
   return (
-    <NumberBox
-      label="Duration"
-      display={`${(tenths / 10).toFixed(1)} s`}
-      canDecrease={tenths > minTenths}
-      canIncrease={tenths < maxTenths}
-      onDecrease={() => onChange(Math.max(minTenths, tenths - stepTenths) / 10)}
-      onIncrease={() => onChange(Math.min(maxTenths, tenths + stepTenths) / 10)}
-    />
+    <div className={full ? 'segmented designer-segmented-full' : 'segmented'} role="radiogroup" aria-label={label}>
+      {options.map((option) => (
+        <button key={option.value} type="button" role="radio" className="segmented-item" aria-checked={option.value === value} onClick={() => option.value !== value && onChange(option.value)}>
+          {option.label}
+        </button>
+      ))}
+    </div>
   )
 }
+
+/** The flat style's edges and labels, as the frame controls offer them. */
+export const BORDER_OPTIONS: ReadonlyArray<{ value: DashBorder; label: string }> = [
+  { value: 'none', label: 'None' },
+  { value: 'thin', label: 'Thin' },
+  { value: 'normal', label: 'Normal' },
+  { value: 'thick', label: 'Thick' },
+]
+export const LABEL_OPTIONS: ReadonlyArray<{ value: DashLabelMode; label: string }> = [
+  { value: 'off', label: 'Off' },
+  { value: 'on', label: 'Small' },
+  { value: 'capsule', label: 'Capsule' },
+]
 
 /** A free-text value committed on blur or Enter. */
 export function TextConfigField({ label, value, onCommit }: { label: string; value: string; onCommit: (value: string) => void }) {

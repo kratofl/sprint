@@ -49,7 +49,19 @@ public sealed class LiveUplinkTests
     [InlineData(10, 10)]
     public void AtMostTwentySamplesASecondAreTaken(int gameHz, int expected)
     {
-        LiveSampleGate gate = new();
+        LiveSampleGate gate = new(LiveSampleGate.Uplink);
+
+        int taken = Enumerable.Range(0, gameHz).Count(index => gate.Admit(T0.AddMilliseconds(index * 1000.0 / gameHz)));
+
+        Assert.Equal(expected, taken);
+    }
+
+    [Theory]
+    [InlineData(60, 33)]
+    [InlineData(30, 30)]
+    public void TheLiveLinkTakesEveryFrameOfTheThirtyHertzLoop(int gameHz, int expected)
+    {
+        LiveSampleGate gate = new(LiveSampleGate.Link);
 
         int taken = Enumerable.Range(0, gameHz).Count(index => gate.Admit(T0.AddMilliseconds(index * 1000.0 / gameHz)));
 

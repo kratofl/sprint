@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { ChevronRight, Cpu, LayoutGrid, List, Plus } from 'lucide-react'
-import type { MultiDial, SprintCommand, SprintState } from '../bridge'
+import { dashAlertDefaults, type DashAlertSettings } from '@sprint/dashboard'
+import type { ButtonState, DashMode, MultiDial, SprintCommand, SprintState } from '../bridge'
 import type { RuntimeState } from '../shell/runtime'
 import { CommandDivider, PageHeader } from '../shell/PageHeader'
 import { usePageUp } from '../shell/pageUp'
@@ -37,6 +38,11 @@ type LoadedState = {
   screens: ScreenOutput[]
   viewMode: DevicesViewMode
   dials: MultiDial[]
+  /** The driver's own dash modes, which a dial position can switch on. */
+  dashModes: DashMode[]
+  buttons: ButtonState
+  /** The app-wide `dial_change` alert: how a multi-dial's popup looks. */
+  dialPopup: DashAlertSettings
 }
 
 const toLoadedState = (sprint: SprintState): LoadedState => {
@@ -49,6 +55,9 @@ const toLoadedState = (sprint: SprintState): LoadedState => {
     screens: parseScreens(sprint.screens),
     viewMode: parseDevicesViewMode(sprint.settings),
     dials: sprint.multiDials,
+    dashModes: sprint.dashModes,
+    buttons: sprint.buttons,
+    dialPopup: sprint.dashAlerts.find((alert) => alert.type === 'dial_change') ?? dashAlertDefaults.find((alert) => alert.type === 'dial_change') ?? dashAlertDefaults[0],
   }
 }
 
@@ -125,6 +134,10 @@ export function DevicesView({
         dashOptions={state.dashOptions}
         screen={findScreen(state.screens, selected.id)}
         dial={state.dials.find((dial) => dial.deviceId === selected.id) ?? null}
+        dashModes={state.dashModes}
+        dialPopup={state.dialPopup}
+        buttons={state.buttons.functions[selected.id] ?? []}
+        listening={state.buttons.listening?.deviceId === selected.id ? state.buttons.listening.command : null}
         send={send}
         onBack={() => setSelectedId(null)}
       />

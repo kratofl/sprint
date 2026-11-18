@@ -2,12 +2,15 @@ import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { Eye, EyeOff, Trash2, X } from 'lucide-react'
 import { resolveDashPalette, resolveStyleColor } from '@sprint/dashboard'
 import type { DashLayout, DashWidget } from '@sprint/dashboard'
-import { WIDGET_STYLE_COLOR_TOKENS, setWidgetConfig, setWidgetStyle, widgetDefinition, widgetDisplayName } from '../views/DashesDomain'
-import { GeometryFields, TextConfigField } from './controls'
+import { WIDGET_STYLE_COLOR_TOKENS, setWidgetConfig, setWidgetStyle, widgetDefinition, widgetName } from '../views/DashesDomain'
+import { BORDER_OPTIONS, GeometryFields, LABEL_OPTIONS, Segmented, TextConfigField } from './controls'
 import { deleteNodes, setHidden, setNodeRect } from './groupOps'
 import type { Mutate } from './useDesignerDoc'
 
 type Apply = (mutate: Mutate, group?: string) => boolean
+
+/** The frame controls' first choice: what the dash sets (Theme > Frames). */
+const DASH_DEFAULT = { value: 'dash', label: 'Dash' } as const
 
 /**
  * The floating inspector beside the dash for the selected widget: its position and size, its
@@ -32,9 +35,9 @@ export function WidgetInspector({
   const palette = resolveDashPalette(layout.theme, layout.colorSystem)
 
   return (
-    <aside className="designer-glass designer-inspector" aria-label={`${widgetDisplayName(widget.type)} properties`}>
+    <aside className="designer-glass designer-inspector" aria-label={`${widgetName(widget)} properties`}>
       <div className="designer-panel-head">
-        <h2 className="designer-panel-title">{widgetDisplayName(widget.type)}</h2>
+        <h2 className="designer-panel-title">{widgetName(widget)}</h2>
         <button type="button" className="icon-button" aria-label="Deselect widget" title="Deselect (Esc)" onClick={onDeselect}>
           <X size={14} />
         </button>
@@ -67,6 +70,20 @@ export function WidgetInspector({
             }
             return <TextConfigField key={field.key} label={field.label} value={value} onCommit={(next) => apply((current) => (next === value ? null : setWidgetConfig(current, pageId, widget.id, field.key, next)))} />
           })}
+        </div>
+      )}
+
+      {layout.dashStyle === 'flat' && (
+        <div className="designer-group">
+          <h3 className="designer-group-title">Frame</h3>
+          <div className="field">
+            <span>Edge</span>
+            <Segmented full label="Edge" value={widget.style?.border ?? 'dash'} options={[DASH_DEFAULT, ...BORDER_OPTIONS]} onChange={(border) => apply((current) => setWidgetStyle(current, pageId, widget.id, { border: border === 'dash' ? undefined : border }))} />
+          </div>
+          <div className="field">
+            <span>Label</span>
+            <Segmented full label="Label" value={widget.style?.label ?? 'dash'} options={[DASH_DEFAULT, ...LABEL_OPTIONS]} onChange={(label) => apply((current) => setWidgetStyle(current, pageId, widget.id, { label: label === 'dash' ? undefined : label }))} />
+          </div>
         </div>
       )}
 

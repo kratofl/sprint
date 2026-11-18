@@ -11,6 +11,9 @@ import {
   moveNode,
   setGroupMode,
   setNodeRect,
+  hiddenWidgets,
+  stackOnto,
+  takeOutOfGroup,
   translateNodes,
   ungroup,
 } from './groupOps'
@@ -109,4 +112,45 @@ test('the designer arranges the layer holding the selection, else the picked one
   const shown = arrangedLayers(tree, ['right'], new Map([['right', 'tyres']]))
   assert.deepEqual(addTarget(tree, ['right'], shown), { group: 'tyres', within: { col: 10, row: 4, colSpan: 2, rowSpan: 2 } })
   assert.deepEqual(addTarget(tree, [], shown), { group: null })
+})
+
+test('a stack around the selection', () => {
+  const stacked = groupNodes(dash, 'p', ['delta'], 'oneAtATime')
+  assert.equal(groupOf(stacked?.layout, stacked?.groupId ?? '')?.mode, 'oneAtATime')
+})
+
+test('taking a widget out of its group puts it just after the group; a layer of a stack stays', () => {
+  const out = takeOutOfGroup(dash, 'p', 'abs')
+  assert.deepEqual(pageTree(pageOf(out)).map((node) => node.id), ['top', 'abs', 'delta', 'right'])
+  assert.equal(pageOf(out).widgets.find((item) => item.id === 'abs')?.group, undefined)
+  assert.equal(takeOutOfGroup(dash, 'p', 'delta'), null, 'in no group')
+  assert.equal(takeOutOfGroup(dash, 'p', 'tyres'), null, 'it would overlap the layer the stack shows')
+})
+
+test('hidden widgets are those hidden themselves or in a hidden group, never a stack layer it does not show', () => {
+  const hiddenPage: DashPage = {
+    ...page,
+    widgets: page.widgets.map((item) => (item.id === 'delta' ? { ...item, hidden: true } : item)),
+    groups: groups.map((item) => (item.id === 'top' ? { ...item, hidden: true } : item)),
+  }
+  assert.deepEqual(hiddenWidgets(pageTree(hiddenPage)).map((item) => item.id).sort(), ['abs', 'delta', 'tc'])
+  const hiddenLayer: DashPage = { ...page, groups: groups.map((item) => (item.id === 'tyres' ? { ...item, hidden: true } : item)) }
+  assert.deepEqual(hiddenWidgets(pageTree(hiddenLayer)), [], 'Tyres is not the layer the stack shows')
+})
+
+test('a widget dropped onto another on the canvas stacks with it in its cell', () => {
+  const stacked = stackOnto(dash, 'p', 'delta', 'tc')
+  assert.ok(stacked)
+  const stack = groupOf(stacked.layout, stacked.stackId)
+  assert.equal(stack?.mode, 'oneAtATime')
+  assert.equal(stack?.parent, 'top', 'where TC was')
+  const moved = pageOf(stacked.layout).widgets.find((item) => item.id === 'delta')
+  assert.deepEqual([moved?.col, moved?.row, moved?.group], [0, 0, stacked.stackId])
+
+  // Onto a widget that is itself a layer: it joins that stack as another layer.
+  const layered = stackOnto(dash, 'p', 'tc', 'delta')
+  assert.ok(layered)
+  const joined = stackOnto(layered.layout, 'p', 'abs', 'tc')
+  assert.equal(joined?.stackId, layered.stackId)
+  assert.equal(pageOf(joined?.layout).widgets.filter((item) => item.group === layered.stackId).length, 3)
 })

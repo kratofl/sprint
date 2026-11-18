@@ -1,5 +1,6 @@
-import type { SprintCommand } from '../bridge'
+import type { PlanContextChoices, SprintCommand } from '../bridge'
 import type { DashLayout } from '@sprint/dashboard'
+import { gameName } from './AnalysisBrowseDomain'
 import { parseDashLayout } from './DashesDomain'
 
 /**
@@ -72,6 +73,16 @@ export const resolvePurpose = (id: string): DevicePurpose =>
 
 export type CaptureRegion = { x: number; y: number; width: number; height: number }
 
+export type DeviceBinding = { input: string; command: string }
+
+export type DashRuleKind = 'game' | 'class' | 'car'
+
+/**
+ * Another dash for a game, a class or one car (host: `DeviceDashRule`). The most specific one
+ * that matches the car the driver is in wins (host: `DeviceDashRules.Pick`), else the device's own.
+ */
+export type DeviceDashRule = { kind: DashRuleKind; value: string; dashId: string }
+
 export type Device = {
   id: string
   name: string
@@ -87,12 +98,15 @@ export type Device = {
   offsetX: number
   offsetY: number
   margin: number
+  /** The dash for every car, unless one of `dashRules` applies. */
   dashId: string
+  dashRules: DeviceDashRule[]
   purpose: DevicePurposeId
   refreshHz: number
   disabled: boolean
   captureRegion: CaptureRegion | null
-  bindingCount: number
+  /** What its buttons run: `input` is the host's token (`button:5`, `encoder:2+`), `command` a button function id. */
+  bindings: DeviceBinding[]
   /** Browser displays only: the page's background is transparent instead of black. */
   transparent: boolean
 }
@@ -218,6 +232,7 @@ export const parseDevice = (row: Record<string, unknown>): Device | null => {
 
   const purposeId = str(row, 'purpose', 'dash')
   const bindings = row.bindings
+  const rules = row.dashRules
   return {
     id,
     name: str(row, 'name', id),
@@ -233,14 +248,26 @@ export const parseDevice = (row: Record<string, unknown>): Device | null => {
     offsetY: num(row, 'offsetY'),
     margin: num(row, 'margin'),
     dashId: str(row, 'dashId'),
+    dashRules: Array.isArray(rules) ? rules.flatMap(parseDashRule) : [],
     purpose: isDevicePurposeId(purposeId) ? purposeId : 'dash',
     refreshHz: num(row, 'refreshHz', 30),
     disabled: bool(row, 'disabled'),
     captureRegion: parseCaptureRegion(row.captureRegion),
-    bindingCount: Array.isArray(bindings) ? bindings.length : 0,
+    bindings: Array.isArray(bindings)
+      ? bindings.flatMap((binding: unknown): DeviceBinding[] =>
+          isRecord(binding) && typeof binding.input === 'string' && typeof binding.command === 'string' ? [{ input: binding.input, command: binding.command }] : [],
+        )
+      : [],
     transparent: bool(row, 'transparent'),
   }
 }
+
+const isDashRuleKind = (value: unknown): value is DashRuleKind => value === 'game' || value === 'class' || value === 'car'
+
+const parseDashRule = (value: unknown): DeviceDashRule[] =>
+  isRecord(value) && isDashRuleKind(value.kind) && typeof value.value === 'string' && typeof value.dashId === 'string'
+    ? [{ kind: value.kind, value: value.value, dashId: value.dashId }]
+    : []
 
 export const parseDevices = (rows: ReadonlyArray<Record<string, unknown>>): Device[] =>
   rows.map(parseDevice).filter((device): device is Device => device !== null)
@@ -296,6 +323,40 @@ export const buildDeviceUpdate = (device: Device, overrides: Partial<DeviceUpdat
   margin: overrides.margin ?? device.margin,
   dashId: overrides.dashId ?? device.dashId,
 })
+
+/** Replaces a device's dash rules (`devices.dashRules`). */
+export const buildDashRules = (device: Device, rules: readonly DeviceDashRule[]): SprintCommand => ({
+  type: 'devices.dashRules',
+  deviceId: device.id,
+  rules: rules.map(({ kind, value, dashId }) => ({ kind, value, dashId })),
+})
+
+// ── Dash rules ──────────────────────────────────────────────────────────────
+
+/** The classes as the host spells them in a car's name (host: `CarNames.ClassOf`). */
+export const DASH_RULE_CLASSES: readonly string[] = ['Hypercar', 'LMP2', 'LMP3', 'LMGT3', 'LMGTE']
+
+/** What a rule is for, as its row names it: "Le Mans Ultimate", "Hypercar", "Hypercar BMW". */
+export const dashRuleName = (rule: Pick<DeviceDashRule, 'kind' | 'value'>): string => (rule.kind === 'game' ? gameName(rule.value) : rule.value)
+
+export const DASH_RULE_KINDS: Record<DashRuleKind, string> = { game: 'Game', class: 'Class', car: 'Car' }
+
+export type DashRuleChoice = { kind: DashRuleKind; value: string }
+
+/**
+ * What "Add a game, class or car" offers, in that order: the games and cars Sprint has recorded
+ * (the car the driver is in first) and every class, less what already has a rule.
+ */
+export function dashRuleChoices(context: Pick<PlanContextChoices, 'prefill' | 'games' | 'cars'>, existing: readonly DeviceDashRule[]): DashRuleChoice[] {
+  const taken = new Set(existing.map((rule) => `${rule.kind}:${rule.value.toLowerCase()}`))
+  const unique = (values: readonly string[]): string[] => [...new Map(values.filter((value) => value.trim() !== '').map((value) => [value.toLowerCase(), value])).values()]
+  const cars = unique([context.prefill.car, ...[...context.cars].sort((a, b) => a.localeCompare(b))])
+  return [
+    ...unique([context.prefill.game, ...context.games]).map((value): DashRuleChoice => ({ kind: 'game', value })),
+    ...DASH_RULE_CLASSES.map((value): DashRuleChoice => ({ kind: 'class', value })),
+    ...cars.map((value): DashRuleChoice => ({ kind: 'car', value })),
+  ].filter((choice) => !taken.has(`${choice.kind}:${choice.value.toLowerCase()}`))
+}
 
 // Offsets are signed: negative moves the image left or up (Rgb565Composer).
 export const OFFSET_MIN = -2000

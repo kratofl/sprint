@@ -85,6 +85,27 @@ internal sealed class DashRenderer : IDisposable
     }
 
     /// <summary>
+    /// Sets the engineer's message on the wheel (renderer/src/alerts.rs, <c>DashRadioBanner</c>; empty:
+    /// none). It stays over the dash until set again. Throws with the renderer's own message when it
+    /// cannot be read.
+    /// </summary>
+    public void SetRadio(ReadOnlySpan<byte> radioJson)
+    {
+        int code = DashRendererNative.SetRadio(
+            this._handle,
+            ref MemoryMarshal.GetReference(radioJson),
+            (nuint)radioJson.Length);
+        this.ThrowOnFailure(code, "radio");
+    }
+
+    /// <summary>
+    /// The driver pressed Ack: takes the alert up now and the multi-dial popup down at once, not the
+    /// engineer's message. Render again to show it gone: an alert held until Ack does not make the
+    /// picture depend on time, so nothing else would redraw it.
+    /// </summary>
+    public void Acknowledge() => this.ThrowOnFailure(DashRendererNative.Acknowledge(this._handle), "acknowledge");
+
+    /// <summary>
     /// Renders a live frame at <paramref name="nowMs"/> (any monotonic clock in milliseconds).
     /// Returns true when the picture depends on time (a banner or the dial popup is up, the lap
     /// timer holds a result): render again even if the frame did not change.
@@ -191,6 +212,12 @@ internal static class DashRendererNative
 
     [DllImport(Library, EntryPoint = "sd_set_multi_dial", CallingConvention = CallingConvention.Cdecl)]
     public static extern int SetMultiDial(DashRendererHandle renderer, ref byte json, nuint length);
+
+    [DllImport(Library, EntryPoint = "sd_set_radio", CallingConvention = CallingConvention.Cdecl)]
+    public static extern int SetRadio(DashRendererHandle renderer, ref byte json, nuint length);
+
+    [DllImport(Library, EntryPoint = "sd_acknowledge", CallingConvention = CallingConvention.Cdecl)]
+    public static extern int Acknowledge(DashRendererHandle renderer);
 
     [DllImport(Library, EntryPoint = "sd_render_live", CallingConvention = CallingConvention.Cdecl)]
     public static extern int RenderLive(DashRendererHandle renderer, ref byte json, nuint length, double nowMs);

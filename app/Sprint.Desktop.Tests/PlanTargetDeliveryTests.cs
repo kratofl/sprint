@@ -117,22 +117,45 @@ public sealed class PlanTargetDeliveryTests
     }
 
     [Fact]
-    public void A_plan_with_no_target_delivers_nothing_at_all()
+    public void Without_a_target_the_delta_runs_against_your_fastest_lap_here()
     {
         PlanTargetDelivery delivery = new PlanTargetDelivery(() => PlanWith(null), Corpus());
 
+        // Nothing until a resolve has seen what is being driven.
         Assert.True(delivery.Observe(RaceFrame(lap: 1)));
+        Assert.Null(delivery.Reference);
+
+        delivery.ResolveReferences();
+        delivery.Observe(RaceFrame(lap: 2));
 
         Assert.True(delivery.Targets.IsEmpty);
-        Assert.Null(delivery.Reference);
+        Assert.Equal(100, delivery.Reference!.LapTimeSeconds);
     }
 
     [Fact]
-    public void No_active_plan_delivers_nothing_at_all()
+    public void The_engineers_target_lap_replaces_the_plans_from_the_next_line()
+    {
+        double? engineer = null;
+        PlanTargetDelivery delivery = new PlanTargetDelivery(() => PlanWith(RaceTarget()), Corpus(), engineerTarget: () => engineer);
+        delivery.Observe(RaceFrame(lap: 1));
+        double? planned = delivery.Targets.LapTimeSeconds;
+
+        engineer = 124.5;
+        Assert.False(delivery.Observe(RaceFrame(lap: 1)));
+        Assert.Equal(planned, delivery.Targets.LapTimeSeconds);
+
+        delivery.Observe(RaceFrame(lap: 2));
+        Assert.Equal(124.5, delivery.Targets.LapTimeSeconds);
+    }
+
+    [Fact]
+    public void Your_fastest_lap_is_only_used_on_its_own_car_and_track()
     {
         PlanTargetDelivery delivery = new PlanTargetDelivery(() => null, Corpus());
+        delivery.Observe(RaceFrame(lap: 1, track: "Monza"));
+        delivery.ResolveReferences();
 
-        delivery.Observe(RaceFrame(lap: 1));
+        delivery.Observe(RaceFrame(lap: 2, track: "Monza"));
 
         Assert.True(delivery.Targets.IsEmpty);
         Assert.Null(delivery.Reference);

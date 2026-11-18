@@ -33,8 +33,12 @@ The server path ([live-telemetry.md](live-telemetry.md)) is separate and untouch
   computed from the counter gaps. Do not add reordering: a late sample is worth nothing.
 - **One sample per datagram, under 1200 bytes**, so nothing is fragmented (a lost fragment loses the
   whole sample). `PeerProtocolTests` holds the size down if `LiveSample` grows.
-- **The round trip leaves out Sprint's own waiting.** The worker steps every 50 ms. Datagrams are
-  stamped on arrival, and a pong carries how long its ping waited, so the page shows network time.
+- **The round trip leaves out Sprint's own waiting.** Datagrams are stamped on arrival, and a pong
+  carries how long its ping waited, so the page shows network time.
+- **Samples go out as they are taken, up to 33 a second.** The worker steps when a sample is taken
+  or a packet arrives, not only on its 50 ms timeout: a 20 Hz timer would bunch samples in pairs and
+  the engineer's 30 fps traces would stutter. The host's telemetry loop runs at 30 Hz, so that is
+  the real rate. The server uplink stays at 20 a second, which its ingest limit is sized for.
 - **There is no relay.** When neither side can be reached (both routers `Strict`, or UDP blocked),
   the link fails after 30 s by design. A relay is server work, which is the other path.
 - **Windows asks for firewall access** the first time the host opens the UDP socket. Denying it
@@ -73,3 +77,21 @@ twice a second, radar ten times a second, and the shared plan and its target lap
   only when it was seen from its pit entry, and a full course yellow and a safety car stay one phase
   because LMU reports them as one. The order of LMU's `mSectorFlag` is read like `mSector`
   (sector 3 first); its own header is unsure, so check it the first time a yellow is live.
+
+## The radio to the driver's wheel
+
+The one thing that goes the other way: the engineer's calls and target laps (`PeerRadio.cs`).
+
+- **A message is sent again until the driver's PC says how it ended** (`RadioOutbox`), every 500 ms,
+  and every copy is answered with where it stands: on the wheel, seen, or left unanswered. A lost
+  answer costs one resend, and an engineer who sent during an interruption gets it through when the
+  link is back, within two minutes.
+- **On the wheel it covers the dash** (renderer `DashRadioBanner`, set through `sd_set_radio`) for
+  15 s or until any wheel button is pressed. That press is taken for the message, not run as the
+  button's function; the game still gets it. Encoders do not count. Browser displays and the HUD do
+  not show it.
+- **A target lap is a number, not a lap.** It replaces the plan's `target.lapTime` from the next line
+  while the link lasts; the delta's reference curve stays the plan's lap or the driver's fastest.
+- **The driver's PC checks what arrives like the engineer's checks what is sent**: one line, at most
+  48 characters, a target between 20 s and an hour. The peer runs code we do not control.
+- Level 5 carries it; the pit wall's Radio tile says so when the driver's Sprint is older.

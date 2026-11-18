@@ -25,6 +25,7 @@ public sealed class RecentSessionsTests
         Assert.Equal(-0.2, recent.Comparison.GapSeconds!.Value, 9);
         Assert.Equal([-0.2, -0.1, 0.1], recent.Comparison.SectorGaps.Select(gap => Math.Round(gap!.Value, 3)));
         Assert.Equal(["monza", "older-spa"], recent.Earlier.Select(session => session.Id));
+        Assert.Equal(new CarMarks("Porsche 963", "HYP", "Porsche", "BE"), recent.Last.Marks);
     }
 
     [Fact]
@@ -46,7 +47,7 @@ public sealed class RecentSessionsTests
         Id = id,
         Kind = HistorySessionKind.Qualifying,
         StartedAt = DateTimeOffset.Parse(startedAt, System.Globalization.CultureInfo.InvariantCulture),
-        Context = new LapHistoryContext { Game = "LeMansUltimate", TrackCourse = track, CarModel = "Porsche 963" },
+        Context = new LapHistoryContext { Game = "LeMansUltimate", TrackCourse = track, CarModel = "Hypercar Porsche", CarClass = "Hyper", CarType = "Porsche 963" },
         Laps = [.. laps],
     };
 }

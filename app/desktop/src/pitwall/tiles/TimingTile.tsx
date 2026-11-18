@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Flag } from 'lucide-react'
 import type { FieldEntry } from '../pitWallData'
 import { outCell } from '../raceControl'
-import { carNumber, classShade, classesOf, compoundLetter, gapCell, isOut, lapClock, placesGained, sectorMarks, timingRows, timingSummary } from '../timing'
+import { carNumber, classLabel, classMark, classesOf, compoundLetter, gapCell, inYellow, isOut, lapClock, placesGained, sectorMarks, timingRows, timingSummary } from '../timing'
 import { TileFrame, type FrameProps, type TileData } from '../tileFrame'
 
 /** Places gained since the start: ▲2 green, ▼1 red, – none; blank outside a race. */
@@ -38,7 +38,8 @@ function PitCell({ entry }: { entry: FieldEntry }) {
 /**
  * The field: a summary strip (lap, position, time left, last, best, overall best), then every car
  * with places gained, gaps, last lap and its sectors (purple the class best, green its own best).
- * A car shown blue gets a blue edge and a flag by its name, penalties to serve a red count, and a
+ * A car shown blue gets a blue edge and a flag by its name, one in a sector under a yellow a yellow
+ * edge and flag, one stopped on track a tag, penalties to serve a red count, and a
  * car out of the race stays in its place dimmed, saying so where its gap was. The header filters
  * by class.
  */
@@ -52,7 +53,7 @@ export function TimingTile({ data, frame }: { data: TileData; frame: FrameProps 
       <span className="segmented pw-seg" role="radiogroup" aria-label="Class">
         {[null, ...classes].map((option) => (
           <button key={option ?? 'all'} type="button" role="radio" className="segmented-item" aria-checked={shownClass === option} onClick={() => setCarClass(option)}>
-            {option ?? 'All'}
+            {option === null ? 'All' : classLabel(wall?.field ?? [], option)}
           </button>
         ))}
       </span>
@@ -97,16 +98,19 @@ export function TimingTile({ data, frame }: { data: TileData; frame: FrameProps 
           const mark = marks.get(entry.id) ?? [null, null, null]
           const leader = entry.place === 1
           const out = isOut(entry)
-          const rowClass = ['pw-trow', entry.isPlayer && 'you', entry.blueFlag && !out && 'blue', out && 'out'].filter(Boolean).join(' ')
+          const yellow = inYellow(entry, wall.session.yellowSectors)
+          const rowClass = ['pw-trow', entry.isPlayer && 'you', yellow ? 'yellow' : entry.blueFlag && !out && 'blue', out && 'out'].filter(Boolean).join(' ')
           return (
             <div key={entry.id} role="row" className={rowClass}>
               <span className="tabular">{entry.place || '—'}</span>
               <Gained entry={entry} />
-              <span className={`pw-classbar c${classShade(wall.field, entry.carClass)}`} aria-hidden="true" />
+              <span className={`pw-classbar ${classMark(wall.field, entry.carClass)}`} aria-hidden="true" />
               <span className="tabular muted">{carNumber(entry)}</span>
               <span className="pw-driver">
                 <span className="pw-ellipsis">{entry.driver}</span>
+                {yellow && <Flag size={11} className="pw-yellow" aria-label={`In a yellow, sector ${entry.sector}`} />}
                 {entry.blueFlag && !out && <Flag size={11} className="pw-blue" aria-label="Blue flag" />}
+                {entry.stopped && !out && <span className="chip chip-warning">Stopped</span>}
                 {entry.penalties > 0 && !out && <span className="chip chip-danger">{entry.penalties} pen</span>}
               </span>
               <span className="c">

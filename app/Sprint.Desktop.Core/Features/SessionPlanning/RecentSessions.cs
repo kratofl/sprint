@@ -1,6 +1,9 @@
 namespace Sprint.Desktop.Features.SessionPlanning;
 
-/// <summary>One row of Home's recent sessions: what, where, when, and the best valid lap with its sectors.</summary>
+/// <summary>
+/// One row of Home's recent sessions: what, where, when, and the best valid lap with its sectors.
+/// <paramref name="Marks"/> is how the car and track are shown.
+/// </summary>
 public sealed record RecentSession(
     string Id,
     HistorySessionKind Kind,
@@ -9,7 +12,8 @@ public sealed record RecentSession(
     DateTimeOffset StartedAt,
     int LapCount,
     double? BestLapSeconds,
-    IReadOnlyList<double> BestSectors);
+    IReadOnlyList<double> BestSectors,
+    CarMarks Marks);
 
 /// <summary>
 /// How the newest session's best lap compares with every earlier session on the same game, track
@@ -75,7 +79,8 @@ public sealed record RecentSessions(RecentSession Last, RecentSessionComparison 
                 session.StartedAt,
                 session.Laps.Count,
                 best?.LapTimeSeconds,
-                best?.Sectors ?? []),
+                best?.Sectors ?? [],
+                CarMarks.Of(context.Game, context.TrackCourse, context.CarModel, context.CarClass, context.CarType)),
             (context.Game, context.TrackCourse, context.CarModel),
             laps);
     }

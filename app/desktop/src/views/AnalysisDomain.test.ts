@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { carLine, formatGap, formatLapSeconds, importNotice, lapFileFacts, lapTimeStats, lapsByRun, runLine, runTitle, tyreText } from './AnalysisDomain'
+import { formatGap, formatLapSeconds, importNotice, lapFileFacts, lapTimeStats, lapsByRun, runLine, runTitle, tyreText } from './AnalysisDomain'
 import type { CorpusLap, CorpusRun } from './AnalysisDomain'
 
 function lap(lapNumber: number, lapTimeSeconds: number, hasChannels = false, outing = 0): CorpusLap {
@@ -71,13 +71,6 @@ test('tyres read as one compound, or per axle when they differ', () => {
   assert.equal(tyreText('Soft', 'Medium'), 'Soft front · Medium rear')
   assert.equal(tyreText(null, 'Wet'), 'Wet')
   assert.equal(tyreText(null, null), null)
-})
-
-test('a car reads as its name, then its model when the name does not already say it', () => {
-  const context = { game: 'LMU', trackCourse: 'Spa', carModel: 'LMP2 ELMS', carType: 'Oreca 07', livery: null, trackLengthMeters: null, carClass: null }
-  assert.equal(carLine(context), 'LMP2 ELMS · Oreca 07')
-  assert.equal(carLine({ ...context, carType: null }), 'LMP2 ELMS')
-  assert.equal(carLine({ ...context, carModel: 'Oreca 07' }), 'Oreca 07')
 })
 
 test('an opened lap file lists who, what, where, how fast and when before it is added, and says what the file leaves out', () => {

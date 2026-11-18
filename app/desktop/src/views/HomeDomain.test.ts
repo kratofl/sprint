@@ -16,9 +16,6 @@ function state(overrides: Partial<SprintState>): SprintState {
     dashLayouts: [],
     setupTemplates: [],
     setupPrograms: [],
-    engineerControls: [],
-    radioLog: [],
-    engineerPushState: {},
     plans: [],
     sessionCount: 0,
     recentSessions: null,
@@ -122,6 +119,7 @@ test('planFacts takes the earliest planned start, the race target lap and a read
 // The comparison itself is computed on the host (RecentSessionsTests.cs); this side narrows and labels.
 const hostSession = (id: string, kind: string) => ({
   id, kind, track: 'Spa', car: 'Porsche 963', startedAt: '2026-09-28T19:00:00+00:00', lapCount: 2, bestLapSeconds: 125, bestSectors: [36.1, 53.8, 35.1],
+  marks: { car: 'Porsche 963', classTag: 'HYP', make: 'Porsche', country: 'BE' },
 })
 
 test('recentSessions narrows the host summary and labels each kind', () => {
@@ -136,6 +134,7 @@ test('recentSessions narrows the host summary and labels each kind', () => {
   assert.ok(recent)
   assert.equal(recent.last.kind, 'Test day')
   assert.deepEqual(recent.last.bestSectors, [36.1, 53.8, 35.1])
+  assert.deepEqual(recent.last.marks, { car: 'Porsche 963', classTag: 'HYP', make: 'Porsche', country: 'BE' })
   assert.deepEqual(recent.comparison, { gapSeconds: -0.2, sectorGaps: [-0.2, null, 0.1] })
   assert.deepEqual(recent.earlier.map((entry) => [entry.id, entry.kind]), [['older', 'Qualifying']], 'a malformed row is dropped')
 })

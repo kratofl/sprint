@@ -64,6 +64,15 @@ export class DashWasm {
     return { timeDependent: (code & 1) === 1 }
   }
 
+  /**
+   * The driver pressed Ack: the alert up now (and the dial popup) goes at once. Not the
+   * engineer's message. Render again afterwards to show it gone: an alert held until
+   * acknowledged does not make the picture time dependent.
+   */
+  acknowledge() {
+    this.#call((x, r) => x.sd_acknowledge(r))
+  }
+
   /** The picture's width in device pixels (0 before the first scene). */
   get width() {
     return this.#exports ? this.#exports.sd_width(this.#renderer) >>> 0 : 0

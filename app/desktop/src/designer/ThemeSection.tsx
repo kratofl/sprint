@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import { Check } from 'lucide-react'
-import { DashCanvas, dashPreviewStates, dashStyles, dashThemePresets, matchLayoutThemeName, resolveDashPalette, resolvePreviewFrame } from '@sprint/dashboard'
+import { DashCanvas, DEFAULT_DASH_CHROME, dashPreviewStates, dashStyles, dashThemePresets, matchLayoutThemeName, resolveDashPalette, resolvePreviewFrame } from '@sprint/dashboard'
 import type { DashColorSystem, DashLayout, DashPage, DashPreviewState, DashStyle } from '@sprint/dashboard'
 import type { TelemetryFrame } from '@sprint/types'
-import { applyThemePreset, setDashStyle } from '../views/DashesDomain'
+import { applyThemePreset, setDashChrome, setDashStyle } from '../views/DashesDomain'
+import { BORDER_OPTIONS, LABEL_OPTIONS, Segmented } from './controls'
 import { DashStill } from '../views/DashStill'
 import { BEZEL, useStageCanvas } from './useStageCanvas'
 import type { Mutate } from './useDesignerDoc'
@@ -11,7 +12,14 @@ import './ThemeSection.css'
 
 type Apply = (mutate: Mutate, group?: string) => boolean
 
-const DASH_STYLE_LABELS: Record<DashStyle, string> = { panels: 'Panels', grid: 'Grid', bars: 'Label bars' }
+const DASH_STYLE_LABELS: Record<DashStyle, string> = { panels: 'Panels', grid: 'Grid', bars: 'Label bars', flat: 'Flat' }
+
+const CORNER_OPTIONS: ReadonlyArray<{ value: string; label: string }> = [
+  { value: '0', label: 'Square' },
+  { value: '3', label: 'Soft' },
+  { value: '6', label: 'Round' },
+  { value: '10', label: 'Rounder' },
+]
 
 // Each preset's two dots: its focal and its comparison colour, as the dash resolves them.
 const PRESETS = dashThemePresets.map((preset) => {
@@ -26,10 +34,23 @@ const PRESETS = dashThemePresets.map((preset) => {
  * or a sample situation — so each colour can be checked in each one. A click applies; undo
  * takes it back.
  */
-export function ThemeSection({ layout, apply, frame, page, idle }: { layout: DashLayout; apply: Apply; frame: TelemetryFrame | null; page: DashPage | null; idle: boolean }) {
+export function ThemeSection({
+  layout,
+  apply,
+  frame,
+  page,
+  idle,
+}: {
+  layout: DashLayout
+  apply: Apply
+  frame: TelemetryFrame | null
+  page: DashPage | null
+  idle: boolean
+}) {
   const [previewState, setPreviewState] = useState<DashPreviewState>('live')
   const { setFitElement, canvas } = useStageCanvas(layout)
   const activeStyle = layout.dashStyle ?? 'panels'
+  const chrome = layout.chrome ?? DEFAULT_DASH_CHROME
   const activePreset = matchLayoutThemeName(layout)
 
   return (
@@ -59,6 +80,25 @@ export function ThemeSection({ layout, apply, frame, page, idle }: { layout: Das
               ))}
             </div>
           </div>
+
+          {activeStyle === 'flat' && (
+            <div className="designer-group">
+              <h3 className="designer-group-title">Frames</h3>
+              <div className="field">
+                <span>Corners</span>
+                <Segmented full label="Corners" value={String(chrome.radius)} options={CORNER_OPTIONS} onChange={(radius) => apply((current) => setDashChrome(current, { radius: Number(radius) }))} />
+              </div>
+              <div className="field">
+                <span>Edges</span>
+                <Segmented full label="Edges" value={chrome.border} options={BORDER_OPTIONS} onChange={(border) => apply((current) => setDashChrome(current, { border }))} />
+              </div>
+              <div className="field">
+                <span>Labels</span>
+                <Segmented full label="Labels" value={chrome.label} options={LABEL_OPTIONS} onChange={(label) => apply((current) => setDashChrome(current, { label }))} />
+              </div>
+              <p className="field-hint">Each widget and group can change its own edge and label.</p>
+            </div>
+          )}
 
           <div className="designer-group">
             <h3 className="designer-group-title">Colours</h3>

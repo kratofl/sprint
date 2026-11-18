@@ -1,5 +1,6 @@
+import { parseCarMarks, type CarMarks } from './carMarks'
 import type { TelemetryFrame } from '@sprint/types'
-import { parseHostFrame } from '@sprint/dashboard'
+import { dashAlertDefaults, parseHostFrame, type DashAlertSettings } from '@sprint/dashboard'
 import { parseHudMessage } from './hud/hudModel'
 import type { HudMessage } from './hud/hudModel'
 import { parseUpdateStatus } from './shell/updates'
@@ -9,7 +10,7 @@ import { EMPTY_TRACE, parsePitWall, parsePitWallLayout, parsePitWallTrace } from
 import type { PitWall, PitWallLayout, PitWallTrace, TraceLap } from './pitwall/pitWallData'
 import { parseRaceFuelEstimate } from './views/SessionPlannerDomain'
 
-export type AppView = 'Home' | 'SessionPlanner' | 'OnTrack' | 'Analysis' | 'Dashes' | 'Devices' | 'Setups' | 'RaceEngineer' | 'LiveLink' | 'Settings' | 'Help'
+export type AppView = 'Home' | 'SessionPlanner' | 'OnTrack' | 'Analysis' | 'Dashes' | 'Devices' | 'Setups' | 'RaceEngineer' | 'Settings' | 'Help'
 /** Mirrors `TelemetryConnectionState` in Sprint.Desktop.Api; the host sends enum names. */
 export type TelemetryLinkState =
   | 'Disconnected' | 'Connecting' | 'WaitingForGame' | 'Connected'
@@ -219,6 +220,21 @@ export type LinkHealth = { path: LinkPath; roundTripMs: number | null; sampleRat
 /** The other side's Sprint (host `PeerBuild`): its version when it says, and whether either side needs an update. */
 export type LinkPeer = { app: string | null; match: 'Same' | 'PeerOlder' | 'PeerNewer' }
 
+/** What became of a radio message the engineer sent (host: `RadioDelivery`). */
+export type RadioDelivery = 'Sending' | 'OnWheel' | 'Seen' | 'Unanswered'
+/** A message the engineer sent the driver (host: `RadioSent`); `targetLapSeconds` when it gave a new target lap. */
+export type RadioSent = { id: number; text: string; targetLapSeconds: number | null; sentAt: string; delivery: RadioDelivery }
+/** A message from the engineer on the driver's side (host: `RadioReceived`). */
+export type RadioReceived = { id: number; text: string; targetLapSeconds: number | null; receivedAt: string; seen: boolean }
+/**
+ * The engineer's radio to the driver's wheel (host: `PeerRadioState`), as each side sees it: the
+ * engineer what was sent and whether the driver's Sprint can take it, the driver what arrived,
+ * what is on the wheel now and the newest target lap.
+ */
+export type LinkRadio =
+  | { side: 'Engineer'; sent: RadioSent[]; canSend: boolean }
+  | { side: 'Driver'; received: RadioReceived[]; showing: RadioReceived | null; targetLapSeconds: number | null }
+
 /**
  * The live link to an engineer's or a driver's desktop (host: `PeerLinkState`), one shape per
  * phase. Only the driver invites and only the engineer joins, so those phases fix the role.
@@ -243,6 +259,8 @@ export type LiveLink =
       /** The driver's side: whether the session plan goes over the link, and which plan that is. */
       sharingPlan: boolean
       sharedPlan: { id: string; name: string } | null
+      /** The engineer's radio; null when the host sent none. */
+      radio: LinkRadio | null
     }
   | { phase: 'Failed' | 'Ended'; role: LinkRole; detail: string }
 
@@ -283,10 +301,20 @@ export type MultiDial = {
   y: number
   radius: number
   positions: MultiDialLabel[]
-  invertPopup: boolean
+  /** Per position, the dash mode (`DashMode.id`) it switches on; null where none. */
+  modes: Array<string | null>
   position: number | null
   changes: number
 }
+
+/** A function a device's buttons can run (host: `ButtonFunction`), e.g. `dash.page.next`, "Next dash page". */
+export type ButtonFunction = { id: string; label: string }
+
+/**
+ * Wheel buttons (host: `buttons`): what each device's buttons can run, by device id, and the
+ * function waiting for the driver to press its button (`devices.buttonListen`), or null.
+ */
+export type ButtonState = { functions: Record<string, ButtonFunction[]>; listening: { deviceId: string; command: string } | null }
 
 /** A Sprint server that answered on the local network. */
 export type DiscoveredServer = { url: string; version: string }
@@ -307,10 +335,13 @@ export type SprintState = {
   targets: unknown
   settings: Record<string, unknown>; controls: Record<string, unknown>; catalog: Record<string, unknown>; devices: Array<Record<string, unknown>>
   dashLayouts: Array<Record<string, unknown>>; setupTemplates: Array<Record<string, unknown>>; setupPrograms: Array<Record<string, unknown>>
-  engineerControls: Array<Record<string, unknown>>; radioLog: Array<Record<string, unknown>>; engineerPushState: Record<string, unknown>
   plans: Array<Record<string, unknown>>
   /** Each plan's race fuel by plan id, worked out on the host over the lap history. */
   planFuel: Record<string, RaceFuelEstimate>
+  /** How each plan's car and track are shown, by plan id. */
+  planMarks: Record<string, CarMarks>
+  /** How the linked session's car and track are shown; null with no session on the link. */
+  linkMarks: CarMarks | null
   /** How many sessions the lap-history corpus holds. The corpus itself is never in the state. */
   sessionCount: number
   /** Home's recent sessions, built on the host (`RecentSessions`); HomeDomain narrows it. Null with no sessions. */
@@ -330,14 +361,26 @@ export type SprintState = {
   dashCategories: DashCategoryLists
   /** Dash id → screen profile id → how many widgets a change to that size would leave out (`DashRefitLosses` on the host); sizes that lose none are absent. */
   dashRefitLosses: DashRefitLosses
+  /** The driver's own dash modes (`DashMode` on the host): pages opt in to one, a multi-dial position switches it on. */
+  dashModes: DashMode[]
+  /**
+   * The app-wide alert settings (`AppDashAlerts` on the host), every type in `dashAlertTypes` order.
+   * The host stamps them onto every dash it renders; a preview in the app does the same with
+   * `dashAlertFromSettings`. Changed with `dashAlerts.update`.
+   */
+  dashAlerts: DashAlertSettings[]
   /** Every saved wheel whose preset has a multi-position dial. */
   multiDials: MultiDial[]
+  buttons: ButtonState
   screens: Array<{ deviceId: string; width: number; height: number; refreshHz: number; layout: unknown; pageId?: string; idle?: boolean; status: string }>
 }
 export type SprintCommand = { type: string; [key: string]: unknown }
 
 /** Per dash, per screen profile id, the widgets a change to that size would leave out (only counts ≥ 1). */
 export type DashRefitLosses = Record<string, Record<string, number>>
+
+/** One of the driver's own dash modes ("Fuel save"); app-wide, so any dash's pages can opt in to it. */
+export type DashMode = { id: string; name: string }
 
 /** A dash's category is one of these names, or absent for "Other". */
 export type DashCategoryLists = { builtIn: string[]; custom: string[] }
@@ -442,6 +485,10 @@ export type SprintBridge = {
   resizeHud(width: number, height: number, done: boolean): void
   /** Opens a dash in its own designer window, or brings that window forward. */
   openDashDesigner(dashId: string): Promise<void>
+  /** From a designer window: brings the main window forward on Dashes > Settings. */
+  openDashSettings(): Promise<void>
+  /** The main window: called when a designer asks for Dashes > Settings (`openDashSettings`). */
+  subscribeOpenDashSettings(listener: () => void): () => void
   /** Opens the pit wall, or brings it forward; with a target, brings that page's or tile's own window forward. */
   openPitWall(target?: { kind: 'page' | 'tile'; id: string }): Promise<void>
   /** A lap of the linked driver's, for the pit wall's traces; an empty trace when there is none. */
@@ -497,6 +544,9 @@ type RawBridge = {
   resizeHud?(width: number, height: number, done: boolean): void
   /** Absent in the preview harness's stub. */
   openDashDesigner?(dashId: string): Promise<unknown>
+  /** Both absent in the preview harness's stub. */
+  openDashSettings?(): Promise<unknown>
+  subscribeOpenDashSettings?(listener: () => void): () => void
   /** Both absent in an older preview stub. */
   openPitWall?(target?: { kind: 'page' | 'tile'; id: string }): Promise<unknown>
   pitWallTrace?(lap: string): Promise<unknown>
@@ -509,7 +559,7 @@ type RawBridge = {
   setDebugOnTop?(onTop: boolean): void
 }
 declare global { interface Window { sprint?: RawBridge } }
-const emptyState = (): SprintState => ({ telemetry: { frame: null, link: noLink(), hz: 0 }, targets: null, settings: {}, controls: {}, catalog: {}, devices: [], dashLayouts: [], setupTemplates: [], setupPrograms: [], engineerControls: [], radioLog: [], engineerPushState: {}, plans: [], planFuel: {}, sessionCount: 0, recentSessions: null, resultsImport: { available: false }, firstRun: { done: true, game: null }, account: { signedIn: false, serverUrl: '' }, cloud: emptyCloud(), link: { phase: 'Off' }, pitWallLayout: null, features: { sprintWeb: false }, foundDevices: [], multiDials: [], dashCategories: { builtIn: [], custom: [] }, dashRefitLosses: {}, screens: [] })
+const emptyState = (): SprintState => ({ telemetry: { frame: null, link: noLink(), hz: 0 }, targets: null, settings: {}, controls: {}, catalog: {}, devices: [], dashLayouts: [], setupTemplates: [], setupPrograms: [], plans: [], planFuel: {}, planMarks: {}, linkMarks: null, sessionCount: 0, recentSessions: null, resultsImport: { available: false }, firstRun: { done: true, game: null }, account: { signedIn: false, serverUrl: '' }, cloud: emptyCloud(), link: { phase: 'Off' }, pitWallLayout: null, features: { sprintWeb: false }, foundDevices: [], multiDials: [], buttons: { functions: {}, listening: null }, dashCategories: { builtIn: [], custom: [] }, dashModes: [], dashAlerts: [...dashAlertDefaults], dashRefitLosses: {}, screens: [] })
 const emptyCloud = (): CloudState => ({ setupDone: true, server: 'None', storage: 'Local', officialServerUrl: null, progress: null, lastSync: null, live: liveOff() })
 const liveOff = (): LiveUplink => ({ status: 'Off', detail: null })
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null
@@ -700,6 +750,29 @@ const parseLinkPeer = (value: unknown): LinkPeer | null => {
   return match ? { app: optionalString(value.app), match } : null
 }
 
+const isRadioDelivery = (value: unknown): value is RadioDelivery => value === 'Sending' || value === 'OnWheel' || value === 'Seen' || value === 'Unanswered'
+
+const parseRadioSent = (value: unknown): RadioSent[] =>
+  Array.isArray(value)
+    ? value.flatMap((item: unknown) =>
+        isRecord(item) && typeof item.id === 'number' && typeof item.text === 'string' && isRadioDelivery(item.delivery)
+          ? [{ id: item.id, text: item.text, targetLapSeconds: optionalNumber(item.targetLapSeconds), sentAt: text(item.sentAt), delivery: item.delivery }]
+          : [],
+      )
+    : []
+
+const parseRadioReceived = (value: unknown): RadioReceived | null =>
+  isRecord(value) && typeof value.id === 'number' && typeof value.text === 'string'
+    ? { id: value.id, text: value.text, targetLapSeconds: optionalNumber(value.targetLapSeconds), receivedAt: text(value.receivedAt), seen: value.seen === true }
+    : null
+
+const parseLinkRadio = (value: unknown, role: LinkRole): LinkRadio | null => {
+  if (!isRecord(value)) return null
+  if (role === 'Engineer') return { side: 'Engineer', sent: parseRadioSent(value.sent), canSend: value.canSend === true }
+  const received = Array.isArray(value.received) ? value.received.flatMap((item: unknown) => parseRadioReceived(item) ?? []) : []
+  return { side: 'Driver', received, showing: parseRadioReceived(value.showing), targetLapSeconds: optionalNumber(value.targetLapSeconds) }
+}
+
 const parseLiveLink = (value: unknown): LiveLink => {
   if (!isRecord(value)) return { phase: 'Off' }
   const role: LinkRole | null = value.role === 'Driver' || value.role === 'Engineer' ? value.role : null
@@ -729,6 +802,7 @@ const parseLiveLink = (value: unknown): LiveLink => {
         pitWall: parsePitWall(value.pitWall),
         sharingPlan: value.sharingPlan === true,
         sharedPlan: isRecord(value.sharedPlan) && typeof value.sharedPlan.id === 'string' ? { id: value.sharedPlan.id, name: text(value.sharedPlan.name) } : null,
+        radio: parseLinkRadio(value.radio, role),
       }
     }
     case 'Failed':
@@ -874,6 +948,28 @@ const parsePlanTargets = (value: unknown): PlanTargetScopeGroup[] =>
 const parseMultiDialLabel = (value: unknown): MultiDialLabel[] =>
   isRecord(value) && typeof value.label === 'string' && typeof value.color === 'string' ? [{ label: value.label, color: value.color }] : []
 
+const parseDashModes = (value: unknown): DashMode[] =>
+  Array.isArray(value) ? value.flatMap((mode): DashMode[] => (isRecord(mode) && typeof mode.id === 'string' && typeof mode.name === 'string' ? [{ id: mode.id, name: mode.name }] : [])) : []
+
+/** Every alert type in order, the host's settings over the defaults: a type or field it left out (an older host) keeps its default. */
+const parseDashAlerts = (value: unknown): DashAlertSettings[] => {
+  const sent = Array.isArray(value) ? value.filter(isRecord) : []
+  return dashAlertDefaults.map((fallback): DashAlertSettings => {
+    const entry = sent.find((candidate) => candidate.type === fallback.type)
+    if (!entry) return fallback
+    const settings = {
+      enabled: typeof entry.enabled === 'boolean' ? entry.enabled : fallback.enabled,
+      size: entry.size === 'strip' || entry.size === 'full' ? entry.size : fallback.size,
+      invertColors: typeof entry.invertColors === 'boolean' ? entry.invertColors : fallback.invertColors,
+      durationSeconds: typeof entry.durationSeconds === 'number' && Number.isFinite(entry.durationSeconds) ? entry.durationSeconds : fallback.durationSeconds,
+      untilAck: typeof entry.untilAck === 'boolean' ? entry.untilAck : fallback.untilAck,
+    }
+    return fallback.type === 'fuel_low'
+      ? { ...settings, type: fallback.type, lapsLeft: typeof entry.lapsLeft === 'number' && Number.isInteger(entry.lapsLeft) ? entry.lapsLeft : fallback.lapsLeft }
+      : { ...settings, type: fallback.type }
+  })
+}
+
 const parseMultiDials = (value: unknown): MultiDial[] =>
   Array.isArray(value)
     ? value.flatMap((dial): MultiDial[] => {
@@ -887,12 +983,27 @@ const parseMultiDials = (value: unknown): MultiDial[] =>
           y: finite(dial.y),
           radius: finite(dial.radius),
           positions,
-          invertPopup: dial.invertPopup === true,
+          modes: positions.map((_, index) => (Array.isArray(dial.modes) && typeof dial.modes[index] === 'string' ? dial.modes[index] : null)),
           position,
           changes: finite(dial.changes),
         }]
       })
     : []
+
+const parseButtonFunction = (value: unknown): ButtonFunction[] =>
+  isRecord(value) && typeof value.id === 'string' && typeof value.label === 'string' ? [{ id: value.id, label: value.label }] : []
+
+const parseButtons = (value: unknown): ButtonState => {
+  if (!isRecord(value)) return { functions: {}, listening: null }
+  const functions: Record<string, ButtonFunction[]> = {}
+  if (isRecord(value.functions)) {
+    for (const [deviceId, list] of Object.entries(value.functions)) functions[deviceId] = Array.isArray(list) ? list.flatMap(parseButtonFunction) : []
+  }
+  const listening = isRecord(value.listening) && typeof value.listening.deviceId === 'string' && typeof value.listening.command === 'string'
+    ? { deviceId: value.listening.deviceId, command: value.listening.command }
+    : null
+  return { functions, listening }
+}
 
 const parseState = (value: unknown): SprintState => {
   if (!isRecord(value)) return emptyState()
@@ -915,8 +1026,15 @@ const parseState = (value: unknown): SprintState => {
   const categories = isRecord(value.dashCategories) ? value.dashCategories : {}
   parsed.dashCategories = { builtIn: stringList(categories.builtIn), custom: stringList(categories.custom) }
   parsed.dashRefitLosses = parseDashRefitLosses(value.dashRefitLosses)
+  parsed.dashModes = parseDashModes(value.dashModes)
+  parsed.dashAlerts = parseDashAlerts(value.dashAlerts)
   parsed.multiDials = parseMultiDials(value.multiDials)
+  parsed.buttons = parseButtons(value.buttons)
   parsed.planFuel = parsePlanFuel(value.planFuel)
+  parsed.planMarks = isRecord(value.planMarks)
+    ? Object.fromEntries(Object.entries(value.planMarks).filter(([, marks]) => isRecord(marks)).map(([planId, marks]) => [planId, parseCarMarks(marks, '')]))
+    : {}
+  parsed.linkMarks = isRecord(value.linkMarks) ? parseCarMarks(value.linkMarks, '') : null
   return parsed
 }
 /** Keeps only whole positive counts; anything else from the host is no loss to warn about. */
@@ -1031,6 +1149,8 @@ export const bridge: SprintBridge = raw
           : () => undefined,
       resizeHud: (width, height, done) => raw.resizeHud?.(width, height, done),
       openDashDesigner: async (dashId) => { await raw.openDashDesigner?.(dashId) },
+      openDashSettings: async () => { await raw.openDashSettings?.() },
+      subscribeOpenDashSettings: (listener) => (raw.subscribeOpenDashSettings ? raw.subscribeOpenDashSettings(listener) : () => undefined),
       openPitWall: async (target) => { await raw.openPitWall?.(target) },
       pitWallTrace: async (lap) => (raw.pitWallTrace ? parsePitWallTrace(await raw.pitWallTrace(lap).catch(() => null)) : EMPTY_TRACE),
       openDebugWindow: async () => { await raw.openDebugWindow?.() },
@@ -1076,6 +1196,8 @@ export const bridge: SprintBridge = raw
       subscribeHud: () => () => undefined,
       resizeHud: () => undefined,
       openDashDesigner: async () => undefined,
+      openDashSettings: async () => undefined,
+      subscribeOpenDashSettings: () => () => undefined,
       openPitWall: async () => undefined,
       pitWallTrace: async () => EMPTY_TRACE,
       openDebugWindow: async () => undefined,
