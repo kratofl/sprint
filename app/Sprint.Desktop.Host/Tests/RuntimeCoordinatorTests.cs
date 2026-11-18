@@ -736,19 +736,19 @@ public sealed class RuntimeCoordinatorTests
         try
         {
             DesktopRuntime runtime = new(dataRoot, PresetRoot);
-            DashAcknowledgements acknowledgements = new();
+            Acknowledgements acknowledgements = new();
             RuntimeCoordinator coordinator = new(runtime, acknowledgements: acknowledgements);
             Assert.True(coordinator.Execute(Command("""{"type":"devices.add","catalogId":"generic-vocore"}"""), out _));
             Assert.True(coordinator.Execute(Command("""{"type":"devices.add","catalogId":"bavarian-omega-v2-pro"}"""), out _));
             Assert.All(
                 coordinator.ButtonFunctionsByDevice().Values,
-                functions => Assert.Contains(new ButtonFunction("dash.acknowledge", "Acknowledge"), functions));
+                functions => Assert.Contains(new ButtonFunction("acknowledge", "Acknowledge"), functions));
 
-            Assert.True(coordinator.Execute(Command("""{"type":"dash.acknowledge"}"""), out string error), error);
+            Assert.True(coordinator.Execute(Command("""{"type":"acknowledge"}"""), out string error), error);
             Assert.Equal(1, acknowledgements.Count);
 
             SavedDevice wheel = runtime.Devices.First(device => device.PresetId == "bavarian-omega-v2-pro");
-            Assert.True(coordinator.Execute(Command($$"""{"type":"devices.buttonListen","deviceId":"{{wheel.Id}}","command":"dash.acknowledge"}"""), out error), error);
+            Assert.True(coordinator.Execute(Command($$"""{"type":"devices.buttonListen","deviceId":"{{wheel.Id}}","command":"acknowledge"}"""), out error), error);
             coordinator.Press(new HardwareInputEvent(1, 2, "button:9"));
             Assert.Equal(1, acknowledgements.Count);
             coordinator.Press(new HardwareInputEvent(1, 2, "button:9"));

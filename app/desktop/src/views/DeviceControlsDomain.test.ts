@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { buttonName, buttonRows, readableRotation, ringSegments, zoomTransform } from './DeviceControlsDomain'
+import { buttonGroups, buttonName, buttonRows, readableRotation, ringSegments, zoomTransform } from './DeviceControlsDomain'
 
 test('an 8-position dial has its boxes in pairs, the first at the top right', () => {
   const angles = ringSegments(8).map((segment) => segment.angle)
@@ -32,5 +32,23 @@ test('a button reads as the driver would say it, and each function finds its but
       { id: 'dash.page.next', label: 'Next dash page', input: 'button:5' },
       { id: 'dash.page.prev', label: 'Previous dash page', input: null },
     ],
+  )
+})
+
+test('the Buttons card keeps the dash functions apart from the app ones, and leaves out an empty group', () => {
+  const ack = { id: 'acknowledge', label: 'Acknowledge' }
+  const hud = { id: 'compare.hud.toggle', label: 'Show or hide the HUD' }
+  const groups = buttonGroups([{ id: 'dash.page.next', label: 'Next dash page' }, ack, hud], [{ input: 'button:7', command: 'acknowledge' }])
+  assert.deepEqual(
+    groups.map((group) => [group.title, group.rows.map((row) => row.id)]),
+    [
+      ['Dash', ['dash.page.next']],
+      ['App', ['acknowledge', 'compare.hud.toggle']],
+    ],
+  )
+  assert.equal(groups[1]?.rows[0]?.input, 'button:7')
+  assert.deepEqual(
+    buttonGroups([ack, hud], []).map((group) => group.title),
+    ['App'],
   )
 })

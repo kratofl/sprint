@@ -9,6 +9,7 @@ using Sprint.Desktop.Features.Dashes;
 using Sprint.Desktop.Features.Devices;
 using Sprint.Desktop.Features.Diagnostics;
 using Sprint.Desktop.Features.Hardware;
+using Sprint.Desktop.Features.Input;
 
 namespace Sprint.Desktop.Host;
 
@@ -383,7 +384,7 @@ public sealed class BrowserDisplayServer
         using Utf8JsonWriter sceneWriter = new(sceneLine);
         SceneKey? sentScene = null;
         TelemetryFrame? sentFrame = null;
-        DashAcknowledgements? acknowledgements = display.Scenes.Acknowledgements;
+        Acknowledgements? acknowledgements = display.Scenes.Acknowledgements;
         long sentAcknowledged = acknowledgements?.Count ?? 0;
         DateTime lastWrite = DateTime.UtcNow;
 

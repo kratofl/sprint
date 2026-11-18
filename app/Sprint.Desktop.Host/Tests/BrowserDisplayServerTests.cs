@@ -7,6 +7,7 @@ using Sprint.Desktop.Features.Dashes;
 using Sprint.Desktop.Features.Devices;
 using Sprint.Desktop.Features.Diagnostics;
 using Sprint.Desktop.Features.Hardware;
+using Sprint.Desktop.Features.Input;
 using Xunit;
 
 namespace Sprint.Desktop.Host.Tests;
@@ -301,7 +302,7 @@ public sealed class BrowserDisplayServerTests
 
         public DashPageCycle Pages { get; } = new();
 
-        public DashAcknowledgements Acknowledgements { get; } = new();
+        public Acknowledgements Acknowledgements { get; } = new();
 
         public DashLayout Layout { get; } = TestDash.Layout("dash");
 

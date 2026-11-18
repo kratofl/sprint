@@ -105,8 +105,8 @@ public static class SprintCommands
     /// <summary>Show/hide the Live Compare overlay (#195).</summary>
     public const string CompareHudToggle = "compare.hud.toggle";
 
-    /// <summary>Ack: takes the alert up now down on every dash and marks the engineer's message seen.</summary>
-    public const string DashAcknowledge = "dash.acknowledge";
+    /// <summary>Ack, an app action rather than a dash function: takes the alert up now down on every dash of every device and marks the engineer's message seen.</summary>
+    public const string Acknowledge = "acknowledge";
 
     public static void RegisterDefaults(CommandBus bus)
     {

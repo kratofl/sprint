@@ -305,7 +305,7 @@
         },
         {
           "input": "button:7",
-          "command": "dash.acknowledge"
+          "command": "acknowledge"
         }
       ],
       "disabled": false
@@ -5336,7 +5336,7 @@
           "label": "Go to Vehicle"
         },
         {
-          "id": "dash.acknowledge",
+          "id": "acknowledge",
           "label": "Acknowledge"
         },
         {
@@ -5346,7 +5346,7 @@
       ],
       "sample-usbd480": [
         {
-          "id": "dash.acknowledge",
+          "id": "acknowledge",
           "label": "Acknowledge"
         },
         {

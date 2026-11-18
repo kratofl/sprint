@@ -9,8 +9,8 @@ import { deviceHasScreen, logicalSize, type Device } from './DevicesDomain'
 // `dashAlerts.update`); this file words them, groups them, and stamps them onto a dash the way the
 // host does before a renderer draws it.
 
-/** The wheel button function that takes the alert down on every dash (host: `SprintCommands.DashAcknowledge`). */
-export const ACK_FUNCTION = 'dash.acknowledge'
+/** The app-wide button function that takes the alert down on every dash, bound per device (host: `SprintCommands.Acknowledge`). */
+export const ACK_FUNCTION = 'acknowledge'
 
 /** Each alert as the driver knows it: its name, and a line on when it shows. */
 export const ALERT_COPY: Record<DashAlertType, { label: string; when: string }> = {

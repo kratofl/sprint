@@ -1,13 +1,14 @@
-namespace Sprint.Desktop.Features.Dashes;
+namespace Sprint.Desktop.Features.Input;
 
 /// <summary>
-/// The driver's Ack presses, app-wide: one press takes the alert up now down on every dash. A count
+/// The driver's Ack presses, an app-wide event: one press, from whichever device's button, takes the
+/// alert up now down on every dash. A count
 /// rather than an event, so each dash output acts on it from its own thread: a wheel screen's render
 /// loop compares <see cref="Count"/> with the last it saw on every frame, and a browser display's feed
 /// also awaits <see cref="Next"/> so a press reaches the page without waiting for telemetry.
 /// Thread-safe.
 /// </summary>
-public sealed class DashAcknowledgements
+public sealed class Acknowledgements
 {
     private long _count;
     private TaskCompletionSource _next = new(TaskCreationOptions.RunContinuationsAsynchronously);

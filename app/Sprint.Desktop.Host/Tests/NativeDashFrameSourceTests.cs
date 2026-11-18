@@ -141,7 +141,7 @@ public sealed class NativeDashFrameSourceTests
     public void AnAckTakesThePopupDownOnTheNextFrameAndIsNotActedOnTwice()
     {
         MultiDialStatus status = MultiDialStatus.Unknown.MoveTo(0);
-        DashAcknowledgements acknowledgements = new();
+        Acknowledgements acknowledgements = new();
         // A press before the screen started is not one for it.
         acknowledgements.Acknowledge();
         DashSceneFeed scenes = new(() => true, () => null, () => status, acknowledgements: acknowledgements);

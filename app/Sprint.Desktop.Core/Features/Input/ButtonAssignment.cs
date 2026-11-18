@@ -85,8 +85,8 @@ public static class ButtonFunctions
 
     /// <summary>
     /// For a device showing <paramref name="layout"/>: next and previous page and a jump to each of
-    /// its pages; on any device, Ack (it acts on every dash, so a button box can carry it too) and
-    /// the HUD over the game.
+    /// its pages (the dash functions, all <c>dash.*</c>); on any device, the app functions: Ack (it
+    /// acts on every dash, so a button box can carry it too) and the HUD over the game.
     /// </summary>
     public static IReadOnlyList<ButtonFunction> For(DashLayout? layout)
     {
@@ -98,7 +98,7 @@ public static class ButtonFunctions
             functions.AddRange(layout.Pages.Select(page => new ButtonFunction(GotoPrefix + page.Id, $"Go to {page.Name}")));
         }
 
-        functions.Add(new ButtonFunction(SprintCommands.DashAcknowledge, "Acknowledge"));
+        functions.Add(new ButtonFunction(SprintCommands.Acknowledge, "Acknowledge"));
         functions.Add(new ButtonFunction(SprintCommands.CompareHudToggle, "Show or hide the HUD"));
         return functions;
     }

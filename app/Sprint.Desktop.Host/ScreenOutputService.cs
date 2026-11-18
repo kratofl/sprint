@@ -119,7 +119,7 @@ public sealed class ScreenOutputService : IDisposable
     private readonly DashPageCycle? _pageCycle;
     private readonly MultiDialTracker? _multiDials;
     private readonly Func<string?>? _radio;
-    private readonly DashAcknowledgements? _acknowledgements;
+    private readonly Acknowledgements? _acknowledgements;
     private readonly DashSourceFactory _dashSourceFactory;
     private readonly BrowserDisplayServer? _browserServer;
     private readonly JsonSerializerOptions _json = HostJson.Create();
@@ -147,7 +147,7 @@ public sealed class ScreenOutputService : IDisposable
         BrowserDisplayServer? browserServer = null,
         MultiDialTracker? multiDials = null,
         Func<string?>? radio = null,
-        DashAcknowledgements? acknowledgements = null)
+        Acknowledgements? acknowledgements = null)
     {
         this._radio = radio;
         this._acknowledgements = acknowledgements;

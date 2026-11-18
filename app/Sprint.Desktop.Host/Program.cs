@@ -80,9 +80,10 @@ MultiDialTracker multiDials = new();
 // reconcile loop below keeps it in step with the saved devices and dashes.
 // The race engineer's message on the wheel screens comes from the live link, made further down.
 PeerLink? radioSource = null;
-// The driver's Ack presses (the dash.acknowledge button function and command): every wheel screen
-// and browser display reads them, each on its own thread, and takes its alert down.
-DashAcknowledgements dashAcknowledgements = new();
+// The driver's Ack presses (the app-wide "acknowledge" button function and command, bound on a
+// device but not tied to any dash): every wheel screen and browser display reads them, each on its
+// own thread, and takes its alert down.
+Acknowledgements acknowledgements = new();
 ScreenOutputService screenOutputs = new(
     log,
     telemetry: state,
@@ -90,7 +91,7 @@ ScreenOutputService screenOutputs = new(
     browserServer: browserDisplays,
     multiDials: multiDials,
     radio: () => radioSource?.State.Radio?.Showing?.Text,
-    acknowledgements: dashAcknowledgements);
+    acknowledgements: acknowledgements);
 // What a change of screen size would leave out of each dash, for /api/state's dashRefitLosses;
 // it refits a dash again only once its layout has changed, not on every poll.
 DashRefitLosses dashRefitLosses = new();
@@ -172,7 +173,7 @@ PitWallLayoutStore pitWallLayouts = new(runtime.DataRoot, log);
 LapTraceRetention lapTraceRetention = new(lapTraceStore, lapHistoryStore, log);
 // The wheel button the Controls tab is waiting for (devices.buttonListen, state.buttons).
 ButtonAssignment buttonAssignment = new();
-coordinator = new RuntimeCoordinator(runtime, plannerService, analysisController, liveLog, dashPageCycle, peerLink, liveCompare, gameFolder, lapHistoryStore, pitWallLayouts, lapTraceRetention, buttonAssignment, setupLibrary, dashAcknowledgements);
+coordinator = new RuntimeCoordinator(runtime, plannerService, analysisController, liveLog, dashPageCycle, peerLink, liveCompare, gameFolder, lapHistoryStore, pitWallLayouts, lapTraceRetention, buttonAssignment, setupLibrary, acknowledgements);
 
 // The plan dialogs' prefill, recorded game/car/track choices and Quick plan detection
 // (GET /api/planner/context), and their fuel calculator (POST /api/planner/fuel-estimate). Only
@@ -402,7 +403,7 @@ Task screenReconcileLoop = Task.Run(async () =>
                 try
                 {
                     scenes = new DashSceneInputs([.. runtime.DashLayouts], DriverCar.Of(runtime.Settings.LastSeenContext), runtime.Settings.DriverName, runtime.Settings.DriverNumber, planTargets.Targets,
-                        devices.Any(device => device.Bindings.Any(binding => binding.Command == SprintCommands.DashAcknowledge)) ? runtime.Settings.DashAlerts : runtime.Settings.DashAlerts.WithoutUntilAck());
+                        devices.Any(device => device.Bindings.Any(binding => binding.Command == SprintCommands.Acknowledge)) ? runtime.Settings.DashAlerts : runtime.Settings.DashAlerts.WithoutUntilAck());
                 }
                 catch (InvalidOperationException)
                 {

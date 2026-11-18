@@ -146,7 +146,7 @@ public static class DashFrameJson
 /// multi-dial stands, the race engineer's message on the wheel, and the driver's Ack presses. Those
 /// are read per frame through delegates over thread-safe state (the published telemetry snapshot,
 /// <see cref="DashPageCycle"/>, <see cref="MultiDialTracker"/>, the live link's published state,
-/// <see cref="DashAcknowledgements"/>), so a page change, a dial turn, a message or an Ack never
+/// <see cref="Acknowledgements"/>), so a page change, a dial turn, a message or an Ack never
 /// waits for the reconcile loop. A browser display's feed has no dial and no message.
 /// </summary>
 public sealed class DashSceneFeed
@@ -163,7 +163,7 @@ public sealed class DashSceneFeed
         Func<string?> pageId,
         Func<MultiDialStatus>? dialStatus = null,
         Func<string?>? radio = null,
-        DashAcknowledgements? acknowledgements = null)
+        Acknowledgements? acknowledgements = null)
     {
         this._idle = idle ?? throw new ArgumentNullException(nameof(idle));
         this._pageId = pageId ?? throw new ArgumentNullException(nameof(pageId));
@@ -173,7 +173,7 @@ public sealed class DashSceneFeed
     }
 
     /// <summary>The driver's Ack presses, or null where nothing acknowledges (tests).</summary>
-    public DashAcknowledgements? Acknowledgements { get; }
+    public Acknowledgements? Acknowledgements { get; }
 
     public DashSceneContent? Content => Volatile.Read(ref this._content);
 

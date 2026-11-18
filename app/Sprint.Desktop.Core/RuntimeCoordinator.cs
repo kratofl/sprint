@@ -44,7 +44,7 @@ public sealed class RuntimeCoordinator
     private readonly LapTraceRetention? _traceRetention;
     private readonly ButtonAssignment _buttons;
     private readonly SetupLibrary? _setups;
-    private readonly DashAcknowledgements _acknowledgements;
+    private readonly Acknowledgements _acknowledgements;
 
     /// <summary>
     /// <paramref name="planner"/>/<paramref name="analysis"/>/<paramref name="diagnosticsLog"/> default
@@ -80,7 +80,7 @@ public sealed class RuntimeCoordinator
         LapTraceRetention? traceRetention = null,
         ButtonAssignment? buttons = null,
         SetupLibrary? setups = null,
-        DashAcknowledgements? acknowledgements = null)
+        Acknowledgements? acknowledgements = null)
     {
         this._runtime = runtime ?? throw new ArgumentNullException(nameof(runtime));
         this._planner = planner ?? new SessionPlannerService(new LocalSessionPlanStore(Path.Combine(runtime.DataRoot, "session-plans")));
@@ -102,7 +102,7 @@ public sealed class RuntimeCoordinator
         this._traceRetention = traceRetention;
         this._buttons = buttons ?? new ButtonAssignment();
         this._setups = setups;
-        this._acknowledgements = acknowledgements ?? new DashAcknowledgements();
+        this._acknowledgements = acknowledgements ?? new Acknowledgements();
     }
 
     public bool Execute(JsonElement command, out string error)
@@ -148,7 +148,7 @@ public sealed class RuntimeCoordinator
             case "dash.mode.delete": return this.DeleteDashMode(command, out error);
             case "dash.setScreenProfile": return this.SetDashScreenProfile(command, out error);
             case "dashAlerts.update": return this.UpdateDashAlert(command, out error);
-            case SprintCommands.DashAcknowledge: this.AcknowledgeDash(); return true;
+            case SprintCommands.Acknowledge: this.Acknowledge(); return true;
             case SprintCommands.DashPageNext: return this.CycleDashPage(command, offset: 1, out error);
             case SprintCommands.DashPagePrev: return this.CycleDashPage(command, offset: -1, out error);
             case "setup.duplicate": return this.DuplicateSetup(command, out error);
@@ -1052,11 +1052,11 @@ public sealed class RuntimeCoordinator
     }
 
     /// <summary>
-    /// Ack, from a wheel button or the app: takes the alert up now down on every dash (wheel screens
-    /// and browser displays, each on its own thread at its next frame) and marks the engineer's
-    /// message on the wheel seen.
+    /// Ack, from any device's button or the app: an app-wide event, not tied to a dash. Takes the
+    /// alert up now down on every dash (wheel screens and browser displays, each on its own thread at
+    /// its next frame) and marks the engineer's message on the wheel seen.
     /// </summary>
-    private void AcknowledgeDash()
+    private void Acknowledge()
     {
         this._acknowledgements.Acknowledge();
         this._link?.AcknowledgeRadio();
@@ -1094,7 +1094,7 @@ public sealed class RuntimeCoordinator
                     devices = [.. this._runtime.Devices];
                 ResolvedHardwareBinding? bound = HardwareBindingResolver.Resolve(run.Input, devices, this._runtime.Controls.Bindings);
                 // The Ack button runs as itself: it acknowledges the message and the dash alerts with it.
-                if (bound?.Command != SprintCommands.DashAcknowledge && this.AcknowledgesRadio(run.Input))
+                if (bound?.Command != SprintCommands.Acknowledge && this.AcknowledgesRadio(run.Input))
                     this._link?.AcknowledgeRadio();
                 else if (bound is not null)
                     this.RunButton(bound.Command, bound.DeviceId is { } id ? this.DeviceById(id) : null);
@@ -1111,25 +1111,34 @@ public sealed class RuntimeCoordinator
         input.Input.StartsWith("button:", StringComparison.Ordinal)
         && this._link?.State is { Role: PeerRole.Driver, Radio.Showing: not null };
 
+    /// <summary>
+    /// Runs a bound function. The app functions (Ack, the HUD) never look at a dash; only the page
+    /// functions resolve the dash the device shows.
+    /// </summary>
     private void RunButton(string command, SavedDevice? device)
     {
-        DashLayout? layout = device is null ? null : DevicePurposeLayouts.Resolve(device, this._runtime.DashLayouts, this.CurrentCar);
         switch (command)
         {
-            case SprintCommands.DashPageNext when device is not null && layout is not null:
-                this._pageCycle.Move(device.Id, layout, 1);
-                break;
-            case SprintCommands.DashPagePrev when device is not null && layout is not null:
-                this._pageCycle.Move(device.Id, layout, -1);
-                break;
+            case SprintCommands.Acknowledge:
+                this.Acknowledge();
+                return;
             case SprintCommands.CompareHudToggle:
                 this._liveCompare.SetHudOpen(!this._liveCompare.HudOpen, out _);
+                return;
+        }
+
+        if (device is null || DevicePurposeLayouts.Resolve(device, this._runtime.DashLayouts, this.CurrentCar) is not { } layout)
+            return;
+        switch (command)
+        {
+            case SprintCommands.DashPageNext:
+                this._pageCycle.Move(device.Id, layout, 1);
                 break;
-            case SprintCommands.DashAcknowledge:
-                this.AcknowledgeDash();
+            case SprintCommands.DashPagePrev:
+                this._pageCycle.Move(device.Id, layout, -1);
                 break;
             default:
-                if (ButtonFunctions.GotoPage(command) is { } pageId && device is not null && layout is not null)
+                if (ButtonFunctions.GotoPage(command) is { } pageId)
                     this._pageCycle.Show(device.Id, layout, pageId);
                 break;
         }

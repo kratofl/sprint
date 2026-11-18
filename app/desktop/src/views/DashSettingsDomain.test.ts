@@ -64,12 +64,12 @@ test('the preview plays on the first dash device’s dash at its screen size, el
 
 test('Acknowledge lists each device with buttons that offers it, with its button and whether it is waiting; a plain screen is left out', () => {
   const devices = [
-    device({ id: 'omega', name: 'Omega', type: 'wheel', bindings: [{ input: 'button:7', command: 'dash.acknowledge' }] }),
+    device({ id: 'omega', name: 'Omega', type: 'wheel', bindings: [{ input: 'button:7', command: 'acknowledge' }] }),
     device({ id: 'box', name: 'Button box', type: 'buttonbox' }),
     device({ id: 'screen', name: 'Screen', type: 'screen' }),
   ]
-  const ack = { id: 'dash.acknowledge', label: 'Acknowledge' }
-  const rows = ackRows(devices, { functions: { omega: [ack], box: [ack], screen: [ack] }, listening: { deviceId: 'box', command: 'dash.acknowledge' } })
+  const ack = { id: 'acknowledge', label: 'Acknowledge' }
+  const rows = ackRows(devices, { functions: { omega: [ack], box: [ack], screen: [ack] }, listening: { deviceId: 'box', command: 'acknowledge' } })
   assert.deepEqual(rows, [
     { deviceId: 'omega', name: 'Omega', input: 'button:7', waiting: false },
     { deviceId: 'box', name: 'Button box', input: null, waiting: true },
