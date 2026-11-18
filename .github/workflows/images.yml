@@ -2,16 +2,12 @@ name: Images
 
 # Publishes the server images ghcr.io/<owner>/sprint-api and sprint-web for
 # linux/amd64 + linux/arm64.
-#   v*.*.* tag        -> :<tag> and :stable (no suffix) or :unstable (pre-release suffix)
-#   push to main      -> :edge
-# cut-release.yml calls it with the tag it has just pushed, which counts as a tag build.
+#   called by release.yml -> :<tag> and :stable (no suffix) or :unstable (pre-release suffix)
+#   push to main          -> :edge
 # deploy/komodo/compose.yaml pulls :${SPRINT_VERSION:-unstable}.
 on:
   push:
-    tags:
-      - 'v*.*.*'
     branches: [main]
-    # Applies to main only; GitHub does not evaluate path filters for tag pushes.
     paths:
       - 'api/**'
       - 'web/**'
@@ -37,12 +33,12 @@ permissions:
 
 concurrency:
   group: images-${{ inputs.tag || github.ref }}
-  # A newer main push supersedes an edge build; release tags always finish.
-  cancel-in-progress: ${{ !inputs.tag && github.ref_type == 'branch' }}
+  # A newer main push supersedes an edge build; release builds always finish.
+  cancel-in-progress: ${{ !inputs.tag }}
 
 env:
-  # The release tag (the caller's input, or the pushed tag); empty for an edge build.
-  RELEASE_TAG: ${{ inputs.tag || (github.ref_type == 'tag' && github.ref_name || '') }}
+  # The release tag from release.yml; empty for an edge build.
+  RELEASE_TAG: ${{ inputs.tag }}
   REGISTRY: ghcr.io
   PLATFORMS: linux/amd64,linux/arm64
 

@@ -1,29 +1,70 @@
 name: Release
 
+# The release button and the only way to release: Actions -> Release -> Run workflow. Picks the
+# next version from the existing tags and the labels on the PRs merged since the last stable
+# release (scripts/next-version.mjs), tags main with it, builds the desktop app into a GitHub
+# Release and publishes the server images (images.yml) under the same version.
+run-name: Release ${{ inputs.channel }}
+
 on:
-  push:
-    tags:
-      - 'v*.*.*'
-  # From cut-release.yml, which has just pushed the tag.
-  workflow_call:
+  workflow_dispatch:
     inputs:
-      tag:
-        type: string
-        required: true
+      channel:
+        description: Channel
+        type: choice
+        options: [pre-release, stable]
+        default: pre-release
 
 permissions:
   contents: read
 
-# The tag being released: the caller's input, or the pushed tag.
-env:
-  RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+# Runs queue rather than race; a queued run on an already released commit stops (next-version.mjs).
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 jobs:
-  release-desktop:
+  tag:
+    name: Tag
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: read
+    outputs:
+      tag: ${{ steps.next.outputs.tag }}
+    steps:
+      - name: Release from main only
+        if: github.ref != 'refs/heads/main'
+        run: |
+          echo "::error::Run this workflow on main, not ${GITHUB_REF_NAME}."
+          exit 1
+
+      # Full history, so every existing tag is here to count from.
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Tag the next version
+        id: next
+        env:
+          CHANNEL: ${{ inputs.channel }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag=$(node scripts/next-version.mjs "$CHANNEL")
+          git tag "$tag"
+          git push origin "$tag"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "Releasing **$tag** from \`${GITHUB_SHA::7}\`." >> "$GITHUB_STEP_SUMMARY"
+
+  desktop:
     name: Desktop (${{ matrix.label }})
+    needs: tag
     runs-on: ${{ matrix.os }}
     permissions:
       contents: write
+    env:
+      RELEASE_TAG: ${{ needs.tag.outputs.tag }}
     strategy:
       fail-fast: false
       matrix:
@@ -111,3 +152,13 @@ jobs:
           files: ${{ matrix.assets }}
           generate_release_notes: true
           prerelease: ${{ env.IS_PRERELEASE == 'true' }}
+
+  images:
+    name: Images
+    needs: tag
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/images.yml
+    with:
+      tag: ${{ needs.tag.outputs.tag }}
