@@ -1,4 +1,4 @@
-// Picks the next release tag. The release workflow (.github/workflows/cut-release.yml) runs it,
+// Picks the next release tag. The release workflow (.github/workflows/release.yml) runs it,
 // tags the result and builds that tag:
 //
 //   node scripts/next-version.mjs <stable|pre-release>
