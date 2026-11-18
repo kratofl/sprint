@@ -28,7 +28,7 @@ export const isDashLabelMode = (value: unknown): value is DashLabelMode => dashL
 /** The flat style's dash-wide look: corner radius (px at 800x480) and the default edge and label. */
 export interface DashChrome { radius: number; border: DashBorder; label: DashLabelMode }
 /** The look a flat dash without `chrome` gets (the renderer's `DashChrome::default`). */
-export const DEFAULT_DASH_CHROME: DashChrome = { radius: 6, border: 'none', label: 'on' }
+export const DEFAULT_DASH_CHROME: DashChrome = { radius: 6, border: 'normal', label: 'on' }
 /** `border`/`label` override the dash's `chrome` for one widget (flat style). */
 export interface DashWidgetStyle { textColor?: string; labelColor?: string; border?: DashBorder; label?: DashLabelMode }
 /** A group's own frame round its widgets (flat style), its name as the label, at the left or centred. */

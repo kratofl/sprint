@@ -2,6 +2,7 @@
 //
 //   cargo run --release --example render -- --dash <layout.json> <out.png> [--page <id>] [--style panels|grid|bars] [--size 800x480]
 //                                           [--banner <banner.json> | --alert <type>[:full|strip|center][:invert]]
+//                                           [--level <percent>] [--radius <px>]
 //   cargo run --release --example render -- <case.json> <out.png>
 //   cargo run --release --example render -- --all <cases-dir> <out-dir> [name-filter]
 //   cargo run --release --example render -- --bench <case.json> [iterations]
@@ -11,6 +12,8 @@
 // default.json) against the fixed race frame below; --style overrides the layout's own style, so
 // one layout can be checked in every style; --banner draws an alert banner over it (the JSON
 // `render_still` takes, e.g. `{ "kind": "lapSummary", ... }`), so a popup can be checked too;
+// --level puts the fuel (of a 90 L tank), virtual energy and charge all at that percentage, for the
+// bars' level colours; --radius overrides the dash's corner radius.
 // --alert draws the designer's preview of an alert type (`tc_change:strip`, `penalty:full:invert`).
 //
 // A case is `{ name, width, height, layout, pageId?, idle?, settings?, targets?, frame, banner?,
@@ -125,7 +128,7 @@ fn sample_frame() -> Value {
 fn render_dash(layout_path: &Path, out: &Path, options: &[&str]) -> Result<(), String> {
     let text = fs::read(layout_path).map_err(|e| format!("{}: {e}", layout_path.display()))?;
     let mut layout: Value = serde_json::from_slice(&text).map_err(|e| format!("{}: {e}", layout_path.display()))?;
-    let (mut page_id, mut width, mut height, mut banner, mut alert) = (None, 800.0, 480.0, None, None);
+    let (mut page_id, mut width, mut height, mut banner, mut alert, mut level) = (None, 800.0, 480.0, None, None, None);
     for pair in options.chunks(2) {
         match pair {
             ["--page", id] => page_id = Some(*id),
@@ -138,12 +141,25 @@ fn render_dash(layout_path: &Path, out: &Path, options: &[&str]) -> Result<(), S
             }
             ["--banner", path] => banner = Some(fs::read(path).map_err(|e| format!("{path}: {e}"))?),
             ["--alert", spec] => alert = Some(*spec),
+            ["--level", pct] => level = Some(pct.parse::<f64>().map_err(|_| format!("not a percentage: {pct}"))?),
+            ["--radius", px] => {
+                let px: f64 = px.parse().map_err(|_| format!("not a radius: {px}"))?;
+                let chrome = layout.as_object_mut().ok_or("the layout is not a JSON object")?.entry("chrome").or_insert(json!({}));
+                chrome["radius"] = json!(px);
+            }
             _ => return Err(format!("unknown option: {}", pair.join(" "))),
         }
     }
     let scene = json!({ "layout": layout, "width": width, "height": height, "pageId": page_id, "settings": { "utcOffsetMinutes": 60 },
                 "targets": { "lapTimeSeconds": 209, "fuelPerLapLiters": 4.42 } });
-    let case = Case { scene: scene.to_string().into_bytes(), frame: sample_frame().to_string().into_bytes(), banner, now_ms: 0.0 };
+    let mut frame = sample_frame();
+    if let Some(pct) = level {
+        frame["car"]["fuelCapacityLiters"] = json!(90.0);
+        frame["car"]["fuelLiters"] = json!(90.0 * pct / 100.0);
+        frame["energy"]["virtualEnergy"] = json!(pct);
+        frame["energy"]["stateOfCharge"] = json!(pct / 100.0);
+    }
+    let case = Case { scene: scene.to_string().into_bytes(), frame: frame.to_string().into_bytes(), banner, now_ms: 0.0 };
     let mut renderer = Renderer::new();
     match alert {
         None => render(&mut renderer, &case)?,
@@ -252,7 +268,7 @@ fn main() {
         ["--bench", case, n] => n.parse().map_err(|_| format!("not a count: {n}")).and_then(|n| bench(Path::new(case), n)),
         [case, out] if !case.starts_with("--") => render_one(Path::new(case), Path::new(out)),
         _ => Err("usage: render --dash <layout.json> <out.png> [--page <id>] [--style panels|grid|bars] [--size WxH] \
-                  [--banner <banner.json> | --alert <type>[:full|strip|center][:invert]] \
+                  [--banner <banner.json> | --alert <type>[:full|strip|center][:invert]] [--level <percent>] [--radius <px>] \
                   | <case.json> <out.png> \
                   | --all <cases-dir> <out-dir> [filter] | --bench <case.json> [iterations] | --ops <case.json>"
             .to_owned()),

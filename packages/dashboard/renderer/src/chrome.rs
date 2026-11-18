@@ -215,6 +215,9 @@ fn ctx_is_flat(ctx: ChromeContext) -> bool {
 /// Half the gutter between neighbouring flat frames, at 800x480.
 const FLAT_GAP: f64 = 3.0;
 
+/// How far a box with its label in the top edge steps down, so the label clears the box above.
+const NOTCH_DROP: f64 = 5.0;
+
 /// A label band's height for the flat chrome, at 800x480.
 fn flat_label_height(label: LabelMode) -> f64 {
     match label {
@@ -224,19 +227,22 @@ fn flat_label_height(label: LabelMode) -> f64 {
     }
 }
 
-/// The flat chrome's frame (mockup v2): a box with the dash's radius and the widget's edge weight,
-/// its label off, small above the value, or in a band across the top. A condition fills the box
-/// and turns every text on it to the dark ink; a knob's identity color is a tab before an
-/// `On` label or the band's color.
+/// The flat chrome's frame: a box with the dash's radius and the widget's edge weight, its edge
+/// in the text color (white by default, like a works team's wheel), and its label off, in a band
+/// across the top, or `On`: cut into the top edge, or small above the value when there is no
+/// edge. A condition fills the box and turns every text in it to the dark ink; a knob's identity
+/// color is its label's color, a tab before an edgeless label, or the band's color.
 fn flat_frame(b: &mut Builder, frame: WidgetFrame, children: impl FnOnce(&mut Builder, f64, f64, &DashPaletteColors)) {
     let WidgetFrame { ctx, rect, title, accent, fill, title_color, palette } = frame;
     let s = ctx.scale;
     let gap = FLAT_GAP * s;
-    let box_ = PixelRect::new(gap, gap, (rect.width - gap * 2.0).max(0.0), (rect.height - gap * 2.0).max(0.0));
-    let radius = (ctx.flat.radius * s).min(box_.width / 2.0).min(box_.height / 2.0);
-    let edge = if ctx.flat.border == BorderWeight::None { 0.0 } else { (ctx.flat.border.px() * s).max(1.0) };
     let label = if title.is_some() { ctx.flat.label } else { LabelMode::Off };
-    let band_height = flat_label_height(label) * s;
+    let edge = if ctx.flat.border == BorderWeight::None { 0.0 } else { (ctx.flat.border.px() * s).max(1.0) };
+    let notched = label == LabelMode::On && edge > 0.0;
+    let drop = if notched { NOTCH_DROP * s } else { 0.0 };
+    let box_ = PixelRect::new(gap, gap + drop, (rect.width - gap * 2.0).max(0.0), (rect.height - gap * 2.0 - drop).max(0.0));
+    let radius = (ctx.flat.radius * s).min(box_.width / 2.0).min(box_.height / 2.0);
+    let band_height = if notched { 7.0 * s } else { flat_label_height(label) * s };
     let content_palette = if fill.is_some() { ink_palette(&palette) } else { palette };
     let pad = 6.0 * s;
 
@@ -245,9 +251,35 @@ fn flat_frame(b: &mut Builder, frame: WidgetFrame, children: impl FnOnce(&mut Bu
             b.rect(box_, Radii::all(radius), fill);
         }
         if edge > 0.0 {
-            b.border(box_, edge, radius, fill.unwrap_or(palette.border));
+            b.border(box_, edge, radius, fill.unwrap_or(palette.foreground));
         }
-        if let Some(title) = title {
+        if notched && let Some(title) = title {
+            let size = 10.0 * s;
+            let left = box_.left + radius.max(6.0 * s) + 4.0 * s;
+            let width = b.text_width(title, size, TextWeight::LabelBold).min((box_.width - (left - box_.left) * 2.0).max(0.0));
+            // On a filled box the notch is a full label high, so the label never sits on its fill.
+            let notch = if fill.is_some() {
+                PixelRect::new(left - 4.0 * s, box_.top - 1.0, width + 8.0 * s, size * 0.75)
+            } else {
+                PixelRect::new(left - 4.0 * s, box_.top - 1.0, width + 8.0 * s, edge + 2.0)
+            };
+            b.rect(notch, Radii::ZERO, palette.background);
+            let color = fill.or(accent).unwrap_or_else(|| title_color.unwrap_or(palette.secondary));
+            text_line(
+                b,
+                TextLine {
+                    text: title,
+                    left,
+                    top: box_.top + edge / 2.0,
+                    size,
+                    color,
+                    align: TextAlign::Start,
+                    max_width: Some(width),
+                    weight: TextWeight::LabelBold,
+                    sizing: TextSizing::Fit,
+                },
+            );
+        } else if let Some(title) = title {
             let band = PixelRect::new(box_.left, box_.top, box_.width, band_height);
             let (left, color) = match label {
                 LabelMode::Off => (0.0, palette.muted),
@@ -302,7 +334,7 @@ pub fn group_frame(b: &mut Builder, ctx: ChromeContext, rect: PixelRect, style: 
     let label_width = b.text_width(name, size, TextWeight::LabelBold);
     let label_left = if style.centered { rect.left + (rect.width - label_width) / 2.0 } else { rect.left + radius.max(8.0 * s) + 4.0 * s };
     if edge > 0.0 {
-        b.border(rect, edge, radius, palette.border);
+        b.border(rect, edge, radius, palette.foreground);
     }
     match style.label {
         LabelMode::Off => {}
@@ -391,6 +423,29 @@ mod tests {
         let (bars, _) = frame_ops(DashStyle::Bars, "TC", Some(tc), None);
         assert!(bars.iter().any(|op| matches!(op, DrawOp::Border { color, .. } if *color == DEFAULT_DASH_PALETTE.border)));
         assert!(bars.iter().any(|op| matches!(op, DrawOp::Rect { color, radii, .. } if *color == tc && radii.bottom_left == 0.0)));
+    }
+
+    #[test]
+    fn a_flat_box_wears_a_white_edge_with_its_label_cut_into_it_in_a_knobs_color() {
+        let tc = dash_setting_colors::TC;
+        let (ops, _) = frame_ops(DashStyle::Flat, "TC", Some(tc), None);
+        let (edge, color) = ops
+            .iter()
+            .find_map(|op| match op {
+                DrawOp::Border { rect, color, .. } => Some((*rect, *color)),
+                _ => None,
+            })
+            .expect("an edge");
+        assert_eq!(color, DEFAULT_DASH_PALETTE.foreground);
+        let label = ops
+            .iter()
+            .find_map(|op| match op {
+                DrawOp::Text(run) => Some(run),
+                _ => None,
+            })
+            .expect("a label");
+        assert_eq!(label.color, tc);
+        assert!(label.baseline > edge.top && label.baseline < edge.top + 8.0, "the label straddles the top edge: {} vs {}", label.baseline, edge.top);
     }
 
     #[test]

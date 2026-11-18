@@ -59,6 +59,7 @@ fn every_field_of_the_hosts_frame_reaches_the_model() {
             steering: -0.375,
             fuel: 42.5,
             fuel_per_lap: 2.75,
+            fuel_capacity: None,
             position_x: 11.5,
             position_y: 12.5,
             position_z: 13.5,

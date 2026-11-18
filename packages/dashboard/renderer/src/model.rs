@@ -85,7 +85,8 @@ impl LabelMode {
 }
 
 /// The flat chrome's dash-wide settings: corner radius in pixels at 800x480, the default edge and
-/// the default label. A dash without them gets the default look: radius 6, no edges, small labels.
+/// the default label. A dash without them gets the default look: radius 6, 2px edges, labels in
+/// the edge.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct DashChrome {
     pub radius: f64,
@@ -95,7 +96,7 @@ pub struct DashChrome {
 
 impl Default for DashChrome {
     fn default() -> Self {
-        DashChrome { radius: 6.0, border: BorderWeight::None, label: LabelMode::On }
+        DashChrome { radius: 6.0, border: BorderWeight::Normal, label: LabelMode::On }
     }
 }
 
@@ -498,6 +499,8 @@ pub struct CarState {
     pub steering: f64,
     pub fuel: f64,
     pub fuel_per_lap: f64,
+    /// The tank's size, litres; `None` when the game does not say.
+    pub fuel_capacity: Option<f64>,
     pub position_x: f64,
     pub position_y: f64,
     pub position_z: f64,
@@ -524,6 +527,7 @@ impl Default for CarState {
             steering: 0.0,
             fuel: 0.0,
             fuel_per_lap: 0.0,
+            fuel_capacity: None,
             position_x: 0.0,
             position_y: 0.0,
             position_z: 0.0,
@@ -862,6 +866,7 @@ fn narrow_car(f: Fields) -> CarState {
         steering: f.num("steering", 0.0),
         fuel: f.num("fuelLiters", 0.0),
         fuel_per_lap: f.num("fuelPerLapLiters", 0.0),
+        fuel_capacity: f.opt_num("fuelCapacityLiters").filter(|liters| *liters > 0.0),
         position_x: f.num("positionX", 0.0),
         position_y: f.num("positionY", 0.0),
         position_z: f.num("positionZ", 0.0),
@@ -1144,6 +1149,17 @@ mod tests {
         let widget = &s.layout.pages[0].widgets[0];
         assert_eq!(widget.config_string("align"), Some("left"));
         assert_eq!(widget.style.as_ref().and_then(|st| st.text_color.clone()), None);
+    }
+
+    #[test]
+    fn the_tanks_size_is_read_when_the_game_says_it() {
+        let capacity = |car: &str| {
+            let frame = format!(r#"{{"session":{{}},"car":{car},"lap":{{}},"flags":{{}},"electronics":{{}},"race":{{}},"energy":{{}}}}"#);
+            parse_frame(frame.as_bytes()).map(|frame| frame.car.fuel_capacity)
+        };
+        assert_eq!(capacity(r#"{"fuelCapacityLiters":90}"#), Ok(Some(90.0)));
+        assert_eq!(capacity(r#"{"fuelCapacityLiters":null}"#), Ok(None));
+        assert_eq!(capacity(r#"{"fuelCapacityLiters":0}"#), Ok(None), "a tank of nothing is unknown");
     }
 
     #[test]

@@ -16,7 +16,7 @@ use crate::format::{
 };
 use crate::grid::PixelRect;
 use crate::model::{CarState, DashSettings, DashTargets, DashWidget, FieldCar, LapState, TelemetryFrame, TireState};
-use crate::palette::{DashPaletteColors, Rgba, dash_setting_colors, resolve_tyre_color};
+use crate::palette::{DashPaletteColors, Rgba, dash_setting_colors, dim_color, resolve_tyre_color};
 use crate::primitives::{
     TextAlign, TextLine, TextSizing, VALUE_SHARE, ValueWithUnit, big_value, dot, h_bar, text_line, value_size, value_with_unit, vertical_seg_bar,
 };
@@ -305,9 +305,86 @@ pub fn zoned_gear(b: &mut Builder, car: &CarState, palette: &DashPaletteColors, 
     );
 }
 
-/// A bar: a slim track filled from the bottom (or the left, lying down), its label at the far
-/// end and its value at the near end. `channel`: fuel, ve, soc, delta, inputs or rpm. Delta grows
-/// from the middle: up and green while gaining, down while losing.
+/// How many segments a bar has (ten a side, centre-out).
+const BAR_SEGMENTS: usize = 20;
+/// The gap between a bar's segments at scale 1, px.
+const BAR_SEGMENT_GAP: f64 = 2.0;
+
+/// How bright an unlit segment shows its colour: a dim tint, so the scale stays readable.
+const BAR_UNLIT: f64 = 0.22;
+
+/// A segment's unlit tint of `color`.
+fn unlit(color: Rgba, p: &DashPaletteColors) -> Rgba {
+    dim_color(color, BAR_UNLIT).unwrap_or(p.surface)
+}
+
+/// An energy level's colour: fine from half up, warning below half, critical below a fifth.
+fn level_color(share: f64, p: &DashPaletteColors) -> Rgba {
+    if share >= 0.5 {
+        p.success
+    } else if share >= 0.2 {
+        p.warning
+    } else {
+        p.critical
+    }
+}
+
+/// How full the tank is, 0–1: against its size when the game says it, else `FUEL_BAR_LITERS`.
+fn fuel_share(car: &CarState) -> f64 {
+    car.fuel / car.fuel_capacity.unwrap_or(FUEL_BAR_LITERS)
+}
+
+/// One segment of a track `count` segments long: its rectangle, segment 0 at the bottom (vertical)
+/// or the left.
+fn segment_rect(track: PixelRect, vertical: bool, count: usize, gap: f64, i: usize) -> PixelRect {
+    let n = count as f64;
+    if vertical {
+        let h = (track.height - gap * (n - 1.0)) / n;
+        PixelRect::new(track.left, track.top + track.height - (i as f64 + 1.0) * h - i as f64 * gap, track.width, h.max(0.0))
+    } else {
+        let wd = (track.width - gap * (n - 1.0)) / n;
+        PixelRect::new(track.left + i as f64 * (wd + gap), track.top, wd.max(0.0), track.height)
+    }
+}
+
+/// A level bar in segments, no label or value: as many lit from the bottom (left) as the share
+/// fills, rounded up so a drop left still shows. Each segment wears its zone's colour (`level_color`
+/// of the share it stands for: red in the bottom fifth, then amber to half, green above), lit or as
+/// a dim tint, so the scale reads even when full; a track with its own colour (`fixed`) wears
+/// that instead.
+fn level_segments(b: &mut Builder, w: &WidgetContext, track: PixelRect, vertical: bool, share: f64, fixed: Option<Rgba>) {
+    let p = w.palette;
+    let lit = (share.clamp(0.0, 1.0) * BAR_SEGMENTS as f64).ceil() as usize;
+    for i in 0..BAR_SEGMENTS {
+        let zone = fixed.unwrap_or_else(|| level_color((i as f64 + 0.5) / BAR_SEGMENTS as f64, p));
+        let color = if i < lit { zone } else { unlit(zone, p) };
+        b.rect(segment_rect(track, vertical, BAR_SEGMENTS, BAR_SEGMENT_GAP * w.chrome.scale, i), Radii::ZERO, color);
+    }
+}
+
+/// A centre-out bar in segments: `up` lights segments from the middle up (right, lying down) and
+/// `down` from the middle down (left), each a 0–1 share of its half in its colour; unlit ones show
+/// their side's colour as a dim tint.
+fn centre_segments(b: &mut Builder, w: &WidgetContext, track: PixelRect, vertical: bool, up: (f64, Rgba), down: (f64, Rgba)) {
+    let p = w.palette;
+    let half = BAR_SEGMENTS / 2;
+    let lit = |share: f64| (share.clamp(0.0, 1.0) * half as f64).ceil() as usize;
+    let (up_lit, down_lit) = (lit(up.0), lit(down.0));
+    for i in 0..BAR_SEGMENTS {
+        let color = if i >= half {
+            if i - half < up_lit { up.1 } else { unlit(up.1, p) }
+        } else if half - 1 - i < down_lit {
+            down.1
+        } else {
+            unlit(down.1, p)
+        };
+        b.rect(segment_rect(track, vertical, BAR_SEGMENTS, BAR_SEGMENT_GAP * w.chrome.scale, i), Radii::ZERO, color);
+    }
+}
+
+/// A bar: segments with no label or value, the shape and colour say it. `channel`: fuel, ve, soc
+/// and fuel_ve fill from the bottom (the left, lying down) in their level's colour; delta and gap
+/// grow from the middle; inputs are two tracks; rpm the shift strip; spotter a car's place.
 fn bar(b: &mut Builder, w: &WidgetContext) {
     let f = w.frame;
     let p = w.palette;
@@ -319,86 +396,39 @@ fn bar(b: &mut Builder, w: &WidgetContext) {
     }
     let vertical = w.height > w.width;
     let radius = w.chrome.flat.radius * s * 0.5;
+    let track =
+        if vertical { PixelRect::new(w.width * 0.15, 0.0, w.width * 0.7, w.height) } else { PixelRect::new(0.0, w.height * 0.15, w.width, w.height * 0.7) };
     match channel {
-        "spotter" => return spotter_bar(b, w, vertical, radius),
-        "gap" => return gap_bar(b, w, vertical, radius),
-        "fuel_ve" => {
-            let ve = virtual_energy_percent(f) / 100.0;
-            return twin_bar(b, w, vertical, radius, [("F", f.car.fuel / FUEL_BAR_LITERS, p.secondary), ("VE", ve, dash_setting_colors::ENGINE_MAP)]);
+        "spotter" => spotter_bar(b, w, vertical, radius),
+        "gap" => gap_bar(b, w, track, vertical),
+        "fuel_ve" => twin_bar(b, w, vertical, [(fuel_share(&f.car), None), (virtual_energy_percent(f) / 100.0, None)]),
+        "inputs" => twin_bar(b, w, vertical, [(f.car.throttle, Some(p.success)), (f.car.brake, Some(p.danger))]),
+        "delta" => {
+            // Gaining grows up (right) in green, losing down (left); a second either way fills it.
+            centre_segments(b, w, track, vertical, (-f.lap.delta, p.timing_personal_best), (f.lap.delta, p.secondary));
         }
-        _ => {}
+        "ve" => level_segments(b, w, track, vertical, virtual_energy_percent(f) / 100.0, None),
+        "soc" => level_segments(b, w, track, vertical, f.energy.soc, None),
+        _ => level_segments(b, w, track, vertical, fuel_share(&f.car), None),
     }
-    let label_band = 16.0 * s;
-    let (label, value, pct, color): (&str, String, f64, Rgba) = match channel {
-        "ve" => {
-            let pct = virtual_energy_percent(f);
-            ("VE", js_number_string(pct.round()), pct / 100.0, energy_fill(pct, p).unwrap_or(dash_setting_colors::ENGINE_MAP))
-        }
-        "soc" => ("SOC", js_number_string(battery_percent(f).round()), f.energy.soc, energy_fill(battery_percent(f), p).unwrap_or(p.accent)),
-        "delta" => ("Δ", format_delta(f.lap.delta), f.lap.delta, if f.lap.delta < 0.0 { p.timing_personal_best } else { p.secondary }),
-        "inputs" => ("", String::new(), 0.0, p.foreground),
-        _ => ("FUEL", js_number_string(f.car.fuel.round()), f.car.fuel / FUEL_BAR_LITERS, fuel_fill(f.car.fuel, p).unwrap_or(p.secondary)),
-    };
-    if channel == "inputs" {
-        // Two tracks side by side (or stacked, lying down): throttle green, brake red.
-        return twin_bar(b, w, vertical, radius, [("", f.car.throttle, p.success), ("", f.car.brake, p.danger)]);
-    }
-    let (track, label_at, value_at) = if vertical {
-        let track = PixelRect::new(w.width * 0.2, label_band, w.width * 0.6, w.height - label_band * 2.0);
-        (track, (w.width / 2.0, label_band / 2.0), (w.width / 2.0, w.height - label_band / 2.0))
-    } else {
-        let side = 44.0 * s;
-        let track = PixelRect::new(side, w.height * 0.2, w.width - side * 2.0, w.height * 0.6);
-        (track, (side / 2.0, w.height / 2.0), (w.width - side / 2.0, w.height / 2.0))
-    };
-    if channel == "delta" {
-        b.rect(track, Radii::all(radius), p.surface);
-        let share = (pct.clamp(-1.0, 1.0)) / 2.0;
-        if vertical {
-            let mid = track.top + track.height / 2.0;
-            let len = share.abs() * track.height;
-            let top = if share < 0.0 { mid - len } else { mid };
-            b.rect(PixelRect::new(track.left, top, track.width, len), Radii::ZERO, color);
-            b.rect(PixelRect::new(track.left - 3.0 * s, mid - 1.0 * s, track.width + 6.0 * s, 2.0 * s), Radii::ZERO, p.muted);
-        } else {
-            let mid = track.left + track.width / 2.0;
-            let len = share.abs() * track.width;
-            let left = if share < 0.0 { mid - len } else { mid };
-            b.rect(PixelRect::new(left, track.top, len, track.height), Radii::ZERO, color);
-            b.rect(PixelRect::new(mid - 1.0 * s, track.top - 3.0 * s, 2.0 * s, track.height + 6.0 * s), Radii::ZERO, p.muted);
-        }
-    } else {
-        fill_track(b, track, pct.clamp(0.0, 1.0), color, p.surface, vertical, radius);
-    }
-    let size = 11.0 * s;
-    text_line(b, fit(line(label, label_at, size, p.muted, TextAlign::Center, if vertical { w.width } else { 40.0 * s }, TextWeight::LabelBold)));
-    text_line(b, fit(line(&value, value_at, size * 1.15, p.foreground, TextAlign::Center, if vertical { w.width } else { 40.0 * s }, TextWeight::Value)));
 }
 
-/// What a full fuel bar holds, litres (the frame does not say the tank's size).
+/// What a full fuel bar holds, litres, when the game does not say the tank's size.
 const FUEL_BAR_LITERS: f64 = 100.0;
 
-/// Two tracks side by side (stacked, lying down), each filled to its share, with its label (if any)
-/// above it (before it).
-fn twin_bar(b: &mut Builder, w: &WidgetContext, vertical: bool, radius: f64, tracks: [(&str, f64, Rgba); 2]) {
-    let s = w.chrome.scale;
-    let half_gap = 2.0 * s;
-    let labelled = tracks.iter().any(|(label, ..)| !label.is_empty());
-    let band = if labelled { 16.0 * s } else { 0.0 };
-    for (i, (label, amount, color)) in tracks.into_iter().enumerate() {
-        let (track, label_at, label_width) = if vertical {
+/// Two segmented tracks side by side (stacked, lying down), each filled to its share: in its
+/// level's colour, or in its own (the inputs: throttle green, brake red).
+fn twin_bar(b: &mut Builder, w: &WidgetContext, vertical: bool, tracks: [(f64, Option<Rgba>); 2]) {
+    let half_gap = 2.0 * w.chrome.scale;
+    for (i, (share, color)) in tracks.into_iter().enumerate() {
+        let track = if vertical {
             let width = w.width / 2.0 - half_gap;
-            let left = i as f64 * (w.width / 2.0 + half_gap);
-            (PixelRect::new(left, band, width, w.height - band), (left + width / 2.0, band / 2.0), width)
+            PixelRect::new(i as f64 * (w.width / 2.0 + half_gap), 0.0, width, w.height)
         } else {
             let height = w.height / 2.0 - half_gap;
-            let top = i as f64 * (w.height / 2.0 + half_gap);
-            (PixelRect::new(band * 1.6, top, w.width - band * 1.6, height), (band * 0.8, top + height / 2.0), band * 1.6)
+            PixelRect::new(0.0, i as f64 * (w.height / 2.0 + half_gap), w.width, height)
         };
-        fill_track(b, track, amount.clamp(0.0, 1.0), color, w.palette.surface, vertical, radius);
-        if !label.is_empty() {
-            text_line(b, fit(line(label, label_at, 10.0 * s, w.palette.muted, TextAlign::Center, label_width, TextWeight::LabelBold)));
-        }
+        level_segments(b, w, track, vertical, share, color);
     }
 }
 
@@ -409,44 +439,13 @@ fn closeness(gap: f64) -> f64 {
     if gap > 0.0 { ((GAP_BAR_SECONDS - gap) / GAP_BAR_SECONDS).clamp(0.0, 1.0) } else { 0.0 }
 }
 
-/// The gaps as one bar from the middle: the car ahead pulls a green fill up (right, lying down) as
-/// the driver closes in, the car behind an amber one down (left) as it closes in; each gap's
-/// seconds at its end.
-fn gap_bar(b: &mut Builder, w: &WidgetContext, vertical: bool, radius: f64) {
-    let (p, s, race) = (w.palette, w.chrome.scale, &w.frame.race);
-    let band = 16.0 * s;
+/// The gaps as one segmented bar from the middle: the car ahead lights green segments up (right,
+/// lying down) as the driver closes in, the car behind amber ones down (left) as it closes in.
+fn gap_bar(b: &mut Builder, w: &WidgetContext, track: PixelRect, vertical: bool) {
+    let race = &w.frame.race;
     let ahead = closeness(race.gap_ahead);
     let behind = closeness(race.gap_behind);
-    let seconds = |gap: f64| if gap > 0.0 { to_fixed(gap, 1) } else { "--".to_owned() };
-    let size = 11.0 * s;
-    if vertical {
-        let track = PixelRect::new(w.width * 0.2, band, w.width * 0.6, w.height - band * 2.0);
-        b.rect(track, Radii::all(radius), p.surface);
-        let mid = track.top + track.height / 2.0;
-        let half = track.height / 2.0;
-        b.rect(PixelRect::new(track.left, mid - ahead * half, track.width, ahead * half), Radii::ZERO, p.success);
-        b.rect(PixelRect::new(track.left, mid, track.width, behind * half), Radii::ZERO, p.warning);
-        b.rect(PixelRect::new(track.left - 3.0 * s, mid - s, track.width + 6.0 * s, 2.0 * s), Radii::ZERO, p.muted);
-        text_line(b, fit(line(&seconds(race.gap_ahead), (w.width / 2.0, band / 2.0), size, p.foreground, TextAlign::Center, w.width, TextWeight::Value)));
-        text_line(
-            b,
-            fit(line(&seconds(race.gap_behind), (w.width / 2.0, w.height - band / 2.0), size, p.foreground, TextAlign::Center, w.width, TextWeight::Value)),
-        );
-    } else {
-        let side = 44.0 * s;
-        let track = PixelRect::new(side, w.height * 0.2, w.width - side * 2.0, w.height * 0.6);
-        b.rect(track, Radii::all(radius), p.surface);
-        let mid = track.left + track.width / 2.0;
-        let half = track.width / 2.0;
-        b.rect(PixelRect::new(mid, track.top, ahead * half, track.height), Radii::ZERO, p.success);
-        b.rect(PixelRect::new(mid - behind * half, track.top, behind * half, track.height), Radii::ZERO, p.warning);
-        b.rect(PixelRect::new(mid - s, track.top - 3.0 * s, 2.0 * s, track.height + 6.0 * s), Radii::ZERO, p.muted);
-        text_line(b, fit(line(&seconds(race.gap_behind), (side / 2.0, w.height / 2.0), size, p.foreground, TextAlign::Center, side, TextWeight::Value)));
-        text_line(
-            b,
-            fit(line(&seconds(race.gap_ahead), (w.width - side / 2.0, w.height / 2.0), size, p.foreground, TextAlign::Center, side, TextWeight::Value)),
-        );
-    }
+    centre_segments(b, w, track, vertical, (ahead, w.palette.success), (behind, w.palette.warning));
 }
 
 /// How far the spotter bar looks ahead and behind, metres: two car lengths each way.
@@ -481,20 +480,6 @@ fn spotter_bar(b: &mut Builder, w: &WidgetContext, vertical: bool, radius: f64) 
             let track = PixelRect::new(i as f64 * (half + gap), w.height * 0.2, half, w.height * 0.6);
             b.rect(track, Radii::all(radius), if side.is_some() { p.warning } else { p.surface });
         }
-    }
-}
-
-/// A track filled `pct` of the way from its bottom (vertical) or its left.
-fn fill_track(b: &mut Builder, track: PixelRect, pct: f64, color: Rgba, empty: Rgba, vertical: bool, radius: f64) {
-    b.rect(track, Radii::all(radius), empty);
-    let fill = if vertical {
-        let height = track.height * pct;
-        PixelRect::new(track.left, track.top + track.height - height, track.width, height)
-    } else {
-        PixelRect::new(track.left, track.top, track.width * pct, track.height)
-    };
-    if pct > 0.0 {
-        b.rect(fill, Radii::all(radius.min(fill.width / 2.0).min(fill.height / 2.0)), color);
     }
 }
 
@@ -1718,6 +1703,55 @@ mod tests {
                 _ => None,
             })
             .collect()
+    }
+
+    fn tint(color: Rgba) -> Rgba {
+        dim_color(color, BAR_UNLIT).expect("a palette colour dims")
+    }
+
+    #[test]
+    fn a_level_bar_is_twenty_segments_in_their_zones_colours_with_no_label_or_value() {
+        let mut frame = TelemetryFrame::default();
+        frame.car.fuel = 31.5;
+        frame.car.fuel_capacity = Some(90.0);
+        let ops = draw(&widget("bar", json!({ "channel": "fuel" })), &frame, 30.0, 400.0);
+        assert!(texts(&ops).is_empty(), "no label or value");
+        let colors: Vec<Rgba> = rects(&ops).into_iter().map(|(_, color)| color).collect();
+        // 35% of the tank lights seven of twenty from the bottom: four in the red fifth, three amber.
+        let (red, amber, green) = (P.critical, P.warning, P.success);
+        let mut expected = vec![red; 4];
+        expected.extend([amber; 3]);
+        expected.extend([tint(amber); 3]);
+        expected.extend([tint(green); 10]);
+        assert_eq!(colors, expected);
+
+        // The bottom segment sits at the bottom: segment 0 is drawn first.
+        let first = rects(&ops)[0].0;
+        assert!((first.top + first.height - 400.0).abs() < 0.05, "{first:?}");
+
+        // Without the tank's size, 100 L is a full tank.
+        frame.car.fuel_capacity = None;
+        frame.car.fuel = 35.0;
+        assert_eq!(rects(&draw(&widget("bar", json!({ "channel": "fuel" })), &frame, 30.0, 400.0)).len(), 20);
+        assert_eq!(rects(&draw(&widget("bar", json!({ "channel": "fuel" })), &frame, 30.0, 400.0))[6].1, amber);
+    }
+
+    #[test]
+    fn the_delta_bar_grows_up_from_the_middle_while_gaining_and_down_while_losing() {
+        let mut frame = TelemetryFrame::default();
+        frame.lap.delta = -0.42;
+        let colors = |frame: &TelemetryFrame| -> Vec<Rgba> {
+            rects(&draw(&widget("bar", json!({ "channel": "delta" })), frame, 30.0, 400.0)).into_iter().map(|(_, c)| c).collect()
+        };
+        let (gain, lose) = (P.timing_personal_best, P.secondary);
+        let gaining = colors(&frame);
+        assert_eq!(gaining[..10], [tint(lose); 10], "nothing below the middle");
+        assert_eq!(gaining[10..15], [gain, gain, gain, gain, gain], "0.42 s of a second's ten segments rounds up to five");
+        assert_eq!(gaining[15..], [tint(gain); 5]);
+        frame.lap.delta = 0.05;
+        let losing = colors(&frame);
+        assert_eq!(losing[9], lose, "the segment next to the middle");
+        assert_eq!(losing[..9], [tint(lose); 9]);
     }
 
     #[test]

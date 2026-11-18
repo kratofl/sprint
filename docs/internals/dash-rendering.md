@@ -44,6 +44,14 @@ Conditions are modeled separately from the colors that render them:
 - A condition may fill a widget's whole frame (delta gaining, tyre temperature, low fuel)
   because a fill reads at a glance on washed-out USB panels. Values on a fill turn to the
   dark canvas color. A neutral value never gets a fill.
+- Bar widgets carry no label and no value (the driver's call, 2026-11): twenty segments, and
+  an energy bar's segments each wear their zone's color (red below a fifth, amber below half,
+  green above), lit or as a dim tint, so the scale reads at a glance even when full. The fuel
+  bar measures against the tank's size when the game reports it.
+- A flat frame's edge is the text color, white by default (the driver's call, 2026-11, after a
+  works team's wheel): a white outline separates values on a washed-out panel where a grey one
+  disappears. A label on an edged box is cut into its top edge, so the value keeps the box's
+  height; only an edgeless box puts its label above the value. The corner radius is the dash's.
 
 ## Setting identity colors
 
@@ -174,7 +182,8 @@ are not.
 `cargo run --release --example render -- --dash <layout.json> <out.png>` in the crate draws one page
 of a layout at 800x480 against a fixed mid-race frame (`--page`, `--style panels|grid|bars` and
 `--size` override; `--banner <banner.json>` draws an alert popup over it, `--alert penalty:full:invert`
-the app's preview of an alert type). Render the presets in
+the app's preview of an alert type, `--level 35` puts fuel, virtual energy and charge at 35% for the
+bars' colors). Render the presets in
 `app/Sprint.Desktop.Host/presets/dash/` at the panel size and look at the PNG: layout, alignment,
 clip direction, weights and color, not the telemetry values. There is no reference image set in the
 repo.
