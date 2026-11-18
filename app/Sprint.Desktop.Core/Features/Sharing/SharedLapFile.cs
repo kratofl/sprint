@@ -53,8 +53,12 @@ public static class SharedLapFile
 {
     public const string Extension = ".sprintlap";
 
-    /// <summary>Bumped only when the container changes. Adding a channel does not touch it.</summary>
-    public const int FormatVersion = 1;
+    /// <summary>
+    /// Bumped when the container or the trace layout inside it changes, so an older Sprint says
+    /// the file is from a newer one rather than damaged. Adding a channel does not touch it.
+    /// 2: trace layout 2 (<see cref="LapTraceCodec"/>); version 1 files still read.
+    /// </summary>
+    public const int FormatVersion = 2;
 
     private static readonly byte[] Magic = "SPLAP"u8.ToArray();
 

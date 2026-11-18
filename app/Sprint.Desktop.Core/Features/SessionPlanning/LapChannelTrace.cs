@@ -156,7 +156,7 @@ public static class LapTraceChannels
 public sealed class LapChannelTrace
 {
     /// <summary>Bumped only when the on-disk layout changes. Adding a channel does not.</summary>
-    public const int FormatVersion = 1;
+    public const int FormatVersion = 2;
 
     /// <summary>The resolution the grid aims for, in metres.</summary>
     public const double TargetSampleMeters = 2.0;

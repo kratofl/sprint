@@ -230,6 +230,68 @@ public sealed class LapChannelTraceTests
         Assert.Null(LapTraceCodec.Read(new MemoryStream(bytes)));
     }
 
+    [Fact]
+    public void ATraceComesBackBitForBit()
+    {
+        // A series with a sign flip and a gap, a held value and a held gap: every case the
+        // layout writes differently.
+        LapChannelTrace trace = new LapChannelTrace
+        {
+            PositionStep = 0.25,
+            TrackLengthMeters = null,
+            Channels =
+            {
+                ["steering"] = [-0.5f, 0.25f, float.NaN, 1e-30f, -0f],
+                ["tc"] = [3f, 3f, 3f, 3f, 3f],
+                ["camberFL"] = [float.NaN, float.NaN, float.NaN, float.NaN, float.NaN],
+            },
+        };
+        using MemoryStream stream = new();
+        LapTraceCodec.Write(stream, trace);
+        stream.Position = 0;
+
+        LapChannelTrace? read = LapTraceCodec.Read(stream);
+
+        Assert.NotNull(read);
+        Assert.Equal(LapChannelTrace.FormatVersion, read.Version);
+        Assert.Equal(0.25, read.PositionStep);
+        Assert.Null(read.TrackLengthMeters);
+        Assert.Equal(trace.Channels.Keys, read.Channels.Keys);
+        foreach ((string name, float[] values) in trace.Channels)
+        {
+            Assert.Equal(values.Select(BitConverter.SingleToUInt32Bits), read.Channels[name].Select(BitConverter.SingleToUInt32Bits));
+        }
+    }
+
+    [Fact]
+    public void ATraceStoredInTheFirstLayoutStillReads()
+    {
+        // Layout 1, as every lap before layout 2 was stored: plain floats per channel.
+        using MemoryStream stream = new();
+        using (BinaryWriter writer = new BinaryWriter(stream, System.Text.Encoding.UTF8, leaveOpen: true))
+        {
+            writer.Write("SPTR"u8.ToArray());
+            writer.Write(1);
+            writer.Write(0.5);
+            writer.Write(5000.0);
+            writer.Write(2);
+            writer.Write(1);
+            writer.Write("speedKph");
+            writer.Write(2);
+            writer.Write(120.5f);
+            writer.Write(130.25f);
+        }
+
+        stream.Position = 0;
+
+        LapChannelTrace? read = LapTraceCodec.Read(stream);
+
+        Assert.NotNull(read);
+        Assert.Equal(1, read.Version);
+        Assert.Equal(5000.0, read.TrackLengthMeters);
+        Assert.Equal([120.5f, 130.25f], read.Channels["speedKph"]);
+    }
+
     private static long Deflated(LapChannelTrace? trace)
     {
         Assert.NotNull(trace);

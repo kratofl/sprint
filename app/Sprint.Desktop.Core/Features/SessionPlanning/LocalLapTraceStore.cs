@@ -57,7 +57,8 @@ public sealed class LocalLapTraceStore : ILapTraceStore
                 // leaveOpen: true -- AtomicFile.Write owns the temp FileStream's lifetime (it
                 // flushes and closes it after this delegate returns); DeflateStream must not
                 // close it out from under that on its own Dispose.
-                using DeflateStream deflate = new(stream, CompressionLevel.Fastest, leaveOpen: true);
+                // Optimal over Fastest: about 8 % smaller for some 15 ms more a lap, once a lap.
+                using DeflateStream deflate = new(stream, CompressionLevel.Optimal, leaveOpen: true);
                 LapTraceCodec.Write(deflate, trace);
             });
             this.ForgetUsage();
