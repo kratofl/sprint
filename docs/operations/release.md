@@ -1,24 +1,41 @@
 # Releasing the desktop app
 
-Releases are cut by pushing a `v*` tag. `.github/workflows/desktop-release.yml` builds Windows and
-Linux packages the same way `make build-app` does and attaches them to one GitHub Release: the
+The **Release** workflow (`.github/workflows/release.yml`) is the only way to release: Actions →
+Release → Run workflow on `main`, pick stable or pre-release. It picks the next version
+(`scripts/next-version.mjs`, see [Versions](#versions)) and pushes that tag. Then it builds Windows
+and Linux packages the same way `make build-app` does and attaches them to one GitHub Release: the
 Windows installer `sprint-<version>-setup.exe` with its `.blockmap` and `latest.yml` (what installed
-apps update from — keep the names as built), and `sprint-<version>-linux-x64.tar.gz`. Tags with a
-pre-release suffix are marked pre-release. The same tag publishes the server images (see
-[below](#server-images)).
+apps update from; keep the names as built), and `sprint-<version>-linux-x64.tar.gz`. Pre-release
+versions are marked pre-release. The same run publishes the server images (see
+[below](#server-images)). A tag pushed by hand builds nothing.
 
-Pushing a tag publishes to users. Only do it when the maintainer asks for that exact version.
+Running the workflow publishes to users. Only do it when the maintainer asks.
 
 ## Versions
 
 ```
 v<major>.<minor>.<patch>              stable
-v<major>.<minor>.<patch>-alpha.<n>    pre-release
 v<major>.<minor>.<patch>-beta.<n>     pre-release
 ```
 
-Use `alpha` or `beta` for pre-releases, not `rc`: electron-updater treats any other suffix as a
-channel of its own, so installs on alpha/beta would never see an `-rc` release.
+Pre-releases are `beta`. Not `rc`: electron-updater treats any other suffix as a channel of its own,
+so installs on the pre-release channel would never see an `-rc` release. Older tags used `alpha`.
+
+The bump comes from the labels on the PRs merged since the last stable release, the biggest wins:
+
+| Label | Bump | Means for a driver |
+| --- | --- | --- |
+| `type/breaking` | major | Something they have stops working or has to be redone |
+| `type/feature` | minor | They can do something they could not before |
+| none | patch | Fixes, polish, refactors, docs, dependency bumps |
+
+A release with any number of fixes and nothing else is a patch. A forgotten label can be added to the
+merged PR before cutting. The bump is measured from the last stable release, so repeated
+pre-releases count up one line and a stable release then promotes it: after `v1.0.0` with only
+fixes merged, pre-release gives `v1.0.1-beta.1`, again `v1.0.1-beta.2`, then stable gives `v1.0.1`.
+A `type/feature` PR merged in between moves the line to `v1.1.0-beta.1`. It refuses a version that
+would not be the newest tag (a label removed after its beta shipped), because installed apps only
+update forward.
 
 The tag minus its `v` is stamped through `-p:InformationalVersion=…`; `BuildInfo.Version` reads it
 back.
@@ -30,8 +47,8 @@ linux/amd64 and linux/arm64 on native runners and merges them into one multi-arc
 
 | Trigger | Tags |
 | --- | --- |
-| `v1.2.0` | `v1.2.0`, `stable` |
-| `v1.2.0-beta.1` (any `-` suffix) | `v1.2.0-beta.1`, `unstable` |
+| release `v1.2.0` | `v1.2.0`, `stable` |
+| release `v1.2.0-beta.1` (any `-` suffix) | `v1.2.0-beta.1`, `unstable` |
 | push to `main` touching server code | `edge` |
 
 A Komodo stack following a channel (`unstable` by default) picks the release up on its next
@@ -51,13 +68,11 @@ Then run `app/build/bin/sprint-<ver>-setup.exe` (or launch `app/build/bin/win-un
 and the views render. Run the
 [`test-sprint-desktop`](../../.agents/skills/test-sprint-desktop/SKILL.md) pass on the packaged app.
 
-```sh
-git tag v0.2.0-alpha.1
-git push origin v0.2.0-alpha.1
-```
+Then run Release.
 
-A bad tag: delete it locally and remotely (`git push origin :refs/tags/<tag>`), delete the GitHub
-Release (`gh release delete <tag> --yes`), then re-tag. Both are destructive — ask first.
+A failed build: re-run its failed jobs in that run; a new run refuses a commit that is already
+released. A bad release: delete the GitHub Release (`gh release delete <tag> --yes`) and the tag
+(`git push origin :refs/tags/<tag>`), then run Release again. Both are destructive, so ask first.
 
 ## What `make build-app` does
 

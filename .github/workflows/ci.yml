@@ -47,6 +47,10 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # The release workflow's version picker (scripts/next-version.mjs).
+      - name: Test repo scripts
+        run: node --test scripts/*.test.mjs
+
       # The dash renderer crate (packages/dashboard/renderer); its WebAssembly build is what the
       # dashboard tests draw with. The runner image ships rustup.
       - name: Set up Rust
