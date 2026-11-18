@@ -4,6 +4,7 @@ name: Images
 # linux/amd64 + linux/arm64.
 #   v*.*.* tag        -> :<tag> and :stable (no suffix) or :unstable (pre-release suffix)
 #   push to main      -> :edge
+# cut-release.yml calls it with the tag it has just pushed, which counts as a tag build.
 # deploy/komodo/compose.yaml pulls :${SPRINT_VERSION:-unstable}.
 on:
   push:
@@ -25,16 +26,23 @@ on:
       - 'turbo.json'
       - '.dockerignore'
       - '.github/workflows/images.yml'
+  workflow_call:
+    inputs:
+      tag:
+        type: string
+        required: true
 
 permissions:
   contents: read
 
 concurrency:
-  group: images-${{ github.ref }}
+  group: images-${{ inputs.tag || github.ref }}
   # A newer main push supersedes an edge build; release tags always finish.
-  cancel-in-progress: ${{ github.ref_type == 'branch' }}
+  cancel-in-progress: ${{ !inputs.tag && github.ref_type == 'branch' }}
 
 env:
+  # The release tag (the caller's input, or the pushed tag); empty for an edge build.
+  RELEASE_TAG: ${{ inputs.tag || (github.ref_type == 'tag' && github.ref_name || '') }}
   REGISTRY: ghcr.io
   PLATFORMS: linux/amd64,linux/arm64
 
@@ -64,13 +72,14 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          ref: ${{ env.RELEASE_TAG && format('refs/tags/{0}', env.RELEASE_TAG) || github.sha }}
 
       # Image names must be lowercase; the owner may not be.
       - name: Resolve image name and version
         run: |
           echo "IMAGE=${REGISTRY}/${GITHUB_REPOSITORY_OWNER,,}/sprint-${{ matrix.image.name }}" >> "$GITHUB_ENV"
-          if [ "$GITHUB_REF_TYPE" = tag ]; then
-            echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+          if [ -n "$RELEASE_TAG" ]; then
+            echo "VERSION=${RELEASE_TAG#v}" >> "$GITHUB_ENV"
           else
             echo "VERSION=edge-${GITHUB_SHA::7}" >> "$GITHUB_ENV"
           fi
@@ -152,10 +161,10 @@ jobs:
         run: |
           # Tags: a release gets its own tag plus its channel; main gets edge.
           # A semver pre-release suffix (v1.2.0-beta.1) means the unstable channel.
-          if [ "$GITHUB_REF_TYPE" = tag ]; then
-            case "$GITHUB_REF_NAME" in
-              *-*) tags=("$GITHUB_REF_NAME" unstable) ;;
-              *)   tags=("$GITHUB_REF_NAME" stable) ;;
+          if [ -n "$RELEASE_TAG" ]; then
+            case "$RELEASE_TAG" in
+              *-*) tags=("$RELEASE_TAG" unstable) ;;
+              *)   tags=("$RELEASE_TAG" stable) ;;
             esac
           else
             tags=(edge)

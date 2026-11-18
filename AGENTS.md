@@ -402,3 +402,11 @@ restored.
   durable value.
 - Use `gh` CLI for GitHub issue and PR comments unless the user requests a
   different tool.
+- Label every PR you open by what it means for a driver, because the release
+  version is picked from these labels (`docs/operations/release.md#versions`).
+  Use `type/breaking` when something a driver has stops working or has to be
+  redone, such as settings or dashes not carried over, a file format older
+  Sprints cannot read, or an older desktop that cannot talk to the new API. Use
+  `type/feature` when a driver can do something they could not before. Fixes,
+  polish, refactors, docs and dependency bumps stay unlabelled. Unsure whether
+  it is a feature? It is if the release notes would announce it.
