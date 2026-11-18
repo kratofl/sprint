@@ -33,6 +33,8 @@ export interface CarState {
   gear: number
   rpm: number
   maxRPM: number
+  waterTemp: number | null // engine water, °C; null when the game does not say
+  oilTemp: number | null   // engine oil, °C; null when the game does not say
   throttle: number // driver position before traction-control filtering
   brake: number // driver position before ABS filtering
   clutch: number // driver position before vehicle-side filtering
@@ -67,6 +69,7 @@ export interface TireState {
   pressureKPa: number
   wearPercent: number
   compound: string
+  brakeTemp: number // °C
 }
 
 export interface LapState {
@@ -83,6 +86,15 @@ export interface LapState {
   // Durations (not cumulative marks) of the last completed lap's sectors, in order.
   // Empty until the game reports credible marks.
   lastLapSectorsSeconds: number[]
+  // Durations of the sectors of the lap being driven that are done so far (none to two).
+  currentLapSectorsSeconds: number[]
+  // The session's best in each sector: three entries (null where nobody has a time yet), or
+  // empty when unknown. The player's own, anyone's, and the player's class's.
+  personalBestSectorsSeconds: (number | null)[]
+  sessionBestSectorsSeconds: (number | null)[]
+  classBestSectorsSeconds: (number | null)[]
+  sessionBestLapTime: number | null // fastest lap anyone has set this session
+  classBestLapTime: number | null   // fastest lap in the player's class this session
   isInLap: boolean
   isOutLap: boolean
   isValid: boolean
@@ -132,6 +144,10 @@ export interface RaceState {
   totalPositions: number // total cars in session; 0 if unknown
   gapAhead: number       // seconds to car directly ahead; 0 if none/unknown
   gapBehind: number      // seconds to car directly behind; 0 if none/unknown
+  // The spotter: how far ahead (negative: behind) the nearest car alongside is, metres, on
+  // each side; null when nobody is alongside.
+  carLeftMeters: number | null
+  carRightMeters: number | null
 }
 
 export interface EnergyState {
@@ -194,6 +210,7 @@ export interface FieldCar {
   inGarage: boolean
   pitState: PitState
   pitStops: number
+  penalties: number       // penalties still to serve
   finishStatus: FinishStatus
   // World position in metres, right-handed and seen from above: the frame lap traces use.
   positionX: number
@@ -209,4 +226,7 @@ export interface SessionConditions {
   fuelMultiplier: number | null
   tireMultiplier: number | null
   fixedSetup: boolean | null
+  airTemperature: number | null   // °C
+  trackTemperature: number | null // °C
+  raining: number | null          // how hard it rains, 0–1
 }

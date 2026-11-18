@@ -28,8 +28,11 @@ public interface IPeerSocket : IDisposable
     bool TryReceive(out PeerDatagram datagram);
 }
 
-/// <summary>Opens the link's socket on a free port; throws <see cref="SocketException"/> when the OS refuses.</summary>
-public delegate IPeerSocket OpenPeerSocket();
+/// <summary>
+/// Opens the link's socket on a free port, calling <paramref name="received"/> (from any thread) as
+/// each datagram arrives; throws <see cref="SocketException"/> when the OS refuses.
+/// </summary>
+public delegate IPeerSocket OpenPeerSocket(Action received);
 
 /// <summary>The STUN servers to ask, as IPv4 endpoints. An empty list is allowed: the code then has local and IPv6 candidates only.</summary>
 public delegate Task<IReadOnlyList<IPEndPoint>> ResolveStunServers(CancellationToken ct);
@@ -136,12 +139,14 @@ public sealed class UdpPeerSocket : IPeerSocket
     private const int SioUdpConnReset = unchecked((int)0x9800000C);
 
     private readonly Socket _socket;
+    private readonly Action _onReceived;
     private readonly ConcurrentQueue<PeerDatagram> _received = new();
     private readonly CancellationTokenSource _stop = new();
 
-    private UdpPeerSocket(Socket socket, bool ipv6)
+    private UdpPeerSocket(Socket socket, bool ipv6, Action received)
     {
         this._socket = socket;
+        this._onReceived = received;
         this.SupportsIpv6 = ipv6;
         this.Port = socket.LocalEndPoint is IPEndPoint local ? local.Port : throw new SocketException((int)SocketError.NotConnected);
         _ = Task.Run(() => this.ReceiveLoopAsync(this._stop.Token));
@@ -152,7 +157,7 @@ public sealed class UdpPeerSocket : IPeerSocket
     public bool SupportsIpv6 { get; }
 
     /// <summary>An <see cref="OpenPeerSocket"/> on the real network.</summary>
-    public static IPeerSocket Open()
+    public static IPeerSocket Open(Action received)
     {
         if (Socket.OSSupportsIPv6)
         {
@@ -161,7 +166,7 @@ public sealed class UdpPeerSocket : IPeerSocket
             {
                 Configure(dual);
                 dual.Bind(new IPEndPoint(IPAddress.IPv6Any, 0));
-                return new UdpPeerSocket(dual, ipv6: true);
+                return new UdpPeerSocket(dual, ipv6: true, received);
             }
             catch (SocketException)
             {
@@ -174,7 +179,7 @@ public sealed class UdpPeerSocket : IPeerSocket
         {
             Configure(socket);
             socket.Bind(new IPEndPoint(IPAddress.Any, 0));
-            return new UdpPeerSocket(socket, ipv6: false);
+            return new UdpPeerSocket(socket, ipv6: false, received);
         }
         catch
         {
@@ -241,6 +246,7 @@ public sealed class UdpPeerSocket : IPeerSocket
             if (from.Address.IsIPv4MappedToIPv6)
                 from = new IPEndPoint(from.Address.MapToIPv4(), from.Port);
             this._received.Enqueue(new PeerDatagram(buffer.AsSpan(0, result.ReceivedBytes).ToArray(), from, DateTimeOffset.UtcNow));
+            this._onReceived();
         }
     }
 }

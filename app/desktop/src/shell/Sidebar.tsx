@@ -121,7 +121,7 @@ function buildText(build: RunningBuild, tagged: boolean): string {
 }
 
 function renderItem(item: NavItem, activeView: AppView, collapsed: boolean, onSelect: (view: AppView) => void, badge: boolean) {
-  const isActive = item.view === activeView || (item.also?.includes(activeView) ?? false)
+  const isActive = item.view === activeView
   const Icon = item.icon
   const label = badge ? `${item.label} — update available` : item.label
   return (

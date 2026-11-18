@@ -95,11 +95,11 @@ short, current, and tool-agnostic. Deeper material lives in `docs/` (index:
 
 ## Source Of Truth
 
-- `app/Sprint.Desktop.Api`: telemetry + engineer data contracts (`TelemetryFrame`, `ITelemetrySource`).
+- `app/Sprint.Desktop.Api`: telemetry data contracts (`TelemetryFrame`, `ITelemetrySource`).
 - `app/Sprint.Contracts`: shared cloud DTOs (auth/invite/session/setup/layout) used by
   both the API server and the desktop client; references `Sprint.Desktop.Api`.
 - `app/Sprint.Games`: game adapter implementations against the desktop contract.
-- `packages/types`: shared TypeScript contracts (desktop-mirror telemetry/engineer types).
+- `packages/types`: shared TypeScript contracts (desktop-mirror telemetry types).
 - `packages/tokens`: design tokens (`desktop.css`, `macos.css`, `web.css`).
 - `api/Sprint.Api/Data` (`SprintDbContext`) + `api/Sprint.Api/Services`: API
   persistence ownership (Postgres relational; InfluxDB time-series).
@@ -229,8 +229,8 @@ more code. Review should converge, not just find more.
 ## Module Boundaries
 
 - `app/Sprint.Desktop.Api` owns shared desktop/game contracts: `TelemetryFrame`,
-  `ITelemetrySource`, telemetry health/freshness, and engineer command shapes. It
-  must not reference UI or game-specific implementation.
+  `ITelemetrySource` and telemetry health/freshness. It must not reference UI
+  or game-specific implementation.
 - `app/Sprint.Games` owns game-specific paths, shared-memory names, binary
   layouts, parsers, and telemetry adapters. Le Mans Ultimate is implemented
   through parser, mapper, shared-memory provider, and `ITelemetrySource`.

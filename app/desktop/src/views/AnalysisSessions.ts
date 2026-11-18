@@ -2,9 +2,9 @@ import { dayLabel } from './AnalysisDomain'
 import type { CorpusSession } from './AnalysisDomain'
 
 /**
- * The Analysis sessions list: every session grouped by car and track, like Setups, with your best
- * lap there and how far each session's best was off it. Search and filter chips narrow the list
- * here in the page; the host sends every session. Pure; AnalysisView renders what this returns.
+ * What Analysis's lists share about a session: its kind tag, its row's title and line, the Mine |
+ * Shared split, and the Shared list's people, filters and standing against your best. Your own
+ * sessions' list is AnalysisBrowseDomain.ts. Pure; the lists render what this returns.
  */
 
 /** What the list is narrowed to. An empty list of choices means "any". */
@@ -70,16 +70,28 @@ export function filterSessions(sessions: readonly CorpusSession[], filters: Sess
   })
 }
 
-/** The choices a filter chip offers, with how many sessions each has: kinds in session order, the rest by name. */
-export function sessionFilterChoices(sessions: readonly CorpusSession[], key: SessionFilterKey): Array<{ value: string; count: number }> {
-  const counts = new Map<string, number>()
-  for (const session of sessions) {
+/**
+ * The choices a filter chip offers, with how many sessions each has: kinds in session order, the
+ * rest by name. Only what fits the other chips is offered (Class GT3 leaves Car with the GT3
+ * cars); what is already chosen stays, so it can be taken off.
+ */
+export function sessionFilterChoices(sessions: readonly CorpusSession[], key: SessionFilterKey, filters: SessionFilters): Array<{ value: string; count: number }> {
+  const counts = new Map<string, number>(filters[key].map((value) => [value, 0]))
+  for (const session of filterSessions(sessions, { ...filters, search: '', [key]: [] })) {
     const value = valueOf(session, key)
     if (value) counts.set(value, (counts.get(value) ?? 0) + 1)
   }
   return [...counts]
     .map(([value, count]) => ({ value, count }))
     .sort((a, b) => (key === 'kind' ? KIND_ORDER.indexOf(a.value) - KIND_ORDER.indexOf(b.value) : a.value.localeCompare(b.value)))
+}
+
+/** What a Car or Track choice shows in its menu: the car's make for its logo, the track's country for its flag. */
+export function sessionBadges(sessions: readonly CorpusSession[]): { make: ReadonlyMap<string, string | null>; country: ReadonlyMap<string, string | null> } {
+  return {
+    make: new Map<string, string | null>(sessions.map((session) => [session.context.carModel, session.make])),
+    country: new Map<string, string | null>(sessions.map((session) => [session.context.trackCourse, session.country])),
+  }
 }
 
 export const toggleSessionFilter = (filters: SessionFilters, key: SessionFilterKey, value: string): SessionFilters => {
@@ -89,45 +101,6 @@ export const toggleSessionFilter = (filters: SessionFilters, key: SessionFilterK
 
 export const hasSessionFilters = (filters: SessionFilters): boolean =>
   filters.search.trim() !== '' || SESSION_FILTERS.some(({ key }) => filters[key].length > 0)
-
-/** One car at one track, with its sessions newest first and your best lap there. */
-export type SessionGroup = {
-  key: string
-  car: string
-  track: string
-  /** The game's model ("Oreca 07"), from the first session that knows it; the car's name already says its class. */
-  carType: string | null
-  sessions: CorpusSession[]
-  /** Your fastest lap in any of these sessions; friends' shared laps do not count. Null with none of your own. */
-  yourBestSeconds: number | null
-}
-
-/**
- * Sessions grouped by car and track (and game, so two games' tracks never mix), newest group
- * first. The input is newest first, as the host sends it, and each group keeps that order.
- */
-export function groupSessions(sessions: readonly CorpusSession[]): SessionGroup[] {
-  const groups = new Map<string, SessionGroup>()
-  for (const session of [...sessions].sort((a, b) => b.startedAt.localeCompare(a.startedAt))) {
-    const { game, carModel, trackCourse, carType } = session.context
-    const key = `${game}\u0000${trackCourse}\u0000${carModel}`
-    let group = groups.get(key)
-    if (!group) {
-      group = { key, car: carModel || 'Unknown car', track: trackCourse || 'Unknown track', carType: null, sessions: [], yourBestSeconds: null }
-      groups.set(key, group)
-    }
-    group.carType ??= carType && !group.car.includes(carType) ? carType : null
-    group.sessions.push(session)
-    if (!session.sharedFrom && session.bestLapSeconds !== null && session.bestLapSeconds > 0) {
-      group.yourBestSeconds = group.yourBestSeconds === null ? session.bestLapSeconds : Math.min(group.yourBestSeconds, session.bestLapSeconds)
-    }
-  }
-  return [...groups.values()]
-}
-
-/** How far a session's best lap was off your best in its group, in seconds; 0 on the session that holds it. */
-export const gapToYourBest = (session: CorpusSession, group: SessionGroup): number | null =>
-  session.bestLapSeconds === null || group.yourBestSeconds === null ? null : Math.round((session.bestLapSeconds - group.yourBestSeconds) * 1000) / 1000
 
 const CLOCK = new Intl.DateTimeFormat('en', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
 
@@ -144,14 +117,6 @@ export function sessionLine(session: CorpusSession): string {
   const laps = session.lapCount === 1 ? '1 lap' : `${session.lapCount} laps`
   if (session.runs === 0) return laps
   return `${session.runs === 1 ? '1 run' : `${session.runs} runs`} · ${laps}`
-}
-
-/** A group head's second line: "Oreca 07 · 5 sessions · 1 shared lap". */
-export function groupLine(group: SessionGroup): string {
-  const shared = group.sessions.filter((session) => session.sharedFrom).length
-  const own = group.sessions.length - shared
-  const parts = [group.carType, own > 0 ? (own === 1 ? '1 session' : `${own} sessions`) : null, shared > 0 ? (shared === 1 ? '1 shared lap' : `${shared} shared laps`) : null]
-  return parts.filter((part): part is string => part !== null && part !== '').join(' · ')
 }
 
 /** The list shows your own sessions, or the laps others shared with you; the two never mix. */

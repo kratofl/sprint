@@ -192,11 +192,20 @@
   white-space: nowrap;
 }
 
+/* The car and the track side by side. */
 .planner-row-context {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
   color: var(--label-secondary);
   overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* The car stays whole beside a track; the track's name shortens. */
+.planner-row-context > .car-name:not(:last-child) {
+  flex: none;
 }
 
 .planner-row-laps {

@@ -116,9 +116,9 @@ painted, and it reproduces that picture on purpose; the parts below look arbitra
 are not.
 
 - **The frame is the host's telemetry JSON**, `Sprint.Desktop.Api`'s `TelemetryFrame` as
-  `HostJson` writes it (C# names, enums as names), without the other cars (`DashFrameJson`). The
-  model keeps the `@sprint/types` names and `model.rs` maps onto them with `parseHostFrame`'s
-  rules; the editor converts its mirror frames back with `toHostFrame`
+  `HostJson` writes it (C# names, enums as names), the other cars included for the relative
+  widget (`DashFrameJson`). The model keeps the `@sprint/types` names and `model.rs` maps onto
+  them with `parseHostFrame`'s rules; the editor converts its mirror frames back with `toHostFrame`
   (`packages/dashboard/src/hostFrame.ts`). The boundary reads a misnamed field as 0 without a
   word, so `renderer/tests/fixtures/host-frame.json`, the host's own output kept current by
   `HostFrameFixtureTests`, must reach the model value for value (`tests/host_frame.rs`).
@@ -142,6 +142,17 @@ are not.
   keeps the alert, lap-timer and multi-dial popup state between frames and says when the picture
   depends on time; `render_still` (the editor) keeps none. The dial reading is not in the frame:
   the host hands it over with `set_multi_dial` when it changes, so a turn shows without a game.
+- **Alerts are app-wide but the renderer reads only the layout.** The host stamps the driver's
+  alert settings onto a copy of every layout it hands a renderer (`AppDashAlerts.Stamp` in
+  `Sprint.Desktop.Core`, the app's previews `dashAlertFromSettings` in `src/alerts.ts`); a layout's
+  own `alerts`/`alertConfig` are never read, and a stamped copy is never saved. A
+  `strip` is a band a third of the screen tall across its middle; under 100 logical px (a screen
+  under 300 px tall) it is drawn full screen instead, decided at draw time (`overlays::strip_fits`),
+  so a preview drawn smaller than its panel can fall back where the wheel shows the strip. Alerts
+  that are up stack, one per type, newest on top, so one held until Ack is never lost under a
+  passing one. A held alert never makes the picture time dependent: whoever calls `acknowledge`
+  renders again. While the flag alert is up the flag overlay is not drawn; it would name the
+  flag twice.
 - **A panic is an error, not a crash.** Every C ABI entry point catches panics, which needs
   `panic = "unwind"` in the release profile; in WebAssembly a panic traps and
   `src/dashWasm.js` starts a fresh instance.
@@ -156,7 +167,8 @@ are not.
 
 `cargo run --release --example render -- --dash <layout.json> <out.png>` in the crate draws one page
 of a layout at 800x480 against a fixed mid-race frame (`--page`, `--style panels|grid|bars` and
-`--size` override; `--banner <banner.json>` draws an alert popup over it). Render the presets in
+`--size` override; `--banner <banner.json>` draws an alert popup over it, `--alert penalty:full:invert`
+the app's preview of an alert type). Render the presets in
 `app/Sprint.Desktop.Host/presets/dash/` at the panel size and look at the PNG: layout, alignment,
 clip direction, weights and color, not the telemetry values. There is no reference image set in the
 repo.

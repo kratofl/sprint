@@ -32,6 +32,13 @@ public enum DashStyle
     Panels,
     Grid,
     Bars,
+
+    /// <summary>
+    /// The flat look: corner radius, edge and label from the layout's <c>chrome</c> (and a
+    /// widget's own <c>style.border</c>/<c>style.label</c>), groups framed by their <c>style</c>.
+    /// The renderer reads those straight from the JSON; the host passes them through.
+    /// </summary>
+    Flat,
 }
 
 /// <summary>Reads leniently: a missing, unknown or future style name falls back to panels instead of rejecting the layout.</summary>
@@ -42,6 +49,7 @@ public sealed class DashStyleJsonConverter : JsonConverter<DashStyle>
         {
             "grid" => DashStyle.Grid,
             "bars" => DashStyle.Bars,
+            "flat" => DashStyle.Flat,
             _ => DashStyle.Panels,
         };
 
@@ -50,6 +58,7 @@ public sealed class DashStyleJsonConverter : JsonConverter<DashStyle>
         {
             DashStyle.Grid => "grid",
             DashStyle.Bars => "bars",
+            DashStyle.Flat => "flat",
             _ => "panels",
         });
 }
@@ -98,6 +107,15 @@ public sealed class DashLayout
     [JsonPropertyName("gridRows")]
     public int GridRows { get; set; } = 12;
 
+    /// <summary>
+    /// The zones of <see cref="DashZones"/> (bar spots, side grids, the gear's centre) instead of an
+    /// even grid: the grid is then <see cref="DashZones.Cols"/> x <see cref="DashZones.Rows"/> at
+    /// any screen size, and a screen profile never refits it.
+    /// </summary>
+    [JsonPropertyName("zoned")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool Zoned { get; set; }
+
     [JsonPropertyName("idlePage")]
     public DashPage? IdlePage { get; set; }
 
@@ -115,6 +133,20 @@ public sealed class DashLayout
 
     [JsonExtensionData]
     public Dictionary<string, JsonElement>? ExtensionData { get; set; }
+
+    /// <summary>
+    /// A shallow copy showing <paramref name="alerts"/> in place of this layout's own alerts, with no
+    /// alert config of its own; pages, theme and the rest are shared, not copied. For handing a
+    /// renderer the app-wide alerts (<see cref="AppDashAlerts.Stamp"/>), never for saving.
+    /// </summary>
+    public DashLayout WithAlerts(List<DashAlert> alerts)
+    {
+        // MemberwiseClone rather than a property-by-property copy, so a property added later is never left behind.
+        DashLayout copy = (DashLayout)this.MemberwiseClone();
+        copy.Alerts = alerts;
+        copy.AlertConfig = null;
+        return copy;
+    }
 }
 
 /// <summary>
@@ -293,8 +325,62 @@ public sealed class DashPage
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public List<LegacyDashWidgetStack>? LegacyWidgetStacks { get; set; }
 
+    /// <summary>
+    /// The sessions (<see cref="DashPageModes.Sessions"/>) and the driver's own modes
+    /// (<see cref="DashMode.Id"/>) the wheel cycles this page in. Null or empty: every session --
+    /// what every new page starts as. <see cref="DashPageModes.CyclePages"/> applies it.
+    /// </summary>
+    [JsonPropertyName("showIn")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<string>? ShowIn { get; set; }
+
+    /// <summary>When the wheel switches to this page by itself; null: only the buttons bring it up.</summary>
+    [JsonPropertyName("jump")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    [JsonConverter(typeof(DashPageJumpJsonConverter))]
+    public DashPageJump? Jump { get; set; }
+
     [JsonExtensionData]
     public Dictionary<string, JsonElement>? ExtensionData { get; set; }
+}
+
+/// <summary>
+/// A moment the wheel jumps to a page by itself (<see cref="DashPage.Jump"/>), as
+/// <see cref="DashLapWatch"/> spots it: leaving the pit lane, or crossing the line on track.
+/// </summary>
+public enum DashPageJump
+{
+    /// <summary>The car leaves the pit lane: the out lap starts.</summary>
+    OutLap,
+
+    /// <summary>The car crosses the line on track: the out lap (or the lap before) ends and a flying lap starts.</summary>
+    FlyingLap,
+}
+
+/// <summary>Writes "outLap"/"flyingLap"; reads leniently, an unknown name meaning no jump.</summary>
+public sealed class DashPageJumpJsonConverter : JsonConverter<DashPageJump?>
+{
+    public override bool HandleNull => true;
+
+    public override DashPageJump? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
+        reader.TokenType == JsonTokenType.String
+            ? reader.GetString()?.ToLowerInvariant() switch
+            {
+                "outlap" => DashPageJump.OutLap,
+                "flyinglap" => DashPageJump.FlyingLap,
+                _ => null,
+            }
+            : null;
+
+    public override void Write(Utf8JsonWriter writer, DashPageJump? value, JsonSerializerOptions options)
+    {
+        switch (value)
+        {
+            case DashPageJump.OutLap: writer.WriteStringValue("outLap"); break;
+            case DashPageJump.FlyingLap: writer.WriteStringValue("flyingLap"); break;
+            default: writer.WriteNullValue(); break;
+        }
+    }
 }
 
 /// <summary>
@@ -480,7 +566,7 @@ public sealed class DashAlert
     [JsonPropertyName("rowSpan")]
     public int RowSpan { get; set; } = 6;
 
-    /// <summary>The alert's own "full" or "center" (in its grid rect); null uses <see cref="DashAlertConfig.DisplayMode"/>.</summary>
+    /// <summary>The alert's own "full", "strip" or "center" (in its grid rect); null uses <see cref="DashAlertConfig.DisplayMode"/>.</summary>
     [JsonPropertyName("displayMode")]
     public string? DisplayMode { get; set; }
 
@@ -492,6 +578,16 @@ public sealed class DashAlert
 
     [JsonPropertyName("invertColors")]
     public bool? InvertColors { get; set; }
+
+    /// <summary>Up until the driver presses Ack instead of for <see cref="DurationSeconds"/>.</summary>
+    [JsonPropertyName("untilAck")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool UntilAck { get; set; }
+
+    /// <summary><c>fuel_low</c>'s threshold: it fires when the laps of fuel left drop to this or below. Null on every other type.</summary>
+    [JsonPropertyName("lapsLeft")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? LapsLeft { get; set; }
 
     [JsonIgnore]
     public bool UsesGlobalSettings => this.DisplayMode is null && this.ColorToken is null && this.DurationSeconds is null && this.InvertColors is null;

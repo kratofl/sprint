@@ -2,14 +2,14 @@ using System.Text.RegularExpressions;
 
 namespace Sprint.Desktop.Features.Setup;
 
-/// <summary>The session a setup is made for, when its name says.</summary>
+/// <summary>The session a setup is made for, when its name or the driver says.</summary>
 public enum SetupSession
 {
     Quali,
     Race,
 }
 
-/// <summary>How a setup is set up to drive, when its name says.</summary>
+/// <summary>How a setup is set up to drive, when its name or the driver says.</summary>
 public enum SetupStyle
 {
     Esport,
@@ -21,9 +21,10 @@ public enum SetupStyle
 public sealed record SetupNameParts(SetupSession? Session, SetupStyle? Style, string? Version);
 
 /// <summary>
-/// Reads what a setup's name says. Setup shops code it into the file name — Bealien's
-/// <c>bA2_963_BAHE_E_Q_V2_0_0</c> is an esport (<c>E</c>; <c>S</c> safe, <c>W</c> wet) quali
-/// (<c>Q</c>; <c>R</c> race) setup, version 2.0.0 — and drivers write it out ("Race wet").
+/// Reads what a Bealien setup's name says: <c>bA2_963_BAHE_E_Q_V2_0_0</c> is an esport (<c>E</c>;
+/// <c>S</c> safe, <c>W</c> wet) quali (<c>Q</c>; <c>R</c> race) setup, version 2.0.0. Only names
+/// starting with <c>bA</c> are read: in a name of the driver's own ("Race v3", "Wet test") a word
+/// is a guess, so those are tagged by hand (<see cref="SetupTags"/>).
 /// </summary>
 public static partial class SetupNaming
 {
@@ -54,6 +55,11 @@ public static partial class SetupNaming
     /// </summary>
     public static SetupNameParts Read(string name)
     {
+        if (!name.StartsWith("bA", StringComparison.Ordinal))
+        {
+            return new SetupNameParts(null, null, null);
+        }
+
         Match version = VersionPattern().Match(name);
         string rest = version.Success ? name[..version.Index] : name;
         string[] words = WordSeparator().Split(rest);

@@ -59,6 +59,20 @@ public static class CarNames
         _ => null,
     };
 
+    /// <summary>
+    /// The class as racing tags it ("HYP", "LMP2", "LMP2 ELMS", "LMP3", "LMGT3", "GTE"), from the
+    /// game's class and the car's name, which says which LMP2 it is. A class this rule does not know
+    /// keeps the game's own spelling; no class at all is "Other".
+    /// </summary>
+    public static string Tag(string? carClass, string? carName) => ClassOf(carClass) switch
+    {
+        "Hypercar" => "HYP",
+        "LMP2" => (carName ?? "").Contains("ELMS", StringComparison.OrdinalIgnoreCase) ? "LMP2 ELMS" : "LMP2",
+        "LMGTE" => "GTE",
+        { } known => known,
+        null => string.IsNullOrWhiteSpace(carClass) ? "Other" : carClass.Trim(),
+    };
+
     /// <summary>"ELMS" or "WEC" from a championship such as "ELMS 2025", or null when it names neither.</summary>
     private static string? SeriesOf(string? championship)
     {
@@ -71,8 +85,8 @@ public static class CarNames
         return spelled.StartsWith("WEC", StringComparison.Ordinal) ? "WEC" : null;
     }
 
-    /// <summary>The make a model starts with, or null for no model.</summary>
-    private static string? MakeOf(string? carType)
+    /// <summary>The make a model starts with ("Aston Martin" for "Aston Martin Valkyrie LMH"), or null for no model.</summary>
+    public static string? MakeOf(string? carType)
     {
         string model = carType?.Trim() ?? "";
         if (model.Length == 0)

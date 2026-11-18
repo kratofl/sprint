@@ -6,6 +6,7 @@ import {
   catalogBrands,
   catalogLine,
   commandErrorMessage,
+  dashRuleChoices,
   describeDeviceStatus,
   deviceImageKey,
   deviceSummary,
@@ -138,5 +139,16 @@ test('found devices keep one entry per device plugged in and drop ids the catalo
   assert.deepEqual(
     foundEntries(['generic-vocore', 'gone', 'generic-vocore'], catalog).map((entry) => entry.id),
     ['generic-vocore', 'generic-vocore'],
+  )
+})
+
+test('adding a dash rule offers the recorded games, every class and the cars driven, the current car first, less what has a rule', () => {
+  const choices = dashRuleChoices(
+    { prefill: { game: 'LeMansUltimate', car: 'Hypercar BMW', track: '' }, games: ['LeMansUltimate'], cars: ['LMGT3 Porsche', 'Hypercar BMW', 'LMP2 ELMS'] },
+    [{ kind: 'class', value: 'hypercar', dashId: 'x' }],
+  )
+  assert.deepEqual(
+    choices.map((choice) => `${choice.kind}:${choice.value}`),
+    ['game:LeMansUltimate', 'class:LMP2', 'class:LMP3', 'class:LMGT3', 'class:LMGTE', 'car:Hypercar BMW', 'car:LMGT3 Porsche', 'car:LMP2 ELMS'],
   )
 })

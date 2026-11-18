@@ -48,6 +48,7 @@ public static class ScreenOutputs
     public static IReadOnlyList<ScreenOutputDescription> Describe(
         IEnumerable<SavedDevice> devices,
         IEnumerable<DashLayout> layouts,
+        DriverCar car,
         bool telemetryLive,
         Func<string, ScreenOutputHardware?>? hardwareLookup = null,
         DashPageCycle? pageCycle = null)
@@ -84,7 +85,7 @@ public static class ScreenOutputs
                 continue;
             }
 
-            DashLayout? layout = DevicePurposeLayouts.Resolve(device, layoutList);
+            DashLayout? layout = DevicePurposeLayouts.Resolve(device, layoutList, car);
             if (layout is null)
             {
                 // No layout to resolve at all (an empty runtime); nothing to describe for this device.

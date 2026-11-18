@@ -118,6 +118,38 @@ export const positionInWindow = (view: LapWindow, across: number): number => vie
 
 export const inWindow = (view: LapWindow, position: number): boolean => position >= view.from && position <= view.to
 
+/** A box on the track from above, in the car's world metres (x across, z down the screen). */
+export type MapBox = { minX: number; maxX: number; minZ: number; maxZ: number }
+
+/** The least a close-up map frames, in metres, so a short stretch is not blown up into a blur of one bend. */
+const MIN_FRAME_METRES = 120
+
+/**
+ * What the track map frames: the whole lap, or with `view` (the stretch the charts show) that
+ * stretch close up, with a margin and never under `MIN_FRAME_METRES` across. `step` is the lap
+ * fraction between two samples of `xs`/`zs`.
+ */
+export function mapFrame(xs: readonly number[], zs: readonly number[], step: number, view: LapWindow | null): MapBox {
+  const from = view ? Math.max(0, Math.round(view.from / step)) : 0
+  const to = view ? Math.min(xs.length - 1, Math.round(view.to / step)) : xs.length - 1
+  const box: MapBox = { minX: Infinity, maxX: -Infinity, minZ: Infinity, maxZ: -Infinity }
+  for (let index = from; index <= to; index++) {
+    box.minX = Math.min(box.minX, xs[index])
+    box.maxX = Math.max(box.maxX, xs[index])
+    box.minZ = Math.min(box.minZ, zs[index])
+    box.maxZ = Math.max(box.maxZ, zs[index])
+  }
+  if (!view) return box
+  const grow = (min: number, max: number): [number, number] => {
+    const half = Math.max(MIN_FRAME_METRES, (max - min) * 1.3) / 2
+    const middle = (min + max) / 2
+    return [middle - half, middle + half]
+  }
+  const [minX, maxX] = grow(box.minX, box.maxX)
+  const [minZ, maxZ] = grow(box.minZ, box.maxZ)
+  return { minX, maxX, minZ, maxZ }
+}
+
 /** Keeps a window inside the lap without changing its width, and never narrower than `MIN_WINDOW_SPAN`. */
 export function clampWindow(view: LapWindow): LapWindow {
   const span = Math.min(1, Math.max(MIN_WINDOW_SPAN, windowSpan(view)))

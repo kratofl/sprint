@@ -1,50 +1,65 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { pageTree, resolvePreviewFrame, type DashLayout, type DashNode, type DashPreviewState, type DashWidgetType } from '@sprint/dashboard'
+import { pageTree, resolvePreviewFrame, type DashGroupNode, type DashLayout, type DashNode, type DashPreviewState, type DashWidgetType } from '@sprint/dashboard'
 import type { TelemetryFrame } from '@sprint/types'
 import { addWidget, addWidgetAt } from '../views/DashesDomain'
 import { DesignerCanvas, dropCell, type DragState, type PointerPos } from './DesignerCanvas'
+import { swapWidgets } from '../views/DashesDomain'
 import { GroupInspector, SelectionInspector } from './GroupInspector'
 import { PageDock } from './PageDock'
+import { PageInspector, type ModeActions } from './PageInspector'
 import { WidgetInspector } from './WidgetInspector'
 import { WidgetLibrary } from './WidgetLibrary'
-import { WidgetSidebar } from './WidgetSidebar'
-import { addLayer, addTarget, arrangedLayers, deleteNodes, duplicateNodes, findNode, groupNodes, openStacks, topmost, translateNodes, ungroup, withLayersShown } from './groupOps'
+import { addLayer, addTarget, arrangedLayers, deleteNodes, duplicateNodes, findNode, flattenTree, groupNodes, moveNode, openStacks, parentGroup, setHidden, stackOnto, topmost, translateNodes, ungroup, withLayersShown } from './groupOps'
+import { NodeMenu } from './NodeMenu'
+import type { MenuAnchor } from '../shell/Menu'
 import { isInOverlay, isTypingTarget } from './keys'
 import { shownPage } from './layoutOps'
 import { BEZEL, useStageCanvas } from './useStageCanvas'
+import type { CanvasView } from './CanvasViews'
 import type { DesignerDocApi, Mutate } from './useDesignerDoc'
 
 const ARROWS: Record<string, [number, number]> = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }
 
 /**
- * The Layout section: the live dash in a device-style bezel in the middle of the stage, the page's
- * widgets and groups in a tree on the left, the selection's inspector on the right and the page
- * dock at the bottom. The dash is drawn at its real size when the window has room, smaller
+ * The Layout section: the dash in a device-style bezel in the middle of the stage — its outline, or
+ * the real dash faded back or tagged (`view`, the toolbar picks) — the widget library on the left, the selection's inspector on the right
+ * and the page dock at the bottom. The dash is drawn at its real size when the window has room, smaller
  * otherwise. Keys (never while typing in a field): Delete removes the selection, the arrows move
- * it a cell, Ctrl+G groups it, Ctrl+Shift+G ungroups, Ctrl+D copies it, Escape deselects.
+ * it a cell, Ctrl+G groups it, Ctrl+Shift+G ungroups, Ctrl+D copies it, Escape deselects. A
+ * right-click on a widget or group offers the same as a menu (`NodeMenu`), and moves it into a group. With nothing selected, the right panel is
+ * the page's own (`PageInspector`): the sessions and modes it shows in, and when it jumps.
  */
 export function LayoutSection({
   doc,
   frame,
   chosenPageId,
   onChoosePage,
+  modes,
+  view,
+  previewState,
+  showGrid,
 }: {
   doc: DesignerDocApi
   frame: TelemetryFrame | null
   /** The page being designed; kept by the window so it survives a trip to another section. */
   chosenPageId: string
   onChoosePage: (pageId: string) => void
+  /** The driver's own dash modes, for the page panel and the dock's preview. */
+  modes: ModeActions
+  /** How the canvas shows the dash, what it shows and the grid: the toolbar's (`ViewTools`). */
+  view: CanvasView
+  previewState: DashPreviewState
+  showGrid: boolean
 }) {
   const { layout, apply } = doc
   const [selection, setSelection] = useState<string[]>([])
   // The layer picked with a stack's canvas tabs, per stack; designer-only, never saved.
   const [picked, setPicked] = useState<ReadonlyMap<string, string>>(new Map())
-  const [renaming, setRenaming] = useState<string | null>(null)
   const [dragState, setDragState] = useState<DragState>({ kind: 'idle' })
-  const [showGrid, setShowGrid] = useState(false)
-  const [previewState, setPreviewState] = useState<DashPreviewState>('live')
-  const [libraryOpen, setLibraryOpen] = useState(false)
+  // The dock's "Pages in": all, a session or a mode; pages the wheel skips there are struck through.
+  const [cyclePreview, setCyclePreview] = useState('all')
   const [flash, setFlash] = useState<string | null>(null)
+  const [menu, setMenu] = useState<{ anchor: MenuAnchor; ids: string[] } | null>(null)
   const flashTimeout = useRef<number | null>(null)
   const canvasRef = useRef<HTMLDivElement | null>(null)
   const { setFitElement, canvas } = useStageCanvas(layout)
@@ -94,6 +109,7 @@ export function LayoutSection({
     else if (!done) flashValidation(failureMessage)
   }
 
+  /** Groups the selection (Ctrl+G). */
   const groupSelection = (): void => {
     if (selected.length === 0) return
     applyAndSelect(
@@ -104,6 +120,70 @@ export function LayoutSection({
       (groupId) => [groupId],
       "Can't group these — layers of a stack would end up overlapping.",
     )
+  }
+
+  /**
+   * The groups the menu's nodes can move into: a group showing all its widgets that is not one
+   * of them, not inside one of them, and not where all of them are already.
+   */
+  const moveTargets = (nodes: readonly DashNode[]): DashGroupNode[] => {
+    const inside = new Set(flattenTree(nodes).map((node) => node.id))
+    return flattenTree(tree).filter(
+      (node): node is DashGroupNode => node.kind === 'group' && node.group.mode === 'together' && !inside.has(node.id) && !nodes.every((item) => parentGroup(tree, item.id)?.id === node.id),
+    )
+  }
+
+  const moveInto = (groupId: string): void => {
+    const ids = topmost(tree, selected).map((node) => node.id)
+    const moved = apply((current) => ids.reduce<DashLayout | null>((next, id) => (next ? moveNode(next, pageId, id, groupId, null) : null), current))
+    if (!moved) flashValidation("Can't move it there — it would overlap a widget it can't share space with.")
+  }
+
+  /** Puts the selection into a new stack: one layer shown at a time. */
+  const stackSelection = (): void => {
+    if (selected.length === 0) return
+    applyAndSelect(
+      (current) => {
+        const result = groupNodes(current, pageId, selected, 'oneAtATime')
+        return result ? { layout: result.layout, value: result.groupId } : null
+      },
+      (groupId) => [groupId],
+      "Can't stack these — layers of a stack would end up overlapping.",
+    )
+  }
+
+  /** A widget dropped onto another on the canvas: they become layers of one stack, in its cell. */
+  const stackWidgetOnto = (id: string, targetId: string): void => {
+    applyAndSelect(
+      (current) => {
+        const result = stackOnto(current, pageId, id, targetId)
+        return result ? { layout: result.layout, value: id } : null
+      },
+      (dropped) => [dropped],
+      "Can't stack it there.",
+    )
+  }
+
+  const swapWidget = (id: string, targetId: string): void => {
+    applyAndSelect(
+      (current) => {
+        const swapped = swapWidgets(current, pageId, id, targetId)
+        return swapped ? { layout: swapped, value: id } : null
+      },
+      (dropped) => [dropped],
+      "Can't swap those two — one of them doesn't fit the other's place.",
+    )
+  }
+
+  /** Right-click: the menu acts on the selection, which takes the clicked node first; empty space deselects. */
+  const openMenu = (id: string | null, anchor: MenuAnchor): void => {
+    if (id === null) {
+      setSelection([])
+      return
+    }
+    const ids = selected.includes(id) ? selected : [id]
+    if (!selected.includes(id)) setSelection(ids)
+    setMenu({ anchor, ids })
   }
 
   const ungroupSelection = (): void => {
@@ -141,18 +221,15 @@ export function LayoutSection({
   const addAndSelect = (type: DashWidgetType, cell: { col: number; row: number } | null): void => {
     const result = cell ? addWidgetAt(layout, pageId, type, cell.col, cell.row, target.group) : addWidget(layout, pageId, type, target)
     if (!result || !apply(() => result.layout)) {
-      flashValidation(cell ? 'That cell is occupied — drop onto free space.' : 'There is no free space on this page for another widget.')
+      flashValidation(cell ? (layout.zoned ? "It can't go there — drop it on a lit-up free spot." : 'That cell is occupied — drop onto free space.') : 'There is no free space on this page for another widget.')
       return
     }
     setSelection([result.widget.id])
-    setLibraryOpen(false)
   }
 
   const onDrop = (type: DashWidgetType, pointer: PointerPos): void => {
     if (!canvas) return
-    const cols = layout.gridCols > 0 ? layout.gridCols : 20
-    const rows = layout.gridRows > 0 ? layout.gridRows : 12
-    addAndSelect(type, dropCell(pointer, canvas.width / cols, canvas.height / rows, cols, rows))
+    addAndSelect(type, dropCell(layout, pointer, canvas.width, canvas.height))
   }
 
   // The designer's keys, from anywhere in the window but a text field.
@@ -164,6 +241,7 @@ export function LayoutSection({
         const key = event.key.toLowerCase()
         if (key === 'g') {
           event.preventDefault()
+          setMenu(null)
           if (event.shiftKey) ungroupSelection()
           else groupSelection()
         } else if (key === 'd' && !event.shiftKey) {
@@ -173,8 +251,7 @@ export function LayoutSection({
         return
       }
       if (event.key === 'Escape') {
-        if (libraryOpen) setLibraryOpen(false)
-        else if (selected.length > 0) setSelection([])
+        if (selected.length > 0) setSelection([])
         else return
         event.preventDefault()
         return
@@ -203,17 +280,15 @@ export function LayoutSection({
   return (
     <>
       {page && (
-        <WidgetSidebar
-          page={page}
-          tree={tree}
+        <WidgetLibrary
           isIdlePage={isIdlePage}
-          apply={apply}
-          selection={selected}
-          onSelect={setSelection}
-          renaming={renaming}
-          onRename={setRenaming}
-          onGroup={groupSelection}
-          onRefused={flashValidation}
+          canvasRef={canvasRef}
+          canvasWidth={canvas?.width ?? 0}
+          canvasHeight={canvas?.height ?? 0}
+          dragState={dragState}
+          setDragState={setDragState}
+          onAdd={(type) => addAndSelect(type, null)}
+          onDrop={onDrop}
         />
       )}
 
@@ -231,6 +306,7 @@ export function LayoutSection({
               width={canvas.width}
               height={canvas.height}
               showGrid={showGrid}
+              view={view}
               selection={selected}
               onSelect={setSelection}
               stacks={openStacks(tree, selected)}
@@ -241,6 +317,9 @@ export function LayoutSection({
               }}
               onAddLayer={addLayerTo}
               onGroup={groupSelection}
+              onStackOnto={stackWidgetOnto}
+              onSwap={swapWidget}
+              onMenu={openMenu}
               placeGroup={target.group}
               dragState={dragState}
               setDragState={setDragState}
@@ -260,14 +339,33 @@ export function LayoutSection({
           key={only.id}
           pageId={pageId}
           node={only}
+          flat={layout.dashStyle === 'flat'}
           apply={apply}
           onSelect={setSelection}
           onUngroup={ungroupSelection}
-          onRename={() => setRenaming(only.id)}
           onRefused={flashValidation}
         />
       )}
+      {selectedNodes.length === 0 && page && <PageInspector key={page.id} layout={layout} page={page} isIdlePage={isIdlePage} apply={apply} modes={modes} />}
       {selectedNodes.length > 1 && <SelectionInspector pageId={pageId} nodes={selectedNodes} apply={apply} onSelect={setSelection} onGroup={groupSelection} />}
+
+      {menu && (
+        <NodeMenu
+          menu={{ anchor: menu.anchor, nodes: topmost(tree, menu.ids) }}
+          groups={moveTargets(topmost(tree, menu.ids))}
+          onClose={() => setMenu(null)}
+          onGroup={groupSelection}
+          onStack={stackSelection}
+          onMoveInto={moveInto}
+          onUngroup={ungroupSelection}
+          onDuplicate={duplicateSelection}
+          onHide={(hidden) => apply((current) => setHidden(current, pageId, selected, hidden))}
+          onDelete={() => {
+            apply((current) => deleteNodes(current, pageId, selected))
+            setSelection([])
+          }}
+        />
+      )}
 
       {flash && (
         <div className="infobar warning designer-notice" role="status">
@@ -278,31 +376,14 @@ export function LayoutSection({
         </div>
       )}
 
-      {libraryOpen && page && canvas && (
-        <WidgetLibrary
-          isIdlePage={isIdlePage}
-          canvasRef={canvasRef}
-          canvasWidth={canvas.width}
-          canvasHeight={canvas.height}
-          dragState={dragState}
-          setDragState={setDragState}
-          onAdd={(type) => addAndSelect(type, null)}
-          onDrop={onDrop}
-          onClose={() => setLibraryOpen(false)}
-        />
-      )}
-
       <PageDock
         layout={layout}
         pageId={pageId}
         onSelectPage={selectPage}
         apply={apply}
-        libraryOpen={libraryOpen}
-        onToggleLibrary={() => setLibraryOpen((open) => !open)}
-        previewState={previewState}
-        onPreviewState={setPreviewState}
-        showGrid={showGrid}
-        onToggleGrid={() => setShowGrid((value) => !value)}
+        cyclePreview={modes.modes.some((mode) => mode.id === cyclePreview) || ['all', 'practice', 'qualifying', 'race'].includes(cyclePreview) ? cyclePreview : 'all'}
+        onCyclePreview={setCyclePreview}
+        modes={modes.modes}
       />
     </>
   )

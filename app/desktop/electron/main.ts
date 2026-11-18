@@ -319,6 +319,13 @@ ipcMain.handle('sprint:open-dash-designer', (_event: IpcMainInvokeEvent, dashId:
   designers.open(readDesignerDashId(dashId))
 })
 
+/** A designer's "Alerts and Ack": the main window comes forward (never in a hidden agent run) on Dashes > Settings. */
+ipcMain.handle('sprint:open-dash-settings', () => {
+  if (!mainWindow || mainWindow.isDestroyed()) return
+  if (!agentRun) bringToFront()
+  mainWindow.webContents.send('sprint:open-dash-settings')
+})
+
 /** The Race engineer page opens the pit wall; a page tab marked ↗ brings that page's window forward. */
 ipcMain.handle('sprint:open-pit-wall', (_event: IpcMainInvokeEvent, target: unknown) => {
   pitWall.open(readPitWallTarget(target))

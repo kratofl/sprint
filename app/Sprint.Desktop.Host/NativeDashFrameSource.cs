@@ -12,7 +12,7 @@ namespace Sprint.Desktop.Host;
 /// <summary>
 /// The slow-changing part of what one wheel screen shows, already serialized with
 /// <see cref="HostJson"/>: the dash layout, the settings the renderer reads (driver name and
-/// number) and the plan's targets. Built by <see cref="ScreenOutputService"/> on the reconcile
+/// number, and the local clock's offset from UTC for the clock widget) and the plan's targets. Built by <see cref="ScreenOutputService"/> on the reconcile
 /// loop (under the devices gate, see Program.cs), never on the render thread, and immutable once
 /// built: the render thread only ever sees whole instances.
 /// </summary>
@@ -26,8 +26,11 @@ public sealed record DashSceneContent(byte[] Layout, byte[] Settings, byte[] Tar
         JsonSerializerOptions json) =>
         new(
             JsonSerializer.SerializeToUtf8Bytes(layout, json),
-            JsonSerializer.SerializeToUtf8Bytes(new { driverName, driverNumber }, json),
+            JsonSerializer.SerializeToUtf8Bytes(new { driverName, driverNumber, utcOffsetMinutes = LocalUtcOffsetMinutes() }, json),
             JsonSerializer.SerializeToUtf8Bytes(targets, json));
+
+    // Read on every build, so the reconcile loop's next scene picks up a daylight-saving change.
+    private static int LocalUtcOffsetMinutes() => (int)TimeZoneInfo.Local.GetUtcOffset(DateTimeOffset.UtcNow).TotalMinutes;
 
     /// <summary>Byte-for-byte the same scene, so publishing it again would change nothing.</summary>
     public bool HasSameBytes(DashSceneContent? other) =>
@@ -70,23 +73,23 @@ public sealed record DashSceneContent(byte[] Layout, byte[] Settings, byte[] Tar
 
 /// <summary>
 /// The slow-changing part of a wheel's multi-position dial as its dash popup reads it: the dial's
-/// caption, each position's name and colour in force, and whether the popup is inverted. Built on
-/// the reconcile loop like <see cref="DashSceneContent"/>; where the dial stands
-/// (<see cref="MultiDialStatus"/>) is read per frame instead.
+/// caption and each position's name and colour in force. How the popup shows is the layout's
+/// <c>dial_change</c> alert (the app-wide alert settings). Built on the reconcile loop like
+/// <see cref="DashSceneContent"/>; where the dial stands (<see cref="MultiDialStatus"/>) is read per
+/// frame instead.
 /// </summary>
-public sealed record DashMultiDial(string Caption, IReadOnlyList<MultiDialLabel> Positions, bool InvertPopup)
+public sealed record DashMultiDial(string Caption, IReadOnlyList<MultiDialLabel> Positions)
 {
     /// <summary>The device's dial, or null when its preset has none.</summary>
     public static DashMultiDial? Of(SavedDevice device, IEnumerable<CatalogDevice> catalog) =>
         MultiDials.LayoutOf(device, catalog) is { } layout
-            ? new DashMultiDial(layout.Label, MultiDials.LabelsOf(layout, device.MultiDial), device.MultiDial?.InvertPopup ?? false)
+            ? new DashMultiDial(layout.Label, MultiDials.LabelsOf(layout, device.MultiDial))
             : null;
 
-    /// <summary>The same caption, names, colours and inversion, so publishing it again would change nothing.</summary>
+    /// <summary>The same caption, names and colours, so publishing it again would change nothing.</summary>
     public bool HasSameValues(DashMultiDial? other) =>
         other is not null
         && this.Caption == other.Caption
-        && this.InvertPopup == other.InvertPopup
         && this.Positions.SequenceEqual(other.Positions);
 
     /// <summary>The renderer's dial reading (renderer/src/multi_dial.rs, <c>MultiDialReading</c>): this dial standing at <paramref name="status"/>.</summary>
@@ -114,7 +117,6 @@ public sealed record DashMultiDial(string Caption, IReadOnlyList<MultiDialLabel>
         }
 
         writer.WriteEndArray();
-        writer.WriteBoolean("invertPopup", this.InvertPopup);
         writer.WriteEndObject();
     }
 }
@@ -123,8 +125,8 @@ public sealed record DashMultiDial(string Caption, IReadOnlyList<MultiDialLabel>
 /// The telemetry frame as every dash output hands it to the renderer (the wheel's native source
 /// and a browser display's feed): the contract <see cref="TelemetryFrame"/> serialized with
 /// <see cref="HostJson"/>, which is what the renderer reads (packages/dashboard/renderer/src/model.rs).
-/// Only <see cref="TelemetryFrame.Field"/> is left out: no dash widget reads the other cars, and
-/// they are most of the frame. packages/dashboard/renderer/tests/fixtures/host-frame.json is this
+/// The other cars (<see cref="TelemetryFrame.Field"/>) are most of the frame, a few kB, and stay in:
+/// the relative widget reads them. packages/dashboard/renderer/tests/fixtures/host-frame.json is this
 /// method's output for a frame with every field set (HostFrameFixtureTests keeps it current).
 /// </summary>
 public static class DashFrameJson
@@ -132,9 +134,7 @@ public static class DashFrameJson
     public static void Write(Utf8JsonWriter writer, TelemetryFrame frame, JsonSerializerOptions json)
     {
         ArgumentNullException.ThrowIfNull(frame);
-        // A shallow copy: one small allocation per new frame, against serializing every car.
-        TelemetryFrame drawn = frame.Field is null ? frame : frame with { Field = null };
-        JsonSerializer.Serialize(writer, drawn, json);
+        JsonSerializer.Serialize(writer, frame, json);
     }
 }
 
@@ -143,25 +143,37 @@ public static class DashFrameJson
 /// <see cref="DashSceneContent"/> (null while the device has no dash at all), plus the inputs
 /// that change at driving speed and must reach the wheel within a frame — whether the dash shows
 /// its idle page (telemetry not live), the page a wheel button selected and where the wheel's
-/// multi-dial stands. Those are read per frame through delegates over thread-safe state (the
-/// published telemetry snapshot, <see cref="DashPageCycle"/>, <see cref="MultiDialTracker"/>), so a
-/// page change or a dial turn never waits for the reconcile loop. A browser display's feed has no
-/// dial.
+/// multi-dial stands, the race engineer's message on the wheel, and the driver's Ack presses. Those
+/// are read per frame through delegates over thread-safe state (the published telemetry snapshot,
+/// <see cref="DashPageCycle"/>, <see cref="MultiDialTracker"/>, the live link's published state,
+/// <see cref="DashAcknowledgements"/>), so a page change, a dial turn, a message or an Ack never
+/// waits for the reconcile loop. A browser display's feed has no dial and no message.
 /// </summary>
 public sealed class DashSceneFeed
 {
     private readonly Func<bool> _idle;
     private readonly Func<string?> _pageId;
     private readonly Func<MultiDialStatus> _dialStatus;
+    private readonly Func<string?> _radio;
     private DashSceneContent? _content;
     private DashMultiDial? _dial;
 
-    public DashSceneFeed(Func<bool> idle, Func<string?> pageId, Func<MultiDialStatus>? dialStatus = null)
+    public DashSceneFeed(
+        Func<bool> idle,
+        Func<string?> pageId,
+        Func<MultiDialStatus>? dialStatus = null,
+        Func<string?>? radio = null,
+        DashAcknowledgements? acknowledgements = null)
     {
         this._idle = idle ?? throw new ArgumentNullException(nameof(idle));
         this._pageId = pageId ?? throw new ArgumentNullException(nameof(pageId));
         this._dialStatus = dialStatus ?? (() => MultiDialStatus.Unknown);
+        this._radio = radio ?? (() => null);
+        this.Acknowledgements = acknowledgements;
     }
+
+    /// <summary>The driver's Ack presses, or null where nothing acknowledges (tests).</summary>
+    public DashAcknowledgements? Acknowledgements { get; }
 
     public DashSceneContent? Content => Volatile.Read(ref this._content);
 
@@ -174,6 +186,9 @@ public sealed class DashSceneFeed
 
     /// <summary>Where the wheel's multi-dial stands right now.</summary>
     public MultiDialStatus DialStatus => this._dialStatus();
+
+    /// <summary>The race engineer's message on the wheel right now, or null.</summary>
+    public string? Radio => this._radio();
 
     /// <summary>Replaces the dial unless its values are unchanged, so the renderer only takes a new
     /// reading when something the popup shows changed.</summary>
@@ -211,7 +226,8 @@ public sealed class DashSceneFeed
 /// <para>
 /// Renders only when something changed: the telemetry frame (by reference — the engine hands out
 /// the same object until a new frame arrives), the scene, the wheel's multi-dial (a turn pops up
-/// within a frame, with or without a game), or the last render said the picture depends on time.
+/// within a frame, with or without a game), the engineer's message, an Ack press (the renderer
+/// takes its alert down, then draws without it), or the last render said the picture depends on time.
 /// Otherwise it hands back the last picture, which the publisher then recognises as unchanged and
 /// does not resend.
 /// </para>
@@ -239,9 +255,11 @@ public sealed class NativeDashFrameSource : IDashFrameSource
     private readonly ArrayBufferWriter<byte> _frameJson = new(16 * 1024);
     private readonly ArrayBufferWriter<byte> _sceneJson = new(16 * 1024);
     private readonly ArrayBufferWriter<byte> _dialJson = new(1024);
+    private readonly ArrayBufferWriter<byte> _radioJson = new(256);
     private readonly Utf8JsonWriter _frameWriter;
     private readonly Utf8JsonWriter _sceneWriter;
     private readonly Utf8JsonWriter _dialWriter;
+    private readonly Utf8JsonWriter _radioWriter;
 
     private DashRenderer? _renderer;
     private DashRendererException? _unavailable;
@@ -249,6 +267,10 @@ public sealed class NativeDashFrameSource : IDashFrameSource
     private SceneKey? _failedScene;
     private DashRendererException? _sceneFailure;
     private DialKey _dial;
+    private string? _radio;
+    // The Ack count this renderer has seen; null until its first picture, so a renderer started
+    // after a press does not act on it.
+    private long? _acknowledged;
     private TelemetryFrame? _serializedFrame;
     private bool _timeDependent;
     private bool _hasPicture;
@@ -273,6 +295,7 @@ public sealed class NativeDashFrameSource : IDashFrameSource
         this._frameWriter = new Utf8JsonWriter(this._frameJson);
         this._sceneWriter = new Utf8JsonWriter(this._sceneJson);
         this._dialWriter = new Utf8JsonWriter(this._dialJson);
+        this._radioWriter = new Utf8JsonWriter(this._radioJson);
     }
 
     /// <summary>Native screen width in pixels (post-rotation).</summary>
@@ -317,8 +340,16 @@ public sealed class NativeDashFrameSource : IDashFrameSource
             this.ApplyDial(renderer, dialKey);
         }
 
+        string? radio = this._scenes.Radio;
+        bool radioChanged = !string.Equals(radio, this._radio, StringComparison.Ordinal);
+        if (radioChanged)
+        {
+            this.ApplyRadio(renderer, radio);
+        }
+
+        bool acknowledged = this.ApplyAcknowledgements(renderer);
         bool frameChanged = !ReferenceEquals(frame, this._serializedFrame);
-        if (!sceneChanged && !frameChanged && !dialChanged && !this._timeDependent && this._hasPicture)
+        if (!sceneChanged && !frameChanged && !dialChanged && !radioChanged && !acknowledged && !this._timeDependent && this._hasPicture)
         {
             this._picture.CopyTo(rgb565);
             return new ScreenFrameTiming(Stopwatch.GetElapsedTime(started), TimeSpan.Zero);
@@ -349,6 +380,7 @@ public sealed class NativeDashFrameSource : IDashFrameSource
         this._frameWriter.Dispose();
         this._sceneWriter.Dispose();
         this._dialWriter.Dispose();
+        this._radioWriter.Dispose();
     }
 
     // The renderer's clock is only ever compared with itself (banner and lap-timer hold times).
@@ -424,6 +456,44 @@ public sealed class NativeDashFrameSource : IDashFrameSource
         }
 
         renderer.SetMultiDial(this._dialJson.WrittenSpan);
+    }
+
+    // Hands the renderer the engineer's message, or none. Like the dial, a message it rejects is not retried.
+    private void ApplyRadio(DashRenderer renderer, string? radio)
+    {
+        this._radio = radio;
+        this._radioJson.ResetWrittenCount();
+        this._radioWriter.Reset(this._radioJson);
+        if (radio is not null)
+        {
+            this._radioWriter.WriteStartObject();
+            this._radioWriter.WriteString("text", radio);
+            this._radioWriter.WriteEndObject();
+            this._radioWriter.Flush();
+        }
+
+        renderer.SetRadio(this._radioJson.WrittenSpan);
+    }
+
+    // Ack pressed since the last frame (any number of times: one acknowledge takes down what is up).
+    // Taken as seen before the call, so a renderer that refuses it is not asked again every frame.
+    private bool ApplyAcknowledgements(DashRenderer renderer)
+    {
+        if (this._scenes.Acknowledgements is not { } acknowledgements)
+        {
+            return false;
+        }
+
+        long count = acknowledgements.Count;
+        long? seen = this._acknowledged;
+        this._acknowledged = count;
+        if (seen is null || seen == count)
+        {
+            return false;
+        }
+
+        renderer.Acknowledge();
+        return true;
     }
 
     // The frame as the renderer reads it (DashFrameJson), into a buffer reused for every frame.

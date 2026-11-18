@@ -129,6 +129,11 @@ impl<'a> Builder<'a> {
 
     /// Marks the picture as undrawable, where the TypeScript renderer throws mid-render (a theme
     /// color `dimColor` cannot parse). The first failure wins; drawing carries on harmlessly.
+    /// A text's advance at `size`, for laying out around it (mockup v2 group labels).
+    pub fn text_width(&self, text: &str, size: f64, weight: crate::text::TextWeight) -> f64 {
+        self.fonts.advance(weight, text, size)
+    }
+
     pub fn fail(&mut self, message: String) {
         self.failure.get_or_insert(message);
     }

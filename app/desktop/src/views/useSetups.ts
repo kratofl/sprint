@@ -27,25 +27,29 @@ export function useSetupLibrary(refresh: number): LibraryState {
 
 export type SheetState = { kind: 'loading' } | { kind: 'ready'; sheet: SetupSheet } | { kind: 'missing' }
 
-/** One setup's values, fetched when the setup or version asked for changes; null asks for none. */
-export function useSetupSheet(ref: SetupRef | null): SheetState {
-  const [state, setState] = useState<SheetState>({ kind: 'loading' })
+/**
+ * One setup's values, fetched when the setup or version asked for changes, and again when
+ * `refresh` does (after a tag) with the shown sheet kept meanwhile; null asks for none.
+ */
+export function useSetupSheet(ref: SetupRef | null, refresh = 0): SheetState {
+  const [state, setState] = useState<{ key: string; sheet: SheetState } | null>(null)
   const id = ref?.id ?? null
   const version = ref?.version ?? null
+  const key = `${id ?? ''}
+${version ?? ''}`
 
   useEffect(() => {
     if (id === null) return
     let cancelled = false
-    setState({ kind: 'loading' })
     void bridge.setupSheet(id, version).then((sheet) => {
-      if (!cancelled) setState(sheet ? { kind: 'ready', sheet } : { kind: 'missing' })
+      if (!cancelled) setState({ key, sheet: sheet ? { kind: 'ready', sheet } : { kind: 'missing' } })
     })
     return () => {
       cancelled = true
     }
-  }, [id, version])
+  }, [id, version, key, refresh])
 
-  return state
+  return state !== null && state.key === key ? state.sheet : { kind: 'loading' }
 }
 
 /**

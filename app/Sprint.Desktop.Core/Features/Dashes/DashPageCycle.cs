@@ -1,66 +1,141 @@
 using System.Collections.Concurrent;
+using Sprint.Desktop.Api.Telemetry;
 
 namespace Sprint.Desktop.Features.Dashes;
 
 /// <summary>
-/// Tracks which page of its resolved layout each screen is currently showing. Scoped per
-/// DEVICE, not per layout or globally — two screens assigned to the same dash can sit on
-/// different pages at once — mirroring the deleted Avalonia client's
-/// <c>DeviceScreenService</c>'s per-device <c>DashPageSelection</c> dictionary. A device that has
-/// never been cycled reads back <see langword="null"/>, which callers treat as "use the layout's
-/// first page" (the pre-cycling default).
+/// Tracks which page of its resolved layout each screen is currently showing, within the pages
+/// its session or mode cycles (<see cref="DashPageModes.CyclePages"/>). Scoped per DEVICE, not per
+/// layout or globally — two screens assigned to the same dash can sit on different pages at once.
+/// A device that has never been cycled or settled reads back <see langword="null"/>, which callers
+/// treat as "use the layout's first page".
 /// <para>
-/// Thread-safe and free of any HTTP/JSON concern: <c>RuntimeCoordinator</c> advances it from
-/// Kestrel request threads for the <c>dash.page.next</c>/<c>dash.page.prev</c> commands, and a
-/// future wheel-button dispatcher (matrix 4.7) can call <see cref="Move"/> directly with no HTTP
-/// round-trip at all. <c>ScreenOutputs.Describe</c> reads <see cref="CurrentPageId"/> from the
-/// telemetry-publish loop to fill in <c>screens[].pageId</c>.
+/// Thread-safe and free of any HTTP/JSON concern: <c>RuntimeCoordinator</c> moves it for the
+/// <c>dash.page.*</c> commands and wheel buttons, <see cref="DashPageAutomation"/> settles it from
+/// the ingest loop (the session, each wheel's mode, the out lap and flying lap jumps), and
+/// <c>ScreenOutputs.Describe</c> and the wheel screens read <see cref="CurrentPageId"/>.
 /// </para>
 /// </summary>
 public sealed class DashPageCycle
 {
     private readonly ConcurrentDictionary<string, string?> _pages = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, string?> _modes = new(StringComparer.OrdinalIgnoreCase);
+    private int _session = (int)SessionType.Unknown;
+
+    /// <summary>The session the game is in, as the ingest loop last saw it.</summary>
+    public SessionType Session
+    {
+        get => (SessionType)Volatile.Read(ref this._session);
+        set => Volatile.Write(ref this._session, (int)value);
+    }
 
     /// <summary>The device's current page id, or null if it has never been cycled.</summary>
     public string? CurrentPageId(string deviceId) =>
         this._pages.TryGetValue(deviceId, out string? pageId) ? pageId : null;
 
+    /// <summary>The driver's own mode in force on the device (its multi-dial's position), or null.</summary>
+    public string? ModeOf(string deviceId) =>
+        this._modes.TryGetValue(deviceId, out string? modeId) ? modeId : null;
+
+    public void SetMode(string deviceId, string? modeId) => this._modes[deviceId] = modeId;
+
+    /// <summary>The pages the device cycles in <paramref name="layout"/> now.</summary>
+    public IReadOnlyList<DashPage> PagesFor(string deviceId, DashLayout layout) =>
+        DashPageModes.CyclePages(layout, this.ModeOf(deviceId), this.Session);
+
     /// <summary>
-    /// Moves <paramref name="deviceId"/>'s selection by <paramref name="offset"/> pages within
-    /// <paramref name="layout"/>, wrapping around either end, and returns the newly selected page
-    /// id (or the idle page's id, possibly null, when the layout has no regular pages at all). A
-    /// previously selected page id that <paramref name="layout"/> no longer has — e.g. the
-    /// device's assigned dash changed since the last cycle — restarts from the first page rather
-    /// than throwing.
+    /// Moves <paramref name="deviceId"/>'s selection by <paramref name="offset"/> pages within the
+    /// pages it cycles in <paramref name="layout"/>, wrapping around either end, and returns the
+    /// newly selected page id (or the idle page's id, possibly null, when the layout has no regular
+    /// pages at all). From a page outside them (a "Go to" page, or the dash or session changed) the
+    /// next page is the first of them and the previous one the last.
     /// </summary>
     public string? Move(string deviceId, DashLayout layout, int offset)
     {
         ArgumentNullException.ThrowIfNull(deviceId);
         ArgumentNullException.ThrowIfNull(layout);
 
-        if (layout.Pages.Count == 0)
+        IReadOnlyList<DashPage> pages = this.PagesFor(deviceId, layout);
+        if (pages.Count == 0)
         {
             string? idlePageId = layout.IdlePage?.Id;
             this._pages[deviceId] = idlePageId;
             return idlePageId;
         }
 
-        string? current = this.CurrentPageId(deviceId);
-        int index = layout.Pages.FindIndex(page =>
-            string.Equals(page.Id, current, StringComparison.OrdinalIgnoreCase));
+        // No page picked yet: the wheel shows the dash's first page.
+        int index = IndexOf(pages, this.CurrentPageId(deviceId) ?? layout.Pages.FirstOrDefault()?.Id);
         if (index < 0)
         {
-            index = 0;
+            // Off the cycle: stand just before the first page (or just after the last, going back).
+            index = offset >= 0 ? -1 : pages.Count;
         }
 
-        index = (index + offset) % layout.Pages.Count;
-        if (index < 0)
-        {
-            index += layout.Pages.Count;
-        }
+        index = ((index + offset) % pages.Count + pages.Count) % pages.Count;
 
-        string pageId = layout.Pages[index].Id;
+        string pageId = pages[index].Id;
         this._pages[deviceId] = pageId;
         return pageId;
     }
+
+    /// <summary>
+    /// Shows <paramref name="pageId"/> of <paramref name="layout"/> on the device, whatever its
+    /// session or mode (a "Go to" button is the driver asking for that page); false when the layout
+    /// has no such page.
+    /// </summary>
+    public bool Show(string deviceId, DashLayout layout, string pageId)
+    {
+        ArgumentNullException.ThrowIfNull(deviceId);
+        ArgumentNullException.ThrowIfNull(layout);
+        DashPage? page = layout.Pages.FirstOrDefault(candidate => string.Equals(candidate.Id, pageId, StringComparison.OrdinalIgnoreCase));
+        if (page is null)
+            return false;
+
+        this._pages[deviceId] = page.Id;
+        return true;
+    }
+
+    /// <summary>
+    /// Keeps the device on a page it cycles now: on <paramref name="jump"/>, the first of those pages
+    /// that jumps then; otherwise, when the current page is not among them (the session or mode
+    /// changed, or it was never set), the first of them. A page the driver went to with a "Go to"
+    /// button stays until something changes.
+    /// </summary>
+    public void Settle(string deviceId, DashLayout layout, DashPageJump? jump, bool contextChanged)
+    {
+        ArgumentNullException.ThrowIfNull(deviceId);
+        ArgumentNullException.ThrowIfNull(layout);
+        IReadOnlyList<DashPage> pages = this.PagesFor(deviceId, layout);
+        if (pages.Count == 0)
+        {
+            return;
+        }
+
+        if (jump is not null && pages.FirstOrDefault(page => page.Jump == jump) is { } target)
+        {
+            this._pages[deviceId] = target.Id;
+            return;
+        }
+
+        string? current = this.CurrentPageId(deviceId);
+        bool known = layout.Pages.Any(page => string.Equals(page.Id, current, StringComparison.OrdinalIgnoreCase));
+        if (IndexOf(pages, current) < 0 && (contextChanged || !known))
+        {
+            this._pages[deviceId] = pages[0].Id;
+        }
+    }
+
+    private static int IndexOf(IReadOnlyList<DashPage> pages, string? pageId)
+    {
+        for (int index = 0; index < pages.Count; index++)
+        {
+            if (string.Equals(pages[index].Id, pageId, StringComparison.OrdinalIgnoreCase))
+            {
+                return index;
+            }
+        }
+
+        return -1;
+    }
+
 }

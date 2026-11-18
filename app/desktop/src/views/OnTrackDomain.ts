@@ -1,12 +1,13 @@
 import type { SprintCommand, SprintState } from '../bridge'
+import { parseCarMarks, type CarMarks } from '../carMarks'
 import { parseCorpusLap } from './AnalysisDomain'
 import type { CorpusLap } from './AnalysisDomain'
 import type { HudReadingSet } from '../hud/hudModel'
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null
 
-/** A track layout driven in one car: the laps it makes sense to train against (`LiveCompareCourse`). */
-export type CompareCourse = { game: string; trackCourse: string; carModel: string }
+/** A track layout driven in one car: the laps it makes sense to train against (`LiveCompareCourse`); `marks` is how it is shown. */
+export type CompareCourse = { game: string; trackCourse: string; carModel: string; marks: CarMarks }
 
 /** The lap the HUD chases (`LiveCompareTarget`). */
 export type CompareTarget = { sessionId: string; lapNumber: number; label: string; lapTimeSeconds: number }
@@ -51,7 +52,7 @@ const positiveOr = (value: unknown, fallback: number): number => (typeof value =
 
 function parseCourse(value: unknown): CompareCourse | null {
   if (!isRecord(value) || typeof value.game !== 'string' || typeof value.trackCourse !== 'string' || typeof value.carModel !== 'string') return null
-  return { game: value.game, trackCourse: value.trackCourse, carModel: value.carModel }
+  return { game: value.game, trackCourse: value.trackCourse, carModel: value.carModel, marks: parseCarMarks(value.marks, value.carModel) }
 }
 
 function parseTarget(value: unknown): CompareTarget | null {

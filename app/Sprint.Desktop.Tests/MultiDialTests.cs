@@ -81,7 +81,6 @@ public sealed class MultiDialTests
         Assert.Equal(
             [new MultiDialLabel("DASH", "#1F7FE6"), new MultiDialLabel("STRAT", "#F02744"), new MultiDialLabel("MAP", "#16B566")],
             MultiDials.LabelsOf(Layout, settings));
-        Assert.False(settings.InvertPopup);
     }
 
     [Fact]

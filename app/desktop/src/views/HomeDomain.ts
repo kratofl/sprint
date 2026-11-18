@@ -1,4 +1,5 @@
 import type { SprintState, TelemetryLinkState } from '../bridge'
+import { parseCarMarks, type CarMarks } from '../carMarks'
 import { deviceHasScreen, deviceImageKey, parseCatalog, parseDevices, toRecordArray } from './DevicesDomain'
 import type { Device, DeviceImageKey } from './DevicesDomain'
 import { parseDashLayouts } from './DashesDomain'
@@ -207,6 +208,8 @@ export type HomeSession = {
   bestLapSeconds: number | null
   /** The best lap's sector times; empty when the game did not report them. */
   bestSectors: number[]
+  /** How its car and track are shown. */
+  marks: CarMarks
 }
 
 /** How the newest session's best lap compares with every earlier session on the same combo. */
@@ -236,6 +239,7 @@ function parseRecentSession(value: unknown): HomeSession | null {
     lapCount: typeof value.lapCount === 'number' && Number.isInteger(value.lapCount) ? value.lapCount : 0,
     bestLapSeconds: numberOrNull(value.bestLapSeconds),
     bestSectors: Array.isArray(value.bestSectors) ? value.bestSectors.filter((item): item is number => typeof item === 'number' && Number.isFinite(item)) : [],
+    marks: parseCarMarks(value.marks, text(value.car)),
   }
 }
 

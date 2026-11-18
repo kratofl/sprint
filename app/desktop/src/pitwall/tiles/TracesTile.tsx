@@ -23,8 +23,8 @@ const linePoints = (trace: PitWallTrace, levels: readonly number[], width: numbe
 
 /**
  * The lap being driven, channel by channel in Analysis's colours against distance round the lap;
- * optionally another lap dashed in grey under it. A line marks where the car is now. Asks for the
- * laps once a second while it is on screen.
+ * optionally another lap dashed in grey under it. A line marks where the car is now. While it is
+ * on screen the lap being driven redraws 30 times a second (`useTraces`).
  */
 export function TracesTile({ data, frame }: { data: TileData; frame: FrameProps }) {
   const [compare, setCompare] = useState<Compare>('none')

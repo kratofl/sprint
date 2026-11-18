@@ -1,3 +1,4 @@
+import { parseCarMarks, type CarMarks } from '../carMarks'
 import type { LapFileOffer, LapImportResult, SprintCommand, SprintState } from '../bridge'
 
 /**
@@ -69,6 +70,19 @@ export type CorpusSession = {
   hasChannels: boolean
   /** How many drives out of the garage its laps came from; 0 when they do not say (imported, shared, older). */
   runs: number
+  /** The circuit its layout belongs to ("spa" for Spa and Spa Endurance alike), from the host's catalog. */
+  circuitId: string
+  circuitName: string
+  /** The layout within the circuit ("Endurance"); the game's own track name when the catalog does not know it. */
+  layout: string
+  /** Where the circuit is (ISO 3166-1 alpha-2, "BE"), for its flag; null when unknown. */
+  country: string | null
+  /** The class as racing tags it: "HYP", "LMP2", "LMP2 ELMS", "LMP3", "LMGT3", "GTE", the game's own, or "Other". */
+  classTag: string
+  /** The car's make ("Porsche"), for its logo; null when the game gave no model. */
+  make: string | null
+  /** How its car and track are shown on its page (host: `CarMarks`). */
+  marks: CarMarks
 }
 
 export type CorpusLap = {
@@ -156,17 +170,14 @@ function parseContext(value: unknown): LapHistoryContext {
   }
 }
 
-/** "LMP2 ELMS · Oreca 07": the car's name, then its model when that says more. */
-export function carLine(context: LapHistoryContext): string {
-  const { carModel, carType } = context
-  return carType && !carModel.includes(carType) ? `${carModel} · ${carType}` : carModel
-}
+
 
 function parseSession(value: unknown): CorpusSession | null {
   if (!isRecord(value) || typeof value.id !== 'string' || typeof value.startedAt !== 'string') return null
+  const context = parseContext(value.context)
   return {
     id: value.id,
-    context: parseContext(value.context),
+    context,
     kind: isHistorySessionKind(value.kind) ? value.kind : 'Unknown',
     origin: isLapHistoryOrigin(value.origin) ? value.origin : 'Recorded',
     startedAt: value.startedAt,
@@ -179,6 +190,13 @@ function parseSession(value: unknown): CorpusSession | null {
     detail: typeof value.detail === 'string' ? value.detail : '',
     hasChannels: value.hasChannels === true,
     runs: typeof value.runs === 'number' ? value.runs : 0,
+    circuitId: typeof value.circuitId === 'string' && value.circuitId !== '' ? value.circuitId : context.trackCourse,
+    circuitName: typeof value.circuitName === 'string' && value.circuitName !== '' ? value.circuitName : context.trackCourse,
+    layout: typeof value.layout === 'string' && value.layout !== '' ? value.layout : context.trackCourse,
+    country: stringOrNull(value.country),
+    classTag: typeof value.classTag === 'string' && value.classTag !== '' ? value.classTag : 'Other',
+    make: stringOrNull(value.make),
+    marks: parseCarMarks(value.marks, context.carType ?? context.carModel),
   }
 }
 

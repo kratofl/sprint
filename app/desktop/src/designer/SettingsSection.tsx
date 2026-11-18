@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ChevronRight, Copy, Monitor, Moon, RotateCcw, Tag, Trash2 } from 'lucide-react'
+import { Bell, ChevronRight, Copy, Monitor, Moon, RotateCcw, Tag, Trash2 } from 'lucide-react'
 import type { DashLayout } from '@sprint/dashboard'
 import type { DashCategoryLists } from '../bridge'
 import { ConfirmDialog } from '../shell/ContentDialog'
@@ -29,7 +29,8 @@ type Apply = (mutate: Mutate, group?: string) => boolean
 /**
  * Settings: everything about the dash that is not drawing, in one calm column. A heading like a
  * device's — its still picture, its name renamed in place, what it is — then the Dash group
- * (category, screen size, idle page) and Copy and reset (duplicate, reset to the preset, delete).
+ * (category, screen size, idle page, and the way to the alerts every dash shares on the Dashes
+ * page) and Copy and reset (duplicate, reset to the preset, delete).
  * Renaming and the idle page are edits of the document (saved and undone like any other); the
  * rest are the host's commands, run by the window. A screen size that cannot hold every widget
  * says so under its name, and after it is picked a note under the row says how many were left out.
@@ -44,6 +45,7 @@ export function SettingsSection({
   onScreenProfile,
   onDuplicate,
   onReset,
+  onOpenDashSettings,
   onDelete,
 }: {
   layout: DashLayout
@@ -57,6 +59,8 @@ export function SettingsSection({
   onScreenProfile: (profileId: string) => void
   onDuplicate: () => void
   onReset: () => void
+  /** Brings the main window forward on Dashes > Settings, where the alerts and Ack are set. */
+  onOpenDashSettings: () => void
   onDelete: () => void
 }) {
   const [confirming, setConfirming] = useState<'reset' | 'delete' | null>(null)
@@ -151,6 +155,14 @@ export function SettingsSection({
             </div>
           )}
         </SettingRow>
+
+        <SettingRow id="dash-alerts" icon={Bell} title="Alerts and Ack" description="Set for every dash on the Dashes page.">
+          {(labels) => (
+            <button type="button" className="button" aria-describedby={labels['aria-labelledby']} onClick={onOpenDashSettings}>
+              Open
+            </button>
+          )}
+        </SettingRow>
       </SettingsGroup>
 
       <SettingsGroup title="Copy and reset">
@@ -161,7 +173,7 @@ export function SettingsSection({
             </button>
           )}
         </SettingRow>
-        <SettingRow id="dash-reset" icon={RotateCcw} title="Reset to preset" description="Puts back the pages, alerts and look of the preset Sprint ships. Can be undone.">
+        <SettingRow id="dash-reset" icon={RotateCcw} title="Reset to preset" description="Puts back the pages and look of the preset Sprint ships. Can be undone.">
           {(labels) => (
             <button type="button" className="button" {...labels} onClick={() => setConfirming('reset')}>
               Reset…
@@ -180,7 +192,7 @@ export function SettingsSection({
       {confirming === 'reset' && (
         <ConfirmDialog
           title="Reset to preset?"
-          message={`${layout.name} gets the preset's pages, alerts and look. Undo brings your design back.`}
+          message={`${layout.name} gets the preset's pages and look. Undo brings your design back.`}
           confirmLabel="Reset"
           destructive
           onCancel={() => setConfirming(null)}

@@ -46,6 +46,14 @@ contextBridge.exposeInMainWorld('sprint', {
   syncDown: (): Promise<unknown> => ipcRenderer.invoke('sprint:cloud-pull'),
   /** Opens a dash in its own designer window, or brings that window forward (electron/designerWindows.ts). */
   openDashDesigner: (dashId: string): Promise<unknown> => ipcRenderer.invoke('sprint:open-dash-designer', dashId),
+  /** A designer's "Alerts and Ack": brings the main window forward on Dashes > Settings. */
+  openDashSettings: (): Promise<unknown> => ipcRenderer.invoke('sprint:open-dash-settings'),
+  /** The main window hears that request here. */
+  subscribeOpenDashSettings: (listener: () => void): (() => void) => {
+    const onOpen = (): void => listener()
+    ipcRenderer.on('sprint:open-dash-settings', onOpen)
+    return () => { ipcRenderer.removeListener('sprint:open-dash-settings', onOpen) }
+  },
   /** Opens the pit wall, or brings it (or a page's or tile's own window) forward (electron/pitWallWindows.ts). */
   openPitWall: (target?: { kind: 'page' | 'tile'; id: string }): Promise<unknown> => ipcRenderer.invoke('sprint:open-pit-wall', target),
   /** Dev runs only (electron/debugWindow.ts): opens the debug window, or brings it forward. */

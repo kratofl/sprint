@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { readableRotation, ringSegments, zoomTransform } from './DeviceControlsDomain'
+import { buttonName, buttonRows, readableRotation, ringSegments, zoomTransform } from './DeviceControlsDomain'
 
 test('an 8-position dial has its boxes in pairs, the first at the top right', () => {
   const angles = ringSegments(8).map((segment) => segment.angle)
@@ -19,4 +19,18 @@ test('box names never read upside down', () => {
 test('zooming on the picture centre leaves it in the middle of the stage', () => {
   assert.equal(zoomTransform(0.5, 0.5, 2), 'translate(-50%, -50%) scale(2)')
   assert.equal(zoomTransform(0.25, 0.75, 2), 'translate(0%, -100%) scale(2)')
+})
+
+test('a button reads as the driver would say it, and each function finds its button', () => {
+  assert.equal(buttonName('button:5'), 'Button 5')
+  assert.equal(buttonName('encoder:2+'), 'Encoder 2 +')
+  assert.equal(buttonName('encoder:2-'), 'Encoder 2 −')
+  assert.equal(buttonName('key:F1'), 'key:F1')
+  assert.deepEqual(
+    buttonRows([{ id: 'dash.page.next', label: 'Next dash page' }, { id: 'dash.page.prev', label: 'Previous dash page' }], [{ input: 'button:5', command: 'dash.page.next' }]),
+    [
+      { id: 'dash.page.next', label: 'Next dash page', input: 'button:5' },
+      { id: 'dash.page.prev', label: 'Previous dash page', input: null },
+    ],
+  )
 })

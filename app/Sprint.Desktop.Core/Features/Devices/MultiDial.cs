@@ -46,14 +46,18 @@ public sealed record MultiDialPosition
 public sealed record MultiDialLabel(string Label, string Color);
 
 /// <summary>
-/// The driver's own names and colours for a wheel's dial positions, and whether the dash popup
-/// is inverted. Stored on the saved device; null until first edited, so the preset's defaults
-/// apply until then. The colours only colour the dash popup -- nothing is sent to the wheel.
+/// The driver's own names and colours for a wheel's dial positions, and which of the driver's dash
+/// modes (<c>DashMode.Id</c>) each position switches on. Stored on the saved device; null until first
+/// edited, so the preset's defaults apply until then. The colours only colour the dash popup --
+/// nothing is sent to the wheel. How the popup shows (size, inversion, duration) is the app-wide
+/// <c>dial_change</c> alert's; an older file's per-device <c>invertPopup</c> is ignored.
 /// </summary>
 public sealed record MultiDialSettings
 {
     public List<MultiDialLabel> Positions { get; init; } = [];
-    public bool InvertPopup { get; init; }
+
+    /// <summary>Per position (by index), the dash mode it switches on; null or missing: none.</summary>
+    public List<string?> Modes { get; init; } = [];
 }
 
 /// <summary>Everything the desktop needs about one saved wheel's dial, as /api/state reports it.</summary>
@@ -64,7 +68,7 @@ public sealed record MultiDialState(
     double Y,
     double Radius,
     IReadOnlyList<MultiDialLabel> Positions,
-    bool InvertPopup,
+    IReadOnlyList<string?> Modes,
     int? Position,
     int Changes);
 
@@ -113,6 +117,28 @@ public static class MultiDials
         return (settings ?? new MultiDialSettings()) with { Positions = labels };
     }
 
+    /// <summary>Each position's dash mode (by index, as many as the dial has positions); null where none is set.</summary>
+    public static IReadOnlyList<string?> ModesOf(MultiDialLayout layout, MultiDialSettings? settings) =>
+        layout.Positions.Select((_, index) => settings is not null && index < settings.Modes.Count ? settings.Modes[index] : null).ToList();
+
+    /// <summary>The settings with one position switching on <paramref name="modeId"/> (null: none).</summary>
+    public static MultiDialSettings WithMode(MultiDialLayout layout, MultiDialSettings? settings, int index, string? modeId)
+    {
+        List<string?> modes = ModesOf(layout, settings).ToList();
+        modes[index] = modeId;
+        return (settings ?? new MultiDialSettings()) with { Positions = LabelsOf(layout, settings).ToList(), Modes = modes };
+    }
+
+    /// <summary>
+    /// The dash mode the device's dial switches on right now: the mode of the position it sits on,
+    /// when that mode still exists (<paramref name="known"/>). Null while the dial has not reported.
+    /// </summary>
+    public static string? ActiveMode(SavedDevice device, MultiDialLayout layout, MultiDialStatus status, Func<string, bool> known) =>
+        status.Position is int position && position < layout.Positions.Count
+        && ModesOf(layout, device.MultiDial)[position] is { } modeId && known(modeId)
+            ? modeId
+            : null;
+
     /// <summary>What the tracker should listen to: one source per enabled device whose preset has a dial.</summary>
     public static IReadOnlyList<MultiDialSource> Sources(IEnumerable<SavedDevice> devices, IEnumerable<CatalogDevice> catalog)
     {
@@ -150,7 +176,7 @@ public static class MultiDials
                 layout.Y,
                 layout.Radius,
                 LabelsOf(layout, device.MultiDial),
-                device.MultiDial?.InvertPopup ?? false,
+                ModesOf(layout, device.MultiDial),
                 status.Position,
                 status.Changes));
         }

@@ -90,7 +90,8 @@ engineer sees what. Code: `api/Sprint.Api/Auth/Discord/`, `api/Sprint.Api/Live/`
 - Invite links are single-use (the accept races on a concurrency token), valid for 7 days and
   revocable while unused. Accepting a link of a driver one already engineers for does not use it up.
 - The old per-session invite-code relay (GraphQL subscriptions) is gone. Engineer → driver commands
-  are not part of this model; `app/Sprint.Desktop.Api/Engineer` still describes them for the desktop.
+  are not part of this model; the engineer reaches the driver over the live link
+  ([live-link.md](live-link.md)).
 
 ## InfluxDB
 

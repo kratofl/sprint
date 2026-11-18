@@ -130,6 +130,34 @@ pub unsafe extern "C" fn sd_set_multi_dial(r: *mut SdRenderer, ptr: *const u8, l
     })
 }
 
+/// Sets the engineer's message on the wheel (JSON; empty or `null` = none). 0 on success.
+///
+/// # Safety
+/// As for `sd_set_scene`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn sd_set_radio(r: *mut SdRenderer, ptr: *const u8, len: usize) -> i32 {
+    // SAFETY: forwarded from the caller's contract.
+    let input = unsafe { bytes(ptr, len) };
+    with_renderer(r, |renderer| {
+        let json = input.ok_or_else(pointer_error)?;
+        renderer.set_radio(json).map(|()| 0).map_err(input_error)
+    })
+}
+
+/// The driver pressed Ack: takes the alert up now (and the dial popup) down at once
+/// (`Renderer::acknowledge`). Not the engineer's message: `sd_set_radio` clears that. Render
+/// again afterwards to show the result. 0 on success.
+///
+/// # Safety
+/// `r` as for `sd_free`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn sd_acknowledge(r: *mut SdRenderer) -> i32 {
+    with_renderer(r, |renderer| {
+        renderer.acknowledge();
+        Ok(0)
+    })
+}
+
 /// Renders a live frame (JSON; empty or `null` = no data) at `now_ms`.
 ///
 /// # Safety
@@ -315,6 +343,12 @@ mod tests {
             assert_eq!(sd_set_multi_dial(r, std::ptr::null(), 0), 0, "no dial");
             assert_eq!(sd_set_multi_dial(r, bad.as_ptr(), bad.len()), SD_ERR_INPUT);
             assert!(last_error(r).starts_with("multi-dial is not a valid dial reading"));
+
+            assert_eq!(sd_set_radio(r, std::ptr::null(), 0), 0, "no message");
+            assert_eq!(sd_set_radio(r, bad.as_ptr(), bad.len()), SD_ERR_INPUT);
+            assert!(last_error(r).starts_with("radio is not a valid radio message"));
+
+            assert_eq!(sd_acknowledge(r), 0, "with nothing up too");
             sd_free(r);
         }
     }
@@ -324,6 +358,7 @@ mod tests {
         // SAFETY: null is an accepted renderer argument everywhere.
         unsafe {
             assert_eq!(sd_set_scene(std::ptr::null_mut(), SCENE.as_ptr(), SCENE.len()), SD_ERR_NULL);
+            assert_eq!(sd_acknowledge(std::ptr::null_mut()), SD_ERR_NULL);
             assert!(sd_pixels(std::ptr::null()).is_null());
             assert_eq!(sd_width(std::ptr::null()), 0);
             assert_eq!(sd_last_error(std::ptr::null(), std::ptr::null_mut(), 0), 0);

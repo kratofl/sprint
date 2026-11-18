@@ -67,7 +67,6 @@ splits searches and confuses the next agent.
   row and exclusions.
 - **Live session** — a session the desktop is streaming right now; viewers get it over SSE.
 - **Sign-in ticket** — the single-use code a Discord sign-in ends with, traded for a JWT.
-- **Staged change** — an engineer edit not yet pushed; **push** sends staged changes to the car.
 
 ## Design
 

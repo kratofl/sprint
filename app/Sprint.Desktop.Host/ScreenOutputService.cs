@@ -17,14 +17,17 @@ public sealed record ScreenOutputHardware(ScreenStatus Status, ScreenPerformance
 
 /// <summary>
 /// What every dash screen's scene is built from, read by the reconcile loop under the devices gate:
-/// the dashes (each device resolves its own, <see cref="DevicePurposeLayouts.Resolve"/>), the
-/// driver's name and number, and the active plan's targets.
+/// the dashes (each device resolves its own for the car, <see cref="DevicePurposeLayouts.Resolve"/>),
+/// the driver's name and number, the active plan's targets, and the app-wide alert settings every
+/// dash is stamped with (<see cref="AppDashAlerts.Stamp"/>).
 /// </summary>
 public sealed record DashSceneInputs(
     IReadOnlyList<DashLayout> Layouts,
+    DriverCar Car,
     string DriverName,
     string DriverNumber,
-    DashTargets Targets);
+    DashTargets Targets,
+    AppDashAlerts Alerts);
 
 /// <summary>
 /// Drives the real USB screens. One <see cref="ScreenPublisher"/> runs per enabled screen device
@@ -115,6 +118,8 @@ public sealed class ScreenOutputService : IDisposable
     private readonly DesktopState? _telemetry;
     private readonly DashPageCycle? _pageCycle;
     private readonly MultiDialTracker? _multiDials;
+    private readonly Func<string?>? _radio;
+    private readonly DashAcknowledgements? _acknowledgements;
     private readonly DashSourceFactory _dashSourceFactory;
     private readonly BrowserDisplayServer? _browserServer;
     private readonly JsonSerializerOptions _json = HostJson.Create();
@@ -127,7 +132,10 @@ public sealed class ScreenOutputService : IDisposable
     /// read on the outputs' own threads and are safe there (an immutable published snapshot, a
     /// concurrent dictionary, a locked tracker). Without them a dash output shows its idle page with
     /// an empty frame and no dial popup. <paramref name="browserServer"/> serves the browser
-    /// displays; without it they are left out.
+    /// displays; without it they are left out. <paramref name="radio"/> is the race engineer's
+    /// message on the wheel screens (the live link's published state), or null for none.
+    /// <paramref name="acknowledgements"/> are the driver's Ack presses, which every dash output
+    /// (wheel and browser display alike) acts on; without it nothing acknowledges.
     /// </summary>
     public ScreenOutputService(
         ILog? log = null,
@@ -137,8 +145,12 @@ public sealed class ScreenOutputService : IDisposable
         DashPageCycle? pageCycle = null,
         DashSourceFactory? dashSourceFactory = null,
         BrowserDisplayServer? browserServer = null,
-        MultiDialTracker? multiDials = null)
+        MultiDialTracker? multiDials = null,
+        Func<string?>? radio = null,
+        DashAcknowledgements? acknowledgements = null)
     {
+        this._radio = radio;
+        this._acknowledgements = acknowledgements;
         this._browserServer = browserServer;
         this._log = log ?? NullLog.Instance;
         this._driverFactory = driverFactory ?? ((_, driver, driverLog) => ScreenDriverFactory.Create(driver, driverLog));
@@ -347,7 +359,8 @@ public sealed class ScreenOutputService : IDisposable
     /// Each dash device's scene content: null when it has no dash at all, absent when it is not
     /// known this time (no inputs given, or the dash could not be serialized — a command can be
     /// editing it in place on another thread — so the screen keeps its scene until the next
-    /// call). A dash two devices share is serialized once.
+    /// call). A dash two devices share is serialized once. Every dash goes out with the app-wide
+    /// alerts stamped on (a copy; the stored dash is untouched).
     /// </summary>
     private Dictionary<string, DashSceneContent?> BuildScenes(IEnumerable<SavedDevice> devices, DashSceneInputs? scenes)
     {
@@ -365,7 +378,7 @@ public sealed class ScreenOutputService : IDisposable
                 continue;
             }
 
-            if (DevicePurposeLayouts.Resolve(device, scenes.Layouts) is not { } layout)
+            if (DevicePurposeLayouts.Resolve(device, scenes.Layouts, scenes.Car) is not { } layout)
             {
                 contents[device.Id] = null;
                 continue;
@@ -375,7 +388,8 @@ public sealed class ScreenOutputService : IDisposable
             {
                 try
                 {
-                    content = DashSceneContent.Build(layout, scenes.DriverName, scenes.DriverNumber, scenes.Targets, this._json);
+                    DashLayout shown = DevicePurposes.Resolve(device.Purpose).Output is DevicePurposeOutputKind.DashboardLayout ? scenes.Alerts.Stamp(layout) : layout;
+                    content = DashSceneContent.Build(shown, scenes.DriverName, scenes.DriverNumber, scenes.Targets, this._json);
                 }
                 catch (Exception ex)
                 {
@@ -491,19 +505,21 @@ public sealed class ScreenOutputService : IDisposable
     }
 
     /// <summary>
-    /// A device's scene feed: the content <see cref="Reconcile"/> publishes, plus the idle page and the
-    /// wheel buttons' page read live, so a page change shows within a frame. Every dash output gets
-    /// one, a wheel's and a browser display's alike; only a wheel's reads its multi-dial
-    /// (<paramref name="dialStatus"/>).
+    /// A device's scene feed: the content <see cref="Reconcile"/> publishes, plus the idle page, the
+    /// wheel buttons' page and the Ack presses read live, so a page change or an Ack shows within a
+    /// frame. Every dash output gets one, a wheel's and a browser display's alike; only a wheel's
+    /// reads its multi-dial (<paramref name="dialStatus"/>) and the engineer's message (<paramref name="radio"/>).
     /// </summary>
-    private DashSceneFeed NewSceneFeed(string deviceId, Func<MultiDialStatus>? dialStatus = null)
+    private DashSceneFeed NewSceneFeed(string deviceId, Func<MultiDialStatus>? dialStatus = null, Func<string?>? radio = null)
     {
         DesktopState? telemetry = this._telemetry;
         DashPageCycle? pageCycle = this._pageCycle;
         return new DashSceneFeed(
             idle: () => telemetry is null || !telemetry.Telemetry.Status.IsLive,
             pageId: () => pageCycle?.CurrentPageId(deviceId),
-            dialStatus);
+            dialStatus,
+            radio,
+            this._acknowledgements);
     }
 
     /// <summary>
@@ -516,7 +532,7 @@ public sealed class ScreenOutputService : IDisposable
         string deviceId = device.Id;
         DesktopState? telemetry = this._telemetry;
         MultiDialTracker? multiDials = this._multiDials;
-        DashSceneFeed scenes = this.NewSceneFeed(deviceId, multiDials is null ? null : () => multiDials.StatusOf(deviceId));
+        DashSceneFeed scenes = this.NewSceneFeed(deviceId, multiDials is null ? null : () => multiDials.StatusOf(deviceId), this._radio);
         scenes.Publish(content);
         scenes.PublishDial(dial);
         ScreenPublisher publisher = new(

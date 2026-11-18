@@ -1,7 +1,7 @@
 import type { LinkHealth, LinkPath, LinkPeer, LinkReachability, LinkRole, LiveLink } from '../bridge'
 import type { StatusTone } from '../shell/Status'
 
-// The Live link page's wording, apart from React. The host decides every phase change;
+// The live link's wording on the Race engineer page, apart from React. The host decides every phase change;
 // this only says it in words.
 
 const PATH_LABEL: Record<LinkPath, string> = {
@@ -67,12 +67,11 @@ export const versionNotice = (role: LinkRole, peer: LinkPeer | null): { title: s
   }
 }
 
-/** The connected link in short pieces: path, round trip, sample rate and loss. Unknown values are left out. */
+/** The connected link in short pieces: path, round trip, telemetry frames per second (TFPS) and loss. Unknown values are left out. */
 export const healthParts = (health: LinkHealth): string[] => [
   PATH_LABEL[health.path],
   ...(health.roundTripMs === null ? [] : [`${health.roundTripMs} ms`]),
-  `${health.sampleRate.toFixed(0)} samples/s`,
+  `${health.sampleRate.toFixed(0)} TFPS`,
   ...(health.lossPercent === null ? [] : [`${health.lossPercent.toFixed(1)}% lost`]),
 ]
 
-export const formatGear = (gear: number): string => (gear < 0 ? 'R' : gear === 0 ? 'N' : String(gear))

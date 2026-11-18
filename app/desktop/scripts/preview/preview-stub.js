@@ -29,6 +29,7 @@
 //                         Connected/Interrupted/Failed/Ended (default: Driver). Default: Off.
 //                         linkPeer=older|newer: the other side runs an older (on the engineer's side:
 //                         no pit wall arrives) or newer Sprint 0.4.2
+//   version=<x.y.z>       the version the sidebar shows (default: the sample's); readme-shots.mjs passes the latest release tag
 //   laps=expiring|none    Settings' Storage: old laps' telemetry is deleted after 90 days (expiring), or
 //                         no lap is stored yet (none); default: 1,284 laps, all kept
 //   found=<id,id>         the USB scan finds these catalog ids plugged in and not added yet (Add device's
@@ -61,7 +62,9 @@
 //   pitwall=main|page:<id>|tile:<id>  mount a pit wall window instead of the app, linked as the engineer
 //                         to a made-up Spa race (pages race, car, traces; click= works in it). plan=none:
 //                         the driver shares no plan. pitwallAway=car: the Car page is in its own window.
-//                         pitwallStack=1: Relative, Radar and Damage stacked on the Race page.
+//                         pitwallStack=1: Relative, Radar and Damage stacked behind Windows on the Race page.
+//   radio=none|showing    the engineer's radio: none sent yet (none); on the driver's side "Box now" on
+//                         the wheel (showing). Default: three sent, the newest on the wheel
 //                         pitwallRace=control: the Race page with Race control and Pit stop in view.
 //                         pitwallFlags=none: a quiet green race, no feed, no stop seen yet
 ;(() => {
@@ -78,6 +81,27 @@
       tyreWearFl: 18.4, tyreWearFr: 22.1, tyreWearRl: 12.7, tyreWearRr: 14.0,
     }
     const session = { sessionKey: 's1', game: 'Le Mans Ultimate', track: 'Circuit de Spa-Francorchamps', car: 'Porsche 963', sessionType: 'Race' }
+    // The radio (PeerRadioState): three messages sent, the newest on the wheel. radio=none sends
+    // nothing yet; on the driver's side radio=showing puts "Box now" on the wheel.
+    const minutesAgo = (minutes) => new Date(Date.now() - minutes * 60_000).toISOString()
+    const radio = role === 'Engineer'
+      ? {
+          canSend: params.get('linkPeer') !== 'older',
+          sent: params.get('radio') === 'none' ? [] : [
+            { id: 3, text: 'Target lap 2:04.5', targetLapSeconds: 124.5, sentAt: minutesAgo(0.2), delivery: 'OnWheel' },
+            { id: 2, text: 'Save fuel', targetLapSeconds: null, sentAt: minutesAgo(1.5), delivery: 'Seen' },
+            { id: 1, text: 'Yellow ahead', targetLapSeconds: null, sentAt: minutesAgo(4), delivery: 'Unanswered' },
+          ],
+        }
+      : (() => {
+          const box = { id: 4, text: 'Box now', targetLapSeconds: null, receivedAt: minutesAgo(0.1), seen: false }
+          const earlier = [
+            { id: 3, text: 'Target lap 2:04.5', targetLapSeconds: 124.5, receivedAt: minutesAgo(1), seen: true },
+            { id: 2, text: 'Save fuel', targetLapSeconds: null, receivedAt: minutesAgo(3), seen: true },
+          ]
+          const showing = params.get('radio') === 'showing'
+          return { received: showing ? [box, ...earlier] : earlier, showing: showing ? box : null, targetLapSeconds: 124.5 }
+        })()
     switch (phase) {
       case 'Preparing':
         return { phase, role, reachability: 'Unknown' }
@@ -91,13 +115,14 @@
       case 'Interrupted':
         return {
           phase, role, reachability: 'Open',
-          health: { path: 'Ipv4', roundTripMs: phase === 'Connected' ? 38 : null, sampleRate: phase === 'Connected' ? 20 : 0, lossPercent: phase === 'Connected' ? 0.5 : null },
+          health: { path: 'Ipv4', roundTripMs: phase === 'Connected' ? 38 : null, sampleRate: phase === 'Connected' ? 30 : 0, lossPercent: phase === 'Connected' ? 0.5 : null },
           session,
           latest: role === 'Engineer' ? latest : null,
           peer: { app: '0.4.2', match: params.get('linkPeer') === 'older' ? 'PeerOlder' : params.get('linkPeer') === 'newer' ? 'PeerNewer' : 'Same' },
           pitWall: role === 'Engineer' && params.get('linkPeer') !== 'older' ? samplePitWall(params.get('plan') !== 'none') : null,
           sharingPlan: params.get('plan') !== 'none',
           sharedPlan: role === 'Driver' && params.get('plan') !== 'none' ? { id: 'plan-spa-6h', name: 'Spa 6h · Stint 2' } : null,
+          radio,
         }
       case 'Failed':
         return { phase, role, reachability: 'Strict', detail: 'No direct path between your PCs. One of your networks blocks it, or the reply went stale. Try again with fresh codes.' }
@@ -154,7 +179,7 @@
       const at = alongLoop(fraction)
       const model = number === 63 ? 'Porsche 963' : carClass === 'Hypercar' ? 'Hypercar' : 'GT3'
       return {
-        id: number, driver, car: `${model} #${number}`, carClass, isPlayer: number === 63,
+        id: number, driver, car: `${model} #${number}`, carClass, classTag: carClass === 'Hypercar' ? 'HYP' : 'LMGT3', isPlayer: number === 63,
         place, classPlace: carClass === 'Hypercar' ? place : place - 6, startPlace: start,
         lapsCompleted: carClass === 'Hypercar' ? 33 - gap[1] : 33 - gap[1], lapFraction: fraction, sector,
         lastLap: last, bestLap: best,
@@ -216,12 +241,13 @@
             pitWallTile('race-pitstop', ['pitstop'], 4, 5, 4, 3), pitWallTile('race-relative', ['relative'], 8, 5, 4, 3),
           ]
         : [
-            pitWallTile('race-session', ['session'], 0, 0, 12, 1), pitWallTile('race-timing', ['timing'], 0, 1, 7, 5),
-            pitWallTile('race-track', ['track'], 7, 1, 5, 4), pitWallTile('race-stint', ['stint', 'pitstop'], 7, 5, 3, 3),
+            pitWallTile('race-session', ['session'], 0, 0, 12, 1), pitWallTile('race-timing', ['timing'], 0, 1, 6, 5),
+            pitWallTile('race-track', ['track'], 6, 1, 3, 4), pitWallTile('race-radio', ['radio'], 9, 1, 3, 5),
+            pitWallTile('race-stint', ['stint', 'pitstop'], 6, 5, 3, 3),
             params.get('pitwallStack') === '1'
-              ? { ...pitWallTile('race-relative', ['relative', 'radar', 'damage'], 10, 5, 2, 3), cycleSeconds: 10, jumpRadar: true, jumpDamage: true }
-              : pitWallTile('race-relative', ['relative'], 10, 5, 2, 3),
-            pitWallTile('race-target', ['target', 'control'], 0, 6, 3, 2), pitWallTile('race-fuel', ['fuel'], 3, 6, 4, 2),
+              ? { ...pitWallTile('race-windows', ['windows', 'relative', 'radar', 'damage'], 9, 6, 3, 2), cycleSeconds: 10, jumpRadar: true, jumpDamage: true }
+              : pitWallTile('race-windows', ['windows'], 9, 6, 3, 2),
+            pitWallTile('race-target', ['target', 'control'], 0, 6, 3, 2), pitWallTile('race-fuel', ['fuel'], 3, 6, 3, 2),
           ] },
       { id: 'car', name: 'Car', detached: params.get('pitwallAway') === 'car', bounds: null, tiles: [
         pitWallTile('car-tyres', ['tyres'], 0, 0, 7, 4), pitWallTile('car-pressure', ['pressure'], 7, 0, 5, 4),
@@ -252,6 +278,12 @@
   const state = structuredClone(window.__SPRINT_PREVIEW_STATE__ ?? {})
   if (params.get('collapsed') === '1') state.settings = { ...state.settings, sidebarCollapsed: true }
   state.foundDevices = (params.get('found') ?? '').split(',').filter((id) => id !== '')
+  // listening=<deviceId>:<function>: that function waits for its wheel button (devices.buttonListen).
+  const listening = params.get('listening')
+  if (listening && state.buttons) {
+    const [deviceId, command] = listening.split(/:(.*)/)
+    state.buttons = { ...state.buttons, listening: { deviceId, command } }
+  }
   if (params.get('frame') === 'none' && state.telemetry) state.telemetry = { ...state.telemetry, frame: null }
   // telemetry=unsupported: what a Mac reports: the LMU source is Windows-only. The Overview's game card, the sidebar's status row and Help's Checks say so.
   if (params.get('telemetry') === 'unsupported' && state.telemetry) {
@@ -306,6 +338,15 @@
     ? previewLink('Connected', 'Engineer')
     : previewLink(params.get('link'), params.get('linkRole') === 'Engineer' ? 'Engineer' : 'Driver')
   state.pitWallLayout = samplePitWallLayout()
+  // How each car and track is shown (CarMarks), as the host adds them from its class and track catalogs.
+  const sampleCars = { 'Porsche 963': ['HYP', 'Porsche'], 'Ferrari 499P': ['HYP', 'Ferrari'], 'Oreca 07': ['LMP2 ELMS', 'Oreca'], 'BMW M4 LMGT3': ['LMGT3', 'BMW'] }
+  const sampleCountries = { 'Circuit de Spa-Francorchamps': 'BE', 'Autodromo Nazionale Monza': 'IT', 'Circuit de la Sarthe': 'FR' }
+  const marksOf = (car, track) => ({ car, classTag: sampleCars[car]?.[0] ?? null, make: sampleCars[car]?.[1] ?? null, country: sampleCountries[track] ?? null })
+  for (const session of state.recentSessions ? [state.recentSessions.last, ...state.recentSessions.earlier] : []) session.marks ??= marksOf(session.car, session.track)
+  state.planMarks = Object.fromEntries((state.plans ?? []).map((plan) => [plan.id, marksOf(plan.car, plan.track)]))
+  const linkSession = state.link.session
+  state.linkMarks = linkSession ? marksOf(linkSession.car, linkSession.track) : null
+  if (params.has('version')) state.updates = { ...state.updates, version: params.get('version') }
   const sprintWebParams = ['sprintWeb', 'account', 'setup', 'servers', 'storage', 'live', 'discord']
   state.features = { sprintWeb: sprintWebParams.some((name) => params.has(name)) && params.get('sprintWeb') !== '0' }
   const discord = params.get('discord')
@@ -314,7 +355,7 @@
 
   // On track (training against an older lap): laps on the sample's course, the fastest picked.
   const training = params.get('training')
-  const spa = { game: 'LeMansUltimate', trackCourse: 'Circuit de Spa-Francorchamps', carModel: 'Porsche 963' }
+  const spa = { game: 'LeMansUltimate', trackCourse: 'Circuit de Spa-Francorchamps', carModel: 'Porsche 963', marks: marksOf('Porsche 963', 'Circuit de Spa-Francorchamps') }
   const lapOn = (sessionId, lapNumber, seconds, startedAt, tier, sharedFrom = null) => ({
     sessionId, lapNumber, label: `Lap ${lapNumber}`, detail: '', lapTimeSeconds: seconds, tier,
     context: { ...spa, trackLengthMeters: 6981.6, carClass: 'Hypercar' }, sessionStartedAt: startedAt, sharedFrom,
@@ -334,7 +375,7 @@
     training === 'none'
       ? { courses: [], course: null, laps: [], lapCount: 0, target: null, hudOpen: false, arranging: false, fullscreen: false }
       : {
-          courses: [spa, { game: 'LeMansUltimate', trackCourse: 'Autodromo Nazionale Monza', carModel: 'Porsche 963' }],
+          courses: [spa, { game: 'LeMansUltimate', trackCourse: 'Autodromo Nazionale Monza', carModel: 'Porsche 963', marks: marksOf('Porsche 963', 'Autodromo Nazionale Monza') }],
           course: spa,
           laps: trainingLaps,
           lapCount: 42,
@@ -478,9 +519,26 @@
   // each with a made-up sheet (`setups=none` for an empty folder, `setups=unavailable` for no
   // game). "Race v3" keeps two older versions, so its page has a version history.
   const setupsMode = params.get('setups')
-  const setup = (id, name, car, carClass, trackName, savedAt, session, style, version, versions = 1) => ({
-    id, name, track: trackName, trackName, car, carClass, season: 'WEC 2025', savedAt, versions, session, style, version,
-  })
+  // classTag, make, the circuit, its layout and country are what the host adds from its class and
+  // track catalogs. Only bA… names carry their own tags; the rest are the driver's (taggedByDriver)
+  // or none yet ("Low drag" shows "+ Tag").
+  const setupTags = { Hypercar: 'HYP', GT3: 'LMGT3', LMP2: 'LMP2', 'LMP2 ELMS': 'LMP2 ELMS' }
+  const setupTracks = {
+    Spa: ['spa', 'Circuit de Spa-Francorchamps', 'Grand Prix', 'BE'],
+    Monza: ['monza', 'Autodromo Nazionale Monza', 'Grand Prix', 'IT'],
+    'Le Mans': ['le-mans', 'Circuit de la Sarthe', '24 Heures du Mans', 'FR'],
+    Silverstone: ['silverstone', 'Silverstone Circuit', 'Grand Prix', 'GB'],
+    'Silverstone National': ['silverstone', 'Silverstone Circuit', 'National', 'GB'],
+  }
+  const setup = (id, name, car, carClass, trackName, savedAt, session, style, version, versions = 1) => {
+    const [circuitId, circuitName, layout, country] = setupTracks[trackName]
+    return {
+      id, name, track: trackName, trackName, circuitId, circuitName, layout, car, carClass,
+      season: carClass === 'LMP2 ELMS' ? 'ELMS 2025' : 'WEC 2025', savedAt, versions, session, style, version,
+      taggedByDriver: !name.startsWith('bA') && (session !== null || style !== null),
+      classTag: setupTags[carClass] ?? carClass, make: car.split(' ')[0], country,
+    }
+  }
   const sampleSetups = setupsMode === 'none' ? [] : [
     setup('race-v3', 'Race v3', 'Porsche 963', 'Hypercar', 'Spa', '2026-10-30T19:12:00Z', 'Race', null, '3', 3),
     setup('race-wet', 'Race wet', 'Porsche 963', 'Hypercar', 'Spa', '2026-10-29T18:40:00Z', 'Race', 'Wet', null),
@@ -494,6 +552,9 @@
     setup('ba-499-lm-wr', 'bA2_499P_LM_W_R_V1_1_0', 'Ferrari 499P', 'Hypercar', 'Le Mans', '2026-10-05T09:00:00Z', 'Race', 'Wet', '1.1.0'),
     setup('m4-spa-race', 'Sprint race', 'BMW M4 LMGT3', 'GT3', 'Spa', '2026-09-21T16:00:00Z', 'Race', null, null),
     setup('m4-spa-safe', 'bA_M4_SPA_S_R06', 'BMW M4 LMGT3', 'GT3', 'Spa', '2026-09-14T11:00:00Z', 'Race', 'Safe', '6'),
+    setup('oreca-elms-gp', 'bA2_O07_SIL_E_R_V1_0_0', 'Oreca 07', 'LMP2 ELMS', 'Silverstone', '2026-09-10T10:00:00Z', 'Race', 'Esport', '1.0.0'),
+    setup('oreca-elms-nat', 'National test', 'Oreca 07', 'LMP2 ELMS', 'Silverstone National', '2026-09-09T10:00:00Z', null, null, null),
+    setup('oreca-wec-spa', 'bA2_O07_SPA_S_R_V1_0_0', 'Oreca 07', 'LMP2', 'Spa', '2026-09-08T10:00:00Z', 'Race', 'Safe', '1.0.0'),
   ]
   // Analysis: the sample practice session in three runs (out of the garage and back), with the
   // tyres and fuel the recorder keeps per lap; "Race v3" is on run 1 and "Quali" on run 3, run 2
@@ -554,8 +615,12 @@
     state.analysis.sessions = [...base, ...extra]
       .map((entry) => ({ ...entry, runs: entry.sharedFrom || entry.origin === 'Imported' ? 0 : (runsOf[entry.id] ?? 2) }))
       .sort((a, b) => b.startedAt.localeCompare(a.startedAt))
+    // Each session's CarMarks, as the host adds them (CorpusSession.Marks).
+    const sessionMarks = (entry) => ({ car: entry.context?.carType ?? entry.context?.carModel ?? '', classTag: entry.classTag ?? null, make: entry.make ?? null, country: entry.country ?? null })
+    for (const entry of state.analysis.sessions) entry.marks ??= sessionMarks(entry)
+    if (state.analysis.session) state.analysis.session.marks ??= sessionMarks(state.analysis.session)
     const session = state.analysis.session
-    if (params.get('analysis') === 'list') {
+    if (params.get('analysis') === 'list' || params.get('analysis') === 'many') {
       state.analysis.session = null
       state.analysis.laps = []
       state.analysis.runs = []
@@ -594,6 +659,75 @@
     state.analysis.laps = (state.analysis.laps ?? []).map(named)
     state.analysis.courseLaps = (state.analysis.courseLaps ?? []).map(named)
     state.analysis.session = named(state.analysis.session)
+  }
+
+  // `analysis=many`: years of racing (dozens of cars over every class and circuit, hundreds of
+  // sessions) instead of the sample's seven, for the list's classes, Recent and "Show more".
+  if (state.analysis && params.get('analysis') === 'many') {
+    const template = state.analysis.sessions.find((entry) => !entry.sharedFrom) ?? state.analysis.sessions[0]
+    const cars = [
+      ['Hyper', 'Hypercar Porsche', 'Porsche 963'], ['Hyper', 'Hypercar Ferrari', 'Ferrari 499P'], ['Hyper', 'Hypercar Toyota', 'Toyota GR010'],
+      ['Hyper', 'Hypercar Cadillac', 'Cadillac V-Series.R'], ['Hyper', 'Hypercar BMW', 'BMW M Hybrid V8'], ['Hyper', 'Hypercar Peugeot', 'Peugeot 9x8'],
+      ['Hyper', 'Hypercar Alpine', 'Alpine A424'], ['Hyper', 'Hypercar Aston Martin', 'Aston Martin Valkyrie LMH'], ['Hyper', 'Hypercar Lamborghini', 'Lamborghini SC63'],
+      ['LMP2', 'LMP2 WEC', 'Oreca 07'], ['LMP2_ELMS', 'LMP2 ELMS', 'Oreca 07'], ['LMP3', 'LMP3 Ligier', 'Ligier JS P325'],
+      ['GT3', 'LMGT3 BMW', 'BMW M4 LMGT3'], ['GT3', 'LMGT3 Ferrari', 'Ferrari 296 LMGT3'], ['GT3', 'LMGT3 Porsche', 'Porsche 911 GT3 R LMGT3'],
+      ['GT3', 'LMGT3 McLaren', 'McLaren 720S LMGT3 Evo'], ['GT3', 'LMGT3 Mercedes-AMG', 'Mercedes-AMG LMGT3'], ['GT3', 'LMGT3 Ford', 'Ford Mustang LMGT3'],
+      ['GTE', 'LMGTE Ferrari', 'Ferrari 488 GTE EVO'], ['GTE', 'LMGTE Porsche', 'Porsche 911 RSR-19'],
+    ]
+    const tracks = [
+      ['Circuit de Spa-Francorchamps', 125], ['Circuit de Spa-Francorchamps Endurance', 127], ['Circuit de la Sarthe', 206], ['Circuit de la Sarthe Mulsanne', 204],
+      ['Autodromo Nazionale Monza', 96], ['Monza Curva Grande Circuit', 98], ['Fuji Speedway Classic', 89], ['Bahrain International Circuit', 110],
+      ['Sebring International Raceway', 117], ['Algarve International Circuit', 99], ['Autodromo Enzo e Dino Ferrari', 92], ['Autódromo José Carlos Pace', 82],
+    ]
+    const kinds = ['Practice', 'Practice', 'Qualifying', 'Race']
+    const many = []
+    for (let index = 0; index < 340; index += 1) {
+      // A few favourite cars and tracks get most of the driving, the rest a session here and there.
+      const car = cars[index % 7 === 0 ? index % cars.length : index % 3]
+      const [course, lap] = tracks[index % 5 === 0 ? index % tracks.length : index % 4]
+      const kind = kinds[index % kinds.length]
+      const startedAt = new Date(Date.parse('2026-11-15T20:00:00Z') - index * 2.3 * 86_400_000).toISOString()
+      many.push({
+        ...template, id: `many-${index}`, kind, origin: 'Recorded', sharedFrom: null, startedAt, day: startedAt.slice(0, 10), runs: kind === 'Practice' ? 3 : 1,
+        lapCount: kind === 'Race' ? 26 : 9, tracedLapCount: kind === 'Race' ? 26 : 9,
+        bestLapSeconds: lap * (car[0] === 'GT3' || car[0] === 'GTE' ? 1.11 : 1) + ((index * 37) % 1000) / 600,
+        label: `${kind} · 20:00`,
+        context: { ...template.context, carClass: car[0], carModel: car[1], carType: car[2], trackCourse: course },
+      })
+    }
+    state.analysis.sessions = [...many, ...state.analysis.sessions.filter((entry) => entry.sharedFrom)]
+    state.analysis.session = null
+  }
+
+  // What the host adds to every session from its circuit and class catalogs (CorpusSession):
+  // the circuit, the layout within it, its country and the class as racing tags it.
+  if (state.analysis) {
+    const circuits = {
+      'Circuit de Spa-Francorchamps': ['spa', 'Circuit de Spa-Francorchamps', 'Grand Prix', 'BE'],
+      'Circuit de Spa-Francorchamps Endurance': ['spa', 'Circuit de Spa-Francorchamps', 'Endurance', 'BE'],
+      'Circuit de la Sarthe': ['le-mans', 'Circuit de la Sarthe', '24 Heures du Mans', 'FR'],
+      'Circuit de la Sarthe Mulsanne': ['le-mans', 'Circuit de la Sarthe', 'Mulsanne', 'FR'],
+      'Autodromo Nazionale Monza': ['monza', 'Autodromo Nazionale Monza', 'Grand Prix', 'IT'],
+      'Monza Curva Grande Circuit': ['monza', 'Autodromo Nazionale Monza', 'Curva Grande', 'IT'],
+      'Fuji Speedway Classic': ['fuji', 'Fuji Speedway', 'Classic', 'JP'],
+      'Bahrain International Circuit': ['bahrain', 'Bahrain International Circuit', 'Grand Prix', 'BH'],
+      'Sebring International Raceway': ['sebring', 'Sebring International Raceway', 'International', 'US'],
+      'Algarve International Circuit': ['algarve', 'Algarve International Circuit', 'Grand Prix', 'PT'],
+      'Autodromo Enzo e Dino Ferrari': ['imola', 'Autodromo Enzo e Dino Ferrari', 'Grand Prix', 'IT'],
+      'Autódromo José Carlos Pace': ['interlagos', 'Autódromo José Carlos Pace', 'Grand Prix', 'BR'],
+    }
+    const tags = { Hyper: 'HYP', Hypercar: 'HYP', LMP2_ELMS: 'LMP2 ELMS', LMP3: 'LMP3', GT3: 'LMGT3', GTE: 'GTE' }
+    const tagOf = (carClass, carModel) => (carClass === 'LMP2' ? (/ELMS/.test(carModel) ? 'LMP2 ELMS' : 'LMP2') : (tags[carClass] ?? carClass ?? 'Other'))
+    const withCatalog = (entry) => {
+      if (!entry?.context) return entry
+      const known = circuits[entry.context.trackCourse]
+      const [circuitId, circuitName, layout, country] = known ?? [entry.context.trackCourse, entry.context.trackCourse, entry.context.trackCourse, null]
+      const model = entry.context.carType || entry.context.carModel || ''
+      const make = model.startsWith('Aston Martin') ? 'Aston Martin' : model.split(' ')[0] || null
+      return { ...entry, circuitId, circuitName, layout, country, classTag: tagOf(entry.context.carClass, entry.context.carModel), make }
+    }
+    state.analysis.sessions = state.analysis.sessions.map(withCatalog)
+    state.analysis.session = withCatalog(state.analysis.session)
   }
 
   // What one sheet holds: [tab, group, label, base step, the display a step reads as].
@@ -661,6 +795,12 @@
     getState: async () => state,
     sendCommand: async (command) => {
       console.info('[preview] command', command)
+      // A setup's tag (setups.tag) lands on the sample list, so the next fetch shows it; setups.untag
+      // brings back what its name said.
+      const tagged = command?.type === 'setups.tag' || command?.type === 'setups.untag' ? sampleSetups.find((candidate) => candidate.id === command.setupId) : null
+      if (tagged && !tagged.taggedByDriver) tagged.named = { session: tagged.session, style: tagged.style }
+      if (tagged && command.type === 'setups.tag') Object.assign(tagged, { session: command.session, style: command.style, taggedByDriver: true })
+      if (tagged && command.type === 'setups.untag') Object.assign(tagged, tagged.named ?? { session: null, style: null }, { taggedByDriver: false })
       return null
     },
     subscribe: () => () => undefined,
@@ -900,7 +1040,7 @@
           targets: { lapTimeSeconds: 128.403, fuelPerLapLiters: 3.1, referenceLapSeconds: 128.403 },
           plan: { id: 'plan-spa-6h', name: 'Spa 6h', status: 'Tracking', mode: 'Planned', avgLapTimeSeconds: null, fuelPerLapLiters: 3.1 },
           hud: { open: false, arranging: false, exclusiveFullscreen: params.get('fullscreen') === '1' },
-          link: { phase: 'Connected', role: 'Driver', path: 'LocalNetwork', roundTripMs: 4, sampleRate: 20, lossPercent: 0, peerApp: '0.4.2', peerMatch: 'Same', detail: null },
+          link: { phase: 'Connected', role: 'Driver', path: 'LocalNetwork', roundTripMs: 4, sampleRate: 30, lossPercent: 0, peerApp: '0.4.2', peerMatch: 'Same', detail: null },
           recorder: { sessionId: 'sample-race', kind: 'Race', track: 'Circuit de Spa-Francorchamps', car: 'Porsche 963', startedAt: '2026-11-13T19:30:00+00:00', laps: 11, lastLapFuelLiters: 3.24 },
           timings: { stateAssembledMs: 3.4, publishTickMs: 0.21 },
         },
@@ -910,25 +1050,13 @@
 
   // Pages are reached through the app's own input paths, so the preview adds
   // nothing to production code: Alt+1..8 (⌘1..8 with platform=mac) for the
-  // primary pages (shell/nav.ts order), a click on the pane item for the footer pages, and a
-  // click on its tab for a page that shares a row (Live link is a tab of Race engineer).
+  // primary pages (shell/nav.ts order) and a click on the pane item for the footer pages.
   const primaryOrder = ['Home', 'SessionPlanner', 'OnTrack', 'Analysis', 'Setups', 'Dashes', 'Devices', 'RaceEngineer']
-  const tabbed = { LiveLink: { host: 'RaceEngineer', tab: 'Live link' } }
   const footerLabels = { Settings: 'Settings', Help: 'Help & diagnostics' }
   // The modifier the shell listens for (shell/shortcuts.ts): Command on mac, Alt/Ctrl elsewhere.
   const mac = params.get('platform') === 'mac'
 
   const openView = (view) => {
-    const shared = tabbed[view]
-    if (shared) {
-      openView(shared.host)
-      setTimeout(() => {
-        const tab = [...document.querySelectorAll('[role="tab"]')].find((element) => element.textContent?.trim() === shared.tab)
-        if (tab instanceof HTMLElement) tab.click()
-        else console.warn(`[preview] no "${shared.tab}" tab`)
-      }, 100)
-      return
-    }
     const index = primaryOrder.indexOf(view)
     if (index >= 0) {
       window.dispatchEvent(new KeyboardEvent('keydown', { [mac ? 'metaKey' : 'altKey']: true, code: `Digit${index + 1}`, key: String(index + 1), bubbles: true }))
@@ -1016,6 +1144,26 @@
     }, 20)
   }
 
+  // Right-clicks the `context=` selector once the clicks are done (`selector@0.3`: that far across),
+  // for what only a context menu shows.
+  const contextLater = (step) => {
+    if (!step) return
+    const at = /^(.*)@(\d*\.?\d+)$/.exec(step)
+    const selector = at ? at[1] : step
+    const started = Date.now()
+    const timer = setInterval(() => {
+      const element = document.querySelector(selector)
+      if (!element && Date.now() - started < 2500) return
+      clearInterval(timer)
+      if (!element) {
+        console.warn(`[preview] nothing matches context selector "${selector}"`)
+        return
+      }
+      const box = element.getBoundingClientRect()
+      element.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, button: 2, clientX: box.left + box.width * (at ? Number(at[2]) : 0.5), clientY: box.top + box.height / 2 }))
+    }, 20)
+  }
+
   // Presses each `key=` on whatever has focus once the focus step ran, through the app's own
   // keyboard handling (React listens at the root, so a bubbling keydown reaches it).
   const pressKeys = (keys) => {
@@ -1037,6 +1185,7 @@
     const focusAt = 50 * (params.getAll('click').length + 1)
     setTimeout(() => clearLater(params.get('clear'), params.get('blur') === '1'), focusAt)
     setTimeout(() => focusLater(params.get('focus')), focusAt)
+    setTimeout(() => contextLater(params.get('context')), focusAt)
     // The focus step waits up to 2.5s for its element; keys go after it has had time to land.
     if (params.getAll('key').length > 0) setTimeout(() => pressKeys(params.getAll('key')), focusAt + 1500)
   })

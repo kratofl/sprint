@@ -4,9 +4,8 @@ import type { DashLayout, DashPage, DashWidget } from '@sprint/dashboard'
 import {
   ALL_DASHES,
   SCREEN_PROFILES,
+  addWidget,
   addWidgetAt,
-  alertLook,
-  alertToPlay,
   applyThemePreset,
   buildDashCreate,
   canPlaceNewWidget,
@@ -26,13 +25,12 @@ import {
   refitLossWarning,
   resolveDashesFilter,
   screenChoices,
-  setAlertEnabled,
-  setAlertOverride,
-  setAlertUseGlobal,
+  setWidgetStyle,
+  swapWidgets,
   setDashStyle,
-  setGlobalAlertConfig,
   type GridRect,
   type ResizeHandle,
+  widgetName,
 } from './DashesDomain'
 
 // ── Test fixtures ────────────────────────────────────────────────────────
@@ -57,21 +55,21 @@ test('canPlaceNewWidget accepts a free in-bounds rect and rejects an overlapping
   const existing = widget('rpm', 0, 0, 20, 1)
   const dash = layout(pageWithWidgets(existing))
 
-  assert.equal(canPlaceNewWidget(dash, 'page-1', { col: 0, row: 1, colSpan: 4, rowSpan: 2 }), true)
-  assert.equal(canPlaceNewWidget(dash, 'page-1', { col: 0, row: 0, colSpan: 4, rowSpan: 2 }), false, 'overlaps the RPM bar')
+  assert.equal(canPlaceNewWidget(dash, 'page-1', 'text', { col: 0, row: 1, colSpan: 4, rowSpan: 2 }), true)
+  assert.equal(canPlaceNewWidget(dash, 'page-1', 'text', { col: 0, row: 0, colSpan: 4, rowSpan: 2 }), false, 'overlaps the RPM bar')
 })
 
 test('canPlaceNewWidget rejects a rect that runs off either grid edge', () => {
   const dash = layout(pageWithWidgets())
 
-  assert.equal(canPlaceNewWidget(dash, 'page-1', { col: 18, row: 0, colSpan: 4, rowSpan: 2 }), false, 'colSpan runs past gridCols')
-  assert.equal(canPlaceNewWidget(dash, 'page-1', { col: 0, row: 11, colSpan: 4, rowSpan: 2 }), false, 'rowSpan runs past gridRows')
-  assert.equal(canPlaceNewWidget(dash, 'page-1', { col: -1, row: 0, colSpan: 4, rowSpan: 2 }), false, 'negative col')
+  assert.equal(canPlaceNewWidget(dash, 'page-1', 'text', { col: 18, row: 0, colSpan: 4, rowSpan: 2 }), false, 'colSpan runs past gridCols')
+  assert.equal(canPlaceNewWidget(dash, 'page-1', 'text', { col: 0, row: 11, colSpan: 4, rowSpan: 2 }), false, 'rowSpan runs past gridRows')
+  assert.equal(canPlaceNewWidget(dash, 'page-1', 'text', { col: -1, row: 0, colSpan: 4, rowSpan: 2 }), false, 'negative col')
 })
 
 test('canPlaceNewWidget returns false for an unknown page', () => {
   const dash = layout(pageWithWidgets())
-  assert.equal(canPlaceNewWidget(dash, 'no-such-page', { col: 0, row: 0, colSpan: 4, rowSpan: 2 }), false)
+  assert.equal(canPlaceNewWidget(dash, 'no-such-page', 'text', { col: 0, row: 0, colSpan: 4, rowSpan: 2 }), false)
 })
 
 // ── addWidgetAt ──────────────────────────────────────────────────────────
@@ -122,8 +120,8 @@ test('a new widget may share cells only with the other layers of the stack it go
   })
   const spot = { col: 0, row: 0, colSpan: 4, rowSpan: 2 }
 
-  assert.equal(canPlaceNewWidget(dash, 'page-1', spot), false, 'on the page')
-  assert.equal(canPlaceNewWidget(dash, 'page-1', spot, 'stack'), true, 'as a new layer of the stack')
+  assert.equal(canPlaceNewWidget(dash, 'page-1', 'text', spot), false, 'on the page')
+  assert.equal(canPlaceNewWidget(dash, 'page-1', 'text', spot, 'stack'), true, 'as a new layer of the stack')
   assert.equal(addWidgetAt(dash, 'page-1', 'text', 0, 0, 'stack')?.widget.group, 'stack')
 })
 
@@ -342,45 +340,52 @@ test('alert rows: absent look fields arrive as null from the host and are droppe
   const alert = { id: 'tc_change', type: 'tc_change', enabled: true, col: 6, row: 3, colSpan: 8, rowSpan: 6, displayMode: null, colorToken: null, durationSeconds: null, invertColors: null }
   const parsed = parseDashLayout({ id: 'd', gridCols: 20, gridRows: 12, pages: [], alerts: [alert, { id: 'broken' }] })
   assert.deepEqual(parsed?.alerts, [{ id: 'tc_change', type: 'tc_change', enabled: true, col: 6, row: 3, colSpan: 8, rowSpan: 6 }])
-  assert.equal(parsed && alertLook(parsed, 'tc_change').own, false)
 })
 
-test("an alert's own look starts from the defaults, where included, and Same as all clears it", () => {
-  const boxed = setGlobalAlertConfig(setAlertEnabled(layout(pageWithWidgets()), 'abs_change', true), { displayMode: 'center', colorToken: 'ice' })
-  assert.deepEqual(alertLook(boxed, 'abs_change'), { displayMode: 'center', colorToken: 'ice', durationSeconds: 1.5, invertColors: false, own: false })
-
-  const own = setAlertUseGlobal(boxed, 'abs_change', false)
-  assert.ok(own)
-  const switched = setGlobalAlertConfig(own, { displayMode: 'full' })
-  assert.equal(alertLook(switched, 'abs_change').displayMode, 'center', 'its own look no longer follows the defaults')
-  assert.equal(alertLook(switched, 'abs_change').own, true)
-
-  const shared = setAlertUseGlobal(switched, 'abs_change', true)
-  assert.ok(shared)
-  assert.deepEqual(alertLook(shared, 'abs_change'), { displayMode: 'full', colorToken: 'ice', durationSeconds: 1.5, invertColors: false, own: false })
+const zonedDash = (widgets: DashWidget[]): DashLayout => ({
+  id: 'zoned', name: 'Zoned', mode: 'basic', zoned: true, dashStyle: 'flat', gridCols: 11, gridRows: 9, alerts: [],
+  pages: [{ id: 'page-1', name: 'Page 1', widgets }],
 })
 
-test('the lap summary fills the screen and keeps its own longer duration', () => {
-  const look = alertLook(setGlobalAlertConfig(layout(pageWithWidgets()), { displayMode: 'center', durationSeconds: 2 }), 'lap_summary')
-  assert.equal(look.displayMode, 'full')
-  assert.equal(look.durationSeconds, 5)
+test('on a zoned dash a new widget lands where its zone puts it, never on the gear or in the wrong spot', () => {
+  const dash = zonedDash([])
+  assert.deepEqual(addWidgetAt(dash, 'page-1', 'bar', 0, 4)?.widget, { id: 'bar', type: 'bar', col: 0, row: 0, colSpan: 1, rowSpan: 9 })
+  assert.equal(addWidgetAt(dash, 'page-1', 'lap_time', 0, 4), null, 'a side bar spot takes only bars')
+  assert.equal(addWidgetAt(dash, 'page-1', 'lap_time', 5, 2), null, 'the gear')
+  assert.deepEqual(addWidget(dash, 'page-1', 'lap_time')?.widget, { id: 'lap-time', type: 'lap_time', col: 1, row: 1, colSpan: 2, rowSpan: 1 })
 })
 
-test('the lap summary may stay up for 15 s; a setting popup keeps to 0.5-5 s', () => {
-  const on = setAlertEnabled(setAlertEnabled(layout(pageWithWidgets()), 'lap_summary', true), 'tc_change', true)
-  const durationOf = (type: 'lap_summary' | 'tc_change', seconds: number) => {
-    const next = setAlertOverride(on, type, { durationSeconds: seconds })
-    assert.ok(next)
-    return alertLook(next, type).durationSeconds
-  }
-  assert.deepEqual([durationOf('lap_summary', 12), durationOf('lap_summary', 40), durationOf('lap_summary', 0.1)], [12, 15, 0.5])
-  assert.deepEqual([durationOf('tc_change', 12), durationOf('tc_change', 0.1)], [5, 0.5])
+test('two widgets swap places when each fits the other\'s, and not otherwise', () => {
+  const dash = zonedDash([
+    { id: 'tc', type: 'tc', col: 1, row: 1, colSpan: 2, rowSpan: 2 },
+    { id: 'last', type: 'lap_time', col: 5, row: 4, colSpan: 1, rowSpan: 1 },
+    { id: 'fuel', type: 'bar', col: 0, row: 0, colSpan: 1, rowSpan: 9 },
+  ])
+  const swapped = swapWidgets(dash, 'page-1', 'tc', 'last')
+  assert.deepEqual(swapped?.pages[0]?.widgets.slice(0, 2).map(({ id, col, row, colSpan, rowSpan }) => ({ id, col, row, colSpan, rowSpan })), [
+    { id: 'tc', col: 5, row: 4, colSpan: 1, rowSpan: 1 },
+    { id: 'last', col: 1, row: 1, colSpan: 2, rowSpan: 2 },
+  ])
+  assert.equal(swapWidgets(dash, 'page-1', 'tc', 'fuel'), null, 'a knob does not go in a bar spot')
 })
 
-test('All alerts plays the first setting alert that is on, in the defaults', () => {
-  const own = setAlertUseGlobal(setAlertEnabled(setAlertEnabled(layout(pageWithWidgets()), 'lap_summary', true), 'abs_change', true), 'abs_change', false)
-  assert.ok(own)
-  assert.deepEqual(alertToPlay(own, null), { id: 'abs_change', type: 'abs_change', enabled: true, col: 6, row: 3, colSpan: 8, rowSpan: 6 })
-  assert.equal(alertToPlay(layout(pageWithWidgets()), null).type, 'tc_change', 'none on: a TC change')
-  assert.equal(alertToPlay(own, 'abs_change').colorToken, 'auto', 'one alert plays with its own look')
+test('a widget keeps its own frame settings beside its colours, and drops the style once nothing is set', () => {
+  const dash = zonedDash([{ id: 'tc', type: 'tc', col: 1, row: 1, colSpan: 2, rowSpan: 2 }])
+  const framed = setWidgetStyle(dash, 'page-1', 'tc', { border: 'thin', label: 'capsule' })
+  assert.deepEqual(framed?.pages[0]?.widgets[0]?.style, { border: 'thin', label: 'capsule' })
+  const plain = framed && setWidgetStyle(framed, 'page-1', 'tc', { border: undefined, label: undefined })
+  assert.equal(plain?.pages[0]?.widgets[0]?.style, undefined)
+})
+
+test('a placed widget is named by what it shows when its type alone is ambiguous', () => {
+  const widget = (type: string, config?: Record<string, unknown>): DashWidget => ({ id: 'w', type, col: 0, row: 0, colSpan: 1, rowSpan: 1, config })
+  assert.equal(widgetName(widget('bar', { channel: 've' })), 'Virtual energy bar')
+  assert.equal(widgetName(widget('bar')), 'Fuel bar', 'an unset channel is the default one')
+  assert.equal(widgetName(widget('tyre', { corner: 'rl' })), 'Rear left tyre')
+  assert.equal(widgetName(widget('lap_time', { show: 'best' })), 'Best lap')
+  assert.equal(widgetName(widget('lap_time', { show: 'session' })), 'Session best')
+  assert.equal(widgetName(widget('lap_time', { show: 'class' })), 'Class best')
+  assert.equal(widgetName(widget('lap_time')), 'Lap Time')
+  assert.equal(widgetName(widget('gaps', { side: 'behind' })), 'Gap behind')
+  assert.equal(widgetName(widget('tc')), 'Traction Control')
 })

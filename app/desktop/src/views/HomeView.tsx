@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { BarChart3, ChevronRight, Gamepad2, ListChecks, Plus } from 'lucide-react'
 import type { AppView } from '../bridge'
+import { parseCarMarks, type CarMarks } from '../carMarks'
 import { PageHeader } from '../shell/PageHeader'
 import type { RuntimeState } from '../shell/runtime'
 import { Status } from '../shell/Status'
@@ -8,6 +9,7 @@ import type { StatusTone } from '../shell/Status'
 import type { NavigationTarget } from '../shell/ViewRouter'
 import { TELEMETRY_STATUS_TONE } from '../shell/telemetry'
 import { dayLabel, formatGap, formatLapSeconds } from './AnalysisDomain'
+import { CarName, TrackName } from './CarBadges'
 import { DeviceImage } from './DeviceImage'
 import { homeDevices, homeGame, openPlans, overviewPrimary, planFacts, recentSessions } from './HomeDomain'
 import type { HomeDevice, HomeGame, HomeSession, OverviewPrimary, RecentSessions } from './HomeDomain'
@@ -57,7 +59,10 @@ export function HomeView({
       <OverviewHeader primary={primary} onNavigate={onNavigate} onOpenItem={onOpenItem} />
 
       {primary.kind === 'open-plan' ? (
-        <NextUpCard plan={primary.plan} onOpen={() => onOpenItem({ view: 'SessionPlanner', planId: primary.plan.id })} />
+        <NextUpCard
+          plan={primary.plan}
+          marks={sprint.planMarks[primary.plan.id] ?? parseCarMarks(null, primary.plan.car)}
+          onOpen={() => onOpenItem({ view: 'SessionPlanner', planId: primary.plan.id })} />
       ) : (
         <NoPlanCard draft={primary.draft} onOpenDraft={(planId) => onOpenItem({ view: 'SessionPlanner', planId })} />
       )}
@@ -116,9 +121,8 @@ function OverviewHeader({
 
 // ── Plan ─────────────────────────────────────────────────────────────────
 
-function NextUpCard({ plan, onOpen }: { plan: SessionPlan; onOpen: () => void }) {
+function NextUpCard({ plan, marks, onOpen }: { plan: SessionPlan; marks: CarMarks; onOpen: () => void }) {
   const facts = planFacts(plan)
-  const meta = [plan.car, plan.track, plan.qualifyingIncluded ? 'qualifying + race' : 'race'].filter(Boolean).join(' · ')
 
   return (
     <button type="button" className="card overview-plan" onClick={onOpen}>
@@ -126,7 +130,21 @@ function NextUpCard({ plan, onOpen }: { plan: SessionPlan; onOpen: () => void })
         <span className="overview-plan-text">
           <span className="overview-eyebrow">{plan.status === 'Tracking' ? 'Driving now' : 'Next up'}</span>
           <span className="overview-plan-name">{plan.name}</span>
-          <span className="overview-secondary">{meta}</span>
+          <span className="overview-secondary">
+            {plan.car && (
+              <>
+                <CarName marks={marks} />
+                {' · '}
+              </>
+            )}
+            {plan.track && (
+              <>
+                <TrackName track={plan.track} country={marks.country} />
+                {' · '}
+              </>
+            )}
+            {plan.qualifyingIncluded ? 'qualifying + race' : 'race'}
+          </span>
         </span>
         <Status tone={PLAN_STATUS_TONE[plan.status]}>{plan.status}</Status>
       </span>
@@ -277,9 +295,6 @@ function SessionsCard({
   onOpenAll: () => void
 }) {
   const { last, comparison, earlier } = sessions
-  const meta = [dayLabel(last.startedAt), last.kind, last.track, last.car, `${last.lapCount} ${last.lapCount === 1 ? 'lap' : 'laps'}`]
-    .filter(Boolean)
-    .join(' · ')
 
   return (
     <section className="card list-card overview-sessions" aria-labelledby="overview-sessions-title">
@@ -294,7 +309,22 @@ function SessionsCard({
 
       <button type="button" className="list-row overview-last" onClick={() => onOpen(last.id)}>
         <span className="overview-last-main">
-          <span className="overview-secondary overview-last-meta">{meta}</span>
+          <span className="overview-secondary overview-last-meta">
+            {dayLabel(last.startedAt)} · {last.kind} ·{' '}
+            {last.track && (
+              <>
+                <TrackName track={last.track} country={last.marks.country} />
+                {' · '}
+              </>
+            )}
+            {last.car && (
+              <>
+                <CarName marks={last.marks} />
+                {' · '}
+              </>
+            )}
+            {last.lapCount} {last.lapCount === 1 ? 'lap' : 'laps'}
+          </span>
           <span className="overview-last-best">
             <span className="overview-last-time tabular">{formatLapSeconds(last.bestLapSeconds)}</span>
             {comparison.gapSeconds !== null && (
@@ -342,8 +372,8 @@ function SessionRow({ session, onOpen }: { session: HomeSession; onOpen: () => v
       <button type="button" className="list-row overview-session-columns" onClick={onOpen}>
         <span className="overview-cell overview-secondary">{dayLabel(session.startedAt)}</span>
         <span className="overview-cell">{session.kind}</span>
-        <span className="overview-cell">{session.track || '—'}</span>
-        <span className="overview-cell overview-secondary">{session.car || '—'}</span>
+        <span className="overview-cell">{session.track ? <TrackName track={session.track} country={session.marks.country} /> : '—'}</span>
+        <span className="overview-cell overview-secondary">{session.car ? <CarName marks={session.marks} /> : '—'}</span>
         <span className="overview-num overview-secondary tabular">{session.lapCount}</span>
         <span className="overview-num overview-best tabular">{formatLapSeconds(session.bestLapSeconds)}</span>
         <ChevronRight className="overview-chevron" aria-hidden="true" />

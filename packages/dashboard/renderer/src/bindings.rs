@@ -269,7 +269,7 @@ mod tests {
     #[test]
     fn profile_reads_from_settings_and_is_undefined_when_settings_are_absent() {
         let f = base_frame();
-        let settings = DashSettings { driver_name: Some("Alex".to_owned()), driver_number: Some("7".to_owned()) };
+        let settings = DashSettings { driver_name: Some("Alex".to_owned()), driver_number: Some("7".to_owned()), utc_offset_minutes: None };
         let with = BindingContext { frame: &f, settings: Some(&settings), targets: None };
         assert_eq!(resolve(&f, "profile.driverName"), BindingValue::Undefined);
         assert_eq!(resolve_binding(with, "profile.driverName"), BindingValue::Text("Alex"));

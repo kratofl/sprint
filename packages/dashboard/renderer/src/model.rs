@@ -5,8 +5,8 @@
 // in the retired React renderer, so it rejects and tolerates exactly what that TypeScript
 // did. It changes rarely, so the extra `Value` pass costs nothing that matters.
 // The frame is the host's telemetry JSON (`Sprint.Desktop.Api.Telemetry.TelemetryFrame` as
-// `HostJson` writes it), narrowed field by field into the model below; the other cars (`field`)
-// are skipped by serde without being built. `tests/fixtures/host-frame.json` pins the names.
+// `HostJson` writes it), narrowed field by field into the model below.
+// `tests/fixtures/host-frame.json` pins the names.
 
 use std::collections::BTreeMap;
 
@@ -19,6 +19,91 @@ pub enum DashStyle {
     Panels,
     Grid,
     Bars,
+    /// The flat chrome (mockup v2): edge, radius and labels come from the layout's `DashChrome`
+    /// and each widget's style.
+    Flat,
+}
+
+impl DashStyle {
+    pub fn is_flat(self) -> bool {
+        self == DashStyle::Flat
+    }
+}
+
+/// A frame's edge weight (mockup v2), in pixels at 800x480.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum BorderWeight {
+    None,
+    Thin,
+    #[default]
+    Normal,
+    Thick,
+}
+
+impl BorderWeight {
+    pub fn px(self) -> f64 {
+        match self {
+            BorderWeight::None => 0.0,
+            BorderWeight::Thin => 1.0,
+            BorderWeight::Normal => 2.0,
+            BorderWeight::Thick => 3.0,
+        }
+    }
+
+    fn parse(value: Option<&Value>) -> Option<BorderWeight> {
+        match value?.as_str()? {
+            "none" => Some(BorderWeight::None),
+            "thin" => Some(BorderWeight::Thin),
+            "normal" => Some(BorderWeight::Normal),
+            "thick" => Some(BorderWeight::Thick),
+            _ => None,
+        }
+    }
+}
+
+/// How a frame shows its label (mockup v2): not at all, small above the value, or in a band
+/// across the frame's top.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum LabelMode {
+    Off,
+    #[default]
+    On,
+    Capsule,
+}
+
+impl LabelMode {
+    fn parse(value: Option<&Value>) -> Option<LabelMode> {
+        match value?.as_str()? {
+            "off" => Some(LabelMode::Off),
+            "on" => Some(LabelMode::On),
+            "capsule" => Some(LabelMode::Capsule),
+            _ => None,
+        }
+    }
+}
+
+/// The flat chrome's dash-wide settings: corner radius in pixels at 800x480, the default edge and
+/// the default label. A dash without them gets the default look: radius 6, no edges, small labels.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct DashChrome {
+    pub radius: f64,
+    pub border: BorderWeight,
+    pub label: LabelMode,
+}
+
+impl Default for DashChrome {
+    fn default() -> Self {
+        DashChrome { radius: 6.0, border: BorderWeight::None, label: LabelMode::On }
+    }
+}
+
+/// A group's own frame (mockup v2): an edge round all its widgets and its name as the label.
+#[derive(Clone, Copy, Debug, PartialEq, Default)]
+pub struct GroupStyle {
+    pub border: BorderWeight,
+    pub label: LabelMode,
+    /// The name sits at the frame's centre instead of its left.
+    pub centered: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -40,6 +125,8 @@ pub type DashTheme = BTreeMap<String, String>;
 pub struct DashWidgetStyle {
     pub text_color: Option<String>,
     pub label_color: Option<String>,
+    pub border: Option<BorderWeight>,
+    pub label: Option<LabelMode>,
 }
 
 /// One widget, in page grid coordinates. `group` is the group it sits in; `hidden` keeps it off
@@ -73,6 +160,7 @@ pub struct DashWidgetGroup {
     pub mode: GroupMode,
     pub shown_first: Option<String>,
     pub hidden: bool,
+    pub style: Option<GroupStyle>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -108,6 +196,9 @@ pub struct DashLayout {
     pub alerts: Vec<DashAlert>,
     pub theme: Option<DashTheme>,
     pub alert_config: Option<Map<String, Value>>,
+    pub chrome: DashChrome,
+    /// The zones (bar spots, side grids, gear centre) instead of an even grid: see `grid::zoned_rect`.
+    pub zoned: bool,
 }
 
 /// The settings a dash reads (`narrowSettings` in the retired React renderer).
@@ -115,6 +206,8 @@ pub struct DashLayout {
 pub struct DashSettings {
     pub driver_name: Option<String>,
     pub driver_number: Option<String>,
+    /// The viewer's local time minus UTC, minutes: what the clock widget adds to the frame's time.
+    pub utc_offset_minutes: Option<f64>,
 }
 
 /// What the driver planned to be aiming at (`DashTargets` in bindings.ts). `None` is "no plan",
@@ -177,10 +270,11 @@ pub fn parse_scene(json: &[u8]) -> Result<Scene, String> {
         scale,
         page_id: root.get("pageId").and_then(Value::as_str).map(str::to_owned),
         idle: root.get("idle") == Some(&Value::Bool(true)),
-        settings: root
-            .get("settings")
-            .and_then(Value::as_object)
-            .map(|raw| DashSettings { driver_name: string_field(raw, "driverName"), driver_number: string_field(raw, "driverNumber") }),
+        settings: root.get("settings").and_then(Value::as_object).map(|raw| DashSettings {
+            driver_name: string_field(raw, "driverName"),
+            driver_number: string_field(raw, "driverNumber"),
+            utc_offset_minutes: raw.get("utcOffsetMinutes").and_then(Value::as_f64),
+        }),
         targets: root.get("targets").and_then(Value::as_object).map(|raw| DashTargets {
             lap_time_seconds: raw.get("lapTimeSeconds").and_then(Value::as_f64),
             fuel_per_lap_liters: raw.get("fuelPerLapLiters").and_then(Value::as_f64),
@@ -225,6 +319,7 @@ fn parse_layout(raw: &Map<String, Value>) -> Result<DashLayout, String> {
             Some("panels") => Some(DashStyle::Panels),
             Some("grid") => Some(DashStyle::Grid),
             Some("bars") => Some(DashStyle::Bars),
+            Some("flat") => Some(DashStyle::Flat),
             _ => None,
         },
         screen_profile: string_field(raw, "screenProfile"),
@@ -238,6 +333,16 @@ fn parse_layout(raw: &Map<String, Value>) -> Result<DashLayout, String> {
             .and_then(Value::as_object)
             .map(|theme| theme.iter().filter_map(|(key, value)| value.as_str().map(|v| (key.clone(), v.to_owned()))).collect()),
         alert_config: raw.get("alertConfig").and_then(Value::as_object).cloned(),
+        chrome: raw
+            .get("chrome")
+            .and_then(Value::as_object)
+            .map(|chrome| DashChrome {
+                radius: chrome.get("radius").and_then(Value::as_f64).unwrap_or(DashChrome::default().radius).max(0.0),
+                border: BorderWeight::parse(chrome.get("border")).unwrap_or(DashChrome::default().border),
+                label: LabelMode::parse(chrome.get("label")).unwrap_or(DashChrome::default().label),
+            })
+            .unwrap_or_default(),
+        zoned: raw.get("zoned") == Some(&Value::Bool(true)),
     })
 }
 
@@ -267,10 +372,12 @@ fn parse_widget(value: &Value) -> Option<DashWidget> {
         config: raw.get("config").and_then(Value::as_object).cloned().unwrap_or_default(),
         // The TypeScript passes `style` through unchecked; a non-string token there would
         // throw in `resolveStyleColor`. Here a non-string token is simply absent.
-        style: raw
-            .get("style")
-            .and_then(Value::as_object)
-            .map(|style| DashWidgetStyle { text_color: string_field(style, "textColor"), label_color: string_field(style, "labelColor") }),
+        style: raw.get("style").and_then(Value::as_object).map(|style| DashWidgetStyle {
+            text_color: string_field(style, "textColor"),
+            label_color: string_field(style, "labelColor"),
+            border: BorderWeight::parse(style.get("border")),
+            label: LabelMode::parse(style.get("label")),
+        }),
         group: string_field(raw, "group"),
         hidden: raw.get("hidden") == Some(&Value::Bool(true)),
     })
@@ -293,6 +400,11 @@ fn parse_group(value: &Value) -> Option<DashWidgetGroup> {
         },
         shown_first: string_field(raw, "shownFirst"),
         hidden: raw.get("hidden") == Some(&Value::Bool(true)),
+        style: raw.get("style").and_then(Value::as_object).map(|style| GroupStyle {
+            border: BorderWeight::parse(style.get("border")).unwrap_or(BorderWeight::None),
+            label: LabelMode::parse(style.get("label")).unwrap_or(LabelMode::Off),
+            centered: style.get("align").and_then(Value::as_str) == Some("center"),
+        }),
     })
 }
 
@@ -309,8 +421,8 @@ fn parse_alert(value: &Value) -> Option<DashAlert> {
 // `parseHostFrame` (packages/dashboard/src/hostFrame.ts), which makes the same mirror for the
 // app's views: enum names to the mirror's lower-case values, tyres placed by their `position`
 // name, the availability flags derived from the maxima, and the mirror fields the host does not
-// publish at their neutral value. `field` (the other cars) is not read by any dash widget, so it
-// is not modelled: serde skips it without building it.
+// publish at their neutral value. Of the other cars (`field`) and the damage only what the
+// relative and damage widgets read is modelled.
 //
 // Every field is narrowed on its own: a field that is missing or has the wrong JSON type reads as
 // its neutral value, so one bad field never costs the rest of the frame. That leniency would also
@@ -358,6 +470,9 @@ pub struct CarState {
     pub gear: f64,
     pub rpm: f64,
     pub max_rpm: f64,
+    /// Engine water and oil, °C; `None` when the game does not say.
+    pub water_temp: Option<f64>,
+    pub oil_temp: Option<f64>,
     pub throttle: f64,
     pub brake: f64,
     pub clutch: f64,
@@ -382,6 +497,8 @@ impl Default for CarState {
             gear: 0.0,
             rpm: 0.0,
             max_rpm: 0.0,
+            water_temp: None,
+            oil_temp: None,
             throttle: 0.0,
             brake: 0.0,
             clutch: 0.0,
@@ -411,6 +528,7 @@ pub struct TireState {
     pub pressure_kpa: f64,
     pub wear_percent: f64,
     pub compound: String,
+    pub brake_temp: f64,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -426,6 +544,15 @@ pub struct LapState {
     pub sector1_time: f64,
     pub sector2_time: f64,
     pub last_lap_sectors_seconds: Vec<f64>,
+    /// Durations of the sectors of the lap being driven that are done so far (none to two).
+    pub current_lap_sectors_seconds: Vec<f64>,
+    /// The session's best in each sector (three entries, `None` where nobody has a time yet; empty
+    /// when unknown): the player's own, anyone's, and the player's class's.
+    pub personal_best_sectors: Vec<Option<f64>>,
+    pub session_best_sectors: Vec<Option<f64>>,
+    pub class_best_sectors: Vec<Option<f64>>,
+    pub session_best_lap: Option<f64>,
+    pub class_best_lap: Option<f64>,
     pub is_in_lap: bool,
     pub is_out_lap: bool,
     pub is_valid: bool,
@@ -446,6 +573,12 @@ impl Default for LapState {
             sector1_time: 0.0,
             sector2_time: 0.0,
             last_lap_sectors_seconds: Vec::new(),
+            current_lap_sectors_seconds: Vec::new(),
+            personal_best_sectors: Vec::new(),
+            session_best_sectors: Vec::new(),
+            class_best_sectors: Vec::new(),
+            session_best_lap: None,
+            class_best_lap: None,
             is_in_lap: false,
             is_out_lap: false,
             is_valid: true,
@@ -498,6 +631,10 @@ pub struct RaceState {
     pub total_positions: f64,
     pub gap_ahead: f64,
     pub gap_behind: f64,
+    /// The spotter: how far ahead (negative: behind) the nearest car alongside is on each side,
+    /// metres; `None` when nobody is alongside.
+    pub car_left: Option<f64>,
+    pub car_right: Option<f64>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -523,6 +660,10 @@ pub struct SessionConditions {
     pub fuel_multiplier: Option<f64>,
     pub tire_multiplier: Option<f64>,
     pub fixed_setup: Option<bool>,
+    /// Air and track temperature, °C, and how hard it rains, 0–1.
+    pub air_temp: Option<f64>,
+    pub track_temp: Option<f64>,
+    pub raining: Option<f64>,
 }
 
 /// One telemetry frame. `tires` always holds the four corners in `TirePosition` order.
@@ -538,6 +679,36 @@ pub struct TelemetryFrame {
     pub energy: EnergyState,
     pub penalties: Penalties,
     pub conditions: SessionConditions,
+    /// Null when the game does not report damage or the driver is not in the car.
+    pub damage: Option<Damage>,
+    /// Every car in the session, the player's included; empty when the game does not report them.
+    pub field: Vec<FieldCar>,
+    /// When the frame was taken, as seconds after midnight UTC (the clock widget); `None` when the
+    /// timestamp is not an ISO date-time.
+    pub utc_time_of_day: Option<f64>,
+}
+
+/// What has happened to the car's body: dent severity (0 none, 1 some, 2 more) at eight places in
+/// LMU's `mDentSeverity` order (assumed clockwise from front left, as the pit wall reads it).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Damage {
+    pub dents: [f64; 8],
+    pub overheating: bool,
+    pub detached_parts: bool,
+}
+
+/// One other car, as far as the relative and penalty widgets and the flag alert read it.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct FieldCar {
+    pub driver: String,
+    pub is_player: bool,
+    pub place: f64,
+    pub laps_completed: f64,
+    pub lap_distance_meters: f64,
+    /// Penalties the car still has to serve.
+    pub penalties: f64,
+    /// The car is being shown the blue flag (let a faster car by).
+    pub blue_flag: bool,
 }
 
 fn empty_tire(index: usize) -> TireState {
@@ -558,15 +729,19 @@ impl Default for TelemetryFrame {
             energy: EnergyState::default(),
             penalties: Penalties::default(),
             conditions: SessionConditions::default(),
+            damage: None,
+            field: Vec::new(),
+            utc_time_of_day: None,
         }
     }
 }
 
-/// The frame's top level as it arrives. Sections stay JSON values (built by serde; `field`, the
-/// timestamp, which no widget reads, and other unknown keys skipped) and are narrowed below.
+/// The frame's top level as it arrives. Sections stay JSON values (built by serde; unknown keys
+/// skipped) and are narrowed below.
 #[derive(Deserialize, Default)]
 #[serde(default)]
 struct RawFrame {
+    timestamp: Value,
     session: Value,
     car: Value,
     tires: Value,
@@ -577,6 +752,8 @@ struct RawFrame {
     energy: Value,
     penalties: Value,
     conditions: Value,
+    damage: Value,
+    field: Value,
 }
 
 /// One JSON object's fields, each read as its type or else the given default (`None` reads
@@ -658,6 +835,8 @@ fn narrow_car(f: Fields) -> CarState {
         gear: f.num("gear", 0.0),
         rpm: f.num("rpm", 0.0),
         max_rpm: f.num("maxRpm", 0.0),
+        water_temp: f.opt_num("waterTempCelsius"),
+        oil_temp: f.opt_num("oilTempCelsius"),
         throttle: f.num("throttle", 0.0),
         brake: f.num("brake", 0.0),
         clutch: f.num("clutch", 0.0),
@@ -686,6 +865,7 @@ fn narrow_tire(f: Fields, index: usize) -> TireState {
         pressure_kpa: f.num("pressureKPa", 0.0),
         wear_percent: f.num("wearPercent", 0.0),
         compound: f.text("compound", ""),
+        brake_temp: f.num("brakeTempCelsius", 0.0),
     }
 }
 
@@ -720,11 +900,26 @@ fn narrow_lap(f: Fields) -> LapState {
             .and_then(Value::as_array)
             .map(|items| items.iter().map(|item| item.as_f64().unwrap_or(0.0)).collect())
             .unwrap_or_default(),
+        current_lap_sectors_seconds: f
+            .get("currentLapSectorsSeconds")
+            .and_then(Value::as_array)
+            .map(|items| items.iter().map(|item| item.as_f64().unwrap_or(0.0)).collect())
+            .unwrap_or_default(),
+        personal_best_sectors: optional_times(f.get("personalBestSectorsSeconds")),
+        session_best_sectors: optional_times(f.get("sessionBestSectorsSeconds")),
+        class_best_sectors: optional_times(f.get("classBestSectorsSeconds")),
+        session_best_lap: f.opt_num("sessionBestLapTime"),
+        class_best_lap: f.opt_num("classBestLapTime"),
         is_in_lap: false,
         is_out_lap: false,
         is_valid: f.flag("isValid", true),
         track_position: f.num("trackPosition", 0.0),
     }
+}
+
+/// A list of times where an entry can be missing (`null`); anything but an array is none.
+fn optional_times(value: Option<&Value>) -> Vec<Option<f64>> {
+    value.and_then(Value::as_array).map(|items| items.iter().map(Value::as_f64).collect()).unwrap_or_default()
 }
 
 fn narrow_flags(f: Fields) -> Flags {
@@ -780,6 +975,8 @@ fn narrow_race(f: Fields) -> RaceState {
         total_positions: f.num("totalPositions", 0.0),
         gap_ahead: f.num("gapAhead", 0.0),
         gap_behind: f.num("gapBehind", 0.0),
+        car_left: f.opt_num("carLeftMeters"),
+        car_right: f.opt_num("carRightMeters"),
     }
 }
 
@@ -804,7 +1001,43 @@ fn narrow_conditions(f: Fields) -> SessionConditions {
         fuel_multiplier: f.opt_num("fuelMultiplier"),
         tire_multiplier: f.opt_num("tireMultiplier"),
         fixed_setup: f.opt_flag("fixedSetup"),
+        air_temp: f.opt_num("airTemperatureCelsius"),
+        track_temp: f.opt_num("trackTemperatureCelsius"),
+        raining: f.opt_num("raining"),
     }
+}
+
+/// The damage when the frame carries it; dents missing from the eight read as none.
+fn narrow_damage(value: &Value) -> Option<Damage> {
+    let f = Fields(Some(value.as_object()?));
+    let dents = f.get("dents").and_then(Value::as_array);
+    Some(Damage {
+        dents: std::array::from_fn(|i| dents.and_then(|d| d.get(i)).and_then(Value::as_f64).unwrap_or(0.0)),
+        overheating: f.flag("overheating", false),
+        detached_parts: f.flag("detachedParts", false),
+    })
+}
+
+/// The other cars; anything but an array of objects is none, and a non-object entry is skipped.
+fn narrow_field(value: &Value) -> Vec<FieldCar> {
+    let Some(cars) = value.as_array() else {
+        return Vec::new();
+    };
+    cars.iter()
+        .filter_map(Value::as_object)
+        .map(|car| {
+            let f = Fields(Some(car));
+            FieldCar {
+                driver: f.text("driver", ""),
+                is_player: f.flag("isPlayer", false),
+                place: f.num("place", 0.0),
+                laps_completed: f.num("lapsCompleted", 0.0),
+                lap_distance_meters: f.num("lapDistanceMeters", 0.0),
+                penalties: f.num("penalties", 0.0),
+                blue_flag: f.flag("blueFlag", false),
+            }
+        })
+        .collect()
 }
 
 /// Parses a frame. Empty input, `null`, anything but an object, or an object missing one of
@@ -842,7 +1075,33 @@ pub fn parse_frame_data(json: &[u8]) -> Result<Option<TelemetryFrame>, String> {
         energy: narrow_energy(Fields::of(&raw.energy)),
         penalties: narrow_penalties(Fields::of(&raw.penalties)),
         conditions: narrow_conditions(Fields::of(&raw.conditions)),
+        damage: narrow_damage(&raw.damage),
+        field: narrow_field(&raw.field),
+        utc_time_of_day: raw.timestamp.as_str().and_then(utc_time_of_day),
     }))
+}
+
+/// An ISO 8601 date-time ("2026-06-14T15:02:00.123+02:00", "…Z") as seconds after midnight UTC;
+/// `None` for anything else. The date is not needed: only the time of day is shown.
+fn utc_time_of_day(timestamp: &str) -> Option<f64> {
+    let (_, time) = timestamp.split_once('T')?;
+    // The offset starts at the first sign or Z after the time; none at all reads as UTC.
+    let zone_at = time.find(['+', '-', 'Z']).unwrap_or(time.len());
+    let (clock, zone) = time.split_at(zone_at);
+    let mut parts = clock.split(':');
+    let hours: f64 = parts.next()?.parse().ok()?;
+    let minutes: f64 = parts.next()?.parse().ok()?;
+    let seconds: f64 = parts.next().map_or(Some(0.0), |s| s.parse().ok())?;
+    let offset_minutes = match zone.as_bytes().first() {
+        Some(sign @ (b'+' | b'-')) => {
+            let (h, m) = zone[1..].split_once(':').unwrap_or((&zone[1..], "0"));
+            let minutes = h.parse::<f64>().ok()? * 60.0 + m.parse::<f64>().ok()?;
+            if *sign == b'-' { -minutes } else { minutes }
+        }
+        _ => 0.0,
+    };
+    let local = hours * 3600.0 + minutes * 60.0 + seconds;
+    Some((local - offset_minutes * 60.0).rem_euclid(86_400.0))
 }
 
 #[cfg(test)]
@@ -934,5 +1193,15 @@ mod tests {
         assert!(frame.lap.is_valid);
         assert!(frame.electronics.tc_available && !frame.electronics.abs_available, "a setting is available when its maximum is not 0");
         assert_eq!(frame.tires[3].position, 3.0);
+    }
+
+    #[test]
+    fn a_frames_timestamp_reads_as_its_moment_in_utc() {
+        assert_eq!(utc_time_of_day("2026-06-14T15:02:00+00:00"), Some(54_120.0));
+        assert_eq!(utc_time_of_day("2026-06-14T01:30:15.5+02:00"), Some(23.0 * 3600.0 + 30.0 * 60.0 + 15.5), "back across midnight");
+        assert_eq!(utc_time_of_day("2026-06-14T22:00:00-03:30"), Some(3_600.0 * 1.5));
+        assert_eq!(utc_time_of_day("2026-06-14T15:02:00Z"), Some(54_120.0));
+        assert_eq!(utc_time_of_day("t1"), None);
+        assert_eq!(utc_time_of_day("2026-06-14"), None);
     }
 }

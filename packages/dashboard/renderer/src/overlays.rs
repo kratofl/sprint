@@ -1,9 +1,10 @@
 // What draws over the widgets, each over the whole canvas and independent of the grid: the
-// RaceLogic lap timer island, the alert banners (a setting change, full screen or centered in
-// its alert rect, the lap summary screen and the multi-dial popup) and the flag overlay. Ported
-// from `FlagOverlay`, `AlertBanner`, `FullScreenSettingPopup`, `LapSummaryScreen` and
-// `RaceLogicLapTimerOverlay` in the retired React renderer's `DashRenderer.tsx`, and
-// `MultiDialPopup` in its `multiDial.tsx`; `dash.rs` decides which of them draw, in what order.
+// RaceLogic lap timer island, the alert banners (an alert popup full screen, as a strip across
+// the middle or centered in its alert rect, the lap summary screen and the multi-dial popup) and
+// the flag overlay. Ported from `FlagOverlay`, `AlertBanner`, `FullScreenSettingPopup`,
+// `LapSummaryScreen` and `RaceLogicLapTimerOverlay` in the retired React renderer's
+// `DashRenderer.tsx`, and `MultiDialPopup` in its `multiDial.tsx`; `dash.rs` decides which of
+// them draw, in what order.
 //
 // The DOM positions an absolutely positioned child against its parent's padding box, so inside a
 // box with a border every child sits the border width further in. The TypeScript lays children
@@ -11,7 +12,7 @@
 
 use std::sync::LazyLock;
 
-use crate::alerts::{DashAlertBanner, DashSettingPopup};
+use crate::alerts::{AlertPlacement, AlertSize, DashAlertBanner, DashAlertPopup, DashRadioBanner};
 use crate::chrome::{ChromeContext, WidgetFrame, widget_frame};
 use crate::draw::{Builder, Radii};
 use crate::format::{format_delta, format_lap, format_signed_liters, js_number_string, to_fixed};
@@ -79,8 +80,22 @@ pub fn flag_overlay(b: &mut Builder, frame: &TelemetryFrame, palette: &DashPalet
     });
 }
 
-/// `AlertBanner`: a lap summary, a setting change full screen or centered in its alert rect, or
-/// the multi-dial popup.
+/// A strip is a band this share of the dash tall, across its middle.
+const STRIP_SHARE: f64 = 1.0 / 3.0;
+
+/// The shortest strip that still reads on a wheel: its smallest line (the detail, 15% of the
+/// band) stays at least 15 px and its title 34 px. A strip on a dash under 300 px tall would be
+/// shorter, so there the alert shows full screen instead. Logical px: an editor preview drawn
+/// smaller than its panel can fall back where the panel itself shows the strip.
+pub const STRIP_MIN_HEIGHT: f64 = 100.0;
+
+/// Whether a strip reads on a dash `height` tall (else the alert is drawn full screen).
+pub fn strip_fits(height: f64) -> bool {
+    height * STRIP_SHARE >= STRIP_MIN_HEIGHT
+}
+
+/// `AlertBanner`: a lap summary, an alert popup (full screen, a strip, or centered in its alert
+/// rect), the multi-dial popup (full screen or a strip) or the engineer's message.
 pub fn alert_banner(
     b: &mut Builder,
     banner: &DashAlertBanner,
@@ -92,10 +107,149 @@ pub fn alert_banner(
 ) {
     match banner {
         DashAlertBanner::LapSummary(summary) => lap_summary_screen(b, summary, frame, palette, chrome, width, height),
-        DashAlertBanner::Setting(popup) if popup.full_screen => full_screen_setting_popup(b, popup, palette, width, height),
-        DashAlertBanner::Setting(popup) => centered_setting_popup(b, popup, palette, width, height),
+        DashAlertBanner::Alert(popup) => {
+            let text = PopupText { title: &popup.title, value: &popup.value, detail: popup.detail.as_deref() };
+            // The alert's colour lettered in the background colour; inverted, dark lettered and
+            // edged in its colour.
+            let look = if popup.invert_colors {
+                PopupLook { fill: palette.background, ink: popup.color, edge: Some(popup.color) }
+            } else {
+                PopupLook { fill: popup.color, ink: palette.background, edge: None }
+            };
+            match popup.placement {
+                AlertPlacement::Center(span) => centered_alert_popup(b, popup, span, palette, width, height),
+                AlertPlacement::Strip if strip_fits(height) => strip_popup(b, &text, look, palette.background, width, height),
+                _ => full_screen_popup(b, &text, look, width, height),
+            }
+        }
+        // The dial's own sense of inverted: plain is lettered and edged in the position's colour.
+        DashAlertBanner::MultiDial(popup) if popup.size == AlertSize::Strip && strip_fits(height) => {
+            let look = if popup.inverted {
+                PopupLook { fill: popup.color, ink: palette.background, edge: None }
+            } else {
+                PopupLook { fill: palette.background, ink: popup.color, edge: Some(popup.color) }
+            };
+            strip_popup(b, &PopupText { title: &popup.caption, value: &popup.label, detail: None }, look, palette.background, width, height);
+        }
         DashAlertBanner::MultiDial(popup) => multi_dial_popup(b, popup, palette.background, width, height),
+        DashAlertBanner::Radio(radio) => radio_banner(b, radio, palette, width, height),
     }
+}
+
+/// A popup's lines: a small title and detail on the left, the value big on the right.
+struct PopupText<'a> {
+    title: &'a str,
+    value: &'a str,
+    detail: Option<&'a str>,
+}
+
+/// A popup's colours: its fill, its lettering, and the edge an inverted one wears.
+#[derive(Clone, Copy)]
+struct PopupLook {
+    fill: Rgba,
+    ink: Rgba,
+    edge: Option<Rgba>,
+}
+
+/// The type scale of a popup's lines, as shares of its box's height.
+struct PopupType {
+    title_size: f64,
+    /// The title's centre line over a detail, and alone.
+    title_top: f64,
+    title_top_alone: f64,
+    detail_size: f64,
+    detail_top: f64,
+    value_size: f64,
+}
+
+const FULL_TYPE: PopupType = PopupType { title_size: 0.27, title_top: 0.46, title_top_alone: 0.5, detail_size: 0.05, detail_top: 0.66, value_size: 0.78 };
+
+/// The strip's box is short, so its title and detail take a bigger share of it to stay readable.
+const STRIP_TYPE: PopupType = PopupType { title_size: 0.34, title_top: 0.36, title_top_alone: 0.5, detail_size: 0.15, detail_top: 0.74, value_size: 0.8 };
+
+/// The title and detail from the left pad, the value up to 55% of the width ending at the right
+/// pad, its size from its length (at least 2 characters), so the driver reads which alert it is
+/// before the number. A long value (a word: "OVERHEAT") comes out smaller, so the title stays
+/// under 70% of the value's size and ends a pad short of where the value is estimated to start:
+/// the title never outgrows or runs into the value. Laid out in a `width` x `height` box.
+fn popup_lines(b: &mut Builder, text: &PopupText, ink: Rgba, width: f64, height: f64, pad: f64, scale: &PopupType) {
+    let value_width = width * 0.55;
+    let value_chars = text.value.encode_utf16().count().max(2) as f64;
+    let value_size = (height * scale.value_size).min(value_width / (value_chars * 0.56));
+    let title_width = (width - value_chars * value_size * 0.56 - pad * 3.0).min(width - value_width - pad * 2.0);
+    let title_top = if text.detail.is_some() { scale.title_top } else { scale.title_top_alone };
+    let line = TextLine {
+        text: text.title,
+        left: pad,
+        top: height * title_top,
+        size: (height * scale.title_size).min(value_size * 0.7),
+        color: ink,
+        align: TextAlign::Start,
+        max_width: Some(title_width),
+        weight: TextWeight::Value,
+        sizing: TextSizing::Fit,
+    };
+    text_line(b, line);
+    if let Some(detail) = text.detail {
+        text_line(b, TextLine { text: detail, top: height * scale.detail_top, size: height * scale.detail_size, weight: TextWeight::LabelBold, ..line });
+    }
+    text_line(
+        b,
+        TextLine {
+            text: text.value,
+            left: width - pad,
+            top: height / 2.0,
+            size: value_size,
+            align: TextAlign::End,
+            max_width: Some(value_width),
+            sizing: TextSizing::Stable,
+            ..line
+        },
+    );
+}
+
+/// A popup as a band a third of the dash tall across its middle (`STRIP_SHARE`), the dash still
+/// showing above and below. A plain band is set off from the widgets by a background-coloured
+/// rule on each side, so it never merges with a fill of its own colour; an inverted one is
+/// dark between two rules in its colour.
+fn strip_popup(b: &mut Builder, text: &PopupText, look: PopupLook, background: Rgba, width: f64, height: f64) {
+    let band_height = height * STRIP_SHARE;
+    let top = (height - band_height) / 2.0;
+    let rule = border_width((band_height * 0.03).max(2.0));
+    let band = PixelRect::new(0.0, top, width, band_height);
+    match look.edge {
+        Some(edge) => {
+            b.rect(band, Radii::ZERO, look.fill);
+            b.rect(PixelRect::new(0.0, top, width, rule), Radii::ZERO, edge);
+            b.rect(PixelRect::new(0.0, top + band_height - rule, width, rule), Radii::ZERO, edge);
+        }
+        None => {
+            b.rect(PixelRect::new(0.0, top - rule, width, band_height + rule * 2.0), Radii::ZERO, background);
+            b.rect(band, Radii::ZERO, look.fill);
+        }
+    }
+    let pad = width.min(height) * 0.055;
+    b.translated(0.0, top, |b| popup_lines(b, text, look.ink, width, band_height, pad, &STRIP_TYPE));
+}
+
+/// The engineer's message: the whole dash in the accent colour, "ENGINEER" small and the message
+/// big in the background colour, both centered, so it reads at a glance and never looks like a flag.
+fn radio_banner(b: &mut Builder, radio: &DashRadioBanner, palette: &DashPaletteColors, width: f64, height: f64) {
+    b.rect(PixelRect::new(0.0, 0.0, width, height), Radii::ZERO, palette.accent);
+    let caption = TextLine {
+        text: "ENGINEER",
+        left: width / 2.0,
+        top: height * 0.28,
+        size: height * 0.1,
+        color: palette.background,
+        align: TextAlign::Center,
+        max_width: Some(width * 0.9),
+        weight: TextWeight::LabelBold,
+        sizing: TextSizing::Fit,
+    };
+    text_line(b, caption);
+    let message = radio.text.to_uppercase();
+    text_line(b, TextLine { text: &message, top: height * 0.56, size: height * 0.26, max_width: Some(width * 0.92), ..caption });
 }
 
 /// `MultiDialPopup`: the whole dash in the dash's background with the dial's caption small and
@@ -122,17 +276,10 @@ fn multi_dial_popup(b: &mut Builder, popup: &DashMultiDialPopup, background: Rgb
 /// The centered popup's fill when it is not inverted: `rgba(8, 8, 10, 0.965)`.
 const POPUP_FILL: Rgba = Rgba { r: 8, g: 8, b: 10, a: 246, form: CssForm::Function };
 
-/// A setting change in its alert's own grid rect: the setting's name over its new value, on a
-/// near-black panel edged in the setting's color (or on the color, inverted).
-fn centered_setting_popup(b: &mut Builder, banner: &DashSettingPopup, palette: &DashPaletteColors, width: f64, height: f64) {
-    let span = AlertSpan {
-        col: banner.col,
-        row: banner.row,
-        col_span: banner.col_span,
-        row_span: banner.row_span,
-        grid_cols: banner.grid_cols,
-        grid_rows: banner.grid_rows,
-    };
+/// An alert in its own grid rect (older per-dash layouts): its title over its value, on a
+/// near-black panel edged in its color (or on the color, inverted). No detail line: the panel
+/// is too small for one.
+fn centered_alert_popup(b: &mut Builder, banner: &DashAlertPopup, span: AlertSpan, palette: &DashPaletteColors, width: f64, height: f64) {
     let panel = alert_panel_rect(width, height, span);
     if panel.width < 4.0 || panel.height < 4.0 {
         return;
@@ -177,57 +324,22 @@ fn centered_setting_popup(b: &mut Builder, banner: &DashSettingPopup, palette: &
     });
 }
 
-/// A setting change filling the whole dash with the setting's color: its name and the old value
-/// on the left, the new value huge on the right, so the driver reads which knob moved before the
-/// number. Inverted, it turns dark with the color on the text and an edge in the color.
-fn full_screen_setting_popup(b: &mut Builder, banner: &DashSettingPopup, palette: &DashPaletteColors, width: f64, height: f64) {
-    let inverted = banner.invert_colors;
-    let ink = if inverted { banner.color } else { palette.background };
-    let pad = width.min(height) * 0.055;
-    // The value takes up to 55% of the width; its size comes from the value's length (at least 2).
-    let value_width = width * 0.55;
-    let value_chars = banner.value.encode_utf16().count() as f64;
-    let value_size = (height * 0.78).min(value_width / (value_chars.max(2.0) * 0.56));
-    let name_width = width - value_width - pad * 2.0;
-    let was = match banner.max {
-        Some(max) => format!("WAS {} · OF {}", banner.previous, js_number_string(max)),
-        None => format!("WAS {}", banner.previous),
-    };
-
+/// A popup filling the whole dash with the alert's color: its title and detail on the left, the
+/// value huge on the right. Inverted, it turns dark with the color on the text and an edge in
+/// the color, which moves the lines in by its width.
+fn full_screen_popup(b: &mut Builder, text: &PopupText, look: PopupLook, width: f64, height: f64) {
     let canvas = PixelRect::new(0.0, 0.0, width, height);
-    b.rect(canvas, Radii::ZERO, if inverted { palette.background } else { banner.color });
-    let border = if inverted { border_width((height * 0.01).max(2.0)) } else { 0.0 };
-    if inverted {
-        b.border(canvas, border, 0.0, banner.color);
-    }
-    b.translated(border, border, |b| {
-        let line = TextLine {
-            text: &banner.title,
-            left: pad,
-            top: height * 0.46,
-            size: height * 0.27,
-            color: ink,
-            align: TextAlign::Start,
-            max_width: Some(name_width),
-            weight: TextWeight::Value,
-            sizing: TextSizing::Fit,
-        };
-        text_line(b, line);
-        text_line(b, TextLine { text: &was, top: height * 0.66, size: height * 0.05, weight: TextWeight::LabelBold, ..line });
-        text_line(
-            b,
-            TextLine {
-                text: &banner.value,
-                left: width - pad,
-                top: height / 2.0,
-                size: value_size,
-                align: TextAlign::End,
-                max_width: Some(value_width),
-                sizing: TextSizing::Stable,
-                ..line
-            },
-        );
-    });
+    b.rect(canvas, Radii::ZERO, look.fill);
+    let border = match look.edge {
+        Some(edge) => {
+            let border = border_width((height * 0.01).max(2.0));
+            b.border(canvas, border, 0.0, edge);
+            border
+        }
+        None => 0.0,
+    };
+    let pad = width.min(height) * 0.055;
+    b.translated(border, border, |b| popup_lines(b, text, look.ink, width, height, pad, &FULL_TYPE));
 }
 
 /// One number of the lap summary: its value, unit and a short verdict, on a condition fill when
@@ -554,8 +666,14 @@ mod tests {
     }
 
     fn banner_ops(banner: serde_json::Value, style: &str) -> Vec<DrawOp> {
+        banner_ops_at(banner, style, 800.0, 480.0)
+    }
+
+    fn banner_ops_at(banner: serde_json::Value, style: &str, width: f64, height: f64) -> Vec<DrawOp> {
         let banner = parse_banner(banner.to_string().as_bytes()).expect("banner");
-        draw(&scene("l", style), &TelemetryFrame::default(), Overlays { banner: Some(&banner), lap_timer: None })
+        let mut scene = scene("l", style);
+        (scene.width, scene.height) = (width, height);
+        draw(&scene, &TelemetryFrame::default(), Overlays { banner: Some(&banner), lap_timer: None })
     }
 
     fn runs(ops: &[DrawOp]) -> Vec<&TextRun> {
@@ -574,8 +692,100 @@ mod tests {
     }
 
     fn setting(full_screen: bool, invert: bool) -> serde_json::Value {
-        json!({ "kind": "setting", "title": "TC", "value": "5", "previous": "4", "max": 9, "color": "#1F7FE6", "fullScreen": full_screen,
-                "col": 6, "row": 3, "colSpan": 8, "rowSpan": 6, "gridCols": 20, "gridRows": 12, "invertColors": invert })
+        let mut popup = alert(if full_screen { "full" } else { "center" }, invert);
+        (popup["col"], popup["row"], popup["colSpan"], popup["rowSpan"], popup["gridCols"], popup["gridRows"]) =
+            (json!(6), json!(3), json!(8), json!(6), json!(20), json!(12));
+        popup
+    }
+
+    /// A TC change popup in `display_mode`.
+    fn alert(display_mode: &str, invert: bool) -> serde_json::Value {
+        json!({ "kind": "alert", "alertType": "tc_change", "title": "TC", "value": "5", "detail": "WAS 4 · OF 9", "color": "#1F7FE6",
+                "invertColors": invert, "displayMode": display_mode })
+    }
+
+    #[test]
+    fn a_strip_is_a_band_a_third_of_the_dash_across_its_middle_set_off_by_background_rules() {
+        let ops = banner_ops(alert("strip", false), "panels");
+        // 480 / 3 = 160 tall at 160; a 4.8 -> 4px rule each side in the background colour.
+        assert_eq!(ops[1], DrawOp::Rect { rect: PixelRect::new(0.0, 156.0, 800.0, 168.0), radii: Radii::ZERO, color: P.background });
+        assert_eq!(ops[2], DrawOp::Rect { rect: PixelRect::new(0.0, 160.0, 800.0, 160.0), radii: Radii::ZERO, color: dash_setting_colors::TC });
+        let (title, detail, value) = (run(&ops, "TC"), run(&ops, "WAS 4 · OF 9"), run(&ops, "5"));
+        assert!([title.color, detail.color, value.color].iter().all(|c| *c == P.background));
+        assert_eq!((title.weight, detail.weight, value.weight), (TextWeight::Value, TextWeight::LabelBold, TextWeight::Value));
+        assert_eq!((title.size, detail.size, value.size), (160.0 * 0.34, 160.0 * 0.15, 160.0 * 0.8));
+        assert!((title.x - 26.4).abs() < 1e-9, "from the dash's pad");
+        assert!((value.x + value.width(&Fonts::new()) - (800.0 - 26.4)).abs() < 1e-6, "the value ends at the right pad");
+        assert!(value.baseline > 160.0 && value.baseline < 320.0, "inside the band");
+    }
+
+    #[test]
+    fn an_inverted_strip_is_dark_between_two_rules_in_the_alerts_colour() {
+        let ops = banner_ops(alert("strip", true), "panels");
+        assert_eq!(ops[1], DrawOp::Rect { rect: PixelRect::new(0.0, 160.0, 800.0, 160.0), radii: Radii::ZERO, color: P.background });
+        assert_eq!(ops[2], DrawOp::Rect { rect: PixelRect::new(0.0, 160.0, 800.0, 4.0), radii: Radii::ZERO, color: dash_setting_colors::TC });
+        assert_eq!(ops[3], DrawOp::Rect { rect: PixelRect::new(0.0, 316.0, 800.0, 4.0), radii: Radii::ZERO, color: dash_setting_colors::TC });
+        assert_eq!((run(&ops, "TC").color, run(&ops, "5").color), (dash_setting_colors::TC, dash_setting_colors::TC));
+    }
+
+    #[test]
+    fn a_strip_too_short_to_read_is_drawn_full_screen() {
+        // 300 px tall makes a 100 px band, the least that reads; 299 px does not.
+        let fits = banner_ops_at(alert("strip", false), "panels", 480.0, 300.0);
+        assert_eq!(fits[2], DrawOp::Rect { rect: PixelRect::new(0.0, 100.0, 480.0, 100.0), radii: Radii::ZERO, color: dash_setting_colors::TC });
+        let small = banner_ops_at(alert("strip", false), "panels", 480.0, 272.0);
+        assert_eq!(small, banner_ops_at(alert("full", false), "panels", 480.0, 272.0));
+        assert_eq!(small[1], DrawOp::Rect { rect: PixelRect::new(0.0, 0.0, 480.0, 272.0), radii: Radii::ZERO, color: dash_setting_colors::TC });
+    }
+
+    #[test]
+    fn a_popup_without_a_detail_centres_its_title() {
+        let mut limiter = alert("full", false);
+        (limiter["title"], limiter["value"], limiter["detail"]) = (json!("PIT LIMITER"), json!("ON"), json!(null));
+        let ops = banner_ops(limiter, "panels");
+        let title = run(&ops, "PIT LIMITER");
+        let line_top = 240.0 - title.size / 2.0;
+        assert!(title.baseline > line_top && title.baseline < line_top + title.size, "on the dash's centre line");
+        assert_eq!(runs(&ops).len(), 2, "title and value only");
+    }
+
+    #[test]
+    fn a_long_word_value_keeps_the_title_smaller_and_clear_of_it() {
+        let mut engine = alert("full", false);
+        (engine["title"], engine["value"]) = (json!("ENGINE"), json!("OVERHEAT"));
+        let ops = banner_ops(engine, "panels");
+        let (title, value) = (run(&ops, "ENGINE"), run(&ops, "OVERHEAT"));
+        assert!(title.size < value.size, "{} vs {}", title.size, value.size);
+        assert!(title.x + title.width(&Fonts::new()) + 20.0 < value.x, "a gap between them");
+    }
+
+    #[test]
+    fn the_flag_alert_stands_in_for_the_flag_overlay_while_it_is_up() {
+        let mut frame = TelemetryFrame::default();
+        frame.flags.yellow = true;
+        let mut flag = alert("strip", false);
+        (flag["alertType"], flag["title"], flag["value"], flag["detail"], flag["color"]) =
+            (json!("flag"), json!("FLAG"), json!("YELLOW"), json!(null), json!("#E0A30C"));
+        let flag = parse_banner(flag.to_string().as_bytes()).expect("flag");
+        let ops = draw(&scene("l", "panels"), &frame, Overlays { banner: Some(&flag), lap_timer: None });
+        assert!(runs(&ops).iter().all(|r| r.text != "YELLOW FLAG"), "no second account of the flag");
+        run(&ops, "YELLOW");
+        let tc = parse_banner(alert("strip", false).to_string().as_bytes()).expect("tc");
+        run(&draw(&scene("l", "panels"), &frame, Overlays { banner: Some(&tc), lap_timer: None }), "YELLOW FLAG");
+    }
+
+    #[test]
+    fn a_dial_strip_is_lettered_in_the_positions_colour_unless_inverted() {
+        let mut strip = dial(false);
+        strip["displayMode"] = json!("strip");
+        let ops = banner_ops(strip.clone(), "panels");
+        let colour = Rgba::hex("#E0A30C");
+        assert_eq!(ops[1], DrawOp::Rect { rect: PixelRect::new(0.0, 160.0, 800.0, 160.0), radii: Radii::ZERO, color: P.background });
+        assert_eq!((run(&ops, "MULTI").color, run(&ops, "TC2").color), (colour, colour));
+        strip["inverted"] = json!(true);
+        let inverted = banner_ops(strip, "panels");
+        assert_eq!(inverted[2], DrawOp::Rect { rect: PixelRect::new(0.0, 160.0, 800.0, 160.0), radii: Radii::ZERO, color: colour });
+        assert_eq!(run(&inverted, "TC2").color, P.background);
     }
 
     #[test]

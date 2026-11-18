@@ -3,7 +3,8 @@
 // glue, copied next to this file by the host's build).
 //
 // The feed is newline-delimited JSON: {"scene":...} when what the dash shows changes, {"frame":...}
-// per telemetry frame, and an empty line when nothing else went out for a second. One canvas at the
+// per telemetry frame, {"acknowledge":true} when the driver presses Ack, and an empty line when
+// nothing else went out for a second. One canvas at the
 // scene's resolution, scaled to the window by CSS. It paints only when a frame or the scene changed,
 // or while the renderer says the picture moves by itself (a banner, the lap timer), and only on an
 // animation frame, so a hidden page or an unchanged dash paints nothing.
@@ -110,6 +111,19 @@ function onScene(scene) {
   schedule()
 }
 
+/** Ack: the alert up now goes, then the dash is drawn without it (a held alert never redraws by itself). */
+function onAcknowledge() {
+  if (!hasScene) return
+  try {
+    renderer.acknowledge()
+  } catch {
+    // A renderer that refused it keeps the alert; the next frame draws on.
+    return
+  }
+  dirty = true
+  schedule()
+}
+
 function onLine(line) {
   if (line.startsWith(FRAME_PREFIX)) {
     frameJson = line.slice(FRAME_PREFIX.length, -1)
@@ -118,7 +132,9 @@ function onLine(line) {
     return
   }
   const parsed = JSON.parse(line)
-  if (parsed !== null && typeof parsed === 'object' && 'scene' in parsed) onScene(parsed.scene)
+  if (parsed === null || typeof parsed !== 'object') return
+  if ('scene' in parsed) onScene(parsed.scene)
+  else if (parsed.acknowledge === true) onAcknowledge()
 }
 
 /** Reads one connection of the feed until it ends; throws with the host's reason when refused. */

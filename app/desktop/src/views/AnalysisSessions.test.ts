@@ -4,10 +4,8 @@ import type { CorpusSession } from './AnalysisDomain'
 import {
   NO_SESSION_FILTERS,
   filterSessions,
-  gapToYourBest,
-  groupLine,
-  groupSessions,
   groupShared,
+  sessionFilterChoices,
   sessionLine,
   sessionsIn,
   sharedStanding,
@@ -41,32 +39,21 @@ const SESSIONS = [
   session('ada', '2026-10-30T12:00:00Z', 'Porsche 963', 'Spa', 124.88, { sharedFrom: 'Ada Brandt', origin: 'Shared', runs: 0, lapCount: 1 }),
 ]
 
-test('sessions group by car and track, newest group first, with your best there and not a friend’s', () => {
-  const groups = groupSessions(SESSIONS)
-  assert.deepEqual(
-    groups.map((group) => [group.track, group.sessions.map((entry) => entry.id), group.yourBestSeconds]),
-    [
-      ['Spa', ['spa-quali', 'spa-practice', 'ada'], 124.981],
-      ['Monza', ['monza'], 98.4],
-    ],
-  )
-  assert.equal(groupLine(groups[0]), '2 sessions · 1 shared lap')
-  assert.equal(groupLine({ ...groups[0], car: 'LMP2 ELMS', carType: 'Oreca 07' }), 'Oreca 07 · 2 sessions · 1 shared lap')
-})
-
-test('each session says how far its best was off your best there; a faster friend is ahead of it', () => {
-  const spa = groupSessions(SESSIONS)[0]
-  assert.deepEqual(
-    spa.sessions.map((entry) => gapToYourBest(entry, spa)),
-    [0, 0.659, -0.101],
-  )
-})
-
 test('filters narrow by every chip at once, and the search by car, track or who shared it', () => {
   const quali = toggleSessionFilter(toggleSessionFilter(NO_SESSION_FILTERS, 'track', 'Spa'), 'kind', 'Quali')
   assert.deepEqual(filterSessions(SESSIONS, quali).map((entry) => entry.id), ['spa-quali'])
   assert.deepEqual(filterSessions(SESSIONS, { ...NO_SESSION_FILTERS, search: 'ada' }).map((entry) => entry.id), ['ada'])
   assert.deepEqual(filterSessions(SESSIONS, toggleSessionFilter(quali, 'kind', 'Quali')).map((entry) => entry.id), ['spa-quali', 'spa-practice', 'ada'])
+})
+
+test('a chip offers only what fits the other chips, and keeps what is already chosen', () => {
+  const gt3 = (id: string, car: string) => session(id, '2026-11-01T10:00:00Z', car, 'Spa', 138, { context: { ...SESSIONS[0].context, carModel: car, carClass: 'GT3' } })
+  const sessions = [...SESSIONS, gt3('bmw', 'BMW M4 GT3'), gt3('ferrari', 'Ferrari 296 GT3')]
+  const cars = (filters: typeof NO_SESSION_FILTERS) => sessionFilterChoices(sessions, 'car', filters).map((choice) => `${choice.value} ${choice.count}`)
+  assert.deepEqual(cars(NO_SESSION_FILTERS), ['BMW M4 GT3 1', 'Ferrari 296 GT3 1', 'Porsche 963 4'])
+  const classGt3 = toggleSessionFilter(NO_SESSION_FILTERS, 'carClass', 'GT3')
+  assert.deepEqual(cars(classGt3), ['BMW M4 GT3 1', 'Ferrari 296 GT3 1'])
+  assert.deepEqual(cars(toggleSessionFilter(classGt3, 'car', 'Porsche 963')), ['BMW M4 GT3 1', 'Ferrari 296 GT3 1', 'Porsche 963 0'])
 })
 
 test('a session says its runs when it knows them', () => {

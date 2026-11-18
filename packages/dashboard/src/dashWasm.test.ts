@@ -33,6 +33,20 @@ test("a dash the renderer cannot draw throws the renderer's own message and keep
   assert.deepEqual([wasm.width, wasm.height], [4, 2])
 })
 
+test('acknowledging takes down an alert held until acknowledged', () => {
+  const tcAlert = { id: 'tc', type: 'tc_change', enabled: true, col: 0, row: 0, colSpan: 1, rowSpan: 1, displayMode: 'full', untilAck: true }
+  // Big enough that the popup's lettering stays clear of the top-left pixel.
+  wasm.setScene(JSON.stringify({ layout: { ...layout, alerts: [tcAlert] }, width: 40, height: 24 }))
+  const frame = (tc: number): string =>
+    JSON.stringify({ session: {}, car: {}, lap: {}, flags: {}, electronics: { tractionControl: tc, tractionControlMax: 9 }, race: {}, energy: {} })
+  wasm.renderLive(frame(2), 0)
+  assert.deepEqual(wasm.renderLive(frame(3), 100), { timeDependent: false }, 'held, it never runs out')
+  assert.deepEqual([...wasm.pixels().subarray(0, 3)], [0x1f, 0x7f, 0xe6], "the TC popup's blue")
+  wasm.acknowledge()
+  wasm.renderLive(frame(3), 200)
+  assert.deepEqual([...wasm.pixels().subarray(0, 3)], [0x08, 0x08, 0x0a], 'the dash again')
+})
+
 test('a crash drops the instance; the next call starts over with the last good scene', () => {
   wasm.setScene(scene({}))
   // 30000 x 30000 x 4 bytes is more than a wasm32 allocation may ask for: Rust panics, and a panic

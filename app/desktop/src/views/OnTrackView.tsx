@@ -5,6 +5,7 @@ import { PageHeader } from '../shell/PageHeader'
 import { usePageUp } from '../shell/pageUp'
 import type { RuntimeState } from '../shell/runtime'
 import { formatGap, formatLapSeconds } from './AnalysisDomain'
+import { CarName, TrackName } from './CarBadges'
 import type { CorpusLap, LapFileNotice } from './AnalysisDomain'
 import { MenuLayer, type MenuAnchor } from '../shell/Menu'
 import { useLapFileImport } from './LapImportDialog'
@@ -225,8 +226,10 @@ function ChasingCard({ compare, onCourse }: { compare: CompareState; onCourse: (
       </div>
       {course && (
         <div className="ontrack-hero-course">
-          <span>{course.trackCourse}</span>
-          <span className="ontrack-hero-car">{course.carModel}</span>
+          <TrackName track={course.trackCourse} country={course.marks.country} />
+          <span className="ontrack-hero-car">
+            <CarName marks={course.marks} />
+          </span>
           {compare.courses.length > 1 && (
             <button
               ref={changeButton}
@@ -262,8 +265,10 @@ function ChasingCard({ compare, onCourse }: { compare: CompareState; onCourse: (
               >
                 <span className="ontrack-course-check">{current && <Check />}</span>
                 <span className="ontrack-course-name">
-                  {option.trackCourse}
-                  <span className="ontrack-course-car">{option.carModel}</span>
+                  <TrackName track={option.trackCourse} country={option.marks.country} />
+                  <span className="ontrack-course-car">
+                    <CarName marks={option.marks} />
+                  </span>
                 </span>
               </button>
             )

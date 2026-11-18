@@ -78,7 +78,19 @@ MultiDialTracker multiDials = new();
 // Rust renderer from the published telemetry (or, for the rear-view mirror purpose, captures the
 // desktop) and pushes RGB565 to the USB panel; browser displays get the same scenes, served. The
 // reconcile loop below keeps it in step with the saved devices and dashes.
-ScreenOutputService screenOutputs = new(log, telemetry: state, pageCycle: dashPageCycle, browserServer: browserDisplays, multiDials: multiDials);
+// The race engineer's message on the wheel screens comes from the live link, made further down.
+PeerLink? radioSource = null;
+// The driver's Ack presses (the dash.acknowledge button function and command): every wheel screen
+// and browser display reads them, each on its own thread, and takes its alert down.
+DashAcknowledgements dashAcknowledgements = new();
+ScreenOutputService screenOutputs = new(
+    log,
+    telemetry: state,
+    pageCycle: dashPageCycle,
+    browserServer: browserDisplays,
+    multiDials: multiDials,
+    radio: () => radioSource?.State.Radio?.Showing?.Text,
+    acknowledgements: dashAcknowledgements);
 // What a change of screen size would leave out of each dash, for /api/state's dashRefitLosses;
 // it refits a dash again only once its layout has changed, not on every poll.
 DashRefitLosses dashRefitLosses = new();
@@ -97,8 +109,12 @@ ILapTraceStore lapTraceStore = new LocalLapTraceStore(Path.Combine(runtime.DataR
 GameFolder gameFolder = new(GameProviders.LeMansUltimate);
 gameFolder.Apply(runtime.Settings.GameFolder);
 // The game's setups and every version of them Sprint has seen, for the Setups pages. Read-only
-// towards the game folder; versions are kept in Sprint's own data directory.
-SetupLibrary setupLibrary = new(GameProviders.Default, new LocalSetupSnapshotStore(Path.Combine(runtime.DataRoot, "setup-snapshots"), log), log);
+// towards the game folder; versions and the driver's tags are kept in Sprint's own data directory.
+SetupLibrary setupLibrary = new(
+    GameProviders.Default,
+    new LocalSetupSnapshotStore(Path.Combine(runtime.DataRoot, "setup-snapshots"), log),
+    log,
+    new SetupTags(Path.Combine(runtime.DataRoot, "setup-tags.json"), log));
 // Which setup each run was driven with, as the driver picked it in Analysis.
 RunSetups runSetups = new(Path.Combine(runtime.DataRoot, "run-setups.json"), log);
 
@@ -146,6 +162,7 @@ LapHistoryFuelSource fuelHistory = new(lapHistoryStore, () => runtime.Settings.S
 PitWallPlanShare pitWallShare = new(plannerService, lapTraceStore, fuelHistory);
 PeerLink peerLink = new(UdpPeerSocket.Open, PeerNetwork.ResolveStunAsync, PeerNetwork.LocalAddresses, log, pitWallShare.Snapshot);
 peerLink.SetSharePlan(runtime.Settings.LiveLink.SharePlan);
+radioSource = peerLink;
 CancellationTokenSource peerLinkCts = new();
 Task peerLinkLoop = peerLink.RunAsync(peerLinkCts.Token);
 // The engineer's pit wall arrangement on this PC (pitwall.* commands, state.pitWallLayout).
@@ -153,7 +170,9 @@ PitWallLayoutStore pitWallLayouts = new(runtime.DataRoot, log);
 // Deletes the traces no lap points at, and old ones only once the driver opts into an age limit
 // in Settings (#194); the coordinator runs it the moment they do.
 LapTraceRetention lapTraceRetention = new(lapTraceStore, lapHistoryStore, log);
-coordinator = new RuntimeCoordinator(runtime, plannerService, analysisController, liveLog, dashPageCycle, peerLink, liveCompare, gameFolder, lapHistoryStore, pitWallLayouts, lapTraceRetention);
+// The wheel button the Controls tab is waiting for (devices.buttonListen, state.buttons).
+ButtonAssignment buttonAssignment = new();
+coordinator = new RuntimeCoordinator(runtime, plannerService, analysisController, liveLog, dashPageCycle, peerLink, liveCompare, gameFolder, lapHistoryStore, pitWallLayouts, lapTraceRetention, buttonAssignment, setupLibrary, dashAcknowledgements);
 
 // The plan dialogs' prefill, recorded game/car/track choices and Quick plan detection
 // (GET /api/planner/context), and their fuel calculator (POST /api/planner/fuel-estimate). Only
@@ -216,7 +235,8 @@ telemetryEngine.Start();
 // target onto the delta tracker. Built over the SAME lapHistoryStore/lapTraceStore/plannerService
 // instances above -- not fresh ones -- so a recorded lap or a plan write is visible on the very
 // next /api/state poll and a plan.* command sees exactly what the ingest loop just did.
-PlanTargetDelivery planTargets = new(() => plannerService.ReadActive(PlanTargetDelivery.Aim.Of), lapHistoryStore, fuelHistory);
+// The engineer's target lap, sent over the live link, wins over the plan's.
+PlanTargetDelivery planTargets = new(() => plannerService.ReadActive(PlanTargetDelivery.Aim.Of), lapHistoryStore, fuelHistory, () => peerLink.State.Radio?.TargetLapSeconds);
 TelemetryIngestionPipeline ingestion = new(
     runtime,
     plannerService,
@@ -225,7 +245,8 @@ TelemetryIngestionPipeline ingestion = new(
     telemetryEngine.RequestPlanReference,
     log,
     liveUplink,
-    peerLink);
+    peerLink,
+    new DashPageAutomation(runtime, dashPageCycle, multiDials));
 
 // Names history filed before cars were named by class and make (CarNames): a one-time rewrite,
 // which looks a stored livery up in the game's results archive only if one still needs naming.
@@ -329,7 +350,20 @@ lock (runtime.DevicesGate)
 }
 
 IHardwareInputSource hardwareInput = HardwareInputSourceFactory.Create(log);
-hardwareInput.InputPressed += (_, input) => multiDials.Observe(input);
+// A dial position is the multi-dial's; every other press is a button: assigned, or run.
+hardwareInput.InputPressed += (_, input) =>
+{
+    if (multiDials.Observe(input))
+        return;
+    try
+    {
+        coordinator.Press(input);
+    }
+    catch (Exception ex)
+    {
+        log.Warn("A wheel button press failed", ex);
+    }
+};
 
 // Reconciles hardware screen outputs against the saved devices: starts/stops/rebuilds a
 // ScreenPublisher per enabled dashboard device as they are added, removed, disabled, or
@@ -357,16 +391,18 @@ Task screenReconcileLoop = Task.Run(async () =>
                     runtime.SaveDevices();
                 }
 
-                // Each dash screen's scene (its dash, the driver's name and number, the plan's
-                // targets) is serialized here once a tick and only taken by a screen when it
-                // changed, so a dash edit reaches the wheel within a second. The page and the
+                // Each dash screen's scene (its dash with the app-wide alerts stamped on, the
+                // driver's name and number, the plan's targets) is serialized here once a tick and
+                // only taken by a screen when it changed, so a dash or alert settings edit reaches
+                // the wheel within a second. The page and the
                 // live/idle switch do not wait for this loop: the screens read those per frame.
                 // Dash commands change the dash list without this gate; a copy that races one is
                 // skipped, and the screens keep their scenes until the next tick.
                 DashSceneInputs? scenes = null;
                 try
                 {
-                    scenes = new DashSceneInputs([.. runtime.DashLayouts], runtime.Settings.DriverName, runtime.Settings.DriverNumber, planTargets.Targets);
+                    scenes = new DashSceneInputs([.. runtime.DashLayouts], DriverCar.Of(runtime.Settings.LastSeenContext), runtime.Settings.DriverName, runtime.Settings.DriverNumber, planTargets.Targets,
+                        devices.Any(device => device.Bindings.Any(binding => binding.Command == SprintCommands.DashAcknowledge)) ? runtime.Settings.DashAlerts : runtime.Settings.DashAlerts.WithoutUntilAck());
                 }
                 catch (InvalidOperationException)
                 {
@@ -478,6 +514,8 @@ app.MapGet("/api/state", () =>
         catalog = runtime.Catalog,
         devices = runtime.Devices,
         multiDials = MultiDials.Describe(runtime.Devices, runtime.Catalog, multiDials),
+        // What each device's buttons can run, and the one waiting to be pressed (Controls tab).
+        buttons = new { functions = coordinator.ButtonFunctionsByDevice(), listening = buttonAssignment.Current(DateTimeOffset.UtcNow) },
         // Catalog ids plugged in but not added yet, one per device (the Add device dialog).
         foundDevices = DeviceDetection.FindNew(runtime.Catalog, runtime.Devices, usbPresent),
         dashLayouts = runtime.DashLayouts,
@@ -489,16 +527,20 @@ app.MapGet("/api/state", () =>
             builtIn = DashCategories.BuiltIn,
             custom = runtime.Settings.CustomDashCategories,
         },
+        // The driver's own dash modes; pages opt in to them, multi-dial positions switch them on.
+        dashModes = runtime.Settings.DashModes,
+        // The app-wide alert settings, every type in order (AppDashAlerts): the Dashes > Settings
+        // page edits them, and the app's own dash previews stamp them as the host does.
+        dashAlerts = runtime.Settings.DashAlerts.Alerts,
         setupTemplates = runtime.SetupTemplates,
         setupPrograms = runtime.SetupPrograms,
         setupParameters = DesktopRuntime.SetupParameters,
-        engineerControls = runtime.EngineerControls,
-        radioLog = runtime.RadioLog,
-        engineerPushState = runtime.EngineerPushState,
         plans,
         // Each plan's race fuel (RaceFuelEstimate), by plan id: small, and cheap over the cached
         // corpus, so the Race card follows new laps and setting changes without its own fetch.
         planFuel = PlanFuel(plans),
+        // How each plan's car and track are shown, by plan id: derived, so never in the plan's file.
+        planMarks = PlanMarks(plans),
         // Never the corpus itself: it runs to megabytes and this is polled several times a second.
         // Views get what they show; pages that need laps fetch them on their own endpoints.
         sessionCount = lapHistoryStore.LoadAll().Count,
@@ -562,6 +604,8 @@ app.MapGet("/api/state", () =>
             },
         },
         link = peerLink.State,
+        // How the linked session's car and track are shown; beside the link, as LiveTarget also crosses the wire.
+        linkMarks = peerLink.State.Session is { } linked ? CarMarks.Of(linked.Game, linked.Track, linked.Car) : null,
         pitWallLayout = pitWallLayouts.Layout,
         compare = CompareState(),
         features = new { sprintWeb },
@@ -579,7 +623,7 @@ app.MapGet("/api/state", () =>
             traceLaps = traceUsage.Laps,
             traceExpiryDays = runtime.Settings.SessionPlanner.TraceExpiryDays,
         },
-        screens = ScreenOutputs.Describe(runtime.Devices, runtime.DashLayouts, state.Telemetry.Status.IsLive, screenOutputs.HardwareFor, dashPageCycle)
+        screens = ScreenOutputs.Describe(runtime.Devices, runtime.DashLayouts, DriverCar.Of(runtime.Settings.LastSeenContext), state.Telemetry.Status.IsLive, screenOutputs.HardwareFor, dashPageCycle)
     }, json);
     debugTimings.StateAssembled(Stopwatch.GetElapsedTime(started));
     return result;
@@ -1015,6 +1059,18 @@ object CompareState()
         metersAhead = liveCompare.Controller.MetersAhead,
         fullscreen = (compare.HudOpen || compare.Arranging) && HudInterop.IsExclusiveFullscreenActive(),
     };
+}
+
+// How every plan's car and track are shown, keyed by plan id.
+Dictionary<string, CarMarks> PlanMarks(IReadOnlyList<SessionPlan> plans)
+{
+    Dictionary<string, CarMarks> marks = [];
+    foreach (SessionPlan plan in plans)
+    {
+        marks[plan.Id] = CarMarks.Of(plan.Game, plan.Track, plan.Car);
+    }
+
+    return marks;
 }
 
 // Every plan's race fuel over the one shared corpus, keyed by plan id, with the tank of the car

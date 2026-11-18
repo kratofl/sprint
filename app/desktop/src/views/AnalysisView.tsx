@@ -9,7 +9,8 @@ import { EMPTY_ANALYSIS_STATE, buildAnalysisSelectSession, buildSetRunSetup, par
 import type { AnalysisState, CorpusLap, LapFileNotice } from './AnalysisDomain'
 import { DEFAULT_LAP_LAYOUT, parseLapLayout } from './AnalysisLapLayout'
 import { LapPage, useStoredLapLayout } from './AnalysisLapPage'
-import { SessionList } from './AnalysisSessionList'
+import { AnalysisBrowse } from './AnalysisBrowse'
+import { SharedList } from './AnalysisSessionList'
 import { useLapFileImport } from './LapImportDialog'
 import { LapList, LapTimesCard, SessionHead } from './AnalysisSessionPage'
 import type { LapOrder } from './AnalysisSessionPage'
@@ -23,8 +24,8 @@ import './AnalysisView.css'
 
 /**
  * Analysis: the laps Sprint recorded, imported or was sent, over three pages at the full content
- * width. The list (your sessions grouped by car and track, or — Mine | Shared — the laps others
- * shared with you; AnalysisSessionList.tsx), one session (its lap times and its laps by run,
+ * width. The list (pick a car, then its sessions by circuit, AnalysisBrowse.tsx; or — Mine |
+ * Shared — the laps others shared with you, AnalysisSessionList.tsx), one session (its lap times and its laps by run,
  * AnalysisSessionPage.tsx), and one lap on its own (the track map and its channels,
  * AnalysisLapPage.tsx), where comparing with another lap is the driver's choice. Any lap with a
  * line can also become On track's training target or be saved as a lap file.
@@ -34,6 +35,28 @@ import './AnalysisView.css'
  * local, and the lap page's arrangement is kept per viewer (`useStoredLapLayout`). The host sends
  * every session live (`state.analysis.sessions`), so the list needs no refresh.
  */
+/**
+ * What an open lap is compared with: by default your fastest lap with a line with this car on this
+ * track (from any session), a lap the driver picked, or nothing after "Stop comparing".
+ */
+type CompareChoice = { kind: 'fastest' } | { kind: 'lap'; lap: LapKey } | { kind: 'none' }
+
+const FASTEST: CompareChoice = { kind: 'fastest' }
+
+/** The lap `lap` is compared with; `drawable` is every lap with a line here, fastest first. The fastest lap itself opens alone. */
+function comparedWith(choice: CompareChoice, lap: CorpusLap, drawable: readonly CorpusLap[]): CorpusLap | null {
+  switch (choice.kind) {
+    case 'none':
+      return null
+    case 'lap':
+      return drawable.find((candidate) => sameLap(candidate, choice.lap)) ?? null
+    case 'fastest': {
+      const fastest = drawable.find((candidate) => !candidate.sharedFrom) ?? null
+      return fastest && !sameLap(fastest, lap) ? fastest : null
+    }
+  }
+}
+
 export function AnalysisView({
   runtime,
   send,
@@ -50,7 +73,7 @@ export function AnalysisView({
   const analysis: AnalysisState = runtime.kind === 'ready' ? parseAnalysisState(runtime.sprint) : EMPTY_ANALYSIS_STATE
 
   const [openLap, setOpenLap] = useState<LapKey | null>(null)
-  const [compareWith, setCompareWith] = useState<LapKey | null>(null)
+  const [compare, setCompare] = useState<CompareChoice>(FASTEST)
   const [scope, setScope] = useState<ListScope>('mine')
   const [order, setOrder] = useState<LapOrder>('LapNumber')
   const [layout, setLayout] = useStoredLapLayout(parseLapLayout, DEFAULT_LAP_LAYOUT)
@@ -79,7 +102,7 @@ export function AnalysisView({
   }
   const closeLap = () => {
     setOpenLap(null)
-    setCompareWith(null)
+    setCompare(FASTEST)
   }
   const openSession = (sessionId: string | null) => {
     closeLap()
@@ -91,7 +114,7 @@ export function AnalysisView({
   useEffect(() => {
     if (!focusSessionId) return
     setOpenLap(null)
-    setCompareWith(null)
+    setCompare(FASTEST)
     send(buildAnalysisSelectSession(focusSessionId)).catch((error: unknown) =>
       setActionError(error instanceof Error ? error.message : 'That session could not be opened.'),
     )
@@ -102,7 +125,7 @@ export function AnalysisView({
   const drawable = courseLaps.filter((lap) => lap.hasChannels)
   const yourBest = courseLaps.find((lap) => !lap.sharedFrom) ?? null
   const lap = session && openLap ? (analysis.laps.find((candidate) => sameLap(candidate, openLap)) ?? null) : null
-  const other = lap && compareWith ? (drawable.find((candidate) => sameLap(candidate, compareWith)) ?? null) : null
+  const other = lap ? comparedWith(compare, lap, drawable) : null
   const page = session === null ? 'list' : lap ? 'lap' : 'session'
   const sharedCount = sessionsIn(analysis.sessions, 'shared').length
 
@@ -181,7 +204,7 @@ export function AnalysisView({
           compareWith={other}
           layout={layout}
           onLayout={setLayout}
-          onCompare={(picked) => setCompareWith(picked ? lapKeyOf(picked) : null)}
+          onCompare={(picked) => setCompare(picked ? { kind: 'lap', lap: lapKeyOf(picked) } : { kind: 'none' })}
           onBack={closeLap}
           onTrain={(target) => void trainAgainst(target)}
           onNote={sendNote}
@@ -211,8 +234,10 @@ export function AnalysisView({
             <p>Drive a session, or import one, and it will appear here.</p>
           </div>
         </div>
+      ) : scope === 'mine' ? (
+        <AnalysisBrowse sessions={analysis.sessions} onOpen={(id) => openSession(id)} />
       ) : (
-        <SessionList sessions={analysis.sessions} scope={scope} onOpen={(id) => openSession(id)} />
+        <SharedList sessions={analysis.sessions} onOpen={(id) => openSession(id)} />
       )}
       {lapFileImport.dialog}
     </div>

@@ -21,6 +21,8 @@ namespace Sprint.Desktop.Features.Peer;
 [JsonDerivedType(typeof(PeerBye), "bye")]
 [JsonDerivedType(typeof(PeerBlobMessage), "blob")]
 [JsonDerivedType(typeof(PeerRadarMessage), "radar")]
+[JsonDerivedType(typeof(PeerRadioMessage), "radio")]
+[JsonDerivedType(typeof(PeerRadioAnswer), "radioAnswer")]
 public abstract record PeerMessage
 {
     private static readonly JsonSerializerOptions Options = new(JsonSerializerDefaults.Web);
@@ -93,3 +95,12 @@ public sealed record PeerRadarMessage(IReadOnlyList<PitWallRadarCar> Cars) : Pee
         return new PeerRadarMessage([]);
     }
 }
+
+/// <summary>
+/// Engineer to driver: a radio message (<see cref="RadioOutbox"/>), sent again until the driver's PC
+/// answers that it was seen or left the wheel. <c>targetLap</c> (seconds) gives the driver a new target lap.
+/// </summary>
+public sealed record PeerRadioMessage(long Id, string Text, double? TargetLap) : PeerMessage;
+
+/// <summary>Driver to engineer: how radio message <c>id</c> stands, in answer to each copy of it and when the driver presses a button.</summary>
+public sealed record PeerRadioAnswer(long Id, RadioDelivery State) : PeerMessage;

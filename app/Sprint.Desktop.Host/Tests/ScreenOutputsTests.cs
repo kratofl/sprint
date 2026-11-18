@@ -22,6 +22,7 @@ public sealed class ScreenOutputsTests
         IReadOnlyList<ScreenOutputDescription> outputs = ScreenOutputs.Describe(
             [disabled, notDash, buttonBox, enabled],
             [Layout("layout-1")],
+            car: DriverCar.None,
             telemetryLive: true);
 
         ScreenOutputDescription only = Assert.Single(outputs);
@@ -38,6 +39,7 @@ public sealed class ScreenOutputsTests
         ScreenOutputDescription output = Assert.Single(ScreenOutputs.Describe(
             [device],
             [zeta, alpha],
+            car: DriverCar.None,
             telemetryLive: true));
 
         Assert.Same(alpha, output.Layout);
@@ -49,6 +51,7 @@ public sealed class ScreenOutputsTests
         Assert.Empty(ScreenOutputs.Describe(
             [Device("d1", dashId: "deleted")],
             [],
+            car: DriverCar.None,
             telemetryLive: true));
     }
 
@@ -62,6 +65,7 @@ public sealed class ScreenOutputsTests
         ScreenOutputDescription output = Assert.Single(ScreenOutputs.Describe(
             [device],
             [fallback, assigned],
+            car: DriverCar.None,
             telemetryLive: true));
 
         Assert.Same(assigned, output.Layout);
@@ -77,6 +81,7 @@ public sealed class ScreenOutputsTests
         ScreenOutputDescription output = Assert.Single(ScreenOutputs.Describe(
             [device],
             [layout],
+            car: DriverCar.None,
             telemetryLive: false));
 
         Assert.True(output.Idle);
@@ -93,6 +98,7 @@ public sealed class ScreenOutputsTests
         ScreenOutputDescription output = Assert.Single(ScreenOutputs.Describe(
             [device],
             [layout],
+            car: DriverCar.None,
             telemetryLive: true));
 
         Assert.False(output.Idle);
@@ -108,6 +114,7 @@ public sealed class ScreenOutputsTests
         ScreenOutputDescription output = Assert.Single(ScreenOutputs.Describe(
             [device],
             [Layout("layout-1")],
+            car: DriverCar.None,
             telemetryLive: true));
 
         Assert.Equal(800, output.Width);
@@ -123,6 +130,7 @@ public sealed class ScreenOutputsTests
         ScreenOutputDescription output = Assert.Single(ScreenOutputs.Describe(
             [device],
             [Layout("layout-1")],
+            car: DriverCar.None,
             telemetryLive: true));
 
         Assert.Equal(60, output.RefreshHz);

@@ -31,12 +31,12 @@ public sealed class PeerLinkTests
     public PeerLinkTests()
     {
         this._net = new FakeNet(() => this._now);
-        this._driver = new PeerLink(() => this._net.Open(DriverPublic), this._net.ResolveStun, () => [], share: (_, sharing) =>
+        this._driver = new PeerLink(_ => this._net.Open(DriverPublic), this._net.ResolveStun, () => [], share: (_, sharing) =>
         {
             this._asks.Add(sharing);
             return this._offer;
         });
-        this._engineer = new PeerLink(() => this._net.Open(EngineerPublic), this._net.ResolveStun, () => []);
+        this._engineer = new PeerLink(_ => this._net.Open(EngineerPublic), this._net.ResolveStun, () => []);
     }
 
     [Fact]
@@ -229,6 +229,59 @@ public sealed class PeerLinkTests
         this.Run(TimeSpan.FromSeconds(70));
         Assert.Equal(PeerLinkPhase.Ended, this._engineer.State.Phase);
         Assert.Equal("The connection was lost.", this._engineer.State.Detail);
+    }
+
+    [Fact]
+    public void TheEngineersMessageReachesTheWheelAndComesBackSeenWhenTheDriverPresses()
+    {
+        this.Connect();
+        this.Run(TimeSpan.FromSeconds(1));
+        Assert.True(this._engineer.State.Radio?.CanSend);
+
+        Assert.True(this._engineer.TrySendRadio("Box now", null, out string error), error);
+        this.Run(TimeSpan.FromMilliseconds(200));
+        Assert.Equal("Box now", this._driver.State.Radio?.Showing?.Text);
+        Assert.Equal(RadioDelivery.OnWheel, Assert.Single(this._engineer.State.Radio!.Sent).Delivery);
+
+        this._driver.AcknowledgeRadio();
+        this.Run(TimeSpan.FromMilliseconds(200));
+        Assert.Null(this._driver.State.Radio?.Showing);
+        Assert.Equal(RadioDelivery.Seen, Assert.Single(this._engineer.State.Radio!.Sent).Delivery);
+    }
+
+    [Fact]
+    public void AMessageLostOnTheWayIsSentAgainAndATargetLapReachesTheDriver()
+    {
+        this.Connect();
+        this.Run(TimeSpan.FromSeconds(1));
+        this._net.Blocked = true;
+        Assert.True(this._engineer.TrySendRadio("Target lap 2:04.5", 124.5, out string error), error);
+        this.Run(TimeSpan.FromMilliseconds(300));
+        Assert.Equal(RadioDelivery.Sending, Assert.Single(this._engineer.State.Radio!.Sent).Delivery);
+
+        this._net.Blocked = false;
+        this.Run(TimeSpan.FromSeconds(1));
+        Assert.Equal(124.5, this._driver.State.Radio?.TargetLapSeconds);
+        Assert.Equal(RadioDelivery.OnWheel, Assert.Single(this._engineer.State.Radio!.Sent).Delivery);
+
+        // Unanswered, it leaves the wheel and the engineer hears so from the next copy's answer.
+        this.Run(RadioRules.OnWheel);
+        Assert.Null(this._driver.State.Radio?.Showing);
+        Assert.Equal(RadioDelivery.Unanswered, Assert.Single(this._engineer.State.Radio!.Sent).Delivery);
+    }
+
+    [Fact]
+    public void OnlyTheLinkedEngineerSendsAndOnlyTextTheWheelCanShow()
+    {
+        Assert.False(this._engineer.TrySendRadio("Box now", null, out string notLinked));
+        Assert.Equal("Link to a driver first.", notLinked);
+
+        this.Connect();
+        this.Run(TimeSpan.FromSeconds(1));
+        Assert.False(this._driver.TrySendRadio("Box now", null, out _));
+        Assert.False(this._engineer.TrySendRadio("  ", null, out _));
+        Assert.False(this._engineer.TrySendRadio(new string('x', RadioRules.MaxText + 1), null, out _));
+        Assert.False(this._engineer.TrySendRadio("Target", 5, out _));
     }
 
     [Fact]

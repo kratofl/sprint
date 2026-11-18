@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Activity, ChevronLeft, Copy, Layers, LayoutDashboard, Link, Monitor, Move, Power, Ratio, RotateCw, ScanLine, Square, Trash2 } from 'lucide-react'
-import type { MultiDial, SprintCommand } from '../bridge'
+import type { DashAlertSettings } from '@sprint/dashboard'
+import type { ButtonFunction, DashMode, MultiDial, SprintCommand } from '../bridge'
 import { ConfirmDialog } from '../shell/ContentDialog'
 import { PageHeader } from '../shell/PageHeader'
 import { InlineName } from '../shell/InlineName'
@@ -33,6 +34,8 @@ import {
   viewerCount,
 } from './DevicesDomain'
 import type { Device, DashOption, DeviceImageKey, ScreenOutput, ScreenSetting } from './DevicesDomain'
+import { DeviceButtons } from './DeviceButtons'
+import { DeviceDashRules } from './DeviceDashRules'
 import { DeviceControls } from './DeviceControls'
 import { DeviceImage } from './DeviceImage'
 import { DeviceStatusInfoBar, DeviceStatusLabel } from './DevicesStatus'
@@ -48,8 +51,8 @@ const TABS: ReadonlyArray<{ id: DetailTab; label: string }> = [
 /**
  * One device, a level below the overview: its picture and status, Turn off / Remove in the
  * toolbar, then the Screen (how the panel is driven and mounted, or a browser display's address and
- * picture) and Output (what it shows) tabs, and Controls (its picture with the controls Sprint
- * knows) for a wheel whose preset has a dial.
+ * picture) and Output (what it shows) tabs, and Controls: the wheel's picture with the controls
+ * Sprint knows, when its preset has a dial, and the functions its buttons are assigned to.
  * The name is the heading itself, renamed in place (InlineName). A device without a screen has
  * no tabs.
  */
@@ -59,6 +62,10 @@ export function DeviceDetail({
   dashOptions,
   screen,
   dial,
+  dashModes,
+  dialPopup,
+  buttons,
+  listening,
   send,
   onBack,
 }: {
@@ -68,6 +75,14 @@ export function DeviceDetail({
   screen: ScreenOutput | undefined
   /** The wheel's multi-dial, when its preset has one; it brings the Controls tab. */
   dial: MultiDial | null
+  /** The driver's own dash modes, for the dial positions. */
+  dashModes: readonly DashMode[]
+  /** The app-wide `dial_change` alert, how the dial's popup looks. */
+  dialPopup: DashAlertSettings
+  /** What this device's buttons can run; none hides the Buttons card. */
+  buttons: readonly ButtonFunction[]
+  /** The function waiting for its button on this device, or null. */
+  listening: string | null
   send: (command: SprintCommand) => Promise<void>
   onBack: () => void
 }) {
@@ -111,7 +126,7 @@ export function DeviceDetail({
       {hasScreen && (
         <>
           <div className="tabs device-tabs" role="tablist" aria-label="Device settings">
-            {TABS.filter((option) => option.id !== 'controls' || dial !== null).map((option) => (
+            {TABS.filter((option) => option.id !== 'controls' || dial !== null || buttons.length > 0).map((option) => (
               <button
                 key={option.id}
                 type="button"
@@ -127,8 +142,13 @@ export function DeviceDetail({
           <div className={tab === 'controls' ? 'device-tab wide' : 'device-tab'} role="tabpanel">
             {tab === 'screen' ? (
               <ScreenTab key={device.id} device={device} screen={screen} send={send} />
-            ) : tab === 'controls' && dial ? (
-              <DeviceControls dial={dial} image={image} screenSize={logicalSize(device)} send={send} />
+            ) : tab === 'controls' ? (
+              <>
+                {dial && <DeviceControls dial={dial} dashModes={dashModes} popup={dialPopup} image={image} screenSize={logicalSize(device)} send={send} />}
+                {buttons.length > 0 && (
+                  <DeviceButtons deviceId={device.id} functions={buttons} bindings={device.bindings} listening={listening} send={send} />
+                )}
+              </>
             ) : (
               <OutputTab key={device.id} device={device} dashOptions={dashOptions} send={send} />
             )}
@@ -405,8 +425,14 @@ function OutputTab({ device, dashOptions, send }: { device: Device; dashOptions:
           <SettingRow
             id="device-dash"
             icon={LayoutDashboard}
-            title="Dashboard"
-            description={dashOptions.length === 0 ? 'No dashes yet. Create one on the Dashes page.' : 'Edit dashes on the Dashes page.'}
+            title="Every car"
+            description={
+              dashOptions.length === 0
+                ? 'No dashes yet. Create one on the Dashes page.'
+                : device.dashRules.length > 0
+                  ? 'Unless a game, class or car below has its own.'
+                  : 'Add a game, class or car to show another dash for it.'
+            }
           >
             {(labels) =>
               dashOptions.length > 0 && (
@@ -420,6 +446,7 @@ function OutputTab({ device, dashOptions, send }: { device: Device; dashOptions:
               )
             }
           </SettingRow>
+          {dashOptions.length > 0 && <DeviceDashRules device={device} dashOptions={dashOptions} send={send} />}
         </SettingsGroup>
       )}
       {purpose.needsCaptureRegion && <CaptureAreaRow key={device.id} device={device} send={send} />}

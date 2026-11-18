@@ -109,7 +109,9 @@ export function DashCanvas({ layout, frame, width, height, pageId, idle, alertBa
   const ratio = useDevicePixelRatio()
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const scene = JSON.stringify({ layout, width, height, scale: ratio, pageId, idle: idle ?? false })
+  // The clock widget shows the frame's moment in the viewer's time zone.
+  const settings = { utcOffsetMinutes: -new Date().getTimezoneOffset() }
+  const scene = JSON.stringify({ layout, width, height, scale: ratio, pageId, idle: idle ?? false, settings })
   // The renderer reads the host's telemetry JSON; the app hands over the @sprint/types mirror.
   const frameJson = frame ? JSON.stringify(toHostFrame(frame)) : ''
   const bannerJson = alertBanner ? JSON.stringify(alertBanner) : ''

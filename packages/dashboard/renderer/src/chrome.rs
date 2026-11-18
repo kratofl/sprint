@@ -8,7 +8,7 @@
 
 use crate::draw::{Builder, Radii};
 use crate::grid::PixelRect;
-use crate::model::DashStyle;
+use crate::model::{BorderWeight, DashChrome, DashStyle, GroupStyle, LabelMode};
 use crate::palette::{DashPaletteColors, Rgba, with_alpha};
 use crate::primitives::{TextAlign, TextLine, TextSizing, text_line};
 use crate::text::TextWeight;
@@ -18,6 +18,8 @@ use crate::text::TextWeight;
 pub struct ChromeContext {
     pub style: DashStyle,
     pub scale: f64,
+    /// The flat chrome's settings, with the widget's own edge and label already applied.
+    pub flat: DashChrome,
 }
 
 /// The grid cell size the chrome's pixel sizes are authored at (an 800x480 panel on a 20x12 grid).
@@ -25,12 +27,20 @@ pub const CHROME_CELL_PX: f64 = 40.0;
 
 const BORDER: f64 = 2.0;
 
+/// The frame's edge: 2px in the boxed styles, the dash's chosen weight in the flat one.
+fn border_width(ctx: ChromeContext) -> f64 {
+    match ctx.style {
+        DashStyle::Panels | DashStyle::Grid | DashStyle::Bars => BORDER,
+        DashStyle::Flat => ctx.flat.border.px(),
+    }
+}
+
 /// The space between neighbouring frames, split across both. Grid frames grow 1px instead so
 /// neighbouring lines overlap into one.
 fn frame_inset(ctx: ChromeContext) -> f64 {
     match ctx.style {
         DashStyle::Panels => 4.0 * ctx.scale,
-        DashStyle::Bars => 3.0 * ctx.scale,
+        DashStyle::Bars | DashStyle::Flat => 3.0 * ctx.scale,
         DashStyle::Grid => -1.0,
     }
 }
@@ -39,6 +49,7 @@ fn frame_radius(ctx: ChromeContext) -> f64 {
     match ctx.style {
         DashStyle::Panels => 10.0 * ctx.scale,
         DashStyle::Bars => 8.0 * ctx.scale,
+        DashStyle::Flat => ctx.flat.radius * ctx.scale,
         DashStyle::Grid => 0.0,
     }
 }
@@ -56,13 +67,23 @@ pub struct FrameGeometry {
 /// A framed widget's geometry inside a `width` x `height` cell.
 pub fn frame_geometry(ctx: ChromeContext, width: f64, height: f64, titled: bool) -> FrameGeometry {
     let inset = frame_inset(ctx);
+    let edge = border_width(ctx);
     let box_ = PixelRect::new(inset, inset, (width - inset * 2.0).max(0.0), (height - inset * 2.0).max(0.0));
-    let inner = PixelRect::new(box_.left + BORDER, box_.top + BORDER, (box_.width - BORDER * 2.0).max(0.0), (box_.height - BORDER * 2.0).max(0.0));
-    // Grid cells pad a little more: cells on the canvas edge sit under the 4px outer frame.
+    let inner = PixelRect::new(box_.left + edge, box_.top + edge, (box_.width - edge * 2.0).max(0.0), (box_.height - edge * 2.0).max(0.0));
+    // Grid cells pad a little more: cells on the canvas edge sit under the 4px outer frame. Open
+    // cells have no edge to keep off, so their label and value start at the cell's own edge.
     let pad = (if ctx.style == DashStyle::Grid { 10.0 } else { 8.0 }) * ctx.scale;
-    let title_height = if titled { (if ctx.style == DashStyle::Bars { 22.0 } else { 20.0 }) * ctx.scale } else { 0.0 };
+    let title_height = if titled {
+        (match ctx.style {
+            DashStyle::Bars => 22.0,
+            DashStyle::Flat => flat_label_height(ctx.flat.label),
+            _ => 20.0,
+        }) * ctx.scale
+    } else {
+        0.0
+    };
     let title_offset = match ctx.style {
-        DashStyle::Bars => 0.0,
+        DashStyle::Bars | DashStyle::Flat => 0.0,
         DashStyle::Grid => 4.0,
         DashStyle::Panels => 2.0,
     };
@@ -78,7 +99,7 @@ pub fn frame_geometry(ctx: ChromeContext, width: f64, height: f64, titled: bool)
 /// Where an unframed widget's content goes: the same margin a frame keeps, so bare and framed
 /// widgets line up.
 pub fn bare_content(ctx: ChromeContext, width: f64, height: f64) -> PixelRect {
-    let inset = frame_inset(ctx).max(0.0) + BORDER;
+    let inset = frame_inset(ctx).max(0.0) + border_width(ctx);
     PixelRect::new(inset, inset, (width - inset * 2.0).max(0.0), (height - inset * 2.0).max(0.0))
 }
 
@@ -119,6 +140,9 @@ pub struct WidgetFrame<'t> {
 /// - grid: ruled cells that share their lines; a knob's color is a small tab before the title.
 /// - bars: a rounded box with a title bar; a knob's color fills the bar.
 pub fn widget_frame(b: &mut Builder, frame: WidgetFrame, children: impl FnOnce(&mut Builder, f64, f64, &DashPaletteColors)) {
+    if ctx_is_flat(frame.ctx) {
+        return flat_frame(b, frame, children);
+    }
     let WidgetFrame { ctx, rect, title, accent, fill, title_color, palette } = frame;
     let geometry = frame_geometry(ctx, rect.width, rect.height, title.is_some());
     let edge = if ctx.style == DashStyle::Grid {
@@ -184,6 +208,121 @@ pub fn widget_frame(b: &mut Builder, frame: WidgetFrame, children: impl FnOnce(&
     });
 }
 
+fn ctx_is_flat(ctx: ChromeContext) -> bool {
+    ctx.style.is_flat()
+}
+
+/// Half the gutter between neighbouring flat frames, at 800x480.
+const FLAT_GAP: f64 = 3.0;
+
+/// A label band's height for the flat chrome, at 800x480.
+fn flat_label_height(label: LabelMode) -> f64 {
+    match label {
+        LabelMode::Off => 0.0,
+        LabelMode::On => 15.0,
+        LabelMode::Capsule => 17.0,
+    }
+}
+
+/// The flat chrome's frame (mockup v2): a box with the dash's radius and the widget's edge weight,
+/// its label off, small above the value, or in a band across the top. A condition fills the box
+/// and turns every text on it to the dark ink; a knob's identity color is a tab before an
+/// `On` label or the band's color.
+fn flat_frame(b: &mut Builder, frame: WidgetFrame, children: impl FnOnce(&mut Builder, f64, f64, &DashPaletteColors)) {
+    let WidgetFrame { ctx, rect, title, accent, fill, title_color, palette } = frame;
+    let s = ctx.scale;
+    let gap = FLAT_GAP * s;
+    let box_ = PixelRect::new(gap, gap, (rect.width - gap * 2.0).max(0.0), (rect.height - gap * 2.0).max(0.0));
+    let radius = (ctx.flat.radius * s).min(box_.width / 2.0).min(box_.height / 2.0);
+    let edge = if ctx.flat.border == BorderWeight::None { 0.0 } else { (ctx.flat.border.px() * s).max(1.0) };
+    let label = if title.is_some() { ctx.flat.label } else { LabelMode::Off };
+    let band_height = flat_label_height(label) * s;
+    let content_palette = if fill.is_some() { ink_palette(&palette) } else { palette };
+    let pad = 6.0 * s;
+
+    b.translated(rect.left, rect.top, |b| {
+        if let Some(fill) = fill {
+            b.rect(box_, Radii::all(radius), fill);
+        }
+        if edge > 0.0 {
+            b.border(box_, edge, radius, fill.unwrap_or(palette.border));
+        }
+        if let Some(title) = title {
+            let band = PixelRect::new(box_.left, box_.top, box_.width, band_height);
+            let (left, color) = match label {
+                LabelMode::Off => (0.0, palette.muted),
+                LabelMode::On => {
+                    let mut left = band.left + edge + pad;
+                    if let (Some(accent), None) = (accent, fill) {
+                        b.rect(PixelRect::new(left, band.top + edge + band.height / 2.0 - 4.0 * s, 3.0 * s, 9.0 * s), Radii::ZERO, accent);
+                        left += 7.0 * s;
+                    }
+                    let color = if fill.is_some() { with_alpha(palette.background, 0.78) } else { title_color.unwrap_or(palette.muted) };
+                    (left, color)
+                }
+                LabelMode::Capsule => {
+                    let band_fill = if fill.is_some() { with_alpha(palette.background, 0.22) } else { accent.unwrap_or(palette.surface) };
+                    b.rect(band, Radii::top(radius), band_fill);
+                    let on_color = fill.is_some() || accent.is_some();
+                    (band.left + pad, if on_color { with_alpha(palette.background, 0.85) } else { title_color.unwrap_or(palette.secondary) })
+                }
+            };
+            if label != LabelMode::Off {
+                let top = band.top + band.height / 2.0 + if label == LabelMode::On { edge } else { 0.0 };
+                text_line(
+                    b,
+                    TextLine {
+                        text: title,
+                        left,
+                        top,
+                        size: 11.0 * s,
+                        color,
+                        align: TextAlign::Start,
+                        max_width: Some((band.left + band.width - left - pad).max(0.0)),
+                        weight: TextWeight::LabelBold,
+                        sizing: TextSizing::Fit,
+                    },
+                );
+            }
+        }
+        let top = box_.top + edge + band_height + if label == LabelMode::Off { 2.0 * s } else { 0.0 };
+        let content =
+            PixelRect::new(box_.left + edge + pad, top, (box_.width - (edge + pad) * 2.0).max(0.0), (box_.top + box_.height - edge - 3.0 * s - top).max(0.0));
+        b.translated(content.left, content.top, |b| children(b, content.width, content.height, &content_palette));
+    });
+}
+
+/// A group's own frame (mockup v2): one edge round `rect` (the union of its widgets' cells) and
+/// its name set into the top edge, plain or in a pill.
+pub fn group_frame(b: &mut Builder, ctx: ChromeContext, rect: PixelRect, style: GroupStyle, name: &str, palette: &DashPaletteColors) {
+    let s = ctx.scale;
+    let edge = if style.border == BorderWeight::None { 0.0 } else { (style.border.px() * s).max(1.0) };
+    let radius = (ctx.flat.radius * s + FLAT_GAP * s).min(rect.width / 2.0).min(rect.height / 2.0);
+    let size = 10.0 * s;
+    let label_width = b.text_width(name, size, TextWeight::LabelBold);
+    let label_left = if style.centered { rect.left + (rect.width - label_width) / 2.0 } else { rect.left + radius.max(8.0 * s) + 4.0 * s };
+    if edge > 0.0 {
+        b.border(rect, edge, radius, palette.border);
+    }
+    match style.label {
+        LabelMode::Off => {}
+        LabelMode::On => {
+            // The name breaks the top edge, like a fieldset's legend.
+            b.rect(PixelRect::new(label_left - 4.0 * s, rect.top - 1.0, label_width + 8.0 * s, edge + 2.0), Radii::ZERO, palette.background);
+            text_line(b, group_label(name, label_left, rect.top + edge / 2.0, size, palette.muted));
+        }
+        LabelMode::Capsule => {
+            let pill = PixelRect::new(label_left - 6.0 * s, rect.top - 7.0 * s + edge / 2.0, label_width + 12.0 * s, 14.0 * s);
+            b.rect(pill, Radii::all(7.0 * s), palette.border);
+            text_line(b, group_label(name, label_left, pill.top + pill.height / 2.0, size, palette.foreground));
+        }
+    }
+}
+
+fn group_label(text: &str, left: f64, top: f64, size: f64, color: Rgba) -> TextLine<'_> {
+    TextLine { text, left, top, size, color, align: TextAlign::Start, max_width: None, weight: TextWeight::LabelBold, sizing: TextSizing::Stable }
+}
+
 /// The grid style's outer frame: one rounded edge around the whole canvas, drawn over the
 /// cells' own lines.
 pub fn grid_outer_frame(b: &mut Builder, ctx: ChromeContext, width: f64, height: f64, palette: &DashPaletteColors) {
@@ -198,7 +337,7 @@ mod tests {
     use crate::text::Fonts;
 
     fn at(style: DashStyle) -> ChromeContext {
-        ChromeContext { style, scale: 1.0 }
+        ChromeContext { style, scale: 1.0, flat: DashChrome::default() }
     }
 
     fn frame_ops(style: DashStyle, title: &str, accent: Option<Rgba>, fill: Option<Rgba>) -> (Vec<DrawOp>, Option<DashPaletteColors>) {
@@ -238,8 +377,8 @@ mod tests {
 
     #[test]
     fn chrome_scales_with_the_grid_cell() {
-        let small = frame_geometry(ChromeContext { style: DashStyle::Bars, scale: 1.0 }, 120.0, 120.0, true);
-        let large = frame_geometry(ChromeContext { style: DashStyle::Bars, scale: 2.0 }, 240.0, 240.0, true);
+        let small = frame_geometry(ChromeContext { style: DashStyle::Bars, scale: 1.0, flat: DashChrome::default() }, 120.0, 120.0, true);
+        let large = frame_geometry(ChromeContext { style: DashStyle::Bars, scale: 2.0, flat: DashChrome::default() }, 240.0, 240.0, true);
         assert_eq!(large.title.map(|t| t.height), small.title.map(|t| t.height * 2.0));
     }
 

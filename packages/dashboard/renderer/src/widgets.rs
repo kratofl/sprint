@@ -15,7 +15,7 @@ use crate::format::{
     format_speed_kph, format_temp, js_number_string, to_fixed,
 };
 use crate::grid::PixelRect;
-use crate::model::{DashSettings, DashTargets, DashWidget, TelemetryFrame, TireState};
+use crate::model::{CarState, DashSettings, DashTargets, DashWidget, FieldCar, LapState, TelemetryFrame, TireState};
 use crate::palette::{DashPaletteColors, Rgba, dash_setting_colors, resolve_tyre_color};
 use crate::primitives::{
     TextAlign, TextLine, TextSizing, VALUE_SHARE, ValueWithUnit, big_value, dot, h_bar, text_line, value_size, value_with_unit, vertical_seg_bar,
@@ -67,7 +67,11 @@ pub fn widget_chrome(widget: &DashWidget, frame: &TelemetryFrame, palette: &Dash
         "lap_time" => framed(lap_time_show(widget).title()),
         "delta" => filled("DELTA", delta_fill(frame, palette)),
         "fuel" => filled("FUEL", fuel_fill(frame.car.fuel, palette)),
+        "tc" if frame.electronics.tc_active => WidgetChrome::Framed { title: "TC", accent: Some(dash_setting_colors::TC), fill: Some(dash_setting_colors::TC) },
         "tc" => knob("TC", dash_setting_colors::TC),
+        "abs" if frame.electronics.abs_active => {
+            WidgetChrome::Framed { title: "ABS", accent: Some(dash_setting_colors::ABS), fill: Some(dash_setting_colors::ABS) }
+        }
         "abs" => knob("ABS", dash_setting_colors::ABS),
         "engine_map" => knob("MAP", dash_setting_colors::ENGINE_MAP),
         "brake_bias" => knob("BIAS", dash_setting_colors::BRAKE_BIAS),
@@ -77,6 +81,38 @@ pub fn widget_chrome(widget: &DashWidget, frame: &TelemetryFrame, palette: &Dash
         "predictive_lap" => framed("PREDICTED"),
         "virtual_energy" | "ers" => filled("VIRTUAL ENERGY", energy_fill(virtual_energy_percent(frame), palette)),
         "tyre_temp" | "tyre_pressure" => WidgetChrome::Split,
+        "battery" => filled("BATTERY", energy_fill(battery_percent(frame), palette)),
+        "relative" => framed("RELATIVE"),
+        "damage" => framed("DAMAGE"),
+        // Mockup v2.
+        "tyre" => framed(match widget.config_string("corner") {
+            Some("fr") => "FR",
+            Some("rl") => "RL",
+            Some("rr") => "RR",
+            _ => "FL",
+        }),
+        "sectors" => framed("SECTORS"),
+        "speed" => framed("SPEED"),
+        "laps" => framed("LAP"),
+        "fuel_laps" => framed("FUEL LAPS"),
+        "ve_laps" => framed("VE LAPS"),
+        "time_left" => framed("TIME LEFT"),
+        "soc" => framed("SOC"),
+        "slip" => knob("SLIP", dash_setting_colors::TC),
+        "cut" => knob("CUT", dash_setting_colors::TC),
+        "fuel_avg" => framed("FUEL AVG"),
+        "fuel_time" => framed("FUEL TIME"),
+        "laps_left" => framed("LAPS LEFT"),
+        "refuel" => framed("REFUEL"),
+        "clock" => framed("CLOCK"),
+        "weather" => framed(if is_raining(frame) { "RAIN · TRACK" } else { "AIR · TRACK" }),
+        "oil_temp" => framed("OIL"),
+        "water_temp" => framed("WATER"),
+        "migration" => knob("MIGRATION", dash_setting_colors::BRAKE_BIAS),
+        "arb" => framed("ARB F · R"),
+        "penalty" => filled("PENALTY", (penalties_to_serve(frame) > 0.0).then_some(palette.critical)),
+        "tyre_wear" => framed("WEAR"),
+        "sector_time" => framed("SECTOR"),
         _ => WidgetChrome::Bare,
     }
 }
@@ -113,31 +149,43 @@ fn virtual_energy_percent(frame: &TelemetryFrame) -> f64 {
     if raw > 0.0 && raw <= 1.0 { raw * 100.0 } else { raw }
 }
 
+/// The hybrid battery's charge as a percentage (the frame's 0-1 fraction).
+fn battery_percent(frame: &TelemetryFrame) -> f64 {
+    frame.energy.soc * 100.0
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum LapTimeShow {
     All,
     Current,
     Last,
     Best,
+    SessionBest,
+    ClassBest,
 }
 
 impl LapTimeShow {
     fn title(self) -> &'static str {
         match self {
             LapTimeShow::All => "LAP TIMES",
-            LapTimeShow::Current => "LAP",
+            LapTimeShow::Current => "CURRENT",
             LapTimeShow::Last => "LAST",
             LapTimeShow::Best => "BEST",
+            LapTimeShow::SessionBest => "SESSION BEST",
+            LapTimeShow::ClassBest => "CLASS BEST",
         }
     }
 }
 
-/// The lap_time widget's "show" config: all three times stacked, or one of them large.
+/// The lap_time widget's "show" config: the driver's three times stacked, or one time large
+/// (one of those, or the session's or the class's best).
 fn lap_time_show(widget: &DashWidget) -> LapTimeShow {
     match widget.config_string("show") {
         Some("current") => LapTimeShow::Current,
         Some("last") => LapTimeShow::Last,
         Some("best") => LapTimeShow::Best,
+        Some("session") => LapTimeShow::SessionBest,
+        Some("class") => LapTimeShow::ClassBest,
         _ => LapTimeShow::All,
     }
 }
@@ -186,6 +234,9 @@ fn rpm_bar(b: &mut Builder, w: &WidgetContext) {
         return;
     }
 
+    if w.chrome.style.is_flat() {
+        return flat_rpm_strip(b, w, pct);
+    }
     const SEGMENTS: usize = 24;
     let gap = (w.width * 0.0025).max(1.0);
     let segment_width = (w.width - gap * (SEGMENTS - 1) as f64) / SEGMENTS as f64;
@@ -194,6 +245,550 @@ fn rpm_bar(b: &mut Builder, w: &WidgetContext) {
         let color = if i < active { rpm_stage_color(i as f64 / (SEGMENTS - 1) as f64, w.palette) } else { w.palette.surface };
         b.rect(PixelRect::new(i as f64 * (segment_width + gap), 0.0, segment_width.max(0.0), w.height), Radii::all(2.0), color);
     }
+}
+
+/// The flat styles' RPM: a row of slim square segments, unlit ones a quiet track, with the shift
+/// stages' colors as before (mockup).
+fn flat_rpm_strip(b: &mut Builder, w: &WidgetContext, pct: f64) {
+    const SEGMENTS: usize = 36;
+    let s = w.chrome.scale;
+    let gap = 4.0 * s;
+    let height = (w.height * 0.55).min(28.0 * s);
+    let top = (w.height - height) / 2.0;
+    let segment_width = (w.width - gap * (SEGMENTS - 1) as f64) / SEGMENTS as f64;
+    let active = (pct * SEGMENTS as f64).ceil() as usize;
+    for i in 0..SEGMENTS {
+        let color = if i < active { rpm_stage_color(i as f64 / (SEGMENTS - 1) as f64, w.palette) } else { w.palette.surface };
+        b.rect(PixelRect::new(i as f64 * (segment_width + gap), top, segment_width.max(0.0), height), Radii::ZERO, color);
+    }
+}
+
+/// The flat styles' delta: the value, green while gaining, over a centre-zero bar that grows
+/// toward the side the lap is going (a second either way fills it). No fill behind it (mockup).
+fn flat_delta(b: &mut Builder, w: &WidgetContext) {
+    let lap = &w.frame.lap;
+    let p = w.palette;
+    if lap.target_lap_time <= 0.0 {
+        let size = (w.height * 0.4).min(20.0);
+        text_line(b, fit(line("NO TARGET", (w.width / 2.0, w.height / 2.0), size, p.muted, TextAlign::Center, w.width * 0.9, TextWeight::Label)));
+    } else {
+        let gaining = lap.delta < -0.0005;
+        let color = if gaining { p.timing_personal_best } else { p.foreground };
+        big_value(b, &format_delta(lap.delta), "-00.000", w.width, w.height, color, 0.82);
+    }
+}
+
+/// A zoned dash's gear, which every zoned page shows in the centre column's top: the digit
+/// alone, in the shift stage's color, in a `width` x `height` box at the builder's origin.
+pub fn zoned_gear(b: &mut Builder, car: &CarState, palette: &DashPaletteColors, width: f64, height: f64) {
+    let ratio = if car.max_rpm > 0.0 { car.rpm / car.max_rpm } else { 0.0 };
+    let color = if ratio >= 0.96 {
+        palette.rpm_shift
+    } else if ratio >= 0.88 {
+        palette.rpm_near_limit
+    } else {
+        palette.foreground
+    };
+    text_line(
+        b,
+        TextLine {
+            text: &format_gear(car.gear),
+            left: width / 2.0,
+            top: height * 0.5,
+            size: height * 0.92,
+            color,
+            align: TextAlign::Center,
+            max_width: Some(width),
+            weight: TextWeight::ValueRegular,
+            sizing: TextSizing::Stable,
+        },
+    );
+}
+
+/// A bar: a slim track filled from the bottom (or the left, lying down), its label at the far
+/// end and its value at the near end. `channel`: fuel, ve, soc, delta, inputs or rpm. Delta grows
+/// from the middle: up and green while gaining, down while losing.
+fn bar(b: &mut Builder, w: &WidgetContext) {
+    let f = w.frame;
+    let p = w.palette;
+    let s = w.chrome.scale;
+    let channel = w.widget.config_string("channel").unwrap_or("fuel");
+    if channel == "rpm" {
+        let pct = (f.car.rpm / f.car.max_rpm.max(1.0)).clamp(0.0, 1.0);
+        return flat_rpm_strip(b, w, pct);
+    }
+    let vertical = w.height > w.width;
+    let radius = w.chrome.flat.radius * s * 0.5;
+    match channel {
+        "spotter" => return spotter_bar(b, w, vertical, radius),
+        "gap" => return gap_bar(b, w, vertical, radius),
+        "fuel_ve" => {
+            let ve = virtual_energy_percent(f) / 100.0;
+            return twin_bar(b, w, vertical, radius, [("F", f.car.fuel / FUEL_BAR_LITERS, p.secondary), ("VE", ve, dash_setting_colors::ENGINE_MAP)]);
+        }
+        _ => {}
+    }
+    let label_band = 16.0 * s;
+    let (label, value, pct, color): (&str, String, f64, Rgba) = match channel {
+        "ve" => {
+            let pct = virtual_energy_percent(f);
+            ("VE", js_number_string(pct.round()), pct / 100.0, energy_fill(pct, p).unwrap_or(dash_setting_colors::ENGINE_MAP))
+        }
+        "soc" => ("SOC", js_number_string(battery_percent(f).round()), f.energy.soc, energy_fill(battery_percent(f), p).unwrap_or(p.accent)),
+        "delta" => ("Δ", format_delta(f.lap.delta), f.lap.delta, if f.lap.delta < 0.0 { p.timing_personal_best } else { p.secondary }),
+        "inputs" => ("", String::new(), 0.0, p.foreground),
+        _ => ("FUEL", js_number_string(f.car.fuel.round()), f.car.fuel / FUEL_BAR_LITERS, fuel_fill(f.car.fuel, p).unwrap_or(p.secondary)),
+    };
+    if channel == "inputs" {
+        // Two tracks side by side (or stacked, lying down): throttle green, brake red.
+        return twin_bar(b, w, vertical, radius, [("", f.car.throttle, p.success), ("", f.car.brake, p.danger)]);
+    }
+    let (track, label_at, value_at) = if vertical {
+        let track = PixelRect::new(w.width * 0.2, label_band, w.width * 0.6, w.height - label_band * 2.0);
+        (track, (w.width / 2.0, label_band / 2.0), (w.width / 2.0, w.height - label_band / 2.0))
+    } else {
+        let side = 44.0 * s;
+        let track = PixelRect::new(side, w.height * 0.2, w.width - side * 2.0, w.height * 0.6);
+        (track, (side / 2.0, w.height / 2.0), (w.width - side / 2.0, w.height / 2.0))
+    };
+    if channel == "delta" {
+        b.rect(track, Radii::all(radius), p.surface);
+        let share = (pct.clamp(-1.0, 1.0)) / 2.0;
+        if vertical {
+            let mid = track.top + track.height / 2.0;
+            let len = share.abs() * track.height;
+            let top = if share < 0.0 { mid - len } else { mid };
+            b.rect(PixelRect::new(track.left, top, track.width, len), Radii::ZERO, color);
+            b.rect(PixelRect::new(track.left - 3.0 * s, mid - 1.0 * s, track.width + 6.0 * s, 2.0 * s), Radii::ZERO, p.muted);
+        } else {
+            let mid = track.left + track.width / 2.0;
+            let len = share.abs() * track.width;
+            let left = if share < 0.0 { mid - len } else { mid };
+            b.rect(PixelRect::new(left, track.top, len, track.height), Radii::ZERO, color);
+            b.rect(PixelRect::new(mid - 1.0 * s, track.top - 3.0 * s, 2.0 * s, track.height + 6.0 * s), Radii::ZERO, p.muted);
+        }
+    } else {
+        fill_track(b, track, pct.clamp(0.0, 1.0), color, p.surface, vertical, radius);
+    }
+    let size = 11.0 * s;
+    text_line(b, fit(line(label, label_at, size, p.muted, TextAlign::Center, if vertical { w.width } else { 40.0 * s }, TextWeight::LabelBold)));
+    text_line(b, fit(line(&value, value_at, size * 1.15, p.foreground, TextAlign::Center, if vertical { w.width } else { 40.0 * s }, TextWeight::Value)));
+}
+
+/// What a full fuel bar holds, litres (the frame does not say the tank's size).
+const FUEL_BAR_LITERS: f64 = 100.0;
+
+/// Two tracks side by side (stacked, lying down), each filled to its share, with its label (if any)
+/// above it (before it).
+fn twin_bar(b: &mut Builder, w: &WidgetContext, vertical: bool, radius: f64, tracks: [(&str, f64, Rgba); 2]) {
+    let s = w.chrome.scale;
+    let half_gap = 2.0 * s;
+    let labelled = tracks.iter().any(|(label, ..)| !label.is_empty());
+    let band = if labelled { 16.0 * s } else { 0.0 };
+    for (i, (label, amount, color)) in tracks.into_iter().enumerate() {
+        let (track, label_at, label_width) = if vertical {
+            let width = w.width / 2.0 - half_gap;
+            let left = i as f64 * (w.width / 2.0 + half_gap);
+            (PixelRect::new(left, band, width, w.height - band), (left + width / 2.0, band / 2.0), width)
+        } else {
+            let height = w.height / 2.0 - half_gap;
+            let top = i as f64 * (w.height / 2.0 + half_gap);
+            (PixelRect::new(band * 1.6, top, w.width - band * 1.6, height), (band * 0.8, top + height / 2.0), band * 1.6)
+        };
+        fill_track(b, track, amount.clamp(0.0, 1.0), color, w.palette.surface, vertical, radius);
+        if !label.is_empty() {
+            text_line(b, fit(line(label, label_at, 10.0 * s, w.palette.muted, TextAlign::Center, label_width, TextWeight::LabelBold)));
+        }
+    }
+}
+
+/// How close a gap is, 0 (at or beyond `GAP_BAR_SECONDS`, or no car) to 1 (touching).
+const GAP_BAR_SECONDS: f64 = 2.0;
+
+fn closeness(gap: f64) -> f64 {
+    if gap > 0.0 { ((GAP_BAR_SECONDS - gap) / GAP_BAR_SECONDS).clamp(0.0, 1.0) } else { 0.0 }
+}
+
+/// The gaps as one bar from the middle: the car ahead pulls a green fill up (right, lying down) as
+/// the driver closes in, the car behind an amber one down (left) as it closes in; each gap's
+/// seconds at its end.
+fn gap_bar(b: &mut Builder, w: &WidgetContext, vertical: bool, radius: f64) {
+    let (p, s, race) = (w.palette, w.chrome.scale, &w.frame.race);
+    let band = 16.0 * s;
+    let ahead = closeness(race.gap_ahead);
+    let behind = closeness(race.gap_behind);
+    let seconds = |gap: f64| if gap > 0.0 { to_fixed(gap, 1) } else { "--".to_owned() };
+    let size = 11.0 * s;
+    if vertical {
+        let track = PixelRect::new(w.width * 0.2, band, w.width * 0.6, w.height - band * 2.0);
+        b.rect(track, Radii::all(radius), p.surface);
+        let mid = track.top + track.height / 2.0;
+        let half = track.height / 2.0;
+        b.rect(PixelRect::new(track.left, mid - ahead * half, track.width, ahead * half), Radii::ZERO, p.success);
+        b.rect(PixelRect::new(track.left, mid, track.width, behind * half), Radii::ZERO, p.warning);
+        b.rect(PixelRect::new(track.left - 3.0 * s, mid - s, track.width + 6.0 * s, 2.0 * s), Radii::ZERO, p.muted);
+        text_line(b, fit(line(&seconds(race.gap_ahead), (w.width / 2.0, band / 2.0), size, p.foreground, TextAlign::Center, w.width, TextWeight::Value)));
+        text_line(
+            b,
+            fit(line(&seconds(race.gap_behind), (w.width / 2.0, w.height - band / 2.0), size, p.foreground, TextAlign::Center, w.width, TextWeight::Value)),
+        );
+    } else {
+        let side = 44.0 * s;
+        let track = PixelRect::new(side, w.height * 0.2, w.width - side * 2.0, w.height * 0.6);
+        b.rect(track, Radii::all(radius), p.surface);
+        let mid = track.left + track.width / 2.0;
+        let half = track.width / 2.0;
+        b.rect(PixelRect::new(mid, track.top, ahead * half, track.height), Radii::ZERO, p.success);
+        b.rect(PixelRect::new(mid - behind * half, track.top, behind * half, track.height), Radii::ZERO, p.warning);
+        b.rect(PixelRect::new(mid - s, track.top - 3.0 * s, 2.0 * s, track.height + 6.0 * s), Radii::ZERO, p.muted);
+        text_line(b, fit(line(&seconds(race.gap_behind), (side / 2.0, w.height / 2.0), size, p.foreground, TextAlign::Center, side, TextWeight::Value)));
+        text_line(
+            b,
+            fit(line(&seconds(race.gap_ahead), (w.width - side / 2.0, w.height / 2.0), size, p.foreground, TextAlign::Center, side, TextWeight::Value)),
+        );
+    }
+}
+
+/// How far the spotter bar looks ahead and behind, metres: two car lengths each way.
+const SPOTTER_RANGE_METERS: f64 = 10.0;
+/// A car's length on the spotter bar, metres.
+const SPOTTER_CAR_METERS: f64 = 5.0;
+
+/// The spotter: a car alongside lights its side's track in amber. Standing up, the track is the
+/// stretch from two car lengths behind (bottom) to two ahead (top) and the car is a block where it
+/// is; the driver's own car is the mark in the middle. A bar in the left spot (column 0) watches
+/// the left, any other standing bar the right; lying down (the top) it watches both, left half and
+/// right half.
+fn spotter_bar(b: &mut Builder, w: &WidgetContext, vertical: bool, radius: f64) {
+    let (p, s, race) = (w.palette, w.chrome.scale, &w.frame.race);
+    if vertical {
+        let ahead = if w.widget.col <= 0.0 { race.car_left } else { race.car_right };
+        let track = PixelRect::new(w.width * 0.2, 0.0, w.width * 0.6, w.height);
+        b.rect(track, Radii::all(radius), p.surface);
+        let mid = track.top + track.height / 2.0;
+        b.rect(PixelRect::new(track.left - 3.0 * s, mid - s, track.width + 6.0 * s, 2.0 * s), Radii::ZERO, p.muted);
+        if let Some(ahead) = ahead {
+            let per_meter = track.height / (SPOTTER_RANGE_METERS * 2.0);
+            let length = SPOTTER_CAR_METERS * per_meter;
+            let center = mid - ahead.clamp(-SPOTTER_RANGE_METERS, SPOTTER_RANGE_METERS) * per_meter;
+            let top = (center - length / 2.0).clamp(track.top, track.top + track.height - length);
+            b.rect(PixelRect::new(track.left, top, track.width, length), Radii::all(radius), p.warning);
+        }
+    } else {
+        let gap = 6.0 * s;
+        let half = (w.width - gap) / 2.0;
+        for (i, side) in [race.car_left, race.car_right].into_iter().enumerate() {
+            let track = PixelRect::new(i as f64 * (half + gap), w.height * 0.2, half, w.height * 0.6);
+            b.rect(track, Radii::all(radius), if side.is_some() { p.warning } else { p.surface });
+        }
+    }
+}
+
+/// A track filled `pct` of the way from its bottom (vertical) or its left.
+fn fill_track(b: &mut Builder, track: PixelRect, pct: f64, color: Rgba, empty: Rgba, vertical: bool, radius: f64) {
+    b.rect(track, Radii::all(radius), empty);
+    let fill = if vertical {
+        let height = track.height * pct;
+        PixelRect::new(track.left, track.top + track.height - height, track.width, height)
+    } else {
+        PixelRect::new(track.left, track.top, track.width * pct, track.height)
+    };
+    if pct > 0.0 {
+        b.rect(fill, Radii::all(radius.min(fill.width / 2.0).min(fill.height / 2.0)), color);
+    }
+}
+
+/// One tyre (mockup v2): a rounded square split into outer, middle and inner stripes in their
+/// temperature colors with the tyre left on it, and beside it the middle temperature and the
+/// brake's. The square sits on the car's outside, so the four read as a car from above.
+fn tyre(b: &mut Builder, w: &WidgetContext) {
+    let corner = w.widget.config_string("corner").unwrap_or("fl");
+    let index = match corner {
+        "fr" => 1,
+        "rl" => 2,
+        "rr" => 3,
+        _ => 0,
+    };
+    let left_side = index % 2 == 0;
+    let tire = &w.frame.tires[index];
+    let p = w.palette;
+    let s = w.chrome.scale;
+    let square_h = w.height;
+    let square_w = (square_h * 0.8).min(w.width * 0.5);
+    let square_left = if left_side { 0.0 } else { w.width - square_w };
+    let stripe_gap = 2.0 * s;
+    let stripe_w = (square_w - stripe_gap * 2.0) / 3.0;
+    let radius = (w.chrome.flat.radius * s).max(5.0 * s).min(stripe_w);
+    // Outer first, from the car's outside in.
+    let temps = [tire.temp_outer, tire.temp_middle, tire.temp_inner];
+    for (i, temp) in temps.into_iter().enumerate() {
+        let slot = if left_side { i } else { 2 - i };
+        let rect = PixelRect::new(square_left + slot as f64 * (stripe_w + stripe_gap), 0.0, stripe_w, square_h);
+        let radii = match slot {
+            0 => Radii { top_left: radius, bottom_left: radius, ..Radii::ZERO },
+            2 => Radii { top_right: radius, bottom_right: radius, ..Radii::ZERO },
+            _ => Radii::ZERO,
+        };
+        let color = if temp > 0.0 { resolve_tyre_color(temp, p) } else { p.surface };
+        b.rect(rect, radii, color);
+    }
+    let wear = if tire.wear_percent > 0.0 { js_number_string(tire.wear_percent.round()) } else { "--".to_owned() };
+    text_line(
+        b,
+        line(
+            &wear,
+            (square_left + square_w / 2.0, square_h / 2.0),
+            (square_h * 0.3).min(square_w * 0.42),
+            p.background,
+            TextAlign::Center,
+            square_w,
+            TextWeight::Value,
+        ),
+    );
+    let text_left = if left_side { square_w + 8.0 * s } else { 0.0 };
+    let text_w = w.width - square_w - 8.0 * s;
+    let anchor = if left_side { text_left } else { text_w };
+    let align = if left_side { TextAlign::Start } else { TextAlign::End };
+    let temp = if tire.temp_middle > 0.0 { format!("{}°", format_temp(tire.temp_middle)) } else { "--".to_owned() };
+    let big = value_size("000°", text_w, square_h * 0.5, 0.9);
+    text_line(b, line(&temp, (anchor, square_h * 0.34), big, p.foreground, align, text_w, TextWeight::Value));
+    let brake = if tire.brake_temp > 0.0 { format!("BRK {}°", js_number_string(tire.brake_temp.round())) } else { "BRK --".to_owned() };
+    let brake_color = if tire.brake_temp > 800.0 {
+        p.critical
+    } else if tire.brake_temp > 650.0 {
+        p.warning
+    } else {
+        p.secondary
+    };
+    text_line(b, fit(line(&brake, (anchor, square_h * 0.76), big * 0.62, brake_color, align, text_w, TextWeight::Value)));
+}
+
+/// How one sector time compares: the fastest (the class's best, or the session's when the class
+/// is unknown), the driver's own best, slower than that, or not comparable (no bests known yet).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum SectorState {
+    Fastest,
+    PersonalBest,
+    Slower,
+    Unrated,
+}
+
+fn sector_state(lap: &LapState, index: usize, time: f64) -> SectorState {
+    // A best is the same lap's own time once it is set, so "as fast" counts.
+    const SAME: f64 = 0.0005;
+    let best = |bests: &[Option<f64>]| bests.get(index).copied().flatten();
+    let fastest = best(&lap.class_best_sectors).or_else(|| best(&lap.session_best_sectors));
+    if fastest.is_some_and(|fastest| time <= fastest + SAME) {
+        return SectorState::Fastest;
+    }
+    match best(&lap.personal_best_sectors) {
+        Some(own) if time <= own + SAME => SectorState::PersonalBest,
+        Some(_) => SectorState::Slower,
+        None => SectorState::Unrated,
+    }
+}
+
+/// The sector times to show: the lap being driven's, once its first sector is done; until then
+/// the last lap's three. `None` for a sector without a time.
+fn shown_sectors(lap: &LapState) -> [Option<f64>; 3] {
+    let times = if lap.current_lap_sectors_seconds.is_empty() { &lap.last_lap_sectors_seconds } else { &lap.current_lap_sectors_seconds };
+    std::array::from_fn(|i| times.get(i).copied().filter(|time| *time > 0.0))
+}
+
+fn sector_color(state: SectorState, palette: &DashPaletteColors) -> Option<Rgba> {
+    match state {
+        SectorState::Fastest => Some(palette.timing_fastest_overall),
+        SectorState::PersonalBest => Some(palette.timing_personal_best),
+        SectorState::Slower => Some(palette.race_control_yellow),
+        SectorState::Unrated => None,
+    }
+}
+
+/// The three sectors as segments: purple the fastest, green the driver's best, yellow slower,
+/// each with its time; a sector not done yet is a quiet segment with its name.
+fn sectors(b: &mut Builder, w: &WidgetContext) {
+    let p = w.palette;
+    let s = w.chrome.scale;
+    let lap = &w.frame.lap;
+    let gap = 4.0 * s;
+    let seg_w = (w.width - gap * 2.0) / 3.0;
+    let radius = (w.chrome.flat.radius * s * 0.6).min(w.height / 2.0);
+    for (i, time) in shown_sectors(lap).into_iter().enumerate() {
+        let rect = PixelRect::new(i as f64 * (seg_w + gap), 0.0, seg_w, w.height);
+        let fill = time.and_then(|time| sector_color(sector_state(lap, i, time), p));
+        b.rect(rect, Radii::all(radius), fill.unwrap_or(p.surface));
+        let text = time.map_or_else(|| format!("S{}", i + 1), |time| to_fixed(time, 1));
+        let ink = match (time, fill) {
+            (None, _) => p.muted,
+            (Some(_), Some(_)) => p.background,
+            (Some(_), None) => p.foreground,
+        };
+        text_line(
+            b,
+            fit(line(
+                &text,
+                (rect.left + seg_w / 2.0, w.height / 2.0),
+                value_size("00.0", seg_w, w.height, 0.62),
+                ink,
+                TextAlign::Center,
+                seg_w * 0.92,
+                TextWeight::Value,
+            )),
+        );
+    }
+}
+
+/// The pace to project with: the last lap, or the best while there is no last one.
+fn reference_lap(f: &TelemetryFrame) -> Option<f64> {
+    [f.lap.last_lap_time, f.lap.best_lap_time].into_iter().find(|time| *time > 0.0)
+}
+
+/// How many laps it is from here to the flag: what is left of a lap race, or in a timed one what
+/// the time left buys at the reference pace, finishing the lap the clock runs out on. `None` when
+/// the session has neither a lap limit nor a known end, or there is no pace yet.
+fn race_laps_left(f: &TelemetryFrame) -> Option<f64> {
+    let into_lap = f.lap.track_position.clamp(0.0, 1.0);
+    if f.session.max_laps > 0.0 {
+        return Some((f.session.max_laps - f.lap.current_lap.max(1.0) + 1.0 - into_lap).max(0.0));
+    }
+    let left = f.session.session_time_remaining?;
+    let pace = reference_lap(f)?;
+    Some(((left.max(0.0) / pace + into_lap).ceil() - into_lap).max(0.0))
+}
+
+/// Penalties the driver still has to serve (the player's own row of the field).
+fn penalties_to_serve(f: &TelemetryFrame) -> f64 {
+    f.field.iter().find(|car| car.is_player).map_or(0.0, |car| car.penalties)
+}
+
+fn is_raining(f: &TelemetryFrame) -> bool {
+    f.conditions.raining.is_some_and(|rain| rain >= 0.05)
+}
+
+/// Seconds as H:MM:SS.
+fn hours_minutes_seconds(seconds: f64) -> String {
+    let seconds = seconds.max(0.0).floor();
+    format!("{}:{:02}:{:02}", (seconds / 3600.0).floor(), ((seconds % 3600.0) / 60.0).floor(), seconds % 60.0)
+}
+
+/// A temperature as "104°", or "--" when the game does not say.
+fn degrees(celsius: Option<f64>) -> String {
+    celsius.filter(|c| c.is_finite()).map_or_else(|| "--".to_owned(), |c| format!("{}°", js_number_string(c.round())))
+}
+
+/// The plain one-value widgets: speed, lap, fuel and VE laps left, time left, SoC, slip, cut, fuel
+/// per lap, fuel time, race laps left, fuel to add, the clock, oil and water, penalties.
+fn metric(b: &mut Builder, w: &WidgetContext) {
+    let f = w.frame;
+    let laps_left = |amount: f64, per_lap: f64| if per_lap > 0.0 { to_fixed(amount / per_lap, 1) } else { "--".to_owned() };
+    let mut color = w.palette.foreground;
+    let (value, template) = match w.widget.widget_type.as_str() {
+        "speed" => (format_speed_kph(f.car.speed_ms), "000"),
+        "laps" => (js_number_string(f.lap.current_lap), "000"),
+        "fuel_laps" => (laps_left(f.car.fuel, f.car.fuel_per_lap), "00.0"),
+        "ve_laps" => (laps_left(f.energy.virtual_energy, f.energy.virtual_energy_per_lap), "00.0"),
+        "time_left" => {
+            let left = f.session.session_time_remaining.unwrap_or(0.0).max(0.0);
+            (format!("{}:{:02}:{:02}", (left / 3600.0).floor(), ((left % 3600.0) / 60.0).floor(), (left % 60.0).floor()), "0:00:00")
+        }
+        "soc" => (format!("{}%", js_number_string(battery_percent(f).round())), "000%"),
+        "slip" => (js_number_string(f.electronics.tc_slip.trunc()), "00"),
+        "cut" => (js_number_string(f.electronics.tc_cut.trunc()), "00"),
+        "fuel_avg" => (if f.car.fuel_per_lap > 0.0 { to_fixed(f.car.fuel_per_lap, 2) } else { "--".to_owned() }, "0.00"),
+        "fuel_time" => {
+            let value = match reference_lap(f) {
+                Some(pace) if f.car.fuel_per_lap > 0.0 => hours_minutes_seconds(f.car.fuel / f.car.fuel_per_lap * pace),
+                _ => "--".to_owned(),
+            };
+            (value, "0:00:00")
+        }
+        "laps_left" => (race_laps_left(f).map_or_else(|| "--".to_owned(), |laps| to_fixed(laps, 1)), "000.0"),
+        "refuel" => {
+            // What has to go in to reach the flag; nothing when the tank already does.
+            let value = match race_laps_left(f) {
+                Some(laps) if f.car.fuel_per_lap > 0.0 => {
+                    let needed = laps * f.car.fuel_per_lap - f.car.fuel;
+                    if needed > 0.0 { format!("+{}", to_fixed(needed, 1)) } else { "0.0".to_owned() }
+                }
+                _ => "--".to_owned(),
+            };
+            (value, "+000.0")
+        }
+        "clock" => {
+            let offset = w.settings.and_then(|s| s.utc_offset_minutes).unwrap_or(0.0) * 60.0;
+            let value = f.utc_time_of_day.map_or_else(
+                || "--:--".to_owned(),
+                |utc| {
+                    let local = (utc + offset).rem_euclid(86_400.0);
+                    format!("{:02}:{:02}", (local / 3600.0).floor(), ((local % 3600.0) / 60.0).floor())
+                },
+            );
+            (value, "00:00")
+        }
+        "oil_temp" => (degrees(f.car.oil_temp), "000°"),
+        "water_temp" => (degrees(f.car.water_temp), "000°"),
+        "penalty" => {
+            let count = penalties_to_serve(f);
+            if count > 0.0 {
+                color = w.palette.background;
+            }
+            (js_number_string(count), "0")
+        }
+        _ => (String::new(), "0"),
+    };
+    big_value(b, &value, template, w.width, w.height, color, 0.8);
+}
+
+/// The anti-roll bars as "front · rear" (the title says which is which).
+fn arb(b: &mut Builder, w: &WidgetContext) {
+    let e = &w.frame.electronics;
+    let setting = |value: f64, max: f64| if max > 0.0 { js_number_string(value.trunc()) } else { "-".to_owned() };
+    let value = format!("{} · {}", setting(e.front_anti_roll_bar, e.front_anti_roll_bar_max), setting(e.rear_anti_roll_bar, e.rear_anti_roll_bar_max));
+    big_value(b, &value, "00 · 00", w.width, w.height, w.palette.foreground, 0.8);
+}
+
+/// Air and track temperature as "air · track"; in the rain, how hard it rains instead of the air
+/// (the title says which).
+fn weather(b: &mut Builder, w: &WidgetContext) {
+    let c = &w.frame.conditions;
+    let first = if is_raining(w.frame) { format!("{}%", js_number_string((c.raining.unwrap_or(0.0) * 100.0).round())) } else { degrees(c.air_temp) };
+    let value = format!("{first} · {}", degrees(c.track_temp));
+    big_value(b, &value, "000% · 00°", w.width, w.height, w.palette.foreground, 0.8);
+}
+
+/// The four tyres' wear left, in a car's two-by-two: plain while healthy, then amber, then red.
+fn tyre_wear(b: &mut Builder, w: &WidgetContext) {
+    let p = w.palette;
+    let (cell_w, cell_h) = (w.width / 2.0, w.height / 2.0);
+    let size = value_size("000", cell_w - 4.0, cell_h, 0.78);
+    for (i, tire) in w.frame.tires.iter().enumerate() {
+        let left = tire.wear_percent;
+        let (text, color) = if left > 0.0 {
+            let color = if left < 30.0 {
+                p.critical
+            } else if left < 60.0 {
+                p.warning
+            } else {
+                p.foreground
+            };
+            (js_number_string(left.round()), color)
+        } else {
+            ("--".to_owned(), p.muted)
+        };
+        let center = ((i % 2) as f64 * cell_w + cell_w / 2.0, (i / 2) as f64 * cell_h + cell_h / 2.0);
+        text_line(b, line(&text, center, size, color, TextAlign::Center, cell_w - 4.0, TextWeight::Value));
+    }
+}
+
+/// The latest sector done, with its time in its comparison colour.
+fn sector_time(b: &mut Builder, w: &WidgetContext) {
+    let lap = &w.frame.lap;
+    let latest = shown_sectors(lap).into_iter().enumerate().rev().find_map(|(i, time)| time.map(|time| (i, time)));
+    let (text, color) = match latest {
+        Some((i, time)) => (format!("S{} {}", i + 1, to_fixed(time, 3)), sector_color(sector_state(lap, i, time), w.palette).unwrap_or(w.palette.foreground)),
+        None => ("S- --".to_owned(), w.palette.muted),
+    };
+    big_value(b, &text, "S0 000.000", w.width, w.height, color, 0.8);
 }
 
 /// The `align` config: where a widget anchors its text horizontally.
@@ -251,6 +846,16 @@ fn lap_time(b: &mut Builder, w: &WidgetContext) {
     let show = lap_time_show(w.widget);
     if let Some((_, _, value, color)) = rows.iter().find(|row| row.0 == show) {
         big_value(b, value, LAP_TEMPLATE, w.width, w.height, *color, VALUE_SHARE);
+        return;
+    }
+    let field_best = match show {
+        LapTimeShow::SessionBest => Some(lap.session_best_lap),
+        LapTimeShow::ClassBest => Some(lap.class_best_lap),
+        _ => None,
+    };
+    if let Some(best) = field_best {
+        let value = format_lap(best.unwrap_or(0.0));
+        big_value(b, &value, LAP_TEMPLATE, w.width, w.height, w.palette.timing_fastest_overall, VALUE_SHARE);
         return;
     }
 
@@ -587,6 +1192,173 @@ fn virtual_energy(b: &mut Builder, w: &WidgetContext) {
     text_line(b, line(&lines[1], (width, height * 0.72), side, p.muted, TextAlign::End, width - left, TextWeight::Label));
 }
 
+/// The hybrid battery: its charge large, and beside it what the motor deploys and the brakes
+/// regenerate. A car without a battery reads "--".
+fn battery(b: &mut Builder, w: &WidgetContext) {
+    let energy = &w.frame.energy;
+    let pct = battery_percent(w.frame);
+    let level = if pct > 0.0 { format_int(pct.round()) } else { "--".to_owned() };
+    let (width, height, p) = (w.width, w.height, w.palette);
+    let left = width * 0.5;
+    let size = value_unit_size(height * 0.7, left, 3.0, 1.0);
+    let side = (height * 0.24).min(16.0);
+    let power = |name: &str, kw: f64| if kw > 0.0 { format!("{name} {} kW", format_int(kw)) } else { format!("{name} -- kW") };
+    let value = ValueWithUnit { color: p.neutral, align: TextAlign::Start, ..value_unit(&level, "%", 0.0, height / 2.0, size, p, left) };
+    value_with_unit(b, value);
+    text_line(b, line(&power("DEP", energy.deploy_power), (width, height * 0.3), side, p.secondary, TextAlign::End, width - left, TextWeight::Value));
+    text_line(b, line(&power("REGEN", energy.regen_power), (width, height * 0.72), side, p.secondary, TextAlign::End, width - left, TextWeight::Value));
+}
+
+/// One car on the relative: seconds on the road (negative ahead of ours) and whether it is a
+/// lap ahead (1) or down (-1) on ours.
+struct RelativeRow<'a> {
+    car: &'a FieldCar,
+    seconds: f64,
+    laps: i8,
+}
+
+/// The cars round ours on the road, up to `each` ahead and behind, top to bottom as on track:
+/// by lap fraction, timed against the reference lap (our best, else our last, else the session's
+/// best). Empty without our car, the track length or a reference lap. The pit wall's Relative
+/// tile (`relativeRows` in the app's `pitwall/timing.ts`) works the same way.
+fn relative_rows(frame: &TelemetryFrame, each: usize) -> Vec<RelativeRow<'_>> {
+    let Some(track) = frame.session.track_length_meters.filter(|m| *m > 0.0) else {
+        return Vec::new();
+    };
+    let Some(lap) = [frame.lap.best_lap_time, frame.lap.last_lap_time, frame.session.best_lap_time].into_iter().find(|t| *t > 0.0) else {
+        return Vec::new();
+    };
+    let Some(player) = frame.field.iter().find(|car| car.is_player) else {
+        return Vec::new();
+    };
+    let fraction = |car: &FieldCar| (car.lap_distance_meters / track).rem_euclid(1.0);
+    let progress = |car: &FieldCar| car.laps_completed + fraction(car);
+    let mut ahead: Vec<RelativeRow> = frame
+        .field
+        .iter()
+        .filter(|car| !car.is_player)
+        .map(|car| {
+            let mut gap = fraction(car) - fraction(player);
+            if gap > 0.5 {
+                gap -= 1.0;
+            } else if gap <= -0.5 {
+                gap += 1.0;
+            }
+            let lead = progress(car) - progress(player);
+            RelativeRow {
+                car,
+                seconds: -gap * lap,
+                laps: if lead > 0.5 {
+                    1
+                } else if lead < -0.5 {
+                    -1
+                } else {
+                    0
+                },
+            }
+        })
+        .collect();
+    ahead.sort_by(|a, b| a.seconds.total_cmp(&b.seconds));
+    let behind = ahead.split_off(ahead.partition_point(|row| row.seconds < 0.0));
+    let mut rows = ahead.split_off(ahead.len().saturating_sub(each));
+    rows.push(RelativeRow { car: player, seconds: 0.0, laps: 0 });
+    rows.extend(behind.into_iter().take(each));
+    rows
+}
+
+/// The cars round ours, one row each (place, driver, seconds on the road), ours in the middle row
+/// in the primary color; a car a lap ahead in danger, a lap down muted. As many rows as fit at
+/// 28 px or more (readable at arm's length), always an odd count.
+fn relative(b: &mut Builder, w: &WidgetContext) {
+    let (width, height, p) = (w.width, w.height, w.palette);
+    let each = ((height / 28.0).floor().max(1.0) as usize - 1) / 2;
+    let rows = relative_rows(w.frame, each);
+    if rows.is_empty() {
+        let size = (height * 0.4).min(20.0);
+        text_line(b, fit(line("NO TIMING", (width / 2.0, height / 2.0), size, p.muted, TextAlign::Center, width * 0.9, TextWeight::Label)));
+        return;
+    }
+    let row_h = height / (each * 2 + 1) as f64;
+    let ours = rows.iter().position(|row| row.car.is_player).unwrap_or(0);
+    let size = (row_h * 0.62).min(22.0);
+    let (place_w, gap_w) = (size * 2.0, size * 3.0);
+    for (i, row) in rows.iter().enumerate() {
+        let mid = ((each + i) as f64 - ours as f64) * row_h + row_h / 2.0;
+        let color = match (row.car.is_player, row.laps) {
+            (true, _) => p.primary,
+            (false, 1) => p.danger,
+            (false, -1) => p.muted,
+            _ => p.foreground,
+        };
+        let place = if row.car.place > 0.0 { format!("P{}", js_number_string(row.car.place)) } else { "--".to_owned() };
+        text_line(b, line(&place, (0.0, mid), size, color, TextAlign::Start, place_w, TextWeight::Value));
+        text_line(b, line(&row.car.driver, (place_w + 4.0, mid), size, color, TextAlign::Start, width - place_w - gap_w - 8.0, TextWeight::Label));
+        if !row.car.is_player {
+            let sign = if row.seconds < 0.0 { "-" } else { "+" };
+            text_line(b, line(&format!("{sign}{}", to_fixed(row.seconds.abs(), 1)), (width, mid), size, color, TextAlign::End, gap_w, TextWeight::Value));
+        }
+    }
+}
+
+/// LMU's eight dent places (`Damage::dents`) as cells of a 3x3 grid over the car, front up:
+/// (column, row), clockwise from front left. The middle cell is the cockpit.
+const DENT_CELLS: [(usize, usize); 8] = [(0, 0), (1, 0), (2, 0), (2, 1), (2, 2), (1, 2), (0, 2), (0, 1)];
+
+/// The car from above, front up, each of its eight dent places in warning (some) or critical
+/// (more), and beside it the verdict: the body's worst dent, then a part off or the engine
+/// overheating when either is so. No damage report draws the car muted, with no verdict.
+fn damage(b: &mut Builder, w: &WidgetContext) {
+    let (width, height, p) = (w.width, w.height, w.palette);
+    let car_w = (width * 0.4).min(height / 2.0);
+    let car_h = car_w * 2.0;
+    let (x, y) = ((width * 0.4 - car_w) / 2.0, (height - car_h) / 2.0);
+    let edge = car_w * 0.3;
+    let gap = 2.0;
+    let spans = |extent: f64| [(0.0, edge), (edge, extent - edge * 2.0), (extent - edge, edge)];
+    let (cols, rows) = (spans(car_w), spans(car_h));
+    let cell = |(col, row): (usize, usize)| PixelRect::new(x + cols[col].0 + gap / 2.0, y + rows[row].0 + gap / 2.0, cols[col].1 - gap, rows[row].1 - gap);
+    let report = w.frame.damage.as_ref();
+    let severity_color = |level: f64| {
+        if level >= 2.0 {
+            p.critical
+        } else if level >= 1.0 {
+            p.warning
+        } else {
+            p.muted
+        }
+    };
+    b.rect(cell((1, 1)), Radii::all(2.0), p.border);
+    for (place, at) in DENT_CELLS.into_iter().enumerate() {
+        let color = report.map_or(p.border, |d| severity_color(d.dents[place]));
+        b.rect(cell(at), Radii::all(2.0), color);
+    }
+
+    let Some(report) = report else {
+        return;
+    };
+    let worst = report.dents.iter().copied().fold(0.0, f64::max);
+    let body = if worst >= 2.0 {
+        ("BODY HEAVY", p.critical)
+    } else if worst >= 1.0 {
+        ("BODY LIGHT", p.warning)
+    } else {
+        ("BODY OK", p.foreground)
+    };
+    let mut verdict = vec![body];
+    if report.detached_parts {
+        verdict.push(("PARTS OFF", p.critical));
+    }
+    if report.overheating {
+        verdict.push(("OVERHEAT", p.critical));
+    }
+    let left = width * 0.44;
+    let line_h = height / verdict.len() as f64;
+    let size = (line_h * 0.5).min(height * 0.22).min(20.0);
+    for (i, (text, color)) in verdict.into_iter().enumerate() {
+        text_line(b, fit(line(text, (left, line_h * (i as f64 + 0.5)), size, color, TextAlign::Start, width - left, TextWeight::Value)));
+    }
+}
+
 /// Free text: the bound value when it prints as something, else the configured content, else
 /// the widget's id. A bound value is printed as `String(value)`, with no per-type formatting.
 fn text(b: &mut Builder, w: &WidgetContext) {
@@ -633,6 +1405,17 @@ pub fn widget_content(b: &mut Builder, w: &WidgetContext) {
         "input_trace" => input_trace(b, w),
         "sector" => sector(b, w),
         "lap_time" => lap_time(b, w),
+        "delta" if w.chrome.style.is_flat() => flat_delta(b, w),
+        "bar" => bar(b, w),
+        "tyre" => tyre(b, w),
+        "sectors" => sectors(b, w),
+        "speed" | "laps" | "fuel_laps" | "ve_laps" | "time_left" | "soc" | "slip" | "cut" | "fuel_avg" | "fuel_time" | "laps_left" | "refuel" | "clock"
+        | "oil_temp" | "water_temp" | "penalty" => metric(b, w),
+        "migration" => knob_value(b, w, e.migration, w.palette.neutral),
+        "arb" => arb(b, w),
+        "weather" => weather(b, w),
+        "tyre_wear" => tyre_wear(b, w),
+        "sector_time" => sector_time(b, w),
         "delta" => delta(b, w),
         "fuel" => fuel(b, w),
         "tyre_temp" => tyre_temp(b, w),
@@ -648,6 +1431,9 @@ pub fn widget_content(b: &mut Builder, w: &WidgetContext) {
         "racelogic_lap_timer" => {}
         "tyre_pressure" => tyre_pressure(b, w),
         "virtual_energy" | "ers" => virtual_energy(b, w),
+        "battery" => battery(b, w),
+        "relative" => relative(b, w),
+        "damage" => damage(b, w),
         _ => placeholder(b, w),
     }
 }
@@ -657,7 +1443,7 @@ mod tests {
     use super::*;
     use crate::chrome::ChromeContext;
     use crate::draw::{DrawOp, TextRun};
-    use crate::model::DashStyle;
+    use crate::model::{Damage, DashStyle};
     use crate::palette::DEFAULT_DASH_PALETTE;
     use crate::text::Fonts;
     use serde_json::json;
@@ -695,7 +1481,7 @@ mod tests {
             height,
             targets,
             settings,
-            chrome: ChromeContext { style: DashStyle::Panels, scale: 1.0 },
+            chrome: ChromeContext { style: DashStyle::Panels, scale: 1.0, flat: Default::default() },
         };
         widget_content(&mut Builder::new(&fonts, &mut ops), &ctx);
         ops
@@ -741,7 +1527,7 @@ mod tests {
     fn text_prefers_its_binding_then_its_content_then_its_id() {
         let mut frame = TelemetryFrame::default();
         frame.car.rpm = 7450.4;
-        let settings = DashSettings { driver_name: Some("A. Driver".to_owned()), driver_number: None };
+        let settings = DashSettings { driver_name: Some("A. Driver".to_owned()), driver_number: None, utc_offset_minutes: None };
         let shown = |config| text_of(&draw_with(&widget("text", config), &frame, 200.0, 80.0, None, Some(&settings)))[0].clone();
         assert_eq!(shown(json!({ "binding": "car.rpm", "content": "unused" })), "7450");
         assert_eq!(shown(json!({ "binding": "profile.driverName" })), "A. Driver");
@@ -1072,5 +1858,144 @@ mod tests {
         assert_eq!(fill("delta", &frame), Some(DEFAULT_DASH_PALETTE.timing_personal_best));
         assert_eq!(widget_chrome(&widget("tyre_temp", json!({})), &frame, &DEFAULT_DASH_PALETTE), WidgetChrome::Split);
         assert_eq!(widget_chrome(&widget("gear_speed", json!({})), &frame, &DEFAULT_DASH_PALETTE), WidgetChrome::Bare);
+    }
+
+    fn car(driver: &str, place: f64, laps: f64, meters: f64) -> FieldCar {
+        FieldCar {
+            driver: driver.to_owned(),
+            is_player: driver == "Me",
+            place,
+            laps_completed: laps,
+            lap_distance_meters: meters,
+            penalties: 0.0,
+            blue_flag: false,
+        }
+    }
+
+    #[test]
+    fn the_relative_lists_the_cars_round_ours_on_the_road_with_ours_in_the_middle() {
+        let mut frame = TelemetryFrame::default();
+        frame.session.track_length_meters = Some(1000.0);
+        frame.lap.best_lap_time = 100.0;
+        // Ours 50 m into lap 5. "Behind" is still finishing lap 4 (the road wraps at the line); "Lapped" is a lap down.
+        frame.field = vec![
+            car("Me", 3.0, 5.0, 50.0),
+            car("Ahead", 2.0, 5.0, 120.0),
+            car("Behind", 4.0, 4.0, 990.0),
+            car("Lapped", 9.0, 4.0, 20.0),
+            car("Next", 1.0, 5.0, 300.0),
+            car("Far", 6.0, 5.0, 500.0),
+        ];
+
+        // 140 px holds five rows: two ahead, ours, two behind.
+        let ops = draw(&widget("relative", json!({})), &frame, 300.0, 140.0);
+        let runs = texts(&ops);
+        let row = |driver: &str| runs.iter().position(|r| r.text == driver).map(|i| runs[i].baseline);
+        let (ahead, me, behind, lapped) = (row("Ahead").unwrap(), row("Me").unwrap(), row("Behind").unwrap(), row("Lapped").unwrap());
+        assert!(ahead < me && me < lapped && lapped < behind, "top to bottom as on the road");
+        assert_eq!(row("Far"), None, "the third car ahead is past the rows that fit");
+        let gaps: Vec<&str> = runs.iter().map(|r| r.text.as_str()).filter(|t| t.starts_with('+') || t.starts_with('-')).collect();
+        assert_eq!(gaps, ["-25.0", "-7.0", "+3.0", "+6.0"]);
+        assert_eq!(runs.iter().find(|r| r.text == "Me").map(|r| r.color), Some(P.primary));
+        assert_eq!(runs.iter().find(|r| r.text == "Lapped").map(|r| r.color), Some(P.muted));
+
+        frame.session.track_length_meters = None;
+        assert_eq!(text_of(&draw(&widget("relative", json!({})), &frame, 300.0, 140.0)), ["NO TIMING"]);
+    }
+
+    #[test]
+    fn damage_colours_each_dent_place_and_names_what_is_wrong() {
+        let mut frame = TelemetryFrame::default();
+        let blank = draw(&widget("damage", json!({})), &frame, 300.0, 120.0);
+        assert!(text_of(&blank).is_empty(), "no report, no verdict");
+        assert!(rects(&blank).iter().all(|(_, color)| *color == P.border));
+
+        frame.damage = Some(Damage { dents: [0.0, 2.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0], overheating: true, detached_parts: false });
+        let ops = draw(&widget("damage", json!({})), &frame, 300.0, 120.0);
+        assert_eq!(text_of(&ops), ["BODY HEAVY", "OVERHEAT"]);
+        let colors: Vec<Rgba> = rects(&ops).into_iter().map(|(_, color)| color).collect();
+        // The cockpit, then the eight places clockwise from front left.
+        assert_eq!(colors, [P.border, P.muted, P.critical, P.muted, P.warning, P.muted, P.muted, P.muted, P.muted]);
+    }
+
+    #[test]
+    fn the_battery_shows_its_charge_and_the_power_both_ways() {
+        let mut frame = TelemetryFrame::default();
+        frame.energy.soc = 0.625;
+        frame.energy.deploy_power = 92.5;
+        let ops = draw(&widget("battery", json!({})), &frame, 300.0, 100.0);
+        let text = text_of(&ops);
+        assert!(text.contains(&"63".to_owned()) && text.contains(&"DEP 92 kW".to_owned()) && text.contains(&"REGEN -- kW".to_owned()), "{text:?}");
+
+        frame.energy.soc = 0.04;
+        let fill = |frame: &TelemetryFrame| match widget_chrome(&widget("battery", json!({})), frame, &DEFAULT_DASH_PALETTE) {
+            WidgetChrome::Framed { fill, .. } => fill,
+            _ => None,
+        };
+        assert_eq!(fill(&frame), Some(P.critical));
+    }
+
+    #[test]
+    fn a_sector_is_purple_at_the_class_best_green_at_the_drivers_own_and_yellow_slower() {
+        let lap = LapState {
+            personal_best_sectors: vec![Some(31.0), Some(35.0), None],
+            session_best_sectors: vec![Some(30.0), Some(34.0), Some(36.0)],
+            class_best_sectors: vec![Some(31.0), Some(34.5), Some(36.5)],
+            ..LapState::default()
+        };
+        assert_eq!(sector_state(&lap, 0, 31.0), SectorState::Fastest, "the class's best, not the faster class's");
+        assert_eq!(sector_state(&lap, 1, 35.0), SectorState::PersonalBest);
+        assert_eq!(sector_state(&lap, 1, 35.2), SectorState::Slower);
+        assert_eq!(sector_state(&lap, 2, 37.0), SectorState::Unrated, "no own best to compare with");
+        assert_eq!(sector_state(&LapState::default(), 0, 30.0), SectorState::Unrated);
+    }
+
+    #[test]
+    fn the_sectors_show_the_last_lap_until_the_first_sector_of_this_one_is_done() {
+        let mut lap = LapState { last_lap_sectors_seconds: vec![31.0, 35.0, 37.0], ..LapState::default() };
+        assert_eq!(shown_sectors(&lap), [Some(31.0), Some(35.0), Some(37.0)]);
+        lap.current_lap_sectors_seconds = vec![30.5];
+        assert_eq!(shown_sectors(&lap), [Some(30.5), None, None]);
+    }
+
+    #[test]
+    fn laps_to_the_flag_count_what_is_left_of_a_lap_race_or_what_a_timed_one_buys() {
+        let mut frame = TelemetryFrame::default();
+        frame.session.max_laps = 24.0;
+        frame.lap.current_lap = 7.0;
+        frame.lap.track_position = 0.25;
+        assert_eq!(race_laps_left(&frame), Some(17.75));
+
+        frame.session.max_laps = 0.0;
+        frame.session.session_time_remaining = Some(600.0);
+        assert_eq!(race_laps_left(&frame), None, "no pace yet");
+        frame.lap.last_lap_time = 100.0;
+        // Six laps of time from a quarter into this one: the clock runs out three quarters into the
+        // sixth lap from here, and that lap is finished.
+        assert_eq!(race_laps_left(&frame), Some(6.75));
+    }
+
+    #[test]
+    fn refuel_says_what_has_to_go_in_to_reach_the_flag() {
+        let mut frame = TelemetryFrame::default();
+        frame.session.max_laps = 10.0;
+        frame.lap.current_lap = 1.0;
+        frame.car.fuel_per_lap = 4.0;
+        frame.car.fuel = 30.0;
+        let shown = |frame: &TelemetryFrame| text_of(&draw(&widget("refuel", json!({})), frame, 160.0, 60.0))[0].clone();
+        assert_eq!(shown(&frame), "+10.0");
+        frame.car.fuel = 45.0;
+        assert_eq!(shown(&frame), "0.0");
+    }
+
+    #[test]
+    fn the_clock_shows_the_frames_moment_in_the_viewers_time_zone() {
+        let mut frame = TelemetryFrame { utc_time_of_day: Some(23.0 * 3600.0 + 30.0 * 60.0), ..TelemetryFrame::default() };
+        let clock = widget("clock", json!({}));
+        let settings = DashSettings { utc_offset_minutes: Some(90.0), ..DashSettings::default() };
+        assert_eq!(text_of(&draw_with(&clock, &frame, 160.0, 60.0, None, Some(&settings))), ["01:00"], "past midnight wraps");
+        assert_eq!(text_of(&draw(&clock, &frame, 160.0, 60.0)), ["23:30"], "no settings: UTC");
+        frame.utc_time_of_day = None;
+        assert_eq!(text_of(&draw(&clock, &frame, 160.0, 60.0)), ["--:--"]);
     }
 }

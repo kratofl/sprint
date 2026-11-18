@@ -15,7 +15,7 @@ Read every screenshot you take. Rules to check against: `docs/design/DESIGN.md`.
 ### 1. Preview pass (every touched view, light and dark)
 
 For each view you changed — `Home`, `SessionPlanner`, `Analysis`, `Dashes`, `Devices`, `Setups`,
-`RaceEngineer`, `LiveLink`, `Settings`, `Help` — screenshot:
+`RaceEngineer`, `Settings`, `Help` — screenshot:
 
 - light and dark, expanded and `collapsed=1` navigation;
 - both looks: Windows, and macOS with `platform=mac` (compare against
@@ -44,7 +44,7 @@ data, `FILE=<recording>` for live telemetry), driven with `app/desktop/scripts/c
   Alt+Left (⌘[) goes back;
 - each action you touched round-trips: send it, then confirm `/api/state` changed and the view shows
   it — create/edit/delete a plan, arm and stop it; create, edit and delete a dash; add, disable and
-  remove a device; duplicate a setup template and edit it; stage, push and revert an engineer change;
+  remove a device; duplicate a setup template and edit it;
 - destructive actions confirm first; reversible deletes offer undo;
 - Settings and device fields survive a restart of the app.
 

@@ -17,7 +17,7 @@ references enforce the seams — respect them:
 
 | Project | Owns | Must NOT contain |
 |---|---|---|
-| **`Sprint.Desktop.Api`** | The shared contract: `TelemetryFrame` + sub-states, `ITelemetrySource` (lifecycle + health), `TelemetryStatus`/`TelemetryConnectionState`/`TelemetryFreshness`, and the `Engineer/` command/event/staged-change shapes. | Game paths, shared-memory names, binary layouts, parser quirks, **or any UI type**. |
+| **`Sprint.Desktop.Api`** | The shared contract: `TelemetryFrame` + sub-states, `ITelemetrySource` (lifecycle + health) and `TelemetryStatus`/`TelemetryConnectionState`/`TelemetryFreshness`. | Game paths, shared-memory names, binary layouts, parser quirks, **or any UI type**. |
 | **`Sprint.Games`** | Telemetry adapters — the **only** place that knows game paths/shm names/structs/parsers. `DemoTelemetrySource` (dev/test) + the LMU adapter. References `Api` only. | UI types, persistence, anything `Core`/`Host`-specific. |
 | **`Sprint.Desktop.Core`** | All native desktop logic and no UI framework: runtime persistence, the telemetry engine, session planning, analysis, the dash layout model, devices, hardware/USB, input, and diagnostics. References `Api` + `Games`. | Any UI framework — Core stays headless. |
 | **`Sprint.Desktop.Host`** | The HTTP adapter: `Program.cs` exposes `/api/state`, `/api/commands`, traces and diagnostics logs over loopback HTTP with a per-launch bearer token. Input validation lives at this boundary and in `RuntimeCoordinator`. | Native business logic (belongs in `Core`) or UI. |
@@ -44,7 +44,6 @@ Sprint.Desktop.Core/
     ├── Dashes/                ← dash layout model, editor controller, validator, widget catalog, binding resolver, alert tracker
     ├── Hardware/              ← Rgb565, IScreenDriver + FakeScreenDriver, ScreenPublisher, Rgb565Composer, WinUSB VoCore/USBD480 drivers, desktop capture
     ├── Input/                 ← CommandBus, InputBinding + store, WindowsRawInputSource
-    ├── Engineer/              ← EngineerStageService (staged-change diff via the Api contract), models
     ├── Setup/                 ← setup programs, snapshot capture/association, SetupComparison (A/B predicted delta)
     ├── Devices/               ← device catalog/saved-device models
     ├── SessionPlanning/       ← session plans, lap history/trace stores, results import
@@ -108,7 +107,7 @@ make build-app [VERSION=1.2.3]     # = dotnet publish the host (self-contained, 
 
 Tests sit at **stable, behaviour-oriented seams** so implementation can change
 without rewriting the suite: pure presenters/reducers (dash layout model + editor
-controller, RGB565, command/binding, engineer staging, surface
+controller, RGB565, command/binding, surface
 state), persistence against **temp dirs** (never real AppData), and hardware/input
 verified against fakes (`FakeScreenDriver`, keyboard-fallback capture) rather than
 physical devices. `Sprint.Desktop.Host/Tests` separately exercises the command

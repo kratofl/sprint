@@ -1,9 +1,13 @@
-// Stateful parameter-change alert detection. Port of `packages/dashboard/src/alerts.ts` (itself
-// ported from the desktop client's `DashAlertTracker.cs` and `DashAttention.cs`). Compares each
-// frame to the previous one for the alert types configured on the layout (tc/abs/brake
-// bias/engine map) and produces a transient popup that expires after a fixed duration; a lap
-// summary when a lap finishes. There is no internal clock: callers drive time explicitly via
-// `advance_to`, which is what makes expiry deterministic to test.
+// Stateful alert detection. Compares each frame to the previous one for the alert types the
+// layout carries (a driver setting turned, the pit limiter, a new flag, a penalty, damage, the
+// engine overheating) and watches levels that need no diff (fuel running low, a finished lap).
+// What it raises stays up for its duration, or until the driver acknowledges it (`untilAck`).
+// There is no internal clock: callers drive time explicitly via `advance_to`, which is what makes
+// expiry deterministic to test.
+//
+// Alerts are app-wide: whoever hands a dash to the renderer stamps the driver's alert settings
+// onto the layout's `alerts` (packages/dashboard/src/alerts.ts, `dashAlertFromSettings`), so
+// every dash shows the same alerts in its own palette. The tracker reads only the layout.
 //
 // The banner types deserialize from exactly the JSON the TypeScript `DashAlertBanner` union
 // serializes to, so a banner built by the TypeScript (the editor's preview) can be drawn here.
@@ -11,12 +15,13 @@
 use serde::{Deserialize, Deserializer};
 use serde_json::{Map, Value};
 
-use crate::format::{format_front_brake_bias, js_number_string};
+use crate::format::{format_front_brake_bias, js_number_string, to_fixed};
+use crate::grid::AlertSpan;
 use crate::lap_summary::{LapSummary, LapSummaryWatcher};
 use crate::model::{DashAlert, DashLayout, DashTargets, TelemetryFrame};
 use crate::multi_dial::DashMultiDialPopup;
 use crate::palette::{
-    DashPaletteColors, Rgba, canonical_alert_color_token, dash_setting_colors, find_preset_by_alert_color_token, parse_css_hex, preset_swatch_color,
+    DashPaletteColors, Rgba, canonical_alert_color_token, dash_color, dash_setting_colors, find_preset_by_alert_color_token, parse_css_hex, preset_swatch_color,
 };
 
 /// The condition a value is shown in (`DashCondition`).
@@ -32,36 +37,120 @@ pub enum DashCondition {
     RaceControl,
 }
 
-/// A transient setting-change popup. `full_screen` popups cover the whole dash in the setting's
-/// color; otherwise the popup sits in the alert's own grid rect.
-#[derive(Clone, Debug, PartialEq, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct DashSettingPopup {
-    pub title: String,
-    pub value: String,
-    /// The value before the change, shown small beside the new one.
-    pub previous: String,
-    /// The setting's highest step when the game reports one, for "of 9".
-    pub max: Option<f64>,
-    #[serde(deserialize_with = "css_hex_color")]
-    pub color: Rgba,
-    pub full_screen: bool,
-    pub col: f64,
-    pub row: f64,
-    pub col_span: f64,
-    pub row_span: f64,
-    pub grid_cols: f64,
-    pub grid_rows: f64,
-    pub invert_colors: bool,
+/// Every alert type, by its wire id (`DashAlertType`; `dashAlertTypes` in alerts.ts lists the
+/// same ids, which a test checks).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DashAlertType {
+    TcChange,
+    AbsChange,
+    BiasChange,
+    EnginemapChange,
+    MigrationChange,
+    ArbChange,
+    /// The wheel's multi-position dial turned: drawn by `multi_dial`, gated by this alert's settings.
+    DialChange,
+    PitLimiter,
+    Flag,
+    Penalty,
+    Damage,
+    EngineWarning,
+    FuelLow,
+    LapSummary,
 }
 
-/// What the renderer draws over the dash (`DashAlertBanner`): a popup the tracker raised, or the
-/// multi-dial popup. The JSON's `kind` is `"setting"`, `"lapSummary"` or `"multiDial"`.
+impl DashAlertType {
+    pub const ALL: [DashAlertType; 14] = [
+        DashAlertType::TcChange,
+        DashAlertType::AbsChange,
+        DashAlertType::BiasChange,
+        DashAlertType::EnginemapChange,
+        DashAlertType::MigrationChange,
+        DashAlertType::ArbChange,
+        DashAlertType::DialChange,
+        DashAlertType::PitLimiter,
+        DashAlertType::Flag,
+        DashAlertType::Penalty,
+        DashAlertType::Damage,
+        DashAlertType::EngineWarning,
+        DashAlertType::FuelLow,
+        DashAlertType::LapSummary,
+    ];
+
+    /// The wire id ("tc_change").
+    pub fn id(self) -> &'static str {
+        match self {
+            DashAlertType::TcChange => "tc_change",
+            DashAlertType::AbsChange => "abs_change",
+            DashAlertType::BiasChange => "bias_change",
+            DashAlertType::EnginemapChange => "enginemap_change",
+            DashAlertType::MigrationChange => "migration_change",
+            DashAlertType::ArbChange => "arb_change",
+            DashAlertType::DialChange => "dial_change",
+            DashAlertType::PitLimiter => "pit_limiter",
+            DashAlertType::Flag => "flag",
+            DashAlertType::Penalty => "penalty",
+            DashAlertType::Damage => "damage",
+            DashAlertType::EngineWarning => "engine_warning",
+            DashAlertType::FuelLow => "fuel_low",
+            DashAlertType::LapSummary => "lap_summary",
+        }
+    }
+
+    pub fn parse(id: &str) -> Option<DashAlertType> {
+        DashAlertType::ALL.into_iter().find(|t| t.id() == id)
+    }
+
+    /// The longest it may stay up when it is not held until acknowledged.
+    pub fn max_seconds(self) -> f64 {
+        if self == DashAlertType::LapSummary { LAP_SUMMARY_MAX_SECONDS } else { MAX_ALERT_SECONDS }
+    }
+}
+
+/// How big an alert shows: a band across the middle of the dash, or the whole dash.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum AlertSize {
+    #[default]
+    Full,
+    Strip,
+}
+
+/// Where a popup sits (its JSON `displayMode`): over the whole dash, in a band across its middle
+/// (drawn full when the band would be too small to read, see `overlays::strip_fits`), or in the
+/// alert's own grid rect (older per-dash layouts).
+#[derive(Clone, Copy, Debug, PartialEq, Deserialize)]
+#[serde(tag = "displayMode", rename_all = "lowercase")]
+pub enum AlertPlacement {
+    Full,
+    Strip,
+    Center(AlertSpan),
+}
+
+/// A transient popup: a small title, the value big and a small detail line ("WAS 4 · OF 9",
+/// "LAPS LEFT"), in the alert's colour (a fill, or the lettering when `invert_colors`).
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DashAlertPopup {
+    pub alert_type: DashAlertType,
+    pub title: String,
+    pub value: String,
+    pub detail: Option<String>,
+    #[serde(deserialize_with = "css_hex_color")]
+    pub color: Rgba,
+    pub invert_colors: bool,
+    #[serde(flatten)]
+    pub placement: AlertPlacement,
+}
+
+/// What the renderer draws over the dash (`DashAlertBanner`): a popup the tracker raised, the
+/// lap summary, the multi-dial popup, or the engineer's radio message. The JSON's `kind` is
+/// `"alert"`, `"lapSummary"`, `"multiDial"` or `"radio"`.
 #[derive(Clone, Debug, PartialEq, Deserialize)]
 #[serde(tag = "kind")]
 pub enum DashAlertBanner {
-    #[serde(rename = "setting")]
-    Setting(DashSettingPopup),
+    #[serde(rename = "alert")]
+    Alert(DashAlertPopup),
     /// The full-screen summary of a finished lap (`DashLapSummaryPopup`).
     #[serde(rename = "lapSummary")]
     LapSummary(LapSummary),
@@ -69,6 +158,29 @@ pub enum DashAlertBanner {
     /// tracker: `multi_dial::MultiDialPopupWatcher` decides when it is up.
     #[serde(rename = "multiDial")]
     MultiDial(DashMultiDialPopup),
+    /// The race engineer's message over the live link (`DashRadioBanner`). Never raised by the
+    /// tracker: the host sets it (`Renderer::set_radio`) while it is on the wheel.
+    #[serde(rename = "radio")]
+    Radio(DashRadioBanner),
+}
+
+impl DashAlertBanner {
+    /// True for a popup of the flag alert, which says what the flag overlay would.
+    pub fn is_flag_alert(&self) -> bool {
+        matches!(self, DashAlertBanner::Alert(popup) if popup.alert_type == DashAlertType::Flag)
+    }
+}
+
+/// The race engineer's message, up until the driver presses a wheel button or the host takes it
+/// down. The host writes the text ("Box now", "Target lap 2:04.5").
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+pub struct DashRadioBanner {
+    pub text: String,
+}
+
+/// Parses the engineer's message (`DashRadioBanner` as JSON). An error names what is wrong.
+pub fn parse_radio(json: &[u8]) -> Result<DashRadioBanner, String> {
+    serde_json::from_slice(json).map_err(|e| format!("radio is not a valid radio message: {e}"))
 }
 
 /// A banner's color: the TypeScript always writes a resolved hex color there.
@@ -89,25 +201,57 @@ pub const LAP_SUMMARY_SECONDS: f64 = 5.0;
 /// The longest a lap summary may stay up. Every other alert keeps to `MAX_ALERT_SECONDS`.
 pub const LAP_SUMMARY_MAX_SECONDS: f64 = 15.0;
 
-/// The shortest and longest a setting popup stays up.
-const MIN_ALERT_SECONDS: f64 = 0.5;
-const MAX_ALERT_SECONDS: f64 = 5.0;
+/// The shortest and longest an alert stays up (`MIN_ALERT_SECONDS`, `MAX_ALERT_SECONDS` in alerts.ts).
+pub const MIN_ALERT_SECONDS: f64 = 1.0;
+pub const MAX_ALERT_SECONDS: f64 = 30.0;
 
+/// The duration when neither the alert nor the layout's `alertConfig` sets one.
+pub(crate) const DEFAULT_DURATION_SECONDS: f64 = 1.5;
+
+/// `fuel_low` fires at this many laps of fuel left unless the alert sets its own `lapsLeft`
+/// (clamped to `FUEL_LAPS_LEFT_MIN..=FUEL_LAPS_LEFT_MAX`).
+pub const FUEL_LAPS_LEFT: f64 = 2.0;
+pub const FUEL_LAPS_LEFT_MIN: f64 = 1.0;
+pub const FUEL_LAPS_LEFT_MAX: f64 = 9.0;
+
+/// Fuel gained since `fuel_low` fired that counts as a refuel: the next stint, the alert re-arms.
+/// Above what a frame-to-frame reading wobbles by, below any real refuel.
+const REFUEL_LITERS: f64 = 1.0;
+
+/// How an alert is placed when it does not say.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum DisplayMode {
+    Full,
+    Strip,
+    Center,
+}
+
+impl DisplayMode {
+    fn parse(value: Option<&Value>) -> Option<DisplayMode> {
+        match value?.as_str()? {
+            "full" => Some(DisplayMode::Full),
+            "strip" => Some(DisplayMode::Strip),
+            "center" => Some(DisplayMode::Center),
+            _ => None,
+        }
+    }
+}
+
+/// The layout's `alertConfig`: the look of every alert that does not set its own. The host
+/// stamps a neutral one; older per-dash layouts carry their own.
 #[derive(Clone, Debug, PartialEq)]
-struct ResolvedAlertConfig {
-    full_screen: bool,
+pub(crate) struct ResolvedAlertConfig {
+    display: DisplayMode,
     duration_seconds: f64,
     invert_colors: bool,
     color_token: String,
 }
 
-const DEFAULT_DURATION_SECONDS: f64 = 1.5;
-
 /// Narrows the layout's untyped `alertConfig` bag to the fields the tracker reads.
-fn read_alert_config(raw: Option<&Map<String, Value>>) -> ResolvedAlertConfig {
+pub(crate) fn read_alert_config(raw: Option<&Map<String, Value>>) -> ResolvedAlertConfig {
     let get = |key: &str| raw.and_then(|r| r.get(key));
     ResolvedAlertConfig {
-        full_screen: get("displayMode").and_then(Value::as_str) != Some("center"),
+        display: DisplayMode::parse(get("displayMode")).unwrap_or(DisplayMode::Full),
         duration_seconds: get("durationSeconds").and_then(Value::as_f64).unwrap_or(DEFAULT_DURATION_SECONDS),
         invert_colors: get("invertColors").and_then(Value::as_bool).unwrap_or(false),
         color_token: get("colorToken").and_then(Value::as_str).unwrap_or("auto").to_owned(),
@@ -151,195 +295,461 @@ pub fn alert_color_swatch(token: &str, palette: &DashPaletteColors) -> Option<Rg
     (canonical_alert_color_token(Some(token)) == "yellow").then_some(palette.warning)
 }
 
-/// The setting alert types (`DashAlertType` without `lap_summary`).
+/// A driver-adjustable setting a change alert watches. `tc_change` watches three (TC, its slip
+/// and its cut), `arb_change` two.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum SettingAlertType {
+enum Knob {
     Tc,
+    TcSlip,
+    TcCut,
     Abs,
     Bias,
     EngineMap,
+    Migration,
+    ArbFront,
+    ArbRear,
 }
 
-impl SettingAlertType {
-    fn parse(alert_type: &str) -> Option<SettingAlertType> {
+/// Every knob, in declaration order (`Readings::knobs` is indexed by `Knob as usize`).
+const KNOBS: [Knob; 9] = [Knob::Tc, Knob::TcSlip, Knob::TcCut, Knob::Abs, Knob::Bias, Knob::EngineMap, Knob::Migration, Knob::ArbFront, Knob::ArbRear];
+
+impl Knob {
+    /// The settings `alert_type` watches, in the order a change is looked for.
+    fn of(alert_type: DashAlertType) -> &'static [Knob] {
         match alert_type {
-            "tc_change" => Some(SettingAlertType::Tc),
-            "abs_change" => Some(SettingAlertType::Abs),
-            "bias_change" => Some(SettingAlertType::Bias),
-            "enginemap_change" => Some(SettingAlertType::EngineMap),
-            _ => None,
+            DashAlertType::TcChange => &[Knob::Tc, Knob::TcSlip, Knob::TcCut],
+            DashAlertType::AbsChange => &[Knob::Abs],
+            DashAlertType::BiasChange => &[Knob::Bias],
+            DashAlertType::EnginemapChange => &[Knob::EngineMap],
+            DashAlertType::MigrationChange => &[Knob::Migration],
+            DashAlertType::ArbChange => &[Knob::ArbFront, Knob::ArbRear],
+            _ => &[],
         }
     }
 
-    fn title(self) -> &'static str {
+    /// The setting and its highest step (0 when the game reports none).
+    fn read(self, frame: &TelemetryFrame) -> (f64, f64) {
+        let e = &frame.electronics;
         match self {
-            SettingAlertType::Tc => "TC",
-            SettingAlertType::Abs => "ABS",
-            SettingAlertType::Bias => "BIAS",
-            SettingAlertType::EngineMap => "MAP",
-        }
-    }
-
-    fn color(self) -> Rgba {
-        match self {
-            SettingAlertType::Tc => dash_setting_colors::TC,
-            SettingAlertType::Abs => dash_setting_colors::ABS,
-            SettingAlertType::Bias => dash_setting_colors::BRAKE_BIAS,
-            SettingAlertType::EngineMap => dash_setting_colors::ENGINE_MAP,
+            Knob::Tc => (e.tc, e.tc_max),
+            Knob::TcSlip => (e.tc_slip, e.tc_slip_max),
+            Knob::TcCut => (e.tc_cut, e.tc_cut_max),
+            Knob::Abs => (e.abs, e.abs_max),
+            Knob::Bias => (frame.car.brake_bias_rear, 0.0),
+            Knob::EngineMap => (e.motor_map, e.motor_map_max),
+            Knob::Migration => (e.migration, e.migration_max),
+            Knob::ArbFront => (e.front_anti_roll_bar, e.front_anti_roll_bar_max),
+            Knob::ArbRear => (e.rear_anti_roll_bar, e.rear_anti_roll_bar_max),
         }
     }
 
     /// The value as the popup prints it. Changes are detected on the printed value, so sensor
     /// noise below the display precision never fires.
-    fn value(self, s: &SettingReadings) -> String {
+    fn shown(self, value: f64) -> String {
+        if self == Knob::Bias { format_front_brake_bias(value) } else { js_number_string(value.trunc()) }
+    }
+
+    /// The knob widgets' names.
+    fn title(self) -> &'static str {
         match self {
-            SettingAlertType::Tc => js_number_string(s.tc.trunc()),
-            SettingAlertType::Abs => js_number_string(s.abs.trunc()),
-            SettingAlertType::Bias => format_front_brake_bias(s.brake_bias_rear),
-            SettingAlertType::EngineMap => js_number_string(s.motor_map.trunc()),
+            Knob::Tc => "TC",
+            Knob::TcSlip => "SLIP",
+            Knob::TcCut => "CUT",
+            Knob::Abs => "ABS",
+            Knob::Bias => "BIAS",
+            Knob::EngineMap => "MAP",
+            Knob::Migration => "MIG",
+            Knob::ArbFront => "ARB F",
+            Knob::ArbRear => "ARB R",
         }
     }
 
-    fn max(self, s: &SettingReadings) -> f64 {
+    /// The setting's identity colour. Migration wears the brake white, as its knob widget does;
+    /// the anti-roll bars have no identity colour of their own and wear that white too.
+    fn color(self) -> Rgba {
         match self {
-            SettingAlertType::Tc => s.tc_max,
-            SettingAlertType::Abs => s.abs_max,
-            SettingAlertType::Bias => 0.0,
-            SettingAlertType::EngineMap => s.motor_map_max,
+            Knob::Tc | Knob::TcSlip | Knob::TcCut => dash_setting_colors::TC,
+            Knob::Abs => dash_setting_colors::ABS,
+            Knob::Bias | Knob::Migration | Knob::ArbFront | Knob::ArbRear => dash_setting_colors::BRAKE_BIAS,
+            Knob::EngineMap => dash_setting_colors::ENGINE_MAP,
         }
     }
 
-    /// The made-up change the designer plays an alert with.
-    fn sample_change(self) -> SettingChange {
-        let change = |value: &str, previous: &str, max: Option<f64>| SettingChange { value: value.to_owned(), previous: previous.to_owned(), max };
+    /// Migration and the anti-roll bars are also set in the garage and jump when the driver
+    /// gets in: they alert only while driving.
+    fn only_while_driving(self) -> bool {
+        matches!(self, Knob::Migration | Knob::ArbFront | Knob::ArbRear)
+    }
+
+    /// The made-up change the designer plays the alert with: (value, previous, max).
+    fn sample(self) -> (&'static str, &'static str, Option<f64>) {
         match self {
-            SettingAlertType::Tc => change("5", "4", Some(9.0)),
-            SettingAlertType::Abs => change("3", "4", Some(9.0)),
-            SettingAlertType::Bias => change("56.5", "56.0", None),
-            SettingAlertType::EngineMap => change("3", "2", Some(9.0)),
+            Knob::Tc | Knob::TcSlip | Knob::TcCut => ("5", "4", Some(9.0)),
+            Knob::Abs => ("3", "4", Some(9.0)),
+            Knob::Bias => ("56.5", "56.0", None),
+            Knob::EngineMap => ("3", "2", Some(9.0)),
+            Knob::Migration => ("3", "2", Some(5.0)),
+            Knob::ArbFront | Knob::ArbRear => ("4", "3", Some(6.0)),
         }
     }
 }
 
-/// The frame fields the setting alerts read, kept from the previous frame to diff against.
+/// A flag the driver can be shown, highest priority first: when several come out on one frame,
+/// the first is the one the alert names.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum FlagKind {
+    Red,
+    SafetyCar,
+    Vsc,
+    DoubleYellow,
+    Yellow,
+    Blue,
+}
+
+const FLAGS: [FlagKind; 6] = [FlagKind::Red, FlagKind::SafetyCar, FlagKind::Vsc, FlagKind::DoubleYellow, FlagKind::Yellow, FlagKind::Blue];
+
+impl FlagKind {
+    fn is_out(self, frame: &TelemetryFrame) -> bool {
+        let f = &frame.flags;
+        match self {
+            FlagKind::Red => f.red,
+            FlagKind::SafetyCar => f.safety_car,
+            FlagKind::Vsc => f.vsc,
+            FlagKind::DoubleYellow => f.double_yellow,
+            FlagKind::Yellow => f.yellow,
+            FlagKind::Blue => frame.field.iter().any(|car| car.is_player && car.blue_flag),
+        }
+    }
+
+    fn name(self) -> &'static str {
+        match self {
+            FlagKind::Red => "RED",
+            FlagKind::SafetyCar => "SAFETY CAR",
+            FlagKind::Vsc => "VSC",
+            FlagKind::DoubleYellow => "DOUBLE YELLOW",
+            FlagKind::Yellow => "YELLOW",
+            FlagKind::Blue => "BLUE",
+        }
+    }
+
+    /// The signal's own colour (RaceControl): red, the race-control yellow, or the blue flag's blue.
+    fn color(self, palette: &DashPaletteColors) -> Rgba {
+        match self {
+            FlagKind::Red => palette.critical,
+            FlagKind::Blue => Rgba::hex(dash_color::BLUE),
+            _ => palette.race_control_yellow,
+        }
+    }
+}
+
+/// LMU's eight dent places (`Damage::dents`), clockwise from front left as the damage widget reads them.
+const DENT_PLACES: [&str; 8] = ["FRONT LEFT", "FRONT", "FRONT RIGHT", "RIGHT", "REAR RIGHT", "REAR", "REAR LEFT", "LEFT"];
+
+/// The damage report as the tracker diffs it.
 #[derive(Clone, Copy, Debug, PartialEq)]
-struct SettingReadings {
-    tc: f64,
-    tc_max: f64,
-    abs: f64,
-    abs_max: f64,
-    motor_map: f64,
-    motor_map_max: f64,
-    brake_bias_rear: f64,
+struct DamageReading {
+    dents: [f64; 8],
+    detached: bool,
+    overheating: bool,
 }
 
-impl SettingReadings {
-    fn of(frame: &TelemetryFrame) -> SettingReadings {
-        let e = &frame.electronics;
-        SettingReadings {
-            tc: e.tc,
-            tc_max: e.tc_max,
-            abs: e.abs,
-            abs_max: e.abs_max,
-            motor_map: e.motor_map,
-            motor_map_max: e.motor_map_max,
-            brake_bias_rear: frame.car.brake_bias_rear,
+/// The frame fields the alerts read, kept from the previous frame to diff against.
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct Readings {
+    knobs: [(f64, f64); KNOBS.len()],
+    /// In the car and out of the garage.
+    driving: bool,
+    pit_limiter: bool,
+    flags: [bool; FLAGS.len()],
+    /// The player's penalties to serve; `None` while the player's car is not in the field.
+    penalties: Option<f64>,
+    damage: Option<DamageReading>,
+    water_temp: Option<f64>,
+    oil_temp: Option<f64>,
+    fuel: f64,
+    fuel_per_lap: f64,
+}
+
+impl Readings {
+    fn of(frame: &TelemetryFrame) -> Readings {
+        Readings {
+            knobs: KNOBS.map(|knob| knob.read(frame)),
+            driving: frame.session.in_car && frame.car.in_garage != Some(true),
+            pit_limiter: frame.car.pit_limiter == Some(true),
+            flags: FLAGS.map(|flag| flag.is_out(frame)),
+            penalties: frame.field.iter().find(|car| car.is_player).map(|car| car.penalties),
+            damage: frame.damage.as_ref().map(|d| DamageReading { dents: d.dents, detached: d.detached_parts, overheating: d.overheating }),
+            water_temp: frame.car.water_temp,
+            oil_temp: frame.car.oil_temp,
+            fuel: frame.car.fuel,
+            fuel_per_lap: frame.car.fuel_per_lap,
+        }
+    }
+
+    fn knob(&self, knob: Knob) -> (f64, f64) {
+        self.knobs[knob as usize]
+    }
+
+    fn flag(&self, flag: FlagKind) -> bool {
+        self.flags[flag as usize]
+    }
+}
+
+/// What takes an alert down before its time runs out (or while it waits to be acknowledged):
+/// its condition is over.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Ends {
+    PitLimiterOff,
+    FlagIn(FlagKind),
+    Refuelled,
+}
+
+impl Ends {
+    fn ended(self, now: &Readings, refuelled: bool) -> bool {
+        match self {
+            Ends::PitLimiterOff => !now.pit_limiter,
+            Ends::FlagIn(flag) => !now.flag(flag),
+            Ends::Refuelled => refuelled,
         }
     }
 }
 
-/// One layout alert's fields as the tracker reads them. The TypeScript reads them unchecked from
-/// the stored JSON; here a field of the wrong type reads as absent (and the span as 0).
-struct AlertSpec<'a> {
-    alert_type: &'a str,
-    enabled: bool,
-    display_mode: Option<&'a str>,
+/// `fuel_low` fires once per stint, when the laps of fuel left drop through the threshold:
+/// disarmed when it fires (so a fuel-per-lap estimate wobbling round the threshold fires once),
+/// armed again once the car has taken on `REFUEL_LITERS` more than the lowest it has been since.
+/// A crossing, not a level, so a car being refuelled through the threshold never fires.
+#[derive(Clone, Copy, Debug)]
+struct FuelWatch {
+    armed: bool,
+    lowest: f64,
+}
+
+impl Default for FuelWatch {
+    fn default() -> Self {
+        FuelWatch { armed: true, lowest: 0.0 }
+    }
+}
+
+impl FuelWatch {
+    /// Follows the fuel level; true on the frame a refuel re-arms the alert.
+    fn follow(&mut self, fuel: f64) -> bool {
+        if self.armed {
+            return false;
+        }
+        if fuel >= self.lowest + REFUEL_LITERS {
+            self.armed = true;
+            return true;
+        }
+        self.lowest = self.lowest.min(fuel);
+        false
+    }
+
+    /// The laps of fuel left when they have just dropped to `laps_left` or below while driving.
+    fn fire(&mut self, now: &Readings, prev: Option<&Readings>, laps_left: f64) -> Option<f64> {
+        let laps = |r: &Readings| (r.fuel_per_lap > 0.0).then(|| r.fuel / r.fuel_per_lap);
+        let (Some(laps_now), Some(laps_before)) = (laps(now), prev.and_then(laps)) else {
+            return None;
+        };
+        if !self.armed || !now.driving || laps_now > laps_left || laps_before <= laps_left {
+            return None;
+        }
+        self.armed = false;
+        self.lowest = now.fuel;
+        Some(laps_now)
+    }
+}
+
+/// One layout alert's settings as the tracker reads them. The TypeScript reads them unchecked
+/// from the stored JSON; here a field of the wrong type reads as absent (and the span as 0).
+pub(crate) struct AlertSpec<'a> {
+    pub(crate) alert_type: DashAlertType,
+    pub(crate) enabled: bool,
+    display: Option<DisplayMode>,
     color_token: Option<&'a str>,
     duration_seconds: Option<f64>,
     invert_colors: Option<bool>,
-    col: f64,
-    row: f64,
-    col_span: f64,
-    row_span: f64,
+    until_ack: bool,
+    laps_left: f64,
+    span: AlertSpan,
 }
 
 impl<'a> AlertSpec<'a> {
-    fn of(alert: &'a DashAlert) -> AlertSpec<'a> {
+    /// `None` for a type this renderer does not know.
+    pub(crate) fn of(alert: &'a DashAlert, layout: &DashLayout) -> Option<AlertSpec<'a>> {
         let f = &alert.fields;
         let num = |key: &str| f.get(key).and_then(Value::as_f64);
-        AlertSpec {
-            alert_type: &alert.alert_type,
+        Some(AlertSpec {
+            alert_type: DashAlertType::parse(&alert.alert_type)?,
             enabled: js_truthy(f.get("enabled")),
-            display_mode: f.get("displayMode").and_then(Value::as_str),
+            display: DisplayMode::parse(f.get("displayMode")),
             color_token: f.get("colorToken").and_then(Value::as_str),
             duration_seconds: num("durationSeconds"),
             invert_colors: f.get("invertColors").and_then(Value::as_bool),
-            col: num("col").unwrap_or(0.0),
-            row: num("row").unwrap_or(0.0),
-            col_span: num("colSpan").unwrap_or(0.0),
-            row_span: num("rowSpan").unwrap_or(0.0),
+            until_ack: f.get("untilAck") == Some(&Value::Bool(true)),
+            laps_left: clamp(num("lapsLeft").unwrap_or(FUEL_LAPS_LEFT), FUEL_LAPS_LEFT_MIN, FUEL_LAPS_LEFT_MAX),
+            span: AlertSpan {
+                col: num("col").unwrap_or(0.0),
+                row: num("row").unwrap_or(0.0),
+                col_span: num("colSpan").unwrap_or(0.0),
+                row_span: num("rowSpan").unwrap_or(0.0),
+                grid_cols: layout.grid_cols,
+                grid_rows: layout.grid_rows,
+            },
+        })
+    }
+
+    /// Where the popup sits: the alert's own choice when it has one, otherwise the layout's.
+    fn placement(&self, config: &ResolvedAlertConfig) -> AlertPlacement {
+        match self.display.unwrap_or(config.display) {
+            DisplayMode::Full => AlertPlacement::Full,
+            DisplayMode::Strip => AlertPlacement::Strip,
+            DisplayMode::Center => AlertPlacement::Center(self.span),
         }
     }
 
-    /// Whether the alert shows full screen: its own choice when it has one, otherwise the layout's.
-    fn full_screen(&self, config: &ResolvedAlertConfig) -> bool {
-        match self.display_mode {
-            Some("center") => false,
-            Some("full") => true,
-            _ => config.full_screen,
+    /// The size of a popup that has no grid rect of its own (the multi-dial popup): a centered
+    /// one shows full.
+    pub(crate) fn size(&self, config: &ResolvedAlertConfig) -> AlertSize {
+        if self.placement(config) == AlertPlacement::Strip { AlertSize::Strip } else { AlertSize::Full }
+    }
+
+    pub(crate) fn inverted(&self, config: &ResolvedAlertConfig) -> bool {
+        self.invert_colors.unwrap_or(config.invert_colors)
+    }
+
+    /// How long it stays up, seconds; `None` until the driver acknowledges it. Unset, the lap
+    /// summary takes `LAP_SUMMARY_SECONDS` and everything else the layout's duration (or
+    /// `fallback` when that is not positive).
+    pub(crate) fn seconds(&self, config: &ResolvedAlertConfig, fallback: f64) -> Option<f64> {
+        if self.until_ack {
+            return None;
         }
+        let default = match self.alert_type {
+            DashAlertType::LapSummary => LAP_SUMMARY_SECONDS,
+            _ if config.duration_seconds <= 0.0 => fallback,
+            _ => config.duration_seconds,
+        };
+        Some(clamp(self.duration_seconds.unwrap_or(default), MIN_ALERT_SECONDS, self.alert_type.max_seconds()))
+    }
+
+    /// The colour of a setting popup: the setting's identity colour, or the one its colour token names.
+    fn knob_color(&self, knob: Knob, config: &ResolvedAlertConfig, palette: &DashPaletteColors) -> Rgba {
+        resolve_alert_color(Some(self.color_token.unwrap_or(&config.color_token)), knob.color(), palette)
     }
 }
 
-/// A setting's change as the popup shows it.
-struct SettingChange {
+/// What a detector raises, before it is placed.
+struct Raised {
+    title: &'static str,
     value: String,
-    previous: String,
-    max: Option<f64>,
+    detail: Option<String>,
+    color: Rgba,
+    ends: Option<Ends>,
 }
 
-/// The popup for one setting change, in the alert's look (its own, or the layout's).
-fn setting_popup(
-    alert: &AlertSpec,
-    setting: SettingAlertType,
-    change: SettingChange,
-    config: &ResolvedAlertConfig,
-    layout: &DashLayout,
-    palette: &DashPaletteColors,
-) -> DashSettingPopup {
-    DashSettingPopup {
-        title: setting.title().to_owned(),
-        value: change.value,
-        previous: change.previous,
-        max: change.max,
-        color: resolve_alert_color(Some(alert.color_token.unwrap_or(&config.color_token)), setting.color(), palette),
-        full_screen: alert.full_screen(config),
-        col: alert.col,
-        row: alert.row,
-        col_span: alert.col_span,
-        row_span: alert.row_span,
-        grid_cols: layout.grid_cols,
-        grid_rows: layout.grid_rows,
-        invert_colors: alert.invert_colors.unwrap_or(config.invert_colors),
+impl Raised {
+    fn new(title: &'static str, value: impl Into<String>, detail: Option<String>, color: Rgba) -> Raised {
+        Raised { title, value: value.into(), detail, color, ends: None }
+    }
+
+    fn ending(self, ends: Ends) -> Raised {
+        Raised { ends: Some(ends), ..self }
+    }
+
+    fn popup(self, spec: &AlertSpec, config: &ResolvedAlertConfig) -> DashAlertPopup {
+        DashAlertPopup {
+            alert_type: spec.alert_type,
+            title: self.title.to_owned(),
+            value: self.value,
+            detail: self.detail,
+            color: self.color,
+            invert_colors: spec.inverted(config),
+            placement: spec.placement(config),
+        }
     }
 }
 
-fn detect_candidate(
-    alert: &AlertSpec,
-    frame: &SettingReadings,
-    prev: &SettingReadings,
-    config: &ResolvedAlertConfig,
-    layout: &DashLayout,
-    palette: &DashPaletteColors,
-) -> Option<DashSettingPopup> {
-    let setting = SettingAlertType::parse(alert.alert_type)?;
-    let value = setting.value(frame);
-    let previous = setting.value(prev);
-    if value == previous {
-        return None;
+/// "WAS 4 · OF 9": the value before a setting change, and the setting's highest step when the
+/// game reports one.
+fn was(previous: &str, max: Option<f64>) -> String {
+    match max {
+        Some(max) => format!("WAS {previous} · OF {}", js_number_string(max)),
+        None => format!("WAS {previous}"),
     }
-    let max = setting.max(frame);
-    Some(setting_popup(alert, setting, SettingChange { value, previous, max: (max > 0.0).then_some(max) }, config, layout, palette))
+}
+
+/// "118°", as the oil and water widgets print a temperature.
+fn degrees(celsius: f64) -> String {
+    format!("{}°", js_number_string(celsius.round()))
+}
+
+/// What `spec` raises on this frame, given the last one (`None`: nothing to diff against yet).
+fn detect(
+    spec: &AlertSpec,
+    now: &Readings,
+    prev: Option<&Readings>,
+    fuel: &mut FuelWatch,
+    config: &ResolvedAlertConfig,
+    palette: &DashPaletteColors,
+) -> Option<Raised> {
+    if spec.alert_type == DashAlertType::FuelLow {
+        let laps = fuel.fire(now, prev, spec.laps_left)?;
+        return Some(Raised::new("FUEL", to_fixed(laps, 1), Some("LAPS LEFT".to_owned()), palette.warning).ending(Ends::Refuelled));
+    }
+    let prev = prev?;
+    match spec.alert_type {
+        DashAlertType::PitLimiter => {
+            (now.pit_limiter && !prev.pit_limiter).then(|| Raised::new("PIT LIMITER", "ON", None, palette.assist_active).ending(Ends::PitLimiterOff))
+        }
+        DashAlertType::Flag => {
+            let flag = FLAGS.into_iter().find(|flag| now.flag(*flag) && !prev.flag(*flag))?;
+            Some(Raised::new("FLAG", flag.name(), None, flag.color(palette)).ending(Ends::FlagIn(flag)))
+        }
+        DashAlertType::Penalty => match (now.penalties, prev.penalties) {
+            (Some(count), Some(before)) if count > before => {
+                Some(Raised::new("PENALTY", js_number_string(count), Some("TO SERVE".to_owned()), palette.critical))
+            }
+            _ => None,
+        },
+        DashAlertType::Damage => {
+            let (damage, before) = (now.damage?, prev.damage?);
+            // The worst new dent (the first place on a tie), and whether a part just came off.
+            let dent = (0..DENT_PLACES.len())
+                .filter(|&i| damage.dents[i] > before.dents[i])
+                .max_by(|&a, &b| damage.dents[a].total_cmp(&damage.dents[b]).then(b.cmp(&a)));
+            let part_off = damage.detached && !before.detached;
+            let heavy = dent.is_some_and(|i| damage.dents[i] >= 2.0);
+            let color = if heavy || part_off { palette.critical } else { palette.warning };
+            match dent {
+                Some(i) => {
+                    let severity = if heavy { "HEAVY" } else { "LIGHT" };
+                    let detail = if part_off { format!("{severity} · PART OFF") } else { severity.to_owned() };
+                    Some(Raised::new("DAMAGE", DENT_PLACES[i], Some(detail), color))
+                }
+                None => part_off.then(|| Raised::new("DAMAGE", "PART OFF", None, color)),
+            }
+        }
+        DashAlertType::EngineWarning => {
+            let (damage, before) = (now.damage?, prev.damage?);
+            if !damage.overheating || before.overheating {
+                return None;
+            }
+            let temps: Vec<String> = [("WATER", now.water_temp), ("OIL", now.oil_temp)]
+                .into_iter()
+                .filter_map(|(name, temp)| temp.filter(|t| t.is_finite()).map(|t| format!("{name} {}", degrees(t))))
+                .collect();
+            Some(Raised::new("ENGINE", "OVERHEAT", (!temps.is_empty()).then(|| temps.join(" · ")), palette.critical))
+        }
+        alert_type => Knob::of(alert_type).iter().find_map(|&knob| {
+            if knob.only_while_driving() && !(now.driving && prev.driving) {
+                return None;
+            }
+            let ((value, max), (before, _)) = (now.knob(knob), prev.knob(knob));
+            let (value, previous) = (knob.shown(value), knob.shown(before));
+            (value != previous)
+                .then(|| Raised::new(knob.title(), value, Some(was(&previous, (max > 0.0).then_some(max))), spec.knob_color(knob, config, palette)))
+        }),
+    }
 }
 
 const SAMPLE_LAP: LapSummary = LapSummary {
@@ -354,29 +764,71 @@ const SAMPLE_LAP: LapSummary = LapSummary {
     fuel_delta: Some(-0.09),
 };
 
-/// The popup `alert` would show, with made-up values, for the designer to play on the dash so its
-/// look can be set without turning a knob in the car. Built exactly as a real change builds it,
-/// so it honours the alert's own look and the layout's. `None` for a type the tracker does not know.
-pub fn preview_alert_banner(layout: &DashLayout, alert: &DashAlert, palette: &DashPaletteColors) -> Option<DashAlertBanner> {
-    if alert.alert_type == "lap_summary" {
-        return Some(DashAlertBanner::LapSummary(SAMPLE_LAP));
-    }
-    let setting = SettingAlertType::parse(&alert.alert_type)?;
-    let config = read_alert_config(layout.alert_config.as_ref());
-    Some(DashAlertBanner::Setting(setting_popup(&AlertSpec::of(alert), setting, setting.sample_change(), &config, layout, palette)))
+/// The multi-dial popup the designer plays `dial_change` with.
+const SAMPLE_DIAL: (&str, &str, &str) = ("MULTI", "TC2", dash_color::YELLOW);
+
+/// The made-up popup content the designer plays `spec` with (the `SAMPLES` table in alerts.ts).
+fn sample(spec: &AlertSpec, config: &ResolvedAlertConfig, palette: &DashPaletteColors) -> Option<Raised> {
+    let raised = match spec.alert_type {
+        DashAlertType::PitLimiter => Raised::new("PIT LIMITER", "ON", None, palette.assist_active),
+        DashAlertType::Flag => Raised::new("FLAG", FlagKind::Yellow.name(), None, FlagKind::Yellow.color(palette)),
+        DashAlertType::Penalty => Raised::new("PENALTY", "1", Some("TO SERVE".to_owned()), palette.critical),
+        DashAlertType::Damage => Raised::new("DAMAGE", "FRONT LEFT", Some("HEAVY".to_owned()), palette.critical),
+        DashAlertType::EngineWarning => Raised::new("ENGINE", "OVERHEAT", Some("WATER 118° · OIL 142°".to_owned()), palette.critical),
+        DashAlertType::FuelLow => Raised::new("FUEL", "1.8", Some("LAPS LEFT".to_owned()), palette.warning),
+        alert_type => {
+            let knob = *Knob::of(alert_type).first()?;
+            let (value, previous, max) = knob.sample();
+            Raised::new(knob.title(), value, Some(was(previous, max)), spec.knob_color(knob, config, palette))
+        }
+    };
+    Some(raised)
 }
 
-/// Feeds frames through the setting change detectors and the lap watcher, and holds the
-/// resulting popup for its configured duration. Time is supplied explicitly via `advance_to`
-/// (epoch milliseconds) rather than read from a clock.
+/// The popup `alert` would show, with made-up values, for the designer to play on the dash so its
+/// look can be set without turning a knob in the car. Built exactly as a real one is, so it
+/// honours the alert's own look and the layout's. `None` for a type the tracker does not know.
+pub fn preview_alert_banner(layout: &DashLayout, alert: &DashAlert, palette: &DashPaletteColors) -> Option<DashAlertBanner> {
+    let spec = AlertSpec::of(alert, layout)?;
+    let config = read_alert_config(layout.alert_config.as_ref());
+    match spec.alert_type {
+        DashAlertType::LapSummary => Some(DashAlertBanner::LapSummary(SAMPLE_LAP)),
+        DashAlertType::DialChange => {
+            let (caption, label, color) = SAMPLE_DIAL;
+            Some(DashAlertBanner::MultiDial(DashMultiDialPopup {
+                caption: caption.to_owned(),
+                label: label.to_owned(),
+                color: Rgba::hex(color),
+                inverted: spec.inverted(&config),
+                size: spec.size(&config),
+            }))
+        }
+        _ => Some(DashAlertBanner::Alert(sample(&spec, &config, palette)?.popup(&spec, &config))),
+    }
+}
+
+/// One alert that is up: until when (`None`: until acknowledged) and what ends it early.
+#[derive(Clone, Debug)]
+struct UpAlert {
+    alert_type: DashAlertType,
+    banner: DashAlertBanner,
+    until: Option<f64>,
+    ends: Option<Ends>,
+}
+
+/// Feeds frames through the detectors and holds what they raise. Alerts that are up stack, newest
+/// on top and at most one per type (a new one replaces its type's older one): the top one shows,
+/// and when it runs out, is acknowledged or its condition ends, the one beneath shows again, so a
+/// penalty held until acknowledged is never lost under a passing TC change. Time is supplied
+/// explicitly via `advance_to` (milliseconds) rather than read from a clock.
 #[derive(Clone, Debug)]
 pub struct DashAlertTracker {
     fallback_duration_seconds: f64,
     laps: LapSummaryWatcher,
+    fuel: FuelWatch,
     now: f64,
-    prev: Option<SettingReadings>,
-    active: Option<DashAlertBanner>,
-    expires_at: f64,
+    prev: Option<Readings>,
+    up: Vec<UpAlert>,
 }
 
 impl Default for DashAlertTracker {
@@ -387,7 +839,7 @@ impl Default for DashAlertTracker {
 
 impl DashAlertTracker {
     pub fn new(fallback_duration_seconds: f64) -> DashAlertTracker {
-        DashAlertTracker { fallback_duration_seconds, laps: LapSummaryWatcher::default(), now: 0.0, prev: None, active: None, expires_at: 0.0 }
+        DashAlertTracker { fallback_duration_seconds, laps: LapSummaryWatcher::default(), fuel: FuelWatch::default(), now: 0.0, prev: None, up: Vec::new() }
     }
 
     /// Advances the tracker's clock to `now_ms` (milliseconds; only differences are read). Call before `evaluate`.
@@ -395,7 +847,7 @@ impl DashAlertTracker {
         self.now = now_ms;
     }
 
-    /// Feeds a frame in and returns the popup to draw this tick, or `None` when none is active.
+    /// Feeds a frame in and returns the popup to draw this tick, or `None` when none is up.
     /// `targets` is the driver's plan in force; the lap summary scores each lap against the
     /// targets it was driven with.
     pub fn evaluate(
@@ -406,30 +858,27 @@ impl DashAlertTracker {
         targets: Option<&DashTargets>,
     ) -> Option<&DashAlertBanner> {
         let config = read_alert_config(layout.alert_config.as_ref());
+        let enabled = || layout.alerts.iter().filter_map(|alert| AlertSpec::of(alert, layout)).filter(|spec| spec.enabled);
+        let readings = Readings::of(frame);
+
+        // Followed even while fuel_low is off, so turning it on mid-stint knows the stint.
+        let refuelled = self.fuel.follow(readings.fuel);
+        self.up.retain(|up| !up.ends.is_some_and(|ends| ends.ended(&readings, refuelled)));
 
         // Watched even while the summary is off, so turning it on mid-session has a lap to compare.
         let summary = self.laps.observe(frame, self.now, targets);
-        let summary_alert = layout.alerts.iter().map(AlertSpec::of).find(|alert| alert.enabled && alert.alert_type == "lap_summary");
-        if let (Some(summary), Some(summary_alert)) = (summary, summary_alert) {
-            self.active = Some(DashAlertBanner::LapSummary(summary));
-            let duration = clamp(summary_alert.duration_seconds.unwrap_or(LAP_SUMMARY_SECONDS), MIN_ALERT_SECONDS, LAP_SUMMARY_MAX_SECONDS);
-            self.expires_at = self.now + duration * 1000.0;
+        if let (Some(summary), Some(spec)) = (summary, enabled().find(|spec| spec.alert_type == DashAlertType::LapSummary)) {
+            let until = self.until(&spec, &config);
+            self.raise(UpAlert { alert_type: DashAlertType::LapSummary, banner: DashAlertBanner::LapSummary(summary), until, ends: None });
         }
 
-        // A setting turned on the same frame still wins: it is the driver's own input.
-        let readings = SettingReadings::of(frame);
-        if let Some(prev) = self.prev {
-            // Last configured alert that fired this frame wins (matches the desktop painter loop).
-            for alert in layout.alerts.iter().map(AlertSpec::of) {
-                if !alert.enabled {
-                    continue;
-                }
-                if let Some(candidate) = detect_candidate(&alert, &readings, &prev, &config, layout, palette) {
-                    self.active = Some(DashAlertBanner::Setting(candidate));
-                    let configured = if config.duration_seconds <= 0.0 { self.fallback_duration_seconds } else { config.duration_seconds };
-                    let duration = clamp(alert.duration_seconds.unwrap_or(configured), MIN_ALERT_SECONDS, MAX_ALERT_SECONDS);
-                    self.expires_at = self.now + duration * 1000.0;
-                }
+        // Anything raised on the summary's frame goes on top of it: it is the driver's own input.
+        // Of several raised on one frame, the last configured ends up on top.
+        for spec in enabled() {
+            if let Some(raised) = detect(&spec, &readings, self.prev.as_ref(), &mut self.fuel, &config, palette) {
+                let until = self.until(&spec, &config);
+                let ends = raised.ends;
+                self.raise(UpAlert { alert_type: spec.alert_type, banner: DashAlertBanner::Alert(raised.popup(&spec, &config)), until, ends });
             }
         }
 
@@ -437,21 +886,41 @@ impl DashAlertTracker {
         self.current()
     }
 
-    /// The popup still up at the tracker's clock, without feeding a frame: what `evaluate` would
-    /// return for a repeat of the last frame. Drops it once it has expired.
+    fn until(&self, spec: &AlertSpec, config: &ResolvedAlertConfig) -> Option<f64> {
+        spec.seconds(config, self.fallback_duration_seconds).map(|seconds| self.now + seconds * 1000.0)
+    }
+
+    fn raise(&mut self, alert: UpAlert) {
+        self.up.retain(|up| up.alert_type != alert.alert_type);
+        self.up.push(alert);
+    }
+
+    /// The popup up at the tracker's clock, without feeding a frame: what `evaluate` would
+    /// return for a repeat of the last frame. Drops what has run out.
     pub fn current(&mut self) -> Option<&DashAlertBanner> {
-        if self.active.is_some() && self.now < self.expires_at {
-            return self.active.as_ref();
-        }
-        self.active = None;
-        None
+        let now = self.now;
+        self.up.retain(|up| up.until.is_none_or(|until| now < until));
+        self.up.last().map(|up| &up.banner)
+    }
+
+    /// True while the popup up now runs out by itself (false when none is up or it waits to be
+    /// acknowledged).
+    pub fn expires(&mut self) -> bool {
+        self.current();
+        self.up.last().is_some_and(|up| up.until.is_some())
+    }
+
+    /// The driver acknowledged: the popup up now goes at once (what was beneath it shows again).
+    pub fn acknowledge(&mut self) {
+        self.current();
+        self.up.pop();
     }
 
     /// Clears change-tracking state (call when the link goes offline so a stale diff doesn't
-    /// fire on reconnect).
+    /// fire on reconnect). Fuel stays watched: a stint does not restart because the link did.
     pub fn reset(&mut self) {
         self.prev = None;
-        self.active = None;
+        self.up.clear();
         self.laps.reset();
     }
 }
@@ -472,6 +941,7 @@ pub fn is_attention_inverted(condition: DashCondition, requested: bool, active_f
 mod tests {
     use super::*;
     use crate::lap_summary::tests::at;
+    use crate::model::{Damage, FieldCar};
     use crate::palette::{DEFAULT_DASH_PALETTE, DashThemePreset};
     use serde_json::json;
 
@@ -489,6 +959,17 @@ mod tests {
 
     fn tc(value: f64) -> TelemetryFrame {
         frame(|e| e.tc = value)
+    }
+
+    /// A frame of a driver in the car on track, with `edit` applied.
+    fn driving(edit: impl FnOnce(&mut TelemetryFrame)) -> TelemetryFrame {
+        let mut frame = TelemetryFrame::default();
+        frame.session.in_car = true;
+        frame.car.in_garage = Some(false);
+        frame.field = vec![FieldCar { is_player: true, ..FieldCar::default() }];
+        frame.damage = Some(Damage::default());
+        edit(&mut frame);
+        frame
     }
 
     fn alert(overrides: serde_json::Value) -> serde_json::Value {
@@ -511,11 +992,17 @@ mod tests {
         layout(json!([alert(overrides)]), None)
     }
 
-    fn setting(banner: Option<&DashAlertBanner>) -> DashSettingPopup {
+    fn popup(banner: Option<&DashAlertBanner>) -> DashAlertPopup {
         match banner {
-            Some(DashAlertBanner::Setting(popup)) => popup.clone(),
-            other => panic!("expected a setting popup, got {other:?}"),
+            Some(DashAlertBanner::Alert(popup)) => popup.clone(),
+            other => panic!("expected an alert popup, got {other:?}"),
         }
+    }
+
+    /// (title, value, detail) of the popup up.
+    fn shown(banner: Option<&DashAlertBanner>) -> (String, String, Option<String>) {
+        let p = popup(banner);
+        (p.title, p.value, p.detail)
     }
 
     fn preset(token: &str) -> &'static DashThemePreset {
@@ -533,11 +1020,26 @@ mod tests {
         let mut tracker = DashAlertTracker::default();
         let l = one(json!({}));
         tracker.evaluate(&l, &tc(0.0), &P, None);
-        let banner = setting(tracker.evaluate(&l, &tc(5.0), &P, None));
-        assert_eq!((banner.title.as_str(), banner.value.as_str(), banner.previous.as_str()), ("TC", "5", "0"));
-        assert_eq!(banner.max, Some(9.0));
+        let banner = popup(tracker.evaluate(&l, &tc(5.0), &P, None));
+        assert_eq!((banner.title.as_str(), banner.value.as_str(), banner.detail.as_deref()), ("TC", "5", Some("WAS 0 · OF 9")));
+        assert_eq!(banner.alert_type, DashAlertType::TcChange);
         assert_eq!(banner.color, dash_setting_colors::TC);
-        assert!(banner.full_screen, "full screen unless the layout asks for a centered popup");
+        assert_eq!(banner.placement, AlertPlacement::Full, "full screen unless the alert or the layout says otherwise");
+    }
+
+    #[test]
+    fn the_tc_alert_also_fires_on_tc_slip_and_tc_cut_naming_which_one_moved() {
+        let mut tracker = DashAlertTracker::default();
+        let l = one(json!({}));
+        let knobs = |slip: f64, cut: f64| {
+            frame(|e| {
+                (e.tc_slip, e.tc_slip_max, e.tc_cut, e.tc_cut_max) = (slip, 9.0, cut, 9.0);
+            })
+        };
+        tracker.evaluate(&l, &knobs(2.0, 3.0), &P, None);
+        assert_eq!(shown(tracker.evaluate(&l, &knobs(4.0, 3.0), &P, None)), ("SLIP".into(), "4".into(), Some("WAS 2 · OF 9".into())));
+        assert_eq!(shown(tracker.evaluate(&l, &knobs(4.0, 1.0), &P, None)), ("CUT".into(), "1".into(), Some("WAS 3 · OF 9".into())));
+        assert_eq!(popup(tracker.current()).color, dash_setting_colors::TC);
     }
 
     #[test]
@@ -551,19 +1053,194 @@ mod tests {
         let l = one(json!({ "type": "bias_change" }));
         tracker.evaluate(&l, &bias(0.462), &P, None);
         assert_eq!(tracker.evaluate(&l, &bias(0.46201), &P, None), None);
-        let banner = setting(tracker.evaluate(&l, &bias(0.465), &P, None));
+        let banner = popup(tracker.evaluate(&l, &bias(0.465), &P, None));
         assert_eq!(banner.title, "BIAS");
         assert_eq!(banner.value, "53.5", "the front share");
-        assert_eq!(banner.max, None);
+        assert_eq!(banner.detail.as_deref(), Some("WAS 53.8"), "no maximum");
         assert_eq!(banner.color, dash_setting_colors::BRAKE_BIAS);
     }
 
     #[test]
-    fn display_mode_center_keeps_the_popup_in_the_alert_rect() {
+    fn migration_and_anti_roll_bar_changes_alert_only_while_driving() {
+        let l = layout(json!([alert(json!({ "id": "m", "type": "migration_change" })), alert(json!({ "id": "a", "type": "arb_change" }))]), None);
+        let car = |migration: f64, rear_arb: f64, in_car: bool| {
+            driving(|f| {
+                (f.electronics.migration, f.electronics.migration_max, f.electronics.rear_anti_roll_bar, f.electronics.rear_anti_roll_bar_max) =
+                    (migration, 5.0, rear_arb, 6.0);
+                f.session.in_car = in_car;
+            })
+        };
+        let mut tracker = DashAlertTracker::default();
+        tracker.evaluate(&l, &car(0.0, 0.0, false), &P, None);
+        assert_eq!(tracker.evaluate(&l, &car(2.0, 3.0, true), &P, None), None, "getting into the car is no change");
+        assert_eq!(shown(tracker.evaluate(&l, &car(3.0, 3.0, true), &P, None)), ("MIG".into(), "3".into(), Some("WAS 2 · OF 5".into())));
+        assert_eq!(shown(tracker.evaluate(&l, &car(3.0, 4.0, true), &P, None)), ("ARB R".into(), "4".into(), Some("WAS 3 · OF 6".into())));
+        let mut garage = car(4.0, 5.0, true);
+        garage.car.in_garage = Some(true);
+        tracker.acknowledge();
+        tracker.acknowledge();
+        assert_eq!(tracker.evaluate(&l, &garage, &P, None), None, "set in the garage");
+    }
+
+    #[test]
+    fn the_pit_limiter_alert_is_up_while_the_limiter_is_on_and_fires_again_next_time() {
+        let l = one(json!({ "type": "pit_limiter", "untilAck": true }));
+        let limiter = |on: bool| driving(|f| f.car.pit_limiter = Some(on));
+        let mut tracker = DashAlertTracker::default();
+        tracker.evaluate(&l, &limiter(false), &P, None);
+        let banner = popup(tracker.evaluate(&l, &limiter(true), &P, None));
+        assert_eq!((banner.title.as_str(), banner.value.as_str(), banner.color), ("PIT LIMITER", "ON", P.assist_active));
+        tracker.advance_to(120_000.0);
+        assert!(tracker.evaluate(&l, &limiter(true), &P, None).is_some(), "held until acknowledged, however long");
+        assert!(!tracker.expires());
+        assert_eq!(tracker.evaluate(&l, &limiter(false), &P, None), None, "taken down when the limiter goes off");
+        assert!(tracker.evaluate(&l, &limiter(true), &P, None).is_some(), "and raised again the next time");
+    }
+
+    #[test]
+    fn a_new_flag_names_the_highest_one_that_just_came_out_in_its_signal_colour() {
+        let l = one(json!({ "type": "flag" }));
+        let flags = |yellow: bool, double: bool, sc: bool, blue: bool| {
+            driving(|f| {
+                (f.flags.yellow, f.flags.double_yellow, f.flags.safety_car) = (yellow, double, sc);
+                f.field[0].blue_flag = blue;
+            })
+        };
+        let mut tracker = DashAlertTracker::default();
+        tracker.evaluate(&l, &flags(false, false, false, false), &P, None);
+        let yellow = popup(tracker.evaluate(&l, &flags(true, false, false, false), &P, None));
+        assert_eq!((yellow.title.as_str(), yellow.value.as_str(), yellow.color), ("FLAG", "YELLOW", P.race_control_yellow));
+        assert_eq!(shown(tracker.evaluate(&l, &flags(true, true, true, false), &P, None)).1, "SAFETY CAR", "safety car over double yellow");
+        // It replaced the yellow's alert; going in, it takes its own down, and the yellows still
+        // out are no new flag.
+        assert_eq!(tracker.evaluate(&l, &flags(true, true, false, false), &P, None), None);
+        let blue = popup(tracker.evaluate(&l, &flags(true, true, false, true), &P, None));
+        assert_eq!((blue.value.as_str(), blue.color), ("BLUE", Rgba::hex(dash_color::BLUE)));
+    }
+
+    #[test]
+    fn a_penalty_fires_when_the_players_count_goes_up_never_on_the_field_appearing() {
+        let l = one(json!({ "type": "penalty", "untilAck": true }));
+        let penalties = |count: f64| driving(|f| f.field[0].penalties = count);
+        let mut tracker = DashAlertTracker::default();
+        let mut no_field = penalties(0.0);
+        no_field.field.clear();
+        tracker.evaluate(&l, &no_field, &P, None);
+        assert_eq!(tracker.evaluate(&l, &penalties(1.0), &P, None), None, "the player's car appearing is no new penalty");
+        let banner = popup(tracker.evaluate(&l, &penalties(2.0), &P, None));
+        assert_eq!((banner.title.as_str(), banner.value.as_str(), banner.detail.as_deref(), banner.color), ("PENALTY", "2", Some("TO SERVE"), P.critical));
+        assert!(tracker.evaluate(&l, &penalties(1.0), &P, None).is_some(), "serving one does not take it down");
+    }
+
+    #[test]
+    fn damage_names_the_worst_new_dent_and_a_part_coming_off() {
+        let l = one(json!({ "type": "damage" }));
+        let hit = |dents: [f64; 8], detached: bool| {
+            driving(|f| {
+                f.damage = Some(Damage { dents, overheating: false, detached_parts: detached });
+            })
+        };
+        let mut tracker = DashAlertTracker::default();
+        tracker.evaluate(&l, &hit([0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], false), &P, None);
+        let light = popup(tracker.evaluate(&l, &hit([1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], false), &P, None));
+        assert_eq!((light.value.as_str(), light.detail.as_deref(), light.color), ("FRONT LEFT", Some("LIGHT"), P.warning));
+        let heavy = popup(tracker.evaluate(&l, &hit([1.0, 1.0, 0.0, 1.0, 0.0, 2.0, 0.0, 0.0], true), &P, None));
+        assert_eq!((heavy.value.as_str(), heavy.detail.as_deref(), heavy.color), ("REAR", Some("HEAVY · PART OFF"), P.critical));
+        tracker.acknowledge();
+        assert_eq!(tracker.evaluate(&l, &hit([0.0; 8], false), &P, None), None, "a repaired car is no damage");
+    }
+
+    #[test]
+    fn the_engine_warning_fires_when_the_engine_starts_overheating() {
+        let l = one(json!({ "type": "engine_warning", "untilAck": true }));
+        let engine = |hot: bool| {
+            driving(|f| {
+                f.damage = Some(Damage { overheating: hot, ..Damage::default() });
+                (f.car.water_temp, f.car.oil_temp) = (Some(117.6), None);
+            })
+        };
+        let mut tracker = DashAlertTracker::default();
+        tracker.evaluate(&l, &engine(false), &P, None);
+        let banner = popup(tracker.evaluate(&l, &engine(true), &P, None));
+        assert_eq!((banner.title.as_str(), banner.value.as_str(), banner.detail.as_deref()), ("ENGINE", "OVERHEAT", Some("WATER 118°")));
+        tracker.acknowledge();
+        assert_eq!(tracker.evaluate(&l, &engine(true), &P, None), None, "still hot is not a new warning");
+    }
+
+    #[test]
+    fn fuel_low_fires_once_per_stint_and_rearms_after_refuelling() {
+        let l = one(json!({ "type": "fuel_low", "untilAck": true, "lapsLeft": 3 }));
+        let fuel = |liters: f64| {
+            driving(|f| {
+                (f.car.fuel, f.car.fuel_per_lap) = (liters, 4.0);
+            })
+        };
+        let mut tracker = DashAlertTracker::default();
+        assert_eq!(tracker.evaluate(&l, &fuel(2.0), &P, None), None, "a level it starts at is no drop");
+        assert_eq!(tracker.evaluate(&l, &fuel(12.4), &P, None), None, "3.1 laps left");
+        assert_eq!(shown(tracker.evaluate(&l, &fuel(11.6), &P, None)), ("FUEL".into(), "2.9".into(), Some("LAPS LEFT".into())));
+        tracker.acknowledge();
+        tracker.evaluate(&l, &fuel(12.4), &P, None);
+        assert_eq!(tracker.evaluate(&l, &fuel(11.6), &P, None), None, "once per stint, however the estimate wobbles");
+
+        // Refuelling takes it down and re-arms it, and filling up through the threshold never fires.
+        let mut refuel = DashAlertTracker::default();
+        refuel.evaluate(&l, &fuel(12.4), &P, None);
+        refuel.evaluate(&l, &fuel(11.6), &P, None);
+        assert!(refuel.evaluate(&l, &fuel(12.0), &P, None).is_some(), "0.4 l is no refuel");
+        assert_eq!(refuel.evaluate(&l, &fuel(12.8), &P, None), None, "the refuel took it down");
+        assert_eq!(refuel.evaluate(&l, &fuel(13.0), &P, None), None);
+        assert!(refuel.evaluate(&l, &fuel(11.6), &P, None).is_some(), "re-armed: the next stint fires again");
+
+        let mut parked = DashAlertTracker::default();
+        parked.evaluate(&l, &fuel(12.4), &P, None);
+        let mut out_of_car = fuel(11.6);
+        out_of_car.session.in_car = false;
+        assert_eq!(parked.evaluate(&l, &out_of_car, &P, None), None, "only while driving");
+    }
+
+    #[test]
+    fn an_alert_held_until_acknowledged_shows_again_when_a_passing_one_runs_out() {
+        let l = layout(json!([alert(json!({ "id": "p", "type": "penalty", "untilAck": true })), alert(json!({ "durationSeconds": 2 }))]), None);
+        let car = |tc: f64, penalties: f64| {
+            driving(|f| {
+                (f.electronics.tc, f.electronics.tc_max) = (tc, 9.0);
+                f.field[0].penalties = penalties;
+            })
+        };
+        let mut tracker = DashAlertTracker::default();
+        tracker.evaluate(&l, &car(1.0, 0.0), &P, None);
+        tracker.evaluate(&l, &car(1.0, 1.0), &P, None);
+        tracker.advance_to(100.0);
+        assert_eq!(popup(tracker.evaluate(&l, &car(2.0, 1.0), &P, None)).title, "TC");
+        assert!(tracker.expires());
+        tracker.advance_to(2100.0);
+        assert_eq!(popup(tracker.current()).title, "PENALTY", "back once the TC change has run out");
+        tracker.acknowledge();
+        assert_eq!(tracker.current(), None);
+    }
+
+    #[test]
+    fn acknowledging_takes_the_top_alert_down_at_once() {
+        let mut tracker = DashAlertTracker::default();
+        let l = one(json!({ "durationSeconds": 30 }));
+        tracker.evaluate(&l, &tc(0.0), &P, None);
+        tracker.evaluate(&l, &tc(5.0), &P, None);
+        tracker.acknowledge();
+        assert_eq!(tracker.current(), None);
+        tracker.acknowledge();
+        assert_eq!(tracker.evaluate(&l, &tc(5.0), &P, None), None, "the same value is no new change");
+    }
+
+    #[test]
+    fn display_mode_center_keeps_the_popup_in_the_alert_rect_and_strip_is_a_band() {
         let mut tracker = DashAlertTracker::default();
         let centered = layout(json!([alert(json!({}))]), Some(json!({ "displayMode": "center" })));
         tracker.evaluate(&centered, &tc(0.0), &P, None);
-        assert!(!setting(tracker.evaluate(&centered, &tc(5.0), &P, None)).full_screen);
+        let span = AlertSpan { col: 6.0, row: 3.0, col_span: 8.0, row_span: 6.0, grid_cols: 20.0, grid_rows: 12.0 };
+        assert_eq!(popup(tracker.evaluate(&centered, &tc(5.0), &P, None)).placement, AlertPlacement::Center(span));
+        let strip = one(json!({ "displayMode": "strip" }));
+        assert_eq!(popup(tracker.evaluate(&strip, &tc(6.0), &P, None)).placement, AlertPlacement::Strip);
     }
 
     #[test]
@@ -601,7 +1278,7 @@ mod tests {
         let mut tracker = DashAlertTracker::default();
         let l = layout(json!([alert(json!({ "id": "tc", "type": "tc_change" })), alert(json!({ "id": "abs", "type": "abs_change" }))]), None);
         tracker.evaluate(&l, &frame(|e| (e.tc, e.abs) = (0.0, 0.0)), &P, None);
-        assert_eq!(setting(tracker.evaluate(&l, &frame(|e| (e.tc, e.abs) = (5.0, 5.0)), &P, None)).title, "ABS");
+        assert_eq!(popup(tracker.evaluate(&l, &frame(|e| (e.tc, e.abs) = (5.0, 5.0)), &P, None)).title, "ABS");
     }
 
     #[test]
@@ -614,22 +1291,22 @@ mod tests {
     }
 
     #[test]
-    fn an_alert_duration_is_clamped_to_half_a_second_to_five_seconds() {
+    fn an_alert_duration_is_clamped_to_one_to_thirty_seconds() {
         let mut tracker = DashAlertTracker::default();
-        let l = one(json!({ "durationSeconds": 10 }));
+        let l = one(json!({ "durationSeconds": 60 }));
         tracker.advance_to(0.0);
         tracker.evaluate(&l, &tc(0.0), &P, None);
         tracker.evaluate(&l, &tc(5.0), &P, None);
-        tracker.advance_to(4999.0);
+        tracker.advance_to(29_999.0);
         assert!(tracker.evaluate(&l, &tc(5.0), &P, None).is_some());
-        tracker.advance_to(5001.0);
+        tracker.advance_to(30_001.0);
         assert_eq!(tracker.evaluate(&l, &tc(5.0), &P, None), None);
 
         let short = one(json!({ "durationSeconds": 0.1 }));
         tracker.advance_to(0.0);
         tracker.evaluate(&short, &tc(1.0), &P, None);
-        tracker.advance_to(499.0);
-        assert!(tracker.evaluate(&short, &tc(1.0), &P, None).is_some(), "at least 0.5 s");
+        tracker.advance_to(999.0);
+        assert!(tracker.evaluate(&short, &tc(1.0), &P, None).is_some(), "at least 1 s");
     }
 
     #[test]
@@ -651,11 +1328,14 @@ mod tests {
         let mut tracker = DashAlertTracker::default();
         let l = one(json!({ "colorToken": "green" }));
         tracker.evaluate(&l, &tc(0.0), &P, None);
-        let banner = setting(tracker.evaluate(&l, &tc(5.0), &P, None));
+        let banner = popup(tracker.evaluate(&l, &tc(5.0), &P, None));
         // "green" canonicalizes to the Viper preset, whose primary swatch is the dash green —
         // not TC's own blue, which is what tc_change would otherwise use.
         assert_eq!(banner.color, preset_swatch_color(preset("green")));
         assert_ne!(banner.color, dash_setting_colors::TC);
+        // A signal keeps its own colour whatever the token.
+        let flag = one(json!({ "type": "flag", "colorToken": "green" }));
+        assert_eq!(popup(preview_alert_banner(&flag, &flag.alerts[0], &P).as_ref()).color, P.race_control_yellow);
     }
 
     #[test]
@@ -663,7 +1343,7 @@ mod tests {
         let mut tracker = DashAlertTracker::default();
         let l = layout(json!([alert(json!({}))]), Some(json!({ "colorToken": "yellow", "invertColors": true })));
         tracker.evaluate(&l, &tc(0.0), &P, None);
-        let banner = setting(tracker.evaluate(&l, &tc(5.0), &P, None));
+        let banner = popup(tracker.evaluate(&l, &tc(5.0), &P, None));
         assert_eq!(banner.color, P.warning);
         assert!(banner.invert_colors, "the layout's look when the alert has none");
     }
@@ -686,23 +1366,33 @@ mod tests {
         let mut tracker = DashAlertTracker::default();
         let boxed = layout(json!([alert(json!({ "displayMode": "center" }))]), Some(json!({ "displayMode": "full" })));
         tracker.evaluate(&boxed, &tc(0.0), &P, None);
-        assert!(!setting(tracker.evaluate(&boxed, &tc(5.0), &P, None)).full_screen);
+        assert!(matches!(popup(tracker.evaluate(&boxed, &tc(5.0), &P, None)).placement, AlertPlacement::Center(_)));
 
-        let full = layout(json!([alert(json!({ "displayMode": "full" }))]), Some(json!({ "displayMode": "center" })));
-        assert!(setting(preview_alert_banner(&full, &full.alerts[0], &P).as_ref()).full_screen);
+        let full = layout(json!([alert(json!({ "displayMode": "full" }))]), Some(json!({ "displayMode": "strip" })));
+        assert_eq!(popup(preview_alert_banner(&full, &full.alerts[0], &P).as_ref()).placement, AlertPlacement::Full);
     }
 
     #[test]
-    fn the_designer_preview_wears_the_same_look_a_real_change_would() {
-        let own = layout(json!([alert(json!({ "colorToken": "ember", "invertColors": true }))]), Some(json!({ "displayMode": "center" })));
-        let banner = setting(preview_alert_banner(&own, &own.alerts[0], &P).as_ref());
+    fn the_designer_preview_plays_every_type_in_the_look_a_real_one_would_wear() {
+        let own = layout(json!([alert(json!({ "colorToken": "ember", "invertColors": true }))]), Some(json!({ "displayMode": "strip" })));
+        let banner = popup(preview_alert_banner(&own, &own.alerts[0], &P).as_ref());
         assert_eq!(banner.title, "TC");
-        assert!(!banner.full_screen, "the layout's display mode when the alert has none");
+        assert_eq!(banner.placement, AlertPlacement::Strip, "the layout's display mode when the alert has none");
         assert!(banner.invert_colors);
         assert_eq!(banner.color, preset_swatch_color(preset("ember")));
-        let others = layout(json!([alert(json!({ "type": "lap_summary" })), alert(json!({ "type": "unknown" }))]), None);
-        assert!(matches!(preview_alert_banner(&layout(json!([]), None), &others.alerts[0], &P), Some(DashAlertBanner::LapSummary(_))));
-        assert_eq!(preview_alert_banner(&layout(json!([]), None), &others.alerts[1], &P), None);
+
+        let empty = layout(json!([]), None);
+        for alert_type in DashAlertType::ALL {
+            let l = one(json!({ "type": alert_type.id(), "displayMode": "strip", "invertColors": true }));
+            let preview = preview_alert_banner(&empty, &l.alerts[0], &P).unwrap_or_else(|| panic!("{alert_type:?} has a preview"));
+            match (alert_type, preview) {
+                (DashAlertType::LapSummary, DashAlertBanner::LapSummary(_)) => {}
+                (DashAlertType::DialChange, DashAlertBanner::MultiDial(dial)) => assert!(dial.inverted && dial.size == AlertSize::Strip),
+                (_, DashAlertBanner::Alert(p)) => assert!(p.alert_type == alert_type && p.placement == AlertPlacement::Strip && p.invert_colors),
+                (_, other) => panic!("{alert_type:?} previews as {other:?}"),
+            }
+        }
+        assert_eq!(preview_alert_banner(&empty, &one(json!({ "type": "unknown" })).alerts[0], &P), None);
     }
 
     #[test]
@@ -730,7 +1420,7 @@ mod tests {
 
     #[test]
     fn a_lap_summary_may_stay_up_for_up_to_fifteen_seconds() {
-        for (duration, expires) in [(json!(12), 12_100.0), (json!(40), 15_100.0), (json!(0.1), 600.0)] {
+        for (duration, expires) in [(json!(12), 12_100.0), (json!(40), 15_100.0), (json!(0.1), 1100.0)] {
             let l = layout(
                 json!([{ "id": "sum", "type": "lap_summary", "enabled": true, "durationSeconds": duration, "col": 0, "row": 0, "colSpan": 1, "rowSpan": 1 }]),
                 None,
@@ -747,7 +1437,7 @@ mod tests {
     }
 
     #[test]
-    fn a_setting_change_on_the_lap_summary_frame_wins_and_restarts_the_clock() {
+    fn a_setting_change_on_the_lap_summary_frame_goes_on_top_and_the_summary_shows_after_it() {
         let l = layout(
             json!([{ "id": "sum", "type": "lap_summary", "enabled": true, "col": 0, "row": 0, "colSpan": 1, "rowSpan": 1 }, alert(json!({ "durationSeconds": 1 }))]),
             None,
@@ -756,18 +1446,22 @@ mod tests {
         tracker.evaluate(&l, &at(4.0, 0.0, 60.0, |f| f.lap.best_lap_time = 210.0), &P, None);
         tracker.advance_to(100.0);
         let both = at(5.0, 209.0, 56.0, |f| f.electronics.tc = 3.0);
-        assert!(matches!(tracker.evaluate(&l, &both, &P, None), Some(DashAlertBanner::Setting(_))));
+        assert!(matches!(tracker.evaluate(&l, &both, &P, None), Some(DashAlertBanner::Alert(_))));
         tracker.advance_to(1100.0);
-        assert_eq!(tracker.current(), None, "the setting's 1 s, not the summary's 5 s");
+        assert!(matches!(tracker.current(), Some(DashAlertBanner::LapSummary(_))), "the setting's 1 s is over, the summary's 5 s is not");
+        tracker.advance_to(5100.0);
+        assert_eq!(tracker.current(), None);
     }
 
     #[test]
     fn banner_json_parses_exactly_what_the_typescript_union_serializes() {
-        let setting_json = br##"{"kind":"setting","title":"ABS","value":"3","previous":"4","max":9,"color":"#A06BFF","fullScreen":false,"col":6,"row":3,"colSpan":8,"rowSpan":6,"gridCols":20,"gridRows":12,"invertColors":false}"##;
-        let parsed = setting(Some(&parse_banner(setting_json).expect("setting")));
-        assert_eq!((parsed.title.as_str(), parsed.max, parsed.color), ("ABS", Some(9.0), dash_setting_colors::ABS));
-        let no_max = br##"{"kind":"setting","title":"BIAS","value":"56.5","previous":"56.0","max":null,"color":"#F5F5F7","fullScreen":true,"col":6,"row":3,"colSpan":8,"rowSpan":6,"gridCols":20,"gridRows":12,"invertColors":true}"##;
-        assert_eq!(setting(Some(&parse_banner(no_max).expect("bias"))).max, None);
+        let alert_json = r##"{"kind":"alert","alertType":"abs_change","title":"ABS","value":"3","detail":"WAS 4 · OF 9","color":"#A06BFF","invertColors":false,"displayMode":"center","col":6,"row":3,"colSpan":8,"rowSpan":6,"gridCols":20,"gridRows":12}"##;
+        let parsed = popup(Some(&parse_banner(alert_json.as_bytes()).expect("alert")));
+        assert_eq!((parsed.title.as_str(), parsed.detail.as_deref(), parsed.color), ("ABS", Some("WAS 4 · OF 9"), dash_setting_colors::ABS));
+        assert_eq!(parsed.placement, AlertPlacement::Center(AlertSpan { col: 6.0, row: 3.0, col_span: 8.0, row_span: 6.0, grid_cols: 20.0, grid_rows: 12.0 }));
+        let strip = br##"{"kind":"alert","alertType":"fuel_low","title":"FUEL","value":"1.8","detail":null,"color":"#FF6A00","invertColors":true,"displayMode":"strip"}"##;
+        let parsed = popup(Some(&parse_banner(strip).expect("strip")));
+        assert_eq!((parsed.alert_type, parsed.placement, parsed.detail), (DashAlertType::FuelLow, AlertPlacement::Strip, None));
 
         let lap = br#"{"kind":"lapSummary","lap":12,"totalLaps":null,"position":4,"lapTime":124.912,"lapDelta":null,"targetDelta":0.4,"valid":false,"fuelUsed":2.9,"fuelDelta":null}"#;
         let summary = LapSummary {
@@ -783,20 +1477,35 @@ mod tests {
         };
         assert_eq!(parse_banner(lap), Ok(DashAlertBanner::LapSummary(summary)));
 
-        let dial = br##"{"kind":"multiDial","caption":"MULTI","label":"TC2","color":"#E0A30C","inverted":false}"##;
+        let dial = br##"{"kind":"multiDial","caption":"MULTI","label":"TC2","color":"#E0A30C","inverted":false,"displayMode":"strip"}"##;
         assert_eq!(
             parse_banner(dial),
             Ok(DashAlertBanner::MultiDial(DashMultiDialPopup {
                 caption: "MULTI".to_owned(),
                 label: "TC2".to_owned(),
                 color: Rgba::hex("#E0A30C"),
-                inverted: false
+                inverted: false,
+                size: AlertSize::Strip,
             }))
         );
 
         assert!(parse_banner(br#"{"kind":"toast"}"#).is_err());
-        assert!(parse_banner(br#"{"kind":"setting","title":"TC"}"#).is_err(), "a setting popup needs all its fields");
-        let named_color = String::from_utf8_lossy(setting_json).replace("#A06BFF", "purple");
+        assert!(parse_banner(br#"{"kind":"alert","title":"TC"}"#).is_err(), "a popup needs all its fields");
+        assert!(parse_banner(&String::from_utf8_lossy(strip).replace("strip", "corner").into_bytes()).is_err(), "only the known placements");
+        let named_color = alert_json.replace("#A06BFF", "purple");
         assert!(parse_banner(named_color.as_bytes()).is_err(), "the TypeScript only ever writes hex colors there");
+    }
+
+    #[test]
+    fn every_wire_id_parses_both_ways_and_the_editor_lists_exactly_these_types() {
+        for alert_type in DashAlertType::ALL {
+            assert_eq!(DashAlertType::parse(alert_type.id()), Some(alert_type));
+            assert_eq!(serde_json::from_value::<DashAlertType>(json!(alert_type.id())).ok(), Some(alert_type));
+        }
+        let source = include_str!("../../src/alerts.ts");
+        let start = "export const dashAlertTypes: readonly DashAlertType[] = [";
+        let from = source.find(start).expect("dashAlertTypes in alerts.ts") + start.len();
+        let listed: Vec<&str> = source[from..from + source[from..].find(']').expect("its end")].split('\'').skip(1).step_by(2).collect();
+        assert_eq!(listed, DashAlertType::ALL.map(DashAlertType::id));
     }
 }

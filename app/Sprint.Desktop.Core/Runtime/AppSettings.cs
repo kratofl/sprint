@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Sprint.Desktop.Features.Dashes;
 using Sprint.Desktop.Features.SessionPlanning;
 
 namespace Sprint.Desktop.Runtime;
@@ -79,6 +80,21 @@ public sealed class AppSettings
     /// </summary>
     [JsonPropertyName("customDashCategories")]
     public List<string> CustomDashCategories { get; set; } = [];
+
+    /// <summary>
+    /// The driver's own dash modes ("Fuel save", "Wet"): pages opt in to one, and a multi-dial
+    /// position switches it on (see <c>DashPageModes</c>). Replaced, never changed in place.
+    /// </summary>
+    [JsonPropertyName("dashModes")]
+    public List<DashMode> DashModes { get; set; } = [];
+
+    /// <summary>
+    /// Which dash alerts show, how big, inverted or not and for how long: app-wide, the same on
+    /// every dash (each draws them in its own colours). The host stamps them onto every layout it
+    /// hands a renderer (<see cref="AppDashAlerts.Stamp"/>). Replaced, never changed in place.
+    /// </summary>
+    [JsonPropertyName("dashAlerts")]
+    public AppDashAlerts DashAlerts { get; set; } = AppDashAlerts.Default;
 
     [JsonPropertyName("devicesUI")]
     public DevicesUiSettings DevicesUI { get; set; } = new();

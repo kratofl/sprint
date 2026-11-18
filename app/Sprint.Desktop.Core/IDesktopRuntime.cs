@@ -1,7 +1,6 @@
 using System.Collections.ObjectModel;
 using Sprint.Desktop.Features.Dashes;
 using Sprint.Desktop.Features.Devices;
-using Sprint.Desktop.Features.Engineer;
 using Sprint.Desktop.Features.Input;
 using Sprint.Desktop.Features.Setup;
 using Sprint.Desktop.Runtime;
@@ -34,9 +33,6 @@ public interface IDesktopRuntime
     ObservableCollection<DashLayout> DashLayouts { get; }
     ReadOnlyObservableCollection<SetupProgram> SetupTemplates { get; }
     ObservableCollection<SetupProgram> SetupPrograms { get; }
-    ObservableCollection<EngineerControl> EngineerControls { get; }
-    ObservableCollection<RadioLogEntry> RadioLog { get; }
-    ExternalOperationState EngineerPushState { get; }
 
     void SaveSettings();
     void ResetSettingsToDefaults();
@@ -45,8 +41,13 @@ public interface IDesktopRuntime
     SavedDevice AddDevice(CatalogDevice catalog);
     void UpdateDevice(SavedDevice device, string name, DeviceOrientation orientation, int offsetX, int offsetY, int margin, string dashId);
     void UpdateDevicePurpose(SavedDevice device, string purpose);
+
+    /// <summary>Replaces the device's dash rules; they are already validated.</summary>
+    void UpdateDeviceDashRules(SavedDevice device, IReadOnlyList<DeviceDashRule> rules);
     void UpdateDeviceCaptureRegion(SavedDevice device, ScreenCaptureRegion region);
     void UpdateDeviceRefreshHz(SavedDevice device, int refreshHz);
+    void BindDeviceButton(SavedDevice device, string command, string input);
+    void UnbindDeviceButton(SavedDevice device, string command);
     void UpdateBrowserDisplaySize(SavedDevice device, int width, int height);
     void UpdateDeviceTransparent(SavedDevice device, bool transparent);
     void RemoveDevice(SavedDevice device);
@@ -60,11 +61,10 @@ public interface IDesktopRuntime
     void CreateDashCategory(string name);
     void RenameDashCategory(string name, string newName);
     void DeleteDashCategory(string name);
+    void CreateDashMode(DashMode mode);
+    void RenameDashMode(string id, string name);
+    void DeleteDashMode(string id);
     SetupProgram DuplicateSetup(SetupProgram source);
     void SaveSetupPrograms();
     void DeleteSetupProgram(SetupProgram program);
-    void PushEngineerChanges();
-    void AcknowledgeEngineerChanges(bool succeeded);
-    void RevertEngineerChanges();
-    void SendQuickMessage(string message);
 }

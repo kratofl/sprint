@@ -28,6 +28,34 @@ public sealed class CarNamesTests
     }
 
     [Theory]
+    [InlineData("Hypercar Porsche", null, null, "Porsche", "HYP", "Porsche")]
+    [InlineData("Hypercar Porsche", "Hyper", "Porsche 963", "Porsche 963", "HYP", "Porsche")]
+    [InlineData("LMGT3 Aston Martin", null, null, "Aston Martin", "LMGT3", "Aston Martin")]
+    [InlineData("LMP2 ELMS", null, null, "Oreca 07", "LMP2 ELMS", "Oreca")]
+    [InlineData("LMP2 WEC", "LMP2", "Oreca 07", "Oreca 07", "LMP2", "Oreca")]
+    [InlineData("DKR Engineering #3:ELMS26", null, null, "DKR Engineering #3:ELMS26", null, null)]
+    public void ACarShowsItsModelBesideItsClassTagAndAMakeOnlyWhereOneIsKnown(string name, string? carClass, string? carType, string car, string? classTag, string? make)
+    {
+        CarMarks marks = CarMarks.Of("Le Mans Ultimate", "Spa", name, carClass, carType);
+
+        Assert.Equal(new CarMarks(car, classTag, make, "BE"), marks);
+        Assert.Null(CarMarks.Of("Le Mans Ultimate", "Nowhere Raceway", name).Country);
+    }
+
+    [Theory]
+    [InlineData("Hyper", "Hypercar Porsche", "HYP")]
+    [InlineData("LMP2_ELMS", "LMP2 ELMS", "LMP2 ELMS")]
+    [InlineData("LMP2", "LMP2 WEC", "LMP2")]
+    [InlineData("GT3", "LMGT3 BMW", "LMGT3")]
+    [InlineData("GTE", "LMGTE Ferrari", "GTE")]
+    [InlineData("TCR", "Hyundai Elantra N TCR", "TCR")]
+    [InlineData(null, "Some mod car", "Other")]
+    public void AClassIsTaggedTheWayRacingTagsItAndLmp2ByWhichCarItIs(string? carClass, string carName, string expected)
+    {
+        Assert.Equal(expected, CarNames.Tag(carClass, carName));
+    }
+
+    [Theory]
     [InlineData("LMP2_ELMS", "ELMS 2025")]
     [InlineData("LMP2", "WEC 2024")]
     public void AnLmp2WithNoChampionshipIsNamedByTheSpecItsClassNames(string carClass, string championship)

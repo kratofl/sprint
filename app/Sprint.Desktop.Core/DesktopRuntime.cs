@@ -1,12 +1,10 @@
 using System.Collections.ObjectModel;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Sprint.Desktop.Api.Engineer;
 using Sprint.Desktop.Api.Telemetry;
 using Sprint.Desktop.Features.Dashes;
 using Sprint.Desktop.Features.Devices;
 using Sprint.Desktop.Features.Diagnostics;
-using Sprint.Desktop.Features.Engineer;
 using Sprint.Desktop.Features.Hardware;
 using Sprint.Desktop.Features.Input;
 using Sprint.Desktop.Features.Setup;
@@ -48,7 +46,6 @@ public sealed class DesktopRuntime : IDesktopRuntime
     private readonly ObservableCollection<SetupProgram> _setupTemplates = [];
     private readonly Dictionary<string, SetupProgram> _canonicalSetupTemplates = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<SetupProgram, SetupProgram> _canonicalSetupTemplateByObject = new(ReferenceEqualityComparer.Instance);
-    private IReadOnlyList<Sprint.Desktop.Api.Engineer.StagedControlChange> _pendingEngineerChanges = [];
 
     public DesktopRuntime(
         string? dataRoot = null,
@@ -106,26 +103,6 @@ public sealed class DesktopRuntime : IDesktopRuntime
             this.SetupPrograms.Add(setup);
         }
 
-        foreach (EngineerControl control in CreateEngineerControls())
-        {
-            this.EngineerControls.Add(control);
-        }
-
-        this.RadioLog.Add(new RadioLogEntry
-        {
-            Message = "RADIO CHECK",
-            Detail = "Crew channel confirmed",
-            Lap = 18,
-            Status = "ACK"
-        });
-        this.RadioLog.Add(new RadioLogEntry
-        {
-            Message = "Dash sync",
-            Detail = "Setup baseline and wheel page are aligned",
-            Lap = 17,
-            Status = "DASH"
-        });
-
         this._log.Info(
             $"Desktop runtime ready: devices={this.Devices.Count} dashes={this.DashLayouts.Count} " +
             $"setups={this.SetupPrograms.Count} catalog={this.Catalog.Count}.");
@@ -140,9 +117,6 @@ public sealed class DesktopRuntime : IDesktopRuntime
     public ObservableCollection<DashLayout> DashLayouts { get; } = [];
     public ReadOnlyObservableCollection<SetupProgram> SetupTemplates { get; }
     public ObservableCollection<SetupProgram> SetupPrograms { get; } = [];
-    public ObservableCollection<EngineerControl> EngineerControls { get; } = [];
-    public ObservableCollection<RadioLogEntry> RadioLog { get; } = [];
-    public ExternalOperationState EngineerPushState { get; private set; } = ExternalOperationState.Idle;
 
     public event EventHandler<RenderProfile>? RenderProfileChanged;
 
@@ -316,6 +290,45 @@ public sealed class DesktopRuntime : IDesktopRuntime
     }
 
     /// <summary>
+    /// Binds <paramref name="input"/> to <paramref name="command"/> on the device. A button runs one
+    /// function per device, so it leaves any function it ran before, and the function any button it
+    /// had before.
+    /// </summary>
+    public void BindDeviceButton(SavedDevice device, string command, string input)
+    {
+        lock (this.DevicesGate)
+        {
+            device.Bindings.RemoveAll(binding =>
+                string.Equals(binding.Input, input, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(binding.Command, command, StringComparison.Ordinal));
+            device.Bindings.Add(new DeviceBinding { Input = input, Command = command });
+            this.SaveDevices();
+        }
+
+        this._log.Info($"Button bound: device={device.Id} command={command} input={input}.");
+    }
+
+    public void UnbindDeviceButton(SavedDevice device, string command)
+    {
+        lock (this.DevicesGate)
+        {
+            if (device.Bindings.RemoveAll(binding => string.Equals(binding.Command, command, StringComparison.Ordinal)) > 0)
+                this.SaveDevices();
+        }
+    }
+
+    public void UpdateDeviceDashRules(SavedDevice device, IReadOnlyList<DeviceDashRule> rules)
+    {
+        lock (this.DevicesGate)
+        {
+            device.DashRules = [.. rules];
+            this.SaveDevices();
+        }
+
+        this._log.Info($"Device dash rules changed: id={device.Id} rules={rules.Count}.");
+    }
+
+    /// <summary>
     /// Sets the screen refresh rate (issue #75). Applies to the hardware publisher and
     /// the live preview alike, so the caller must re-sync the screen service.
     /// </summary>
@@ -381,8 +394,8 @@ public sealed class DesktopRuntime : IDesktopRuntime
     }
 
     /// <summary>
-    /// Creates a blank dash for <paramref name="profile"/>: one empty page, the functional colour
-    /// system and panel style, no idle page. The preset's alerts and alert settings come along so
+    /// Creates a blank dash for <paramref name="profile"/>: zoned and flat (<see cref="DashZones"/>),
+    /// one page with nothing but the gear, the functional colour system, no idle page. The preset's alerts and alert settings come along so
     /// alerts work out of the box. A blank <paramref name="name"/> becomes "New dash".
     /// </summary>
     public DashLayout CreateBlankDashLayout(ScreenProfile profile, string? name, string? category)
@@ -396,7 +409,10 @@ public sealed class DesktopRuntime : IDesktopRuntime
             Category = category,
             Mode = NormalizeDashMode(this.Settings.NewDashDefaults.Mode),
             ColorSystem = DashColorSystem.Functional,
-            DashStyle = DashStyle.Panels,
+            DashStyle = DashStyle.Flat,
+            Zoned = true,
+            GridCols = DashZones.Cols,
+            GridRows = DashZones.Rows,
             Pages = [new DashPage { Id = "page-1", Name = "Page 1" }],
             Alerts = Clone(preset.Alerts),
             AlertConfig = Clone(preset.AlertConfig),
@@ -448,7 +464,8 @@ public sealed class DesktopRuntime : IDesktopRuntime
     /// <summary>
     /// Ensures a layout has a valid target screen profile. Legacy layouts without a
     /// stored profile keep their grid and are tagged with the best-fit catalog profile
-    /// (matched by grid, then aspect), so nothing about their placement changes.
+    /// (matched by grid, then aspect), so nothing about their placement changes. A zoned
+    /// layout's grid says nothing about its screen (the zones fit any), so it takes the default.
     /// </summary>
     private static void NormalizeLayoutProfile(DashLayout layout)
     {
@@ -457,13 +474,36 @@ public sealed class DesktopRuntime : IDesktopRuntime
             return;
         }
 
-        layout.ScreenProfileId = ScreenProfileCatalog.MatchGrid(layout.GridCols, layout.GridRows).Id;
+        layout.ScreenProfileId = layout.Zoned
+            ? ScreenProfileCatalog.DefaultId
+            : ScreenProfileCatalog.MatchGrid(layout.GridCols, layout.GridRows).Id;
     }
 
-    /// <summary>Deletes any dash, even the last one. Devices that showed it fall back to <see cref="DashLayoutOrder.First"/>.</summary>
+    /// <summary>
+    /// Deletes any dash, even the last one. Devices that showed it fall back to
+    /// <see cref="DashLayoutOrder.First"/>; their rules for a game, class or car that named it go.
+    /// </summary>
     public void DeleteDashLayout(DashLayout layout)
     {
         this.DashLayouts.Remove(layout);
+        lock (this.DevicesGate)
+        {
+            bool changed = false;
+            foreach (SavedDevice device in this.Devices)
+            {
+                if (device.DashRules.Any(rule => string.Equals(rule.DashId, layout.Id, StringComparison.OrdinalIgnoreCase)))
+                {
+                    device.DashRules = device.DashRules.Where(rule => !string.Equals(rule.DashId, layout.Id, StringComparison.OrdinalIgnoreCase)).ToList();
+                    changed = true;
+                }
+            }
+
+            if (changed)
+            {
+                this.SaveDevices();
+            }
+        }
+
         string path = Path.Combine(this._layoutsPath, $"{layout.Id}.json");
         if (File.Exists(path))
         {
@@ -547,6 +587,75 @@ public sealed class DesktopRuntime : IDesktopRuntime
         this._log.Info($"Dash category deleted: {name}.");
     }
 
+    // Modes, like categories, are replaced, never changed in place.
+
+    /// <summary>Adds one of the driver's dash modes; its id and name are already validated (<see cref="DashPageModes"/>).</summary>
+    public void CreateDashMode(DashMode mode)
+    {
+        lock (this.SettingsGate)
+        {
+            this.Settings.DashModes = [.. this.Settings.DashModes, mode];
+            SaveJson(this._settingsPath, this.Settings);
+        }
+
+        this._log.Info($"Dash mode created: {mode.Name}.");
+    }
+
+    /// <summary>Renames a dash mode; <paramref name="name"/> is already validated. Pages and dials refer to it by id, so nothing else moves.</summary>
+    public void RenameDashMode(string id, string name)
+    {
+        lock (this.SettingsGate)
+        {
+            this.Settings.DashModes = this.Settings.DashModes.Select(mode => mode.Id == id ? mode with { Name = name } : mode).ToList();
+            SaveJson(this._settingsPath, this.Settings);
+        }
+
+        this._log.Info($"Dash mode renamed: {id} -> {name}.");
+    }
+
+    /// <summary>
+    /// Deletes a dash mode: pages that showed in it drop it (a page left with nothing picked shows
+    /// in every session again), and dial positions that switched it on switch nothing on.
+    /// </summary>
+    public void DeleteDashMode(string id)
+    {
+        List<DashMode> modes;
+        lock (this.SettingsGate)
+        {
+            modes = this.Settings.DashModes.Where(mode => mode.Id != id).ToList();
+            this.Settings.DashModes = modes;
+            SaveJson(this._settingsPath, this.Settings);
+        }
+
+        foreach (DashLayout layout in this.DashLayouts.ToList())
+        {
+            if (DashPageModes.ForgetUnknownPicks(layout, modes))
+            {
+                this.SaveDashLayout(layout);
+            }
+        }
+
+        lock (this.DevicesGate)
+        {
+            bool changed = false;
+            foreach (SavedDevice device in this.Devices)
+            {
+                if (device.MultiDial is { } dial && dial.Modes.Contains(id))
+                {
+                    device.MultiDial = dial with { Modes = dial.Modes.Select(mode => mode == id ? null : mode).ToList() };
+                    changed = true;
+                }
+            }
+
+            if (changed)
+            {
+                this.SaveDevices();
+            }
+        }
+
+        this._log.Info($"Dash mode deleted: {id}.");
+    }
+
     /// <summary>
     /// Makes a dash's category one this runtime knows: trims it, stores the known spelling, drops a
     /// blank or reserved one, and adopts an unknown name as a custom category (a dash synced from
@@ -624,79 +733,6 @@ public sealed class DesktopRuntime : IDesktopRuntime
         this.SetupPrograms.Remove(program);
         this.SaveSetupPrograms();
         this._log.Info($"Setup deleted: id={program.Id}.");
-    }
-
-    public void PushEngineerChanges()
-    {
-        IReadOnlyList<StagedControlChange> dirty = EngineerStageService.DirtyChanges(this.EngineerControls);
-        if (dirty.Count == 0)
-        {
-            return;
-        }
-
-        // Build the human-readable radio detail before applying (push mutates CarValue).
-        HashSet<string> dirtyKeys = dirty.Select(change => change.Key).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        string detail = string.Join(" | ", this.EngineerControls
-            .Where(control => dirtyKeys.Contains(control.Key))
-            .Select(control => $"{control.Label} {FormatControlValue(control, control.CarValue)} -> {FormatControlValue(control, control.StagedValue)}"));
-
-        this._pendingEngineerChanges = dirty;
-        this.EngineerPushState = ExternalOperationState.Pending;
-        this.PrependRadioLog("Push staged changes", detail, "PENDING");
-        this._log.Info($"Engineer changes staged for push: count={dirty.Count}.");
-    }
-
-    public void AcknowledgeEngineerChanges(bool succeeded)
-    {
-        if (this.EngineerPushState != ExternalOperationState.Pending)
-        {
-            return;
-        }
-
-        if (succeeded)
-        {
-            foreach (StagedControlChange change in this._pendingEngineerChanges)
-            {
-                EngineerControl? control = this.EngineerControls.FirstOrDefault(candidate =>
-                    string.Equals(candidate.Key, change.Key, StringComparison.OrdinalIgnoreCase));
-                if (control is not null)
-                {
-                    control.CarValue = change.StagedValue;
-                }
-            }
-
-            this.EngineerPushState = ExternalOperationState.Confirmed;
-            this.PrependRadioLog("Push confirmed", "The external target acknowledged the staged changes", "CONFIRMED");
-            this._log.Info("Engineer changes acknowledged by target.");
-        }
-        else
-        {
-            this.EngineerPushState = ExternalOperationState.Failed;
-            this.PrependRadioLog("Push failed", "Staged changes were retained for retry", "FAILED");
-            this._log.Warn("Engineer changes rejected or not acknowledged by target.");
-        }
-
-        this._pendingEngineerChanges = [];
-    }
-
-    public void RevertEngineerChanges()
-    {
-        EngineerStageService.Revert(this.EngineerControls);
-        this.PrependRadioLog("Revert", "Staged car control changes cleared", "DASH");
-        this._log.Info("Engineer staged changes reverted.");
-    }
-
-    public void SendQuickMessage(string message)
-    {
-        this.PrependRadioLog(message, "Quick message staged to the driver radio", "SENT");
-        this._log.Info("Quick radio message staged.");
-    }
-
-    public static string FormatControlValue(EngineerControl control, double value)
-    {
-        int decimals = control.Step < 1 ? 1 : 0;
-        string formatted = value.ToString(decimals == 0 ? "0" : "0.0");
-        return string.IsNullOrWhiteSpace(control.Unit) ? formatted : $"{formatted}{control.Unit}";
     }
 
     public static IReadOnlyList<SetupParameter> SetupParameters { get; } =
@@ -807,6 +843,10 @@ public sealed class DesktopRuntime : IDesktopRuntime
             // dash, so an older devices.json keeps driving its screens.
             device.Purpose = DevicePurposes.Normalize(device.Purpose);
             device.RefreshHz = DeviceRefreshRates.Normalize(device.RefreshHz);
+            // A hand-edited file may hold a null list or a rule missing a field; matching assumes neither.
+            device.DashRules = (device.DashRules ?? [])
+                .Where(rule => rule is not null && DeviceDashRules.IsKind(rule.Kind ?? "") && !string.IsNullOrWhiteSpace(rule.Value) && !string.IsNullOrWhiteSpace(rule.DashId))
+                .ToList();
         }
 
         return devices;
@@ -893,21 +933,37 @@ public sealed class DesktopRuntime : IDesktopRuntime
             }
         }
 
-        // The preset dash is seeded once (first run, or the first run after an upgrade), marked by
-        // a file beside the dashes. After that an empty list is the user's choice (every dash can
-        // be deleted) and stays empty across restarts.
+        // Each shipped preset dash is seeded once (first run, or the first run after the preset
+        // ships), its id listed in a file beside the dashes; an empty file is from when "default"
+        // was the only preset. After that a deleted preset is the user's choice and stays deleted.
+        // The default comes only into an empty list, as it always did; the others whenever their
+        // id is free.
         string seededMarker = Path.Combine(this._layoutsPath, ".preset-seeded");
-        if (!File.Exists(seededMarker))
+        HashSet<string> seeded = File.Exists(seededMarker)
+            ? File.ReadAllLines(seededMarker).Select(line => line.Trim()).Where(line => line.Length > 0).DefaultIfEmpty(DefaultPresetId).ToHashSet(StringComparer.Ordinal)
+            : new HashSet<string>(StringComparer.Ordinal);
+        bool seededAny = !File.Exists(seededMarker);
+        foreach (DashLayout preset in this.LoadPresetDashLayouts())
         {
-            if (layouts.Count == 0)
+            if (!seeded.Add(preset.Id))
             {
-                DashLayout preset = this.LoadPresetDashLayout();
+                continue;
+            }
+
+            seededAny = true;
+            bool free = preset.Id == DefaultPresetId ? layouts.Count == 0 : layouts.All(layout => layout.Id != preset.Id);
+            if (free)
+            {
                 NormalizeLayoutProfile(preset);
                 this.SaveDashLayout(preset);
                 layouts.Add(preset);
             }
+        }
 
-            File.WriteAllText(seededMarker, "");
+        if (seededAny)
+        {
+            Directory.CreateDirectory(this._layoutsPath);
+            File.WriteAllLines(seededMarker, seeded.Order(StringComparer.Ordinal));
         }
 
         // Tag any layout missing a target screen profile (legacy saves) with the
@@ -1044,7 +1100,8 @@ public sealed class DesktopRuntime : IDesktopRuntime
     /// </summary>
     public void ResetDashLayout(DashLayout layout)
     {
-        DashLayout preset = this.LoadPresetDashLayout();
+        // A shipped preset (Hypercar) goes back to itself; every other dash to the default.
+        DashLayout preset = this.LoadPresetDashLayouts().FirstOrDefault(candidate => candidate.Id == layout.Id) ?? this.LoadPresetDashLayout();
         string id = layout.Id;
         string name = layout.Name;
         string? category = layout.Category;
@@ -1052,6 +1109,7 @@ public sealed class DesktopRuntime : IDesktopRuntime
 
         layout.GridCols = preset.GridCols;
         layout.GridRows = preset.GridRows;
+        layout.Zoned = preset.Zoned;
         layout.Mode = preset.Mode;
         layout.ColorSystem = preset.EffectiveColorSystem;
         layout.DashStyle = preset.DashStyle;
@@ -1075,22 +1133,6 @@ public sealed class DesktopRuntime : IDesktopRuntime
 
     private static string NormalizeDashMode(string? mode) =>
         string.Equals(mode, "advanced", StringComparison.OrdinalIgnoreCase) ? "advanced" : "basic";
-
-    private void PrependRadioLog(string message, string detail, string status)
-    {
-        this.RadioLog.Insert(0, new RadioLogEntry
-        {
-            Message = message,
-            Detail = detail,
-            Lap = 18,
-            Status = status
-        });
-
-        while (this.RadioLog.Count > 8)
-        {
-            this.RadioLog.RemoveAt(this.RadioLog.Count - 1);
-        }
-    }
 
     private string NextSetupId()
     {
@@ -1213,9 +1255,43 @@ public sealed class DesktopRuntime : IDesktopRuntime
         return Path.Combine([this._presetRoot, .. segments]);
     }
 
+    private const string DefaultPresetId = "default";
+
     /// <summary>The shipped preset dash (id "default"), or a minimal built-in one when the preset is missing.</summary>
     private DashLayout LoadPresetDashLayout() =>
         this.LoadJson<DashLayout>(this.PresetPath("dash", "default.json")) ?? CreateFallbackDashLayout();
+
+    /// <summary>
+    /// Every shipped preset dash (presets/dash/*.json), the default first, then by id; the default
+    /// is the built-in one when its file is missing. A file that does not read or validate is skipped.
+    /// </summary>
+    private List<DashLayout> LoadPresetDashLayouts()
+    {
+        List<DashLayout> presets = [this.LoadPresetDashLayout()];
+        string folder = this.PresetPath("dash");
+        if (!Directory.Exists(folder))
+        {
+            return presets;
+        }
+
+        foreach (string file in Directory.EnumerateFiles(folder, "*.json").Order(StringComparer.OrdinalIgnoreCase))
+        {
+            if (Path.GetFileName(file).Equals("default.json", StringComparison.OrdinalIgnoreCase) || this.LoadJson<DashLayout>(file) is not { } preset)
+            {
+                continue;
+            }
+
+            if (!DashLayoutValidator.IsValid(preset) || presets.Any(known => known.Id == preset.Id))
+            {
+                this._log.Warn($"Preset dash skipped: file={Path.GetFileName(file)} is not a valid dash or repeats an id.");
+                continue;
+            }
+
+            presets.Add(preset);
+        }
+
+        return presets;
+    }
 
     private static DashLayout CreateFallbackDashLayout()
     {
@@ -1311,38 +1387,6 @@ public sealed class DesktopRuntime : IDesktopRuntime
                 ["diff"] = 55,
                 ["fuelLoad"] = 88
             }
-        };
-    }
-
-    private static IEnumerable<EngineerControl> CreateEngineerControls()
-    {
-        yield return CreateControl("tcCut", "TC cut", 0, 12, 1, "", 4);
-        yield return CreateControl("tcSlip", "TC slip", 0, 12, 1, "", 6);
-        yield return CreateControl("abs", "ABS", 0, 12, 1, "", 7);
-        yield return CreateControl("brakeBias", "Brake bias", 48, 64, 0.5, "%", 56.5);
-        yield return CreateControl("engineMap", "Engine map", 1, 8, 1, "", 3);
-        yield return CreateControl("fuelTarget", "Fuel target", 1, 6, 0.1, "L", 2.6);
-    }
-
-    private static EngineerControl CreateControl(
-        string key,
-        string label,
-        double min,
-        double max,
-        double step,
-        string unit,
-        double value)
-    {
-        return new EngineerControl
-        {
-            Key = key,
-            Label = label,
-            Min = min,
-            Max = max,
-            Step = step,
-            Unit = unit,
-            CarValue = value,
-            StagedValue = value
         };
     }
 

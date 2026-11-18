@@ -94,7 +94,7 @@ internal static partial class LmuSetupSheet
     {
         ["Hypercar"] = "Hypercar",
         ["LMP2"] = "LMP2",
-        ["LMP2_ELMS"] = "LMP2",
+        ["LMP2_ELMS"] = "LMP2 ELMS",
         ["LMP3"] = "LMP3",
         ["GT3"] = "GT3",
         ["LMGT3"] = "GT3",

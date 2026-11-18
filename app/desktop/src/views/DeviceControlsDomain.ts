@@ -90,3 +90,20 @@ export function ringWidthFraction(radius: number, scale: number): number {
 }
 
 export const isHexColor = (value: string): boolean => /^#[0-9a-fA-F]{6}$/.test(value)
+
+/** A host input token as the driver reads it: `button:5` is "Button 5", `encoder:2+` "Encoder 2 +". */
+export function buttonName(input: string): string {
+  const [kind, rest = ''] = input.split(':', 2)
+  if (kind === 'button') return `Button ${rest}`
+  if (kind === 'encoder') {
+    const turn = rest.endsWith('+') ? ' +' : rest.endsWith('-') ? ' −' : ''
+    return `Encoder ${turn ? rest.slice(0, -1) : rest}${turn}`
+  }
+  return input
+}
+
+/** One function of the Buttons card and the button that runs it, if any. */
+export type ButtonRow = { id: string; label: string; input: string | null }
+
+export const buttonRows = (functions: readonly { id: string; label: string }[], bindings: readonly { input: string; command: string }[]): ButtonRow[] =>
+  functions.map((fn) => ({ id: fn.id, label: fn.label, input: bindings.find((binding) => binding.command === fn.id)?.input ?? null }))

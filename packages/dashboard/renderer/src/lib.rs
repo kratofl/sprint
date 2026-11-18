@@ -93,6 +93,8 @@ pub struct Renderer {
     /// The wheel's multi-position dial as last set; `None` when the output has none.
     dial: Option<MultiDialReading>,
     dial_watcher: MultiDialPopupWatcher,
+    /// The engineer's message while it is on the wheel; `None` otherwise.
+    radio: Option<DashAlertBanner>,
 }
 
 impl Default for Renderer {
@@ -113,6 +115,7 @@ impl Renderer {
             last_frame: None,
             dial: None,
             dial_watcher: MultiDialPopupWatcher::default(),
+            radio: None,
         }
     }
 
@@ -142,14 +145,31 @@ impl Renderer {
         Ok(())
     }
 
+    /// The engineer's message (the host's `DashRadioBanner` as JSON; empty or `null` when none
+    /// shows). It stays up, over any alert banner and under a dial turn, until set again. On an
+    /// error the previous message stays.
+    pub fn set_radio(&mut self, radio_json: &[u8]) -> Result<(), RenderError> {
+        self.radio = if is_absent_json(radio_json) { None } else { Some(DashAlertBanner::Radio(alerts::parse_radio(radio_json)?)) };
+        Ok(())
+    }
+
+    /// The driver pressed Ack: the alert up now (the tracker's, and the dial popup over it) goes
+    /// at once; one held beneath it shows again. The engineer's message is the host's to take
+    /// down (`set_radio`). Render again afterwards: an alert held until acknowledged does not
+    /// make the picture time dependent, so nothing else would redraw it.
+    pub fn acknowledge(&mut self) {
+        self.tracker.acknowledge();
+        self.dial_watcher.acknowledge();
+    }
+
     /// A live output at `now_ms` (milliseconds on any clock that never goes back: only differences
     /// are read; the host passes a monotonic one). Each new frame is fed to the alert tracker
     /// once, as the Electron dash output did; the same frame bytes again are a re-render (for
     /// `time_dependent`), which only lets time pass. "No data" (empty, `null`, not a frame)
     /// resets the tracker and draws the empty frame, no banner. A dial turn (`set_multi_dial`)
-    /// shows its popup for the layout's alert duration, over any alert banner, with or without data.
+    /// shows its popup in the layout's `dial_change` look, over any alert banner, with or without data.
     pub fn render_live(&mut self, frame_json: &[u8], now_ms: f64) -> Result<RenderInfo, RenderError> {
-        let Renderer { fonts, scene, ops, raster, tracker, lap_timer, last_frame, dial, dial_watcher } = self;
+        let Renderer { fonts, scene, ops, raster, tracker, lap_timer, last_frame, dial, dial_watcher, radio } = self;
         let scene = scene.as_ref().ok_or_else(|| RenderError("no scene set".to_owned()))?;
         let frame = model::parse_frame_data(frame_json)?;
         let repeat = last_frame.as_deref() == Some(frame_json);
@@ -160,17 +180,23 @@ impl Renderer {
         }
 
         tracker.advance_to(now_ms);
-        let banner = match &frame {
-            None => {
-                tracker.reset();
-                None
+        match &frame {
+            None => tracker.reset(),
+            Some(_) if repeat => {}
+            Some(frame) => {
+                tracker.evaluate(&scene.layout, frame, &dash::scene_palette(scene), scene.targets.as_ref());
             }
-            Some(_) if repeat => tracker.current(),
-            Some(frame) => tracker.evaluate(&scene.layout, frame, &dash::scene_palette(scene), scene.targets.as_ref()),
-        };
-        // The driver's own turn of the dial wins over a telemetry alert, which keeps running beneath it.
-        let dial_popup = dial_watcher.observe(dial.as_ref(), now_ms, multi_dial::popup_seconds(&scene.layout)).cloned().map(DashAlertBanner::MultiDial);
-        let banner = dial_popup.as_ref().or(banner);
+        }
+        // Only what runs out makes the picture depend on time: the message stays until set
+        // again, and an alert held until acknowledged until `acknowledge`.
+        let alert_expires = tracker.expires();
+        let banner = tracker.current();
+        // The driver's own turn of the dial wins over the engineer's message, and that over a
+        // telemetry alert, which keeps running beneath both.
+        let look = multi_dial::dial_look(&scene.layout);
+        let dial_popup = dial_watcher.observe(dial.as_ref(), now_ms, look.as_ref()).cloned().map(DashAlertBanner::MultiDial);
+        let expiring = alert_expires || dial_watcher.expires();
+        let banner = dial_popup.as_ref().or(radio.as_ref()).or(banner);
         let frame = frame.unwrap_or_default();
         let view = if dash::draws_race_logic_lap_timer(scene) {
             Some(lap_timer.present(&frame, now_ms))
@@ -179,7 +205,7 @@ impl Renderer {
             None
         };
 
-        let time_dependent = banner.is_some() || (view.is_some() && lap_timer.is_holding(now_ms));
+        let time_dependent = expiring || (view.is_some() && lap_timer.is_holding(now_ms));
         dash::build_display_list(fonts, scene, &frame, Overlays { banner, lap_timer: view.as_ref() }, ops)?;
         raster.draw(fonts, ops, scene.scale);
         Ok(RenderInfo { time_dependent })
@@ -190,11 +216,17 @@ impl Renderer {
     /// presenter shows for this frame (never a held lap result), so the picture never depends on
     /// time.
     pub fn render_still(&mut self, frame_json: &[u8], banner_json: Option<&[u8]>, now_ms: f64) -> Result<RenderInfo, RenderError> {
-        let scene = self.scene.as_ref().ok_or_else(|| RenderError("no scene set".to_owned()))?;
         let banner = banner_json.filter(|json| !is_absent_json(json)).map(alerts::parse_banner).transpose()?;
+        self.render_still_with(frame_json, banner.as_ref(), now_ms)
+    }
+
+    /// `render_still` with the banner already parsed (or built, e.g. by
+    /// `alerts::preview_alert_banner`), for tools.
+    pub fn render_still_with(&mut self, frame_json: &[u8], banner: Option<&DashAlertBanner>, now_ms: f64) -> Result<RenderInfo, RenderError> {
+        let scene = self.scene.as_ref().ok_or_else(|| RenderError("no scene set".to_owned()))?;
         let frame = model::parse_frame(frame_json)?;
         let view = dash::draws_race_logic_lap_timer(scene).then(|| RaceLogicLapTimerPresenter::default().present(&frame, now_ms));
-        dash::build_display_list(&self.fonts, scene, &frame, Overlays { banner: banner.as_ref(), lap_timer: view.as_ref() }, &mut self.ops)?;
+        dash::build_display_list(&self.fonts, scene, &frame, Overlays { banner, lap_timer: view.as_ref() }, &mut self.ops)?;
         self.raster.draw(&self.fonts, &self.ops, scene.scale);
         Ok(RenderInfo { time_dependent: false })
     }
@@ -260,12 +292,16 @@ mod tests {
         assert!(r.display_list().len() > plain);
     }
 
-    /// A layout with a TC change alert (1 s) and a RaceLogic lap timer on its page.
+    /// A layout with a TC change alert (1 s), the dial popup (1.5 s) and a RaceLogic lap timer on its page.
     fn live_scene(layout_id: &str, timer: bool) -> String {
+        live_scene_with(layout_id, timer, r#"{"id":"a","type":"tc_change","enabled":true,"col":6,"row":3,"colSpan":8,"rowSpan":6,"durationSeconds":1}"#)
+    }
+
+    fn live_scene_with(layout_id: &str, timer: bool, tc_alert: &str) -> String {
         let widget = if timer { r#"{"id":"t","type":"racelogic_lap_timer","col":0,"row":0,"colSpan":20,"rowSpan":12}"# } else { "" };
         format!(
             r#"{{"layout":{{"id":"{layout_id}","name":"L","gridCols":20,"gridRows":12,"pages":[{{"id":"p","name":"P","widgets":[{widget}]}}],
-                "alerts":[{{"id":"a","type":"tc_change","enabled":true,"col":6,"row":3,"colSpan":8,"rowSpan":6,"durationSeconds":1}}],
+                "alerts":[{tc_alert},{{"id":"d","type":"dial_change","enabled":true,"col":0,"row":0,"colSpan":1,"rowSpan":1,"durationSeconds":1.5}}],
                 "alertConfig":{{"displayMode":"center"}}}},"width":200,"height":120}}"#
         )
     }
@@ -356,7 +392,7 @@ mod tests {
     }
 
     #[test]
-    fn a_dial_turn_pops_up_without_data_for_the_layouts_alert_duration() {
+    fn a_dial_turn_pops_up_without_data_for_the_dial_alerts_duration() {
         let mut r = Renderer::new();
         r.set_scene(live_scene("l", false).as_bytes()).unwrap();
         r.set_multi_dial(&dial_reading(0, 4)).unwrap();
@@ -366,7 +402,6 @@ mod tests {
         r.set_multi_dial(&dial_reading(1, 5)).unwrap();
         assert_eq!(r.render_live(b"", 100.0), Ok(RenderInfo { time_dependent: true }));
         assert!(shows(&r, "MULTI") && shows(&r, "TC2"));
-        // No `alertConfig.durationSeconds` on this layout: 1.5 s.
         assert_eq!(r.render_live(b"", 1599.0), Ok(RenderInfo { time_dependent: true }));
         assert_eq!(r.render_live(b"", 1600.0), Ok(RenderInfo { time_dependent: false }));
         assert!(!shows(&r, "TC2"));
@@ -392,6 +427,77 @@ mod tests {
         assert!(shows(&r, "TC2") && !shows(&r, "TC"), "the dial popup, not the TC change");
         assert_eq!(r.render_live(&live_frame(1.0, 3.0, 1.0, 0.0), 1600.0), Ok(RenderInfo { time_dependent: true }));
         assert!(shows(&r, "TC") && !shows(&r, "TC2"), "the TC change was tracked beneath it");
+    }
+
+    #[test]
+    fn the_engineers_message_stays_up_over_an_alert_until_it_is_taken_down() {
+        let mut r = Renderer::new();
+        r.set_scene(live_scene("l", false).as_bytes()).unwrap();
+        r.render_live(&live_frame(0.0, 2.0, 1.0, 0.0), 0.0).unwrap();
+        r.set_radio(br#"{"text":"Box now"}"#).unwrap();
+        assert_eq!(r.render_live(&live_frame(0.0, 2.0, 1.0, 0.0), 100.0), Ok(RenderInfo { time_dependent: false }), "it does not expire by itself");
+        assert!(shows(&r, "ENGINEER") && shows(&r, "BOX NOW"));
+
+        // A TC change runs beneath it; a dial turn covers it.
+        r.render_live(&live_frame(1.0, 3.0, 1.0, 0.0), 200.0).unwrap();
+        assert!(shows(&r, "BOX NOW") && !shows(&r, "TC"));
+        r.set_multi_dial(&dial_reading(0, 0)).unwrap();
+        r.render_live(&live_frame(1.0, 3.0, 1.0, 0.0), 300.0).unwrap();
+        r.set_multi_dial(&dial_reading(1, 1)).unwrap();
+        r.render_live(&live_frame(1.0, 3.0, 1.0, 0.0), 400.0).unwrap();
+        assert!(shows(&r, "TC2") && !shows(&r, "BOX NOW"));
+
+        r.set_radio(b"null").unwrap();
+        r.render_live(&live_frame(1.0, 3.0, 1.0, 0.0), 5000.0).unwrap();
+        assert!(!shows(&r, "BOX NOW"));
+        assert!(r.set_radio(b"{").is_err());
+    }
+
+    #[test]
+    fn acknowledging_takes_down_the_alert_and_the_dial_popup_but_not_the_engineers_message() {
+        let mut r = Renderer::new();
+        r.set_scene(live_scene("l", false).as_bytes()).unwrap();
+        r.set_multi_dial(&dial_reading(0, 0)).unwrap();
+        r.render_live(&live_frame(0.0, 2.0, 1.0, 0.0), 0.0).unwrap();
+        r.render_live(&live_frame(1.0, 3.0, 1.0, 0.0), 100.0).unwrap();
+        r.set_multi_dial(&dial_reading(1, 1)).unwrap();
+        r.render_live(&live_frame(1.0, 3.0, 1.0, 0.0), 200.0).unwrap();
+        assert!(shows(&r, "TC2"));
+
+        r.acknowledge();
+        assert_eq!(r.render_live(&live_frame(1.0, 3.0, 1.0, 0.0), 300.0), Ok(RenderInfo { time_dependent: false }));
+        assert!(!shows(&r, "TC2") && !shows(&r, "TC"), "both gone at once, long before they would run out");
+
+        r.set_radio(br#"{"text":"Box now"}"#).unwrap();
+        r.acknowledge();
+        r.render_live(&live_frame(1.0, 3.0, 1.0, 0.0), 400.0).unwrap();
+        assert!(shows(&r, "BOX NOW"), "the host takes the message down itself");
+    }
+
+    #[test]
+    fn an_alert_held_until_acknowledged_never_makes_the_picture_time_dependent() {
+        let held = r#"{"id":"a","type":"tc_change","enabled":true,"col":6,"row":3,"colSpan":8,"rowSpan":6,"untilAck":true}"#;
+        let mut r = Renderer::new();
+        r.set_scene(live_scene_with("l", false, held).as_bytes()).unwrap();
+        r.render_live(&live_frame(0.0, 2.0, 1.0, 0.0), 0.0).unwrap();
+        assert_eq!(r.render_live(&live_frame(1.0, 3.0, 1.0, 0.0), 100.0), Ok(RenderInfo { time_dependent: false }));
+        assert_eq!(r.render_live(&live_frame(1.0, 3.0, 1.0, 0.0), 3_600_000.0), Ok(RenderInfo { time_dependent: false }));
+        assert!(shows(&r, "TC"), "still up an hour later");
+        r.acknowledge();
+        r.render_live(&live_frame(1.0, 3.0, 1.0, 0.0), 3_600_100.0).unwrap();
+        assert!(!shows(&r, "TC"));
+    }
+
+    #[test]
+    fn the_dial_alert_turned_off_keeps_the_popup_away() {
+        let mut r = Renderer::new();
+        let scene = live_scene("l", false).replace(r#""type":"dial_change","enabled":true"#, r#""type":"dial_change","enabled":false"#);
+        r.set_scene(scene.as_bytes()).unwrap();
+        r.set_multi_dial(&dial_reading(0, 0)).unwrap();
+        r.render_live(b"", 0.0).unwrap();
+        r.set_multi_dial(&dial_reading(1, 1)).unwrap();
+        assert_eq!(r.render_live(b"", 100.0), Ok(RenderInfo { time_dependent: false }));
+        assert!(!shows(&r, "TC2"));
     }
 
     #[test]

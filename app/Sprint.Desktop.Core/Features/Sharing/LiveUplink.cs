@@ -60,22 +60,32 @@ public static class LiveUplinkRules
 }
 
 /// <summary>
-/// Caps samples at 20 a second (one per 50 ms on average) by the frames' own timestamps, so the
-/// rate holds whatever the game delivers. Not thread-safe: used from the telemetry loop only.
+/// Caps samples at one per <paramref name="spacing"/> on average by the frames' own timestamps, so
+/// the rate holds whatever the game delivers. The server uplink takes 20 a second
+/// (<see cref="Uplink"/>), the live link up to 33 (<see cref="Link"/>). Not thread-safe: used from
+/// the telemetry loop only.
 /// </summary>
-public sealed class LiveSampleGate
+public sealed class LiveSampleGate(TimeSpan spacing)
 {
-    private static readonly TimeSpan Spacing = TimeSpan.FromMilliseconds(50);
+    /// <summary>20 a second: what the server's ingest budget is sized for.</summary>
+    public static readonly TimeSpan Uplink = TimeSpan.FromMilliseconds(50);
+
+    /// <summary>
+    /// Up to 33 a second, a little over the host's 30 Hz telemetry loop so every frame it reads
+    /// passes despite timestamp jitter: the engineer's traces draw at 30 fps.
+    /// </summary>
+    public static readonly TimeSpan Link = TimeSpan.FromMilliseconds(30);
+
     private DateTimeOffset? _next;
 
     public bool Admit(DateTimeOffset timestamp)
     {
-        if (this._next is { } next && timestamp < next && next - timestamp <= Spacing)
+        if (this._next is { } next && timestamp < next && next - timestamp <= spacing)
             return false;
 
-        // Due slots advance by the spacing so a 30 Hz game still yields 20 a second; after a gap
-        // (or a clock jump back) the schedule restarts from this frame.
-        this._next = this._next is { } due && timestamp >= due && timestamp - due < Spacing ? due + Spacing : timestamp + Spacing;
+        // Due slots advance by the spacing so a faster game still yields one per spacing; after a
+        // gap (or a clock jump back) the schedule restarts from this frame.
+        this._next = this._next is { } due && timestamp >= due && timestamp - due < spacing ? due + spacing : timestamp + spacing;
         return true;
     }
 
@@ -114,7 +124,7 @@ public sealed class LiveUplink(LiveConnect connect, ILog? log = null)
     private readonly ILog _log = log ?? NullLog.Instance;
     private readonly Lock _bufferGate = new();
     private readonly List<LiveSample> _buffer = [];
-    private readonly LiveSampleGate _gate = new();
+    private readonly LiveSampleGate _gate = new(LiveSampleGate.Uplink);
 
     // Written by the telemetry loop, read by the worker.
     private volatile Goal _goal = new(null, null);

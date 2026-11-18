@@ -342,7 +342,10 @@ errors that need action; never stacked.
 ### Status
 
 8px dot + word, the same color and word for the same state everywhere. Tags use the -100 tint with
--700 text. Counters are red pills (`red-500`, white text). NEVER color alone; at most one badge per
+-700 text, except racing class tags, which look the way the series paints them: a solid -700 fill
+with white `on-class` text in both themes (Hypercar red, LMP2 blue, LMP3 purple, LMGT3 and GT3
+green, GTE orange); ELMS's LMP2 reads "LMP2" with an orange corner at the top right, like a bookmark (its
+tooltip says "LMP2 ELMS"). Counters are red pills (`red-500`, white text). NEVER color alone; at most one badge per
 row. The one exception is the sidebar's game link on the collapsed rail, a dot whose words stay in
 its tooltip and accessible name.
 

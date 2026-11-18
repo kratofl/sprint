@@ -6,7 +6,8 @@
 // frame is a full struct literal on purpose: a new model field must be added here too.
 
 use sprint_dash::model::{
-    CarState, Electronics, EnergyState, Flags, LapState, Penalties, RaceState, Session, SessionConditions, TelemetryFrame, TireState, parse_frame,
+    CarState, Damage, Electronics, EnergyState, FieldCar, Flags, LapState, Penalties, RaceState, Session, SessionConditions, TelemetryFrame, TireState,
+    parse_frame,
 };
 
 const HOST_FRAME: &[u8] = include_bytes!("fixtures/host-frame.json");
@@ -23,6 +24,7 @@ fn tire(n: f64, compound: &str) -> TireState {
         pressure_kpa: 160.5 + 10.0 * n,
         wear_percent: 10.25 + n,
         compound: compound.to_owned(),
+        brake_temp: 400.5 + 10.0 * n,
     }
 }
 
@@ -49,6 +51,8 @@ fn every_field_of_the_hosts_frame_reaches_the_model() {
             gear: 1.0,
             rpm: 7250.0,
             max_rpm: 8750.0,
+            water_temp: Some(90.5),
+            oil_temp: Some(105.5),
             throttle: 0.75,
             brake: 0.25,
             clutch: 0.125,
@@ -75,6 +79,12 @@ fn every_field_of_the_hosts_frame_reaches_the_model() {
             delta: -0.125,
             sector: 2.0,
             last_lap_sectors_seconds: vec![31.5, 35.25, 37.5],
+            current_lap_sectors_seconds: vec![30.5],
+            personal_best_sectors: vec![Some(31.25), None, Some(36.75)],
+            session_best_sectors: vec![Some(30.25), Some(34.5), None],
+            class_best_sectors: vec![Some(30.75), Some(34.75), Some(36.5)],
+            session_best_lap: Some(101.25),
+            class_best_lap: Some(102.5),
             is_valid: false,
             track_position: 0.4375,
             // Not published by the host: neutral, as parseHostFrame makes them.
@@ -112,7 +122,7 @@ fn every_field_of_the_hosts_frame_reaches_the_model() {
             tc_slip_available: true,
             motor_map_available: true,
         },
-        race: RaceState { position: 25.0, total_positions: 31.0, gap_ahead: 1.5, gap_behind: 2.25 },
+        race: RaceState { position: 25.0, total_positions: 31.0, gap_ahead: 1.5, gap_behind: 2.25, car_left: Some(-2.5), car_right: Some(3.5) },
         energy: EnergyState { virtual_energy: 68.5, virtual_energy_per_lap: 3.375, soc: 0.625, regen_power: 18.5, deploy_power: 92.5 },
         penalties: Penalties { incidents: 19.0, track_limit_steps: 20.0, pit_stops: 22.0 },
         conditions: SessionConditions {
@@ -121,13 +131,22 @@ fn every_field_of_the_hosts_frame_reaches_the_model() {
             fuel_multiplier: Some(1.75),
             tire_multiplier: Some(2.125),
             fixed_setup: Some(true),
+            air_temp: Some(21.5),
+            track_temp: Some(33.5),
+            raining: Some(0.5),
         },
+        damage: Some(Damage { dents: [0.0, 1.0, 2.0, 0.0, 1.0, 2.0, 0.0, 1.0], overheating: true, detached_parts: true }),
+        field: vec![FieldCar {
+            driver: "Someone Else".to_owned(),
+            is_player: true,
+            place: 4.0,
+            laps_completed: 23.0,
+            lap_distance_meters: 2500.5,
+            penalties: 2.0,
+            blue_flag: true,
+        }],
+        // 15:02:00 UTC.
+        utc_time_of_day: Some(54_120.0),
     };
     assert_eq!(frame, expected);
-}
-
-#[test]
-fn the_fixture_holds_no_other_cars() {
-    let value: serde_json::Value = serde_json::from_slice(HOST_FRAME).expect("JSON");
-    assert_eq!(value.get("field"), Some(&serde_json::Value::Null), "dash outputs leave the other cars out");
 }

@@ -1,17 +1,19 @@
-import { useEffect, useRef } from 'react'
+import { useState } from 'react'
 import type { PointerEvent as ReactPointerEvent, RefObject } from 'react'
-import { GripVertical, X } from 'lucide-react'
+import { Search } from 'lucide-react'
 import type { DashWidgetType } from '@sprint/dashboard'
 import { ALL_WIDGET_TYPES, widgetDefinition, widgetDisplayName } from '../views/DashesDomain'
 import { relativePointerPos, type DragState, type PointerPos } from './DesignerCanvas'
+import { WIDGET_CATEGORIES, WIDGET_CATEGORY } from './widgetCategories'
+import { widgetIcon } from './widgetIcons'
 
 /**
- * The widget library, a glass layer over the widget sidebar (so the whole dash stays in sight to
- * drop onto), opened by the dock's Widget button. Every item is both click-to-add (the
+ * The widget library, always open on the left of the Layout section: every widget type in its
+ * section (`WIDGET_CATEGORY`), A to Z, with a filter. Every item is both click-to-add (the
  * keyboard's way in: the widget goes into the first free cells) and drag-to-place: a pointer-down
- * captures the pointer on the item, follows it over the canvas and drops onto the cell under it on
- * release — or adds it like a click if the pointer never reached the canvas. The idle page takes
- * idle-capable widgets only.
+ * captures the pointer on the item, follows it over the canvas (the spots that take it light up)
+ * and drops onto the cell under it on release — or adds it like a click if the pointer never
+ * reached the canvas. The idle page takes idle-capable widgets only.
  */
 export function WidgetLibrary({
   isIdlePage,
@@ -22,7 +24,6 @@ export function WidgetLibrary({
   setDragState,
   onAdd,
   onDrop,
-  onClose,
 }: {
   isIdlePage: boolean
   canvasRef: RefObject<HTMLDivElement | null>
@@ -32,15 +33,15 @@ export function WidgetLibrary({
   setDragState: (state: DragState) => void
   onAdd: (type: DashWidgetType) => void
   onDrop: (type: DashWidgetType, pointer: PointerPos) => void
-  onClose: () => void
 }) {
-  const types = ALL_WIDGET_TYPES.filter((type) => !isIdlePage || widgetDefinition(type)?.idleCapable)
-  const listRef = useRef<HTMLDivElement | null>(null)
+  const [filter, setFilter] = useState('')
+  const needle = filter.trim().toLowerCase()
+  const types = ALL_WIDGET_TYPES.filter((type) => (!isIdlePage || widgetDefinition(type)?.idleCapable) && (needle === '' || widgetDisplayName(type).toLowerCase().includes(needle)))
+  const sections = WIDGET_CATEGORIES.map((category) => ({
+    category,
+    types: types.filter((type) => WIDGET_CATEGORY[type] === category).sort((a, b) => widgetDisplayName(a).localeCompare(widgetDisplayName(b))),
+  })).filter((section) => section.types.length > 0)
   const isOverCanvas = (pointer: PointerPos): boolean => pointer.x >= 0 && pointer.y >= 0 && pointer.x <= canvasWidth && pointer.y <= canvasHeight
-
-  useEffect(() => {
-    listRef.current?.querySelector<HTMLButtonElement>('button')?.focus()
-  }, [])
 
   const onPointerDown = (type: DashWidgetType, event: ReactPointerEvent<HTMLButtonElement>): void => {
     if (event.button !== 0) return
@@ -64,45 +65,59 @@ export function WidgetLibrary({
   }
 
   return (
-    <section
-      className="designer-glass designer-library"
-      aria-label="Widget library"
-      onKeyDown={(event) => {
-        if (event.key !== 'Escape') return
-        event.preventDefault()
-        onClose()
-      }}
-    >
-      <div className="designer-panel-head">
-        <h2 className="designer-panel-title">Add a widget</h2>
-        <button type="button" className="icon-button" aria-label="Close library" title="Close" onClick={onClose}>
-          <X size={14} />
-        </button>
+    <aside className="designer-glass designer-sidebar designer-library" aria-label="Widget library">
+      <div className="designer-sidebar-head">
+        <span className="designer-sidebar-page">Widgets</span>
+        {isIdlePage && <span className="muted">idle page</span>}
       </div>
-      <p className="field-hint designer-library-hint">
-        {isIdlePage ? 'The idle page takes widgets that work without a session. ' : ''}Click to add, or drag onto the dash.
-      </p>
-      <div ref={listRef} className="designer-library-grid">
-        {types.map((type) => (
-          <button
-            key={type}
-            type="button"
-            className="designer-library-item"
-            title={`Drag onto the dash, or click to add ${widgetDisplayName(type)}`}
-            onPointerDown={(event) => onPointerDown(type, event)}
-            onPointerMove={onPointerMove}
-            onPointerUp={onPointerUp}
-            // A pointer is handled by the sequence above; a keyboard activation (Enter/Space)
-            // fires a `click` with `detail === 0`, which never comes from a mouse.
-            onClick={(event) => {
-              if (event.detail === 0) onAdd(type)
-            }}
-          >
-            <GripVertical size={14} className="designer-grip" />
-            <span className="designer-row-label">{widgetDisplayName(type)}</span>
-          </button>
+      <label className="designer-library-search">
+        <Search size={14} aria-hidden="true" />
+        <input
+          className="input"
+          type="search"
+          aria-label="Find a widget"
+          placeholder="Find a widget"
+          value={filter}
+          onChange={(event) => setFilter(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key !== 'Escape' || filter === '') return
+            event.preventDefault()
+            event.stopPropagation()
+            setFilter('')
+          }}
+        />
+      </label>
+      <div className="designer-sidebar-body">
+        {sections.length === 0 && <p className="field-hint designer-sidebar-empty">No widget is called that.</p>}
+        {sections.map((section) => (
+          <section key={section.category} className="designer-library-section" aria-label={section.category}>
+            <h3 className="designer-library-head">{section.category}</h3>
+            {section.types.map((type) => {
+              const Icon = widgetIcon(type)
+              return (
+                <button
+                  key={type}
+                  type="button"
+                  className="designer-library-item"
+                  title={`Drag onto the dash, or click to add ${widgetDisplayName(type)}`}
+                  onPointerDown={(event) => onPointerDown(type, event)}
+                  onPointerMove={onPointerMove}
+                  onPointerUp={onPointerUp}
+                  // A pointer is handled by the sequence above; a keyboard activation (Enter/Space)
+                  // fires a `click` with `detail === 0`, which never comes from a mouse.
+                  onClick={(event) => {
+                    if (event.detail === 0) onAdd(type)
+                  }}
+                >
+                  <Icon size={14} className="designer-node-icon" aria-hidden="true" />
+                  <span className="designer-row-label">{widgetDisplayName(type)}</span>
+                </button>
+              )
+            })}
+          </section>
         ))}
       </div>
-    </section>
+      <p className="field-hint designer-sidebar-foot">{isIdlePage ? 'The idle page takes widgets that work without a session.' : 'Drag onto a lit-up spot, or click to add.'}</p>
+    </aside>
   )
 }

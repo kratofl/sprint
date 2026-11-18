@@ -113,7 +113,14 @@ public sealed class SavedDevice
     public int OffsetX { get; set; }
     public int OffsetY { get; set; }
     public int Margin { get; set; }
+    /// <summary>The dash shown for every car, unless one of <see cref="DashRules"/> applies.</summary>
     public string DashId { get; set; } = "default";
+
+    /// <summary>
+    /// Other dashes for a game, a class or one car (<see cref="DeviceDashRules.Pick"/>). Replaced
+    /// as a whole, never changed in place: screens read it on other threads.
+    /// </summary>
+    public List<DeviceDashRule> DashRules { get; set; } = [];
 
     /// <summary>
     /// Physical desktop pixels captured for a rear-view mirror. Coordinates may be

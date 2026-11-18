@@ -37,15 +37,6 @@ public sealed class HostFrameFixtureTests
             + "read the new names until `cargo test` (tests/host_frame.rs) passes.");
     }
 
-    [Fact]
-    public void ADashFrameLeavesTheOtherCarsOut()
-    {
-        using JsonDocument written = JsonDocument.Parse(Serialize(Frame()));
-
-        Assert.Equal(JsonValueKind.Null, written.RootElement.GetProperty("field").ValueKind);
-        Assert.Equal("Qualify", written.RootElement.GetProperty("session").GetProperty("sessionType").GetString());
-    }
-
     // The exact DashFrameJson output, re-indented so the fixture reads (and diffs) by line; the
     // names, order and values are the wire's.
     private static string Serialize(TelemetryFrame frame)
@@ -70,7 +61,7 @@ public sealed class HostFrameFixtureTests
     /// Every field the renderer reads, set to a value no other field has and no default matches:
     /// flags that default to false are true (and <c>IsValid</c>, which defaults to true, is false),
     /// enums are not their first member, and the tyres are listed out of order so their placement
-    /// by position name is pinned too. The other cars and the damage are set to show what is left out.
+    /// by position name is pinned too.
     /// </summary>
     private static TelemetryFrame Frame() => new()
     {
@@ -98,6 +89,8 @@ public sealed class HostFrameFixtureTests
             Gear = 1,
             Rpm = 7250,
             MaxRpm = 8750,
+            WaterTempCelsius = 90.5f,
+            OilTempCelsius = 105.5f,
             Throttle = 0.75f,
             Brake = 0.25f,
             Clutch = 0.125f,
@@ -124,6 +117,12 @@ public sealed class HostFrameFixtureTests
             Delta = -0.125,
             Sector = 2,
             LastLapSectorsSeconds = [31.5, 35.25, 37.5],
+            CurrentLapSectorsSeconds = [30.5],
+            PersonalBestSectorsSeconds = [31.25, null, 36.75],
+            SessionBestSectorsSeconds = [30.25, 34.5, null],
+            ClassBestSectorsSeconds = [30.75, 34.75, 36.5],
+            SessionBestLapTime = 101.25,
+            ClassBestLapTime = 102.5,
             IsValid = false,
             TrackPosition = 0.4375f,
         },
@@ -149,7 +148,7 @@ public sealed class HostFrameFixtureTests
             RearAntiRollBarMax = 18,
             DrsActive = true,
         },
-        Race = new RaceState { Position = 25, TotalPositions = 31, GapAhead = 1.5f, GapBehind = 2.25f },
+        Race = new RaceState { Position = 25, TotalPositions = 31, GapAhead = 1.5f, GapBehind = 2.25f, CarLeftMeters = -2.5f, CarRightMeters = 3.5f },
         Energy = new EnergyState { VirtualEnergy = 68.5f, VirtualEnergyPerLap = 3.375f, StateOfCharge = 0.625f, RegenPower = 18.5f, DeployPower = 92.5f },
         Penalties = new PenaltiesState { Incidents = 19, TrackLimitSteps = 20, PitStops = 22 },
         Conditions = new SessionConditions
@@ -164,10 +163,10 @@ public sealed class HostFrameFixtureTests
             Raining = 0.5,
         },
         Damage = new DamageState { Dents = [0, 1, 2, 0, 1, 2, 0, 1], LastImpactSessionTime = 95.5, LastImpactMagnitude = 1250.5, Overheating = true, DetachedParts = true },
-        Field = [new FieldCar { Id = 9, Driver = "Someone Else", Car = "Other Car", CarClass = "Fixture Class", Place = 4, ClassPlace = 4 }],
+        Field = [new FieldCar { Id = 9, Driver = "Someone Else", Car = "Other Car", CarClass = "Fixture Class", IsPlayer = true, Place = 4, ClassPlace = 4, LapsCompleted = 23, LapDistanceMeters = 2500.5, Penalties = 2, BlueFlag = true }],
     };
 
-    // Tyre n of the four (FrontLeft = 0): temperatures 8n1..8n5 °C, pressure 16n.5 kPa, wear 1n.25 %.
+    // Tyre n of the four (FrontLeft = 0): temperatures 8n1..8n5 °C, pressure 16n.5 kPa, wear 1n.25 %, brake 4n0.5 °C.
     private static TireState Tire(TirePosition position, int n) => new()
     {
         Position = position,
@@ -178,6 +177,7 @@ public sealed class HostFrameFixtureTests
         TempCoreCelsius = 85 + (10 * n),
         PressureKPa = 160.5f + (10 * n),
         WearPercent = 10.25f + n,
+        BrakeTempCelsius = 400.5f + (10 * n),
         Compound = $"Compound {position}",
         LoadNewtons = 3000.5f + n,
         Surface = TireSurface.Dry,

@@ -2,6 +2,8 @@ using System.Security.Cryptography;
 using System.Text;
 using Sprint.Desktop.Api.Games;
 using Sprint.Desktop.Features.Diagnostics;
+using Sprint.Desktop.Features.SessionPlanning;
+using Sprint.Games;
 
 namespace Sprint.Desktop.Features.Setup;
 
@@ -10,11 +12,20 @@ namespace Sprint.Desktop.Features.Setup;
 /// <param name="Track">The folder the game files it under; <paramref name="TrackName"/> is how the driver says it.</param>
 /// <param name="SavedAt">When the game last wrote the file.</param>
 /// <param name="Versions">How many different contents Sprint has seen the file hold, at least one.</param>
+/// <param name="CircuitId">The circuit the track folder belongs to ("silverstone" for Silverstone and Silverstone National alike); the Setups page groups by it.</param>
+/// <param name="CircuitName">The circuit's name, or the track's own name when the catalog does not know it.</param>
+/// <param name="Layout">The layout within its circuit ("National"), or the track's own name when the catalog does not know it.</param>
+/// <param name="Session">The session it is for: the driver's tag, else what a Bealien name says; null when neither says.</param>
+/// <param name="TaggedByDriver">Whether <paramref name="Session"/> and <paramref name="Style"/> are the driver's tag rather than the name's.</param>
+/// <param name="Country">Where the track is (ISO 3166-1 alpha-2, "BE"), or null for a track the catalog does not know.</param>
 public sealed record SetupListItem(
     string Id,
     string Name,
     string Track,
     string TrackName,
+    string CircuitId,
+    string CircuitName,
+    string Layout,
     string Car,
     string? CarClass,
     string? Season,
@@ -22,7 +33,20 @@ public sealed record SetupListItem(
     int Versions,
     SetupSession? Session,
     SetupStyle? Style,
-    string? Version);
+    string? Version,
+    bool TaggedByDriver,
+    string? Country)
+{
+    /// <summary>
+    /// The class as racing tags it ("HYP", "LMGT3", "LMP2 ELMS"), for the class colour. The season
+    /// the file was saved for ("ELMS 2025") says which LMP2 it is: the ELMS and WEC cars are both
+    /// the Oreca 07.
+    /// </summary>
+    public string ClassTag => CarNames.Tag(this.CarClass, CarNames.Name(this.CarClass, this.Season, this.Car));
+
+    /// <summary>The car's make ("Porsche"), for its logo.</summary>
+    public string? Make => CarNames.MakeOf(this.Car);
+}
 
 /// <summary>One version of a setup: what the file held from <paramref name="SavedAt"/> on.</summary>
 /// <param name="IsCurrent">Whether the file holds this version now.</param>
@@ -42,6 +66,7 @@ public sealed class SetupLibrary
     private readonly IGameProvider _provider;
     private readonly ISetupSnapshotStore _store;
     private readonly SetupCaptureService _capture;
+    private readonly SetupTags? _tags;
     private readonly ILog _log;
     private readonly Lock _gate = new();
 
@@ -51,10 +76,12 @@ public sealed class SetupLibrary
     /// <summary>Every stored version, by the file it came from. Loaded on the first look.</summary>
     private Dictionary<string, List<SetupSnapshot>>? _versions;
 
-    public SetupLibrary(IGameProvider provider, ISetupSnapshotStore store, ILog? log = null)
+    /// <param name="tags">The driver's own tags on setups; without it, only the names say anything.</param>
+    public SetupLibrary(IGameProvider provider, ISetupSnapshotStore store, ILog? log = null, SetupTags? tags = null)
     {
         this._provider = provider ?? throw new ArgumentNullException(nameof(provider));
         this._store = store ?? throw new ArgumentNullException(nameof(store));
+        this._tags = tags;
         this._log = log ?? NullLog.Instance;
         this._capture = new SetupCaptureService(store, log: this._log);
     }
@@ -82,6 +109,43 @@ public sealed class SetupLibrary
                     .Select(entry => this.Item(repository, entry.Key, entry.Value.Info, entry.Value.Current))
                     .OrderByDescending(item => item.SavedAt)
             ];
+        }
+    }
+
+    /// <summary>
+    /// Tags a setup with the session and style the driver says it is for; a null tag takes the
+    /// driver's tag off. False, with the reason, when there is no such setup, nowhere to keep tags
+    /// or the tags could not be saved.
+    /// </summary>
+    public bool Tag(string id, SetupTag? tag, out string error)
+    {
+        lock (this._gate)
+        {
+            error = "";
+            if (this._tags is null)
+            {
+                error = "setup tags are not kept here";
+                return false;
+            }
+
+            if (this._provider.Setups is { } repository)
+            {
+                this.Refresh(repository);
+            }
+
+            if (!this._files.ContainsKey(id))
+            {
+                error = "setup not found";
+                return false;
+            }
+
+            if (!this._tags.Set(id, tag))
+            {
+                error = "the setup tags could not be saved";
+                return false;
+            }
+
+            return true;
         }
     }
 
@@ -234,20 +298,28 @@ public sealed class SetupLibrary
             ? repository.DescribeVehicle(descriptor)
             : new GameSetupVehicle("Unknown car", null, null);
         SetupNameParts name = SetupNaming.Read(info.Name);
+        SetupTag? tag = this._tags?.For(id);
         string track = info.Track ?? "";
+        string trackName = track.Length > 0 ? repository.TrackName(track) : "No track";
+        string game = this._provider.Descriptor.Id;
         return new SetupListItem(
             id,
             info.Name,
             track,
-            track.Length > 0 ? repository.TrackName(track) : "No track",
+            trackName,
+            GameTrackCatalog.CircuitId(game, trackName),
+            GameTrackCatalog.CircuitName(game, trackName),
+            GameTrackCatalog.LayoutLabel(game, trackName),
             vehicle.Car,
             vehicle.Class,
             vehicle.Season,
             info.LastWriteUtc,
             Math.Max(1, this.VersionsOf(info.Id).Count),
-            name.Session,
-            name.Style,
-            name.Version);
+            tag is null ? name.Session : tag.Session,
+            tag is null ? name.Style : tag.Style,
+            name.Version,
+            tag is not null,
+            track.Length > 0 ? GameTrackCatalog.Country(game, trackName) : null);
     }
 
     /// <summary>

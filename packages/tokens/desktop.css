@@ -70,6 +70,7 @@
   --infobar-success: #dcf5e8;  --infobar-success-icon: #0c7a43;  --infobar-success-text: #06401f;
   --infobar-info: #dcebfc;     --infobar-info-icon: #154c8a;     --infobar-info-text: #0b2a4d;
   --on-status: #ffffff;         /* glyph/text on a solid status fill (InfoBar icon, destructive button) */
+  --on-class: #ffffff;          /* text on a racing class's solid -700 tag, in both themes */
 
   /* Avatar */
   --avatar-bg: #ece8ff;

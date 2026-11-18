@@ -1,0 +1,134 @@
+/* What names a car and a track at a glance (CarBadges.tsx): the maker's badge, the game's, the
+   track's flag and the class tag. */
+
+/* The maker's or the game's badge: a mark, or a letter for a maker without one. */
+.logo-badge {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: 1px solid var(--control-stroke);
+  border-radius: var(--radius-control-small);
+  background: var(--control-fill);
+  color: var(--label-secondary);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.logo-badge.small {
+  width: 20px;
+  height: 20px;
+  font-size: 10px;
+}
+
+/* A maker with a colour: its primary colour as the fill (set inline from assets/makers/colors.json)
+   and the ink that reads better on it; the same in light and dark. */
+.logo-badge.branded {
+  border-color: transparent;
+}
+.logo-badge.ink-light {
+  color: var(--on-class);
+}
+.logo-badge.ink-dark {
+  color: var(--on-brand);
+}
+
+/* The mark is a mask filled with the badge's ink. */
+.logo-mark {
+  width: 16px;
+  height: 16px;
+  background: currentColor;
+  mask-position: center;
+  mask-repeat: no-repeat;
+  mask-size: contain;
+}
+
+.logo-badge.small .logo-mark {
+  width: 14px;
+  height: 14px;
+}
+
+.logo-badge.game {
+  width: auto;
+  min-width: 24px;
+  padding: 0 5px;
+  font-size: 10px;
+}
+
+.track-flag {
+  flex: none;
+  width: 18px;
+  height: 12px;
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px var(--control-stroke);
+  object-fit: cover;
+}
+
+/* A flag inside a line of text (CarAtTrack), sitting on its baseline. */
+.car-at-track .track-flag {
+  display: inline-block;
+  width: 15px;
+  height: 10px;
+  margin-right: 4px;
+  vertical-align: -1px;
+}
+
+/* A car or a track in a line of text (CarName, TrackName): its marks beside the words. */
+.car-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+/* The words shorten with an ellipsis where the line runs out of room; the marks stay whole. */
+.car-name-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.track-flag.blank {
+  box-shadow: none;
+}
+
+/* Class tags as the series paint them: a solid fill in the class's colour with white text, the
+   same in light and dark (DESIGN.md → Status). -700 steps so white text keeps AA contrast. ELMS's
+   LMP2 reads "LMP2" in LMP2's blue with an orange corner folded down at the top right, like a
+   bookmark. A class
+   without a colour keeps the neutral .chip. */
+.class-tag {
+  letter-spacing: 0.02em;
+}
+.class-hyp, .class-gtp { --tag: var(--red-700); }
+.class-lmp2, .class-lmp2-elms { --tag: var(--blue-700); }
+.class-lmp3 { --tag: var(--purple-700); }
+.class-lmgt3, .class-gt3 { --tag: var(--green-700); }
+.class-gte, .class-gt2 { --tag: var(--brand-700); }
+
+/* .chip.class-tag outranks .chip whichever stylesheet loads first. */
+.chip.class-tag:is(.class-hyp, .class-gtp, .class-lmp2, .class-lmp2-elms, .class-lmp3, .class-lmgt3, .class-gte, .class-gt2, .class-gt3) {
+  border-color: transparent;
+  background: var(--tag);
+  color: var(--on-class);
+}
+
+.chip.class-lmp2-elms {
+  position: relative;
+  overflow: hidden;
+  padding-right: 8px;
+}
+.chip.class-lmp2-elms::after {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 7px;
+  height: 7px;
+  background: var(--brand-500);
+  clip-path: polygon(0 0, 100% 0, 100% 100%);
+  content: '';
+}

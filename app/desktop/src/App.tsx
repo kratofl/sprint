@@ -93,6 +93,9 @@ export function App({ mockup }: { mockup?: { view: AppView; content: ReactNode }
     setFocus(target)
   }, [navigate])
 
+  // A dash designer's "Alerts and Ack" brings this window forward on Dashes > Settings.
+  useEffect(() => bridge.subscribeOpenDashSettings(() => openItem({ view: 'Dashes', settings: true })), [openItem])
+
   // Hands `focus` off for exactly one render, then clears it. The target view
   // reads it on mount (its own effect, keyed on the id) before this fires, so
   // the hand-off is invisible; anything after — including a remount from

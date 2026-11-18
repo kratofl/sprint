@@ -84,14 +84,15 @@ public static class DashLayoutEditor
     /// <summary>
     /// How many widgets <see cref="ApplyScreenProfile"/> would leave out of the layout, over
     /// every page including the idle page, without touching it. Zero when the layout already
-    /// targets the profile (retargeting it is a no-op). Runs the same refit plan, so it never
-    /// disagrees with what a change of size or a duplicate to that size actually drops.
+    /// targets the profile (retargeting it is a no-op) or is zoned (its zones fit any screen, so
+    /// nothing is refit). Runs the same refit plan, so it never disagrees with what a change of
+    /// size or a duplicate to that size actually drops.
     /// </summary>
     public static int CountRefitLosses(DashLayout layout, ScreenProfile profile)
     {
         ArgumentNullException.ThrowIfNull(layout);
         ArgumentNullException.ThrowIfNull(profile);
-        if (TargetsProfile(layout, profile) || profile.GridCols <= 0 || profile.GridRows <= 0)
+        if (layout.Zoned || TargetsProfile(layout, profile) || profile.GridCols <= 0 || profile.GridRows <= 0)
         {
             return 0;
         }
@@ -117,7 +118,10 @@ public static class DashLayoutEditor
         ArgumentNullException.ThrowIfNull(layout);
         ArgumentNullException.ThrowIfNull(profile);
         layout.ScreenProfileId = profile.Id;
-        RefitLayoutToGrid(layout, profile.GridCols, profile.GridRows);
+        if (!layout.Zoned)
+        {
+            RefitLayoutToGrid(layout, profile.GridCols, profile.GridRows);
+        }
     }
 
     /// <summary>Whether a layout already targets the given profile (same id and grid) — a retarget no-op.</summary>
@@ -126,7 +130,7 @@ public static class DashLayoutEditor
         ArgumentNullException.ThrowIfNull(layout);
         ArgumentNullException.ThrowIfNull(profile);
         return string.Equals(layout.ScreenProfileId, profile.Id, StringComparison.OrdinalIgnoreCase) &&
-            layout.GridCols == profile.GridCols && layout.GridRows == profile.GridRows;
+            (layout.Zoned || (layout.GridCols == profile.GridCols && layout.GridRows == profile.GridRows));
     }
 
     private static void RefitPage(DashPage page, int oldCols, int oldRows, int newCols, int newRows)

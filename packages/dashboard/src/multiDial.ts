@@ -1,19 +1,25 @@
 // The multi-dial popup: when the driver turns a wheel's multi-position dial, the dash shows the
-// new position's name in its colour for a moment ("MULTI" above, the name big below). It is not a
-// telemetry alert -- the dial position comes from the host's input tracker, not the frame -- and
-// the Rust renderer (renderer/src/multi_dial.rs) decides on the wheel when it is up and draws it.
+// new position's name in its colour for a moment ("MULTI" above or beside it, the name big). The
+// dial position comes from the host's input tracker, not the frame; whether the popup shows, its
+// size, inversion and duration are the `dial_change` alert's settings (alerts.ts), and the Rust
+// renderer (renderer/src/multi_dial.rs) decides on the wheel when it is up and draws it.
 // Here: the popup as a `DashAlertBanner`, for the desktop's Controls tab to draw as a preview, and
 // the colours a position can take.
 
+import type { DashAlertSize } from './alerts'
 import { dashColor } from './palette'
 
-/** What the popup draws (banner kind `multiDial`). `inverted` swaps the colours: a colour fill with dark lettering. */
+/**
+ * What the popup draws (banner kind `multiDial`): full screen or a strip. `inverted` swaps the
+ * colours: a colour fill with dark lettering.
+ */
 export interface DashMultiDialPopup {
   kind: 'multiDial'
   caption: string
   label: string
   color: string
   inverted: boolean
+  displayMode: DashAlertSize
 }
 
 /**
@@ -38,6 +44,3 @@ export function multiDialInk(color: string): string {
   const luminance = 0.2126 * channel(1) + 0.7152 * channel(3) + 0.0722 * channel(5)
   return (luminance + 0.05) / 0.05 >= 1.05 / (luminance + 0.05) ? dashColor.background : dashColor.text
 }
-
-/** How long the popup stays up when the layout does not set its own alert duration (the renderer's `MULTI_DIAL_POPUP_SECONDS`). */
-export const MULTI_DIAL_POPUP_SECONDS = 1.5

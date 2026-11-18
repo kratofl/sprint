@@ -42,6 +42,27 @@ public sealed record CorpusSession(
 
     /// <summary>Whether any lap here can be overlaid channel by channel.</summary>
     public bool HasChannels => this.TracedLapCount > 0;
+
+    /// <summary>The circuit the layout belongs to ("spa" for Spa and Spa Endurance alike); the Analysis list groups by it.</summary>
+    public string CircuitId => string.IsNullOrWhiteSpace(this.Context.TrackCourse) ? "" : GameTrackCatalog.CircuitId(this.Context.Game, this.Context.TrackCourse);
+
+    /// <summary>The circuit's name, or the game's own track name when the catalog does not know it.</summary>
+    public string CircuitName => string.IsNullOrWhiteSpace(this.Context.TrackCourse) ? "" : GameTrackCatalog.CircuitName(this.Context.Game, this.Context.TrackCourse);
+
+    /// <summary>The layout within its circuit ("Endurance"), or the game's own track name when unknown.</summary>
+    public string Layout => string.IsNullOrWhiteSpace(this.Context.TrackCourse) ? "" : GameTrackCatalog.LayoutLabel(this.Context.Game, this.Context.TrackCourse);
+
+    /// <summary>Where the circuit is (ISO 3166-1 alpha-2), for its flag; null when unknown.</summary>
+    public string? Country => string.IsNullOrWhiteSpace(this.Context.TrackCourse) ? null : GameTrackCatalog.Country(this.Context.Game, this.Context.TrackCourse);
+
+    /// <summary>The class as racing tags it ("HYP", "LMP2 ELMS"); see <see cref="CarNames.Tag"/>.</summary>
+    public string ClassTag => CarNames.Tag(this.Context.CarClass, this.Context.CarModel);
+
+    /// <summary>The car's make ("Porsche"), for its logo; null when the game gave no model.</summary>
+    public string? Make => CarNames.MakeOf(this.Context.CarType);
+
+    /// <summary>How the session's car and track are shown on its page, by the rule every page uses.</summary>
+    public CarMarks Marks => CarMarks.Of(this.Context.Game, this.Context.TrackCourse, this.Context.CarModel, this.Context.CarClass, this.Context.CarType);
 }
 
 /// <summary>The compact badge and full name shown for one car-class choice.</summary>

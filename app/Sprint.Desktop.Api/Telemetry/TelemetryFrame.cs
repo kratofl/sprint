@@ -270,6 +270,12 @@ public sealed record CarState
     public float Rpm { get; init; }
     public float MaxRpm { get; init; }
 
+    /// <summary>Engine water temperature, °C. Null when the game does not say.</summary>
+    public float? WaterTempCelsius { get; init; }
+
+    /// <summary>Engine oil temperature, °C. Null when the game does not say.</summary>
+    public float? OilTempCelsius { get; init; }
+
     /// <summary>Driver throttle position before traction control or other vehicle-side filtering.</summary>
     public float Throttle { get; init; }
 
@@ -456,6 +462,28 @@ public sealed record LapState
     /// </summary>
     public IReadOnlyList<double> LastLapSectorsSeconds { get; init; } = [];
 
+    /// <summary>Durations of the sectors of the lap being driven that are done so far, in order (none to two).</summary>
+    public IReadOnlyList<double> CurrentLapSectorsSeconds { get; init; } = [];
+
+    // The session's best time in each sector, as three entries (null for a sector nobody has a
+    // time in yet), or empty when nothing is known. The telemetry engine fills them from the
+    // scored field (SectorBestsTracker); a game source leaves them empty.
+
+    /// <summary>The player's own best in each sector this session.</summary>
+    public IReadOnlyList<double?> PersonalBestSectorsSeconds { get; init; } = [];
+
+    /// <summary>Anyone's best in each sector this session.</summary>
+    public IReadOnlyList<double?> SessionBestSectorsSeconds { get; init; } = [];
+
+    /// <summary>The best in each sector this session among the player's class.</summary>
+    public IReadOnlyList<double?> ClassBestSectorsSeconds { get; init; } = [];
+
+    /// <summary>The fastest lap anyone has set this session, seconds; null when none yet.</summary>
+    public double? SessionBestLapTime { get; init; }
+
+    /// <summary>The fastest lap this session among the player's class, seconds; null when none yet.</summary>
+    public double? ClassBestLapTime { get; init; }
+
     public bool IsValid { get; init; } = true;
     public float TrackPosition { get; init; }
 }
@@ -513,6 +541,12 @@ public sealed record RaceState
     public byte TotalPositions { get; init; }
     public float GapAhead { get; init; }
     public float GapBehind { get; init; }
+
+    // The spotter: the nearest car alongside on each side, as how far ahead of the player it is,
+    // metres (negative: behind); null when nobody is alongside. The telemetry engine fills them
+    // from the scored field (Spotter); a game source leaves them null.
+    public float? CarLeftMeters { get; init; }
+    public float? CarRightMeters { get; init; }
 }
 
 public sealed record EnergyState

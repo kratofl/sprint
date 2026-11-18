@@ -72,11 +72,11 @@ test('no frame stays no frame', () => {
 // The editor hands the renderer `toHostFrame(frame)`; the renderer reads exactly what
 // `parseHostFrame` reads. So for every preview frame the trip there and back must keep each field
 // the renderer reads. Only the mirror's own sector/position timings (the renderer reads none of
-// them) and `field` (no dash widget reads the other cars) stay behind.
+// them) stay behind; the preview cars carry nothing but what the relative widget reads.
 test('toHostFrame is the inverse of parseHostFrame for every preview frame', () => {
   for (const { state } of dashPreviewStates) {
     const frame = previewFrame(state === 'live' ? 'mid_lap' : state)
-    const expected: TelemetryFrame = { ...frame, lap: { ...frame.lap, positionLapTime: 0, sector1Time: 0, sector2Time: 0 }, field: [] }
+    const expected: TelemetryFrame = { ...frame, lap: { ...frame.lap, positionLapTime: 0, sector1Time: 0, sector2Time: 0 } }
     assert.deepEqual(parseHostFrame(JSON.parse(JSON.stringify(toHostFrame(frame)))), expected, state)
   }
 })

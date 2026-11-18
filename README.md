@@ -14,15 +14,67 @@ WinUSB.
 
 ## What it does
 
-- **Dashes** — build wheel dashes from a widget catalog; the editor preview, the on-screen display
-  and the wheel show the same render.
-- **Devices** — add wheels and screens, set rotation, offsets and what each screen shows: a dash, a
-  flag display, a lap timer or a rear-view mirror of a desktop region. A browser display shows a
-  dash in any browser or VR overlay tool on the same PC.
-- **Session planner** — plan qualifying and race, pick targets from your recorded laps, and get them
-  on the wheel from the next lap.
-- **Analysis** — overlay any two laps, your own, imported or shared.
-- **Setups** and **Race engineer** — keep setup variants; let an engineer stage and push changes.
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/screenshots/overview-dark.png" />
+  <img src="assets/screenshots/overview-light.png" alt="The Overview page: the next plan, the game and devices, and recent sessions" />
+</picture>
+
+### Plan the race
+
+The session planner picks qualifying and race targets from your recorded laps, works out the fuel
+for every stint, and puts the targets on your wheel from the next lap.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/screenshots/session-plan-dark.png" />
+  <img src="assets/screenshots/session-plan-light.png" alt="A session plan: practice laps, the qualifying target and the race fuel per stint" />
+</picture>
+
+### Compare your laps
+
+Analysis opens a lap with its line on the track and every channel the car recorded. Compare it with
+any other lap, your own, imported or one a friend sent as a lap file, and see where it gains and
+loses, corner by corner. On track picks a lap to chase and draws it over the game while you drive.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/screenshots/analysis-dark.png" />
+  <img src="assets/screenshots/analysis-light.png" alt="A lap compared with a friend’s: time gained, speed, pedals and the line on the track" />
+</picture>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/screenshots/on-track-dark.png" />
+  <img src="assets/screenshots/on-track-light.png" alt="On track: the laps here, yours and friends’, and the one being chased" />
+</picture>
+
+### Your dash, on your wheel
+
+Build wheel dashes from a widget catalog; the editor, the on-screen preview and the wheel show the
+same picture. Add wheels and screens, set rotation, offsets and what each one shows: a dash, a flag
+display, a lap timer or a rear-view mirror of a desktop region. A browser display shows a dash in
+any browser or VR overlay tool on the same PC.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/screenshots/dashes-dark.png" />
+  <img src="assets/screenshots/dashes-light.png" alt="The Dashes page: dashes filed by category, each shown as it draws on the wheel" />
+</picture>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/screenshots/device-dark.png" />
+  <img src="assets/screenshots/device-light.png" alt="A wheel’s settings: frame rate, orientation and alignment of its screen" />
+</picture>
+
+### A race engineer on the pit wall
+
+Link two PCs directly, no server needed, and your engineer gets a pit wall: timing, the track,
+flags and race control, fuel and stint plan, the car and live telemetry traces, arranged as they
+like across one or more screens. Box now, a new target lap or any short message goes straight to
+your wheel, and the engineer sees when you've read it.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/screenshots/pit-wall-dark.png" />
+  <img src="assets/screenshots/pit-wall-light.png" alt="The pit wall: timing, the track with a yellow sector, the radio to the wheel, target lap, fuel and stint plan" />
+</picture>
+
+Setups keeps the game's setups by car and track, with the setup each run drove on.
 
 ## Installing
 

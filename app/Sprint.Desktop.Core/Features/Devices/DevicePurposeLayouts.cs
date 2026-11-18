@@ -68,15 +68,17 @@ public static class DevicePurposeLayouts
         ],
     };
 
-    public static DashLayout? Resolve(SavedDevice device, IEnumerable<DashLayout> dashboards)
+    /// <summary>The layout <paramref name="device"/> shows while the driver is in <paramref name="car"/>.</summary>
+    public static DashLayout? Resolve(SavedDevice device, IEnumerable<DashLayout> dashboards, DriverCar car)
     {
         ArgumentNullException.ThrowIfNull(device);
         ArgumentNullException.ThrowIfNull(dashboards);
+        ArgumentNullException.ThrowIfNull(car);
 
         DevicePurpose purpose = DevicePurposes.Resolve(device.Purpose);
         return purpose.Output switch
         {
-            DevicePurposeOutputKind.DashboardLayout => ResolveDashboard(device, dashboards),
+            DevicePurposeOutputKind.DashboardLayout => ResolveDashboard(device, dashboards, car),
             DevicePurposeOutputKind.BuiltInFlagLayout => FlagDisplay,
             DevicePurposeOutputKind.BuiltInLapTimerLayout => LapTimer,
             DevicePurposeOutputKind.DesktopCaptureRegion => null,
@@ -87,12 +89,15 @@ public static class DevicePurposeLayouts
         };
     }
 
-    /// <summary>The device's own dash, else the stable fallback (<see cref="DashLayoutOrder.First"/>); null when there are no dashes.</summary>
-    private static DashLayout? ResolveDashboard(SavedDevice device, IEnumerable<DashLayout> dashboards)
+    /// <summary>
+    /// The dash a rule picks for the car (<see cref="DeviceDashRules.Pick"/>), else the device's own
+    /// dash, else the stable fallback (<see cref="DashLayoutOrder.First"/>); null when there are no dashes.
+    /// </summary>
+    private static DashLayout? ResolveDashboard(SavedDevice device, IEnumerable<DashLayout> dashboards, DriverCar car)
     {
         IReadOnlyList<DashLayout> layouts = dashboards as IReadOnlyList<DashLayout> ?? dashboards.ToList();
-        return layouts.FirstOrDefault(layout =>
-                   string.Equals(layout.Id, device.DashId, StringComparison.OrdinalIgnoreCase))
-            ?? DashLayoutOrder.First(layouts);
+        DashLayout? Find(string id) => layouts.FirstOrDefault(layout => string.Equals(layout.Id, id, StringComparison.OrdinalIgnoreCase));
+        string? picked = DeviceDashRules.Pick(device.DashRules, car, id => Find(id) is not null);
+        return (picked is null ? null : Find(picked)) ?? Find(device.DashId) ?? DashLayoutOrder.First(layouts);
     }
 }

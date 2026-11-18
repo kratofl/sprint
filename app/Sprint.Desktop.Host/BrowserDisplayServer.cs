@@ -5,6 +5,7 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Http.Features;
 using Sprint.Desktop.Api.Telemetry;
 using Sprint.Desktop.Core;
+using Sprint.Desktop.Features.Dashes;
 using Sprint.Desktop.Features.Devices;
 using Sprint.Desktop.Features.Diagnostics;
 using Sprint.Desktop.Features.Hardware;
@@ -84,6 +85,10 @@ public sealed class BrowserDisplayServer
 
     private static readonly byte[] KeepAlive = "\n"u8.ToArray();
     private static readonly byte[] NoScene = "{\"scene\":null}\n"u8.ToArray();
+    private static readonly byte[] Acknowledge = "{\"acknowledge\":true}\n"u8.ToArray();
+
+    // What a feed waits on for a press where nothing acknowledges (tests): never completes, never allocates per wait.
+    private static readonly Task Never = new TaskCompletionSource().Task;
 
     // The page and what it loads, by the name it asks for; nothing else is served from disk.
     private static readonly Dictionary<string, string> Assets = new(StringComparer.Ordinal)
@@ -361,8 +366,10 @@ public sealed class BrowserDisplayServer
     /// One page's feed, newline-delimited JSON held open: <c>{"scene":…}</c> first and whenever the
     /// scene changes (dash, page, idle, size, background, targets, driver name and number), then
     /// <c>{"frame":…}</c> per new telemetry frame, as the renderer reads it (<see cref="DashFrameJson"/>:
-    /// the contract frame without the other cars). A reader that falls behind skips to the newest frame: nothing queues up for it. It ends
-    /// when the page goes, the display is removed or turned off, or the listener stops.
+    /// the contract frame), and <c>{"acknowledge":true}</c> when the driver presses Ack (only presses
+    /// made while the page reads the feed). A reader that falls behind skips to the newest frame:
+    /// nothing queues up for it. It ends when the page goes, the display is removed or turned off, or
+    /// the listener stops.
     /// </summary>
     private async Task StreamAsync(HttpContext context, BrowserDisplay display, CancellationToken serving)
     {
@@ -376,6 +383,8 @@ public sealed class BrowserDisplayServer
         using Utf8JsonWriter sceneWriter = new(sceneLine);
         SceneKey? sentScene = null;
         TelemetryFrame? sentFrame = null;
+        DashAcknowledgements? acknowledgements = display.Scenes.Acknowledgements;
+        long sentAcknowledged = acknowledgements?.Count ?? 0;
         DateTime lastWrite = DateTime.UtcNow;
 
         display.ViewerJoined();
@@ -384,6 +393,8 @@ public sealed class BrowserDisplayServer
             while (!token.IsCancellationRequested)
             {
                 Task published = this._telemetry.NextPublish;
+                // Taken before the count is read, so a press between the two still wakes the next wait.
+                Task pressed = acknowledgements?.Next ?? Never;
                 BrowserDisplayLook look = display.Look;
                 SceneKey scene = new(display.Scenes.Content, display.Scenes.Idle, display.Scenes.PageId, look);
                 bool wrote = false;
@@ -402,6 +413,17 @@ public sealed class BrowserDisplayServer
                     wrote = true;
                 }
 
+                long acknowledged = acknowledgements?.Count ?? 0;
+                if (acknowledged != sentAcknowledged)
+                {
+                    sentAcknowledged = acknowledged;
+                    if (scene.Content is not null)
+                    {
+                        await response.Body.WriteAsync(Acknowledge, token);
+                        wrote = true;
+                    }
+                }
+
                 if (!wrote && DateTime.UtcNow - lastWrite >= KeepAliveInterval)
                 {
                     await response.Body.WriteAsync(KeepAlive, token);
@@ -416,7 +438,7 @@ public sealed class BrowserDisplayServer
 
                 try
                 {
-                    await published.WaitAsync(KeepAliveInterval, token);
+                    await Task.WhenAny(published, pressed).WaitAsync(KeepAliveInterval, token);
                 }
                 catch (TimeoutException)
                 {

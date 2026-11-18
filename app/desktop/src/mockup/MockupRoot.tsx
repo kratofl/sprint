@@ -40,7 +40,7 @@ export default function MockupRoot({ name, variant }: { name: string; variant: s
 
   const Variant = loaded.mockup.variants[variant]
   if ('window' in loaded.mockup) return <Variant />
-  return <App mockup={{ view: loaded.mockup.view, content: <Variant /> }} />
+  return <App mockup={{ view: loaded.mockup.viewFor?.[variant] ?? loaded.mockup.view, content: <Variant /> }} />
 }
 
 function MockupProblem({ text }: { text: string }) {

@@ -12,7 +12,7 @@ export type MockupWindow = 'pitwall' | 'designer' | 'hud'
  */
 export type Mockup = {
   variants: { A: ComponentType; B: ComponentType; C: ComponentType }
-} & ({ view: AppView } | { window: MockupWindow })
+} & ({ view: AppView; /** An option shown on another page than `view`. */ viewFor?: Partial<Record<'A' | 'B' | 'C', AppView>> } | { window: MockupWindow })
 
 export type MockupVariant = keyof Mockup['variants']
 

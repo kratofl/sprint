@@ -39,7 +39,7 @@ function Layer({ onClose, children }: { onClose: () => void; children: ReactNode
 
 /**
  * A menu: it takes focus on its first item, Up/Down move between items, Escape and Tab close it.
- * Kept inside the window by `width`.
+ * Kept inside the window by `width`; a menu taller than the room below it scrolls.
  */
 export function MenuLayer({
   anchor,
@@ -58,6 +58,7 @@ export function MenuLayer({
   beside?: ReactNode
 }) {
   const menuRef = useRef<HTMLDivElement | null>(null)
+  const top = Math.max(8, Math.min(anchor.y, window.innerHeight - 200))
 
   useEffect(() => {
     enabledItems(menuRef.current)[0]?.focus()
@@ -79,7 +80,7 @@ export function MenuLayer({
         className="menu-flyout"
         role="menu"
         aria-label={label}
-        style={{ left: Math.max(8, Math.min(anchor.x, window.innerWidth - width - 8)), top: Math.max(8, Math.min(anchor.y, window.innerHeight - 200)), width }}
+        style={{ left: Math.max(8, Math.min(anchor.x, window.innerWidth - width - 8)), top, width, maxHeight: window.innerHeight - top - 8, overflowY: 'auto' }}
         onPointerDown={(event) => event.stopPropagation()}
         onKeyDown={onKeyDown}
       >

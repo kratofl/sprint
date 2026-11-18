@@ -6,8 +6,10 @@ using Sprint.Desktop.Features.Dashes;
 using Sprint.Desktop.Features.Devices;
 using Sprint.Desktop.Features.Diagnostics;
 using Sprint.Desktop.Features.FirstRun;
+using Sprint.Desktop.Features.Input;
 using Sprint.Desktop.Features.LiveCompare;
 using Sprint.Desktop.Features.SessionPlanning;
+using Sprint.Desktop.Features.Setup;
 using Sprint.Desktop.Runtime;
 using Sprint.Games.LeMansUltimate;
 using Sprint.Games.LeMansUltimate.Setups;
@@ -304,6 +306,66 @@ public sealed class RuntimeCoordinatorTests
     }
 
     [Fact]
+    public void AWheelButtonIsAssignedByPressingItAndThenTurnsThePage()
+    {
+        string dataRoot = NewTempDataRoot();
+        try
+        {
+            DesktopRuntime runtime = new(dataRoot, PresetRoot);
+            DashPageCycle pages = new();
+            RuntimeCoordinator coordinator = new(runtime, pageCycle: pages);
+            Assert.True(coordinator.Execute(Command("""{"type":"devices.add","catalogId":"generic-vocore"}"""), out _));
+            SavedDevice device = Assert.Single(runtime.Devices);
+            Assert.True(coordinator.Execute(Command($$"""{"type":"devices.update","deviceId":"{{device.Id}}","name":"Wheel","rotation":0,"offsetX":0,"offsetY":0,"margin":0,"dashId":"default"}"""), out string updateError), updateError);
+
+            // Not a function this device has.
+            Assert.False(coordinator.Execute(Command($$"""{"type":"devices.buttonListen","deviceId":"{{device.Id}}","command":"engine.start"}"""), out _));
+
+            Assert.True(coordinator.Execute(Command($$"""{"type":"devices.buttonListen","deviceId":"{{device.Id}}","command":"dash.page.next"}"""), out string listenError), listenError);
+            coordinator.Press(new HardwareInputEvent(1, 2, "button:5"));
+
+            DeviceBinding binding = Assert.Single(device.Bindings);
+            Assert.Equal(("button:5", "dash.page.next"), (binding.Input, binding.Command));
+            Assert.Null(pages.CurrentPageId(device.Id));
+
+            // Now the press runs it.
+            coordinator.Press(new HardwareInputEvent(1, 2, "button:5"));
+            Assert.NotNull(pages.CurrentPageId(device.Id));
+
+            Assert.True(coordinator.Execute(Command($$"""{"type":"devices.buttonClear","deviceId":"{{device.Id}}","command":"dash.page.next"}"""), out _));
+            Assert.Empty(device.Bindings);
+        }
+        finally
+        {
+            Cleanup(dataRoot);
+        }
+    }
+
+    [Fact]
+    public void AButtonAssignedToAnotherFunctionMovesThere()
+    {
+        RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
+        try
+        {
+            Assert.True(coordinator.Execute(Command("""{"type":"devices.add","catalogId":"generic-vocore"}"""), out _));
+            SavedDevice device = Assert.Single(runtime.Devices);
+            Assert.True(coordinator.Execute(Command($$"""{"type":"devices.update","deviceId":"{{device.Id}}","name":"Wheel","rotation":0,"offsetX":0,"offsetY":0,"margin":0,"dashId":"default"}"""), out _));
+
+            foreach (string function in new[] { "dash.page.next", "dash.page.prev" })
+            {
+                Assert.True(coordinator.Execute(Command($$"""{"type":"devices.buttonListen","deviceId":"{{device.Id}}","command":"{{function}}"}"""), out string error), error);
+                coordinator.Press(new HardwareInputEvent(1, 2, "button:7"));
+            }
+
+            Assert.Equal("dash.page.prev", Assert.Single(device.Bindings).Command);
+        }
+        finally
+        {
+            Cleanup(dataRoot);
+        }
+    }
+
+    [Fact]
     public void DevicesUpdate_RotationChangeReorientsTheStoredCaptureRegion()
     {
         RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
@@ -488,7 +550,42 @@ public sealed class RuntimeCoordinatorTests
     }
 
     [Fact]
-    public void DevicesMultiDial_RenamesAPositionAndInvertsThePopupAndPersists()
+    public void DevicesDashRules_ReplacesTheListAndRejectsAnUnknownDashOrKind()
+    {
+        RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
+        try
+        {
+            Assert.True(coordinator.Execute(Command("""{"type":"devices.add","catalogId":"generic-vocore"}"""), out _));
+            SavedDevice device = Assert.Single(runtime.Devices);
+            string dashId = runtime.DashLayouts.First().Id;
+
+            Assert.True(coordinator.Execute(
+                Command($$"""{"type":"devices.dashRules","deviceId":"{{device.Id}}","rules":[{"kind":"class","value":" Hypercar ","dashId":"{{dashId}}"}]}"""),
+                out string error), error);
+            Assert.False(coordinator.Execute(
+                Command($$"""{"type":"devices.dashRules","deviceId":"{{device.Id}}","rules":[{"kind":"class","value":"LMP2","dashId":"missing"}]}"""),
+                out string missing));
+            Assert.Equal("no dash 'missing'", missing);
+            Assert.False(coordinator.Execute(
+                Command($$"""{"type":"devices.dashRules","deviceId":"{{device.Id}}","rules":[{"kind":"track","value":"Spa","dashId":"{{dashId}}"}]}"""),
+                out _));
+
+            DesktopRuntime reloaded = new(dataRoot, PresetRoot);
+            DeviceDashRule rule = Assert.Single(reloaded.Devices.Single().DashRules);
+            Assert.Equal(("class", "Hypercar", dashId), (rule.Kind, rule.Value, rule.DashId));
+
+            // Deleting the dash takes its rules with it, so the list can be sent again.
+            runtime.DeleteDashLayout(runtime.DashLayouts.First(layout => layout.Id == dashId));
+            Assert.Empty(runtime.Devices.Single().DashRules);
+        }
+        finally
+        {
+            Cleanup(dataRoot);
+        }
+    }
+
+    [Fact]
+    public void DevicesMultiDial_RenamesAPositionAndPersists()
     {
         RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
         try
@@ -499,16 +596,51 @@ public sealed class RuntimeCoordinatorTests
             Assert.True(coordinator.Execute(
                 Command($$"""{"type":"devices.multiDial","deviceId":"{{device.Id}}","position":0,"label":" STRAT ","color":"#4a6cdc"}"""),
                 out string error), error);
-            Assert.True(coordinator.Execute(
-                Command($$"""{"type":"devices.multiDial","deviceId":"{{device.Id}}","invertPopup":true}"""),
-                out error), error);
-
             DesktopRuntime reloaded = new(dataRoot, PresetRoot);
             MultiDialSettings? saved = reloaded.Devices.Single().MultiDial;
             Assert.NotNull(saved);
             Assert.Equal(new MultiDialLabel("STRAT", "#4A6CDC"), saved.Positions[0]);
             Assert.Equal("TC2", saved.Positions[1].Label);
-            Assert.True(saved.InvertPopup);
+        }
+        finally
+        {
+            Cleanup(dataRoot);
+        }
+    }
+
+    [Fact]
+    public void DashModes_ADialPositionSwitchesOneOnAndDeletingItForgetsItEverywhere()
+    {
+        RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
+        try
+        {
+            Assert.True(coordinator.Execute(Command("""{"type":"devices.add","catalogId":"bavarian-omega-v2-pro"}"""), out _));
+            SavedDevice device = Assert.Single(runtime.Devices);
+
+            Assert.True(coordinator.Execute(Command("""{"type":"dash.mode.create","id":"fuel-save","name":" Fuel save "}"""), out string error), error);
+            Assert.False(coordinator.Execute(Command("""{"type":"dash.mode.create","id":"other","name":"fuel SAVE"}"""), out _), "a second mode by the same name");
+            Assert.False(coordinator.Execute(Command("""{"type":"dash.mode.create","id":"race","name":"Racing"}"""), out _), "a session's id");
+            Assert.True(coordinator.Execute(
+                Command($$"""{"type":"devices.multiDial","deviceId":"{{device.Id}}","position":3,"mode":"fuel-save"}"""),
+                out error), error);
+            Assert.False(coordinator.Execute(
+                Command($$"""{"type":"devices.multiDial","deviceId":"{{device.Id}}","position":3,"mode":"wet"}"""),
+                out _), "a mode that does not exist");
+
+            DashLayout dash = runtime.DashLayouts.First();
+            dash.Pages[0].ShowIn = ["race", "fuel-save"];
+            runtime.SaveDashLayout(dash);
+
+            Assert.True(coordinator.Execute(Command("""{"type":"dash.mode.rename","id":"fuel-save","name":"Save fuel"}"""), out error), error);
+            Assert.Equal("Save fuel", Assert.Single(runtime.Settings.DashModes).Name);
+            Assert.Equal("fuel-save", runtime.Devices.Single().MultiDial?.Modes[3]);
+            Assert.Equal("FUEL", runtime.Devices.Single().MultiDial?.Positions[3].Label);
+
+            Assert.True(coordinator.Execute(Command("""{"type":"dash.mode.delete","id":"fuel-save"}"""), out error), error);
+            DesktopRuntime reloaded = new(dataRoot, PresetRoot);
+            Assert.Empty(reloaded.Settings.DashModes);
+            Assert.Null(reloaded.Devices.Single().MultiDial?.Modes[3]);
+            Assert.Equal(["race"], reloaded.DashLayouts.Single(layout => layout.Id == dash.Id).Pages[0].ShowIn);
         }
         finally
         {
@@ -532,10 +664,95 @@ public sealed class RuntimeCoordinatorTests
                 out string error));
             Assert.Equal("color must be #RRGGBB", error);
             Assert.False(coordinator.Execute(
-                Command($$"""{"type":"devices.multiDial","deviceId":"{{screen.Id}}","invertPopup":true}"""),
+                Command($$"""{"type":"devices.multiDial","deviceId":"{{screen.Id}}","position":0,"label":"STRAT","color":"#4A6CDC"}"""),
                 out error));
             Assert.Equal("device has no multi-dial", error);
             Assert.Null(omega.MultiDial);
+        }
+        finally
+        {
+            Cleanup(dataRoot);
+        }
+    }
+
+    [Theory]
+    [InlineData("""{"type":"dashAlerts.update","enabled":false}""", "alertType is required")]
+    [InlineData("""{"type":"dashAlerts.update","alertType":"nope","enabled":false}""", "unknown alert type: nope")]
+    [InlineData("""{"type":"dashAlerts.update","alertType":"flag"}""", "no alert settings were provided")]
+    [InlineData("""{"type":"dashAlerts.update","alertType":"flag","enabled":"yes"}""", "enabled must be true or false")]
+    [InlineData("""{"type":"dashAlerts.update","alertType":"flag","size":"huge"}""", "size must be strip or full")]
+    [InlineData("""{"type":"dashAlerts.update","alertType":"flag","durationSeconds":31}""", "durationSeconds must be from 1 to 30")]
+    [InlineData("""{"type":"dashAlerts.update","alertType":"lap_summary","durationSeconds":16}""", "durationSeconds must be from 1 to 15")]
+    [InlineData("""{"type":"dashAlerts.update","alertType":"flag","durationSeconds":0.5}""", "durationSeconds must be from 1 to 30")]
+    [InlineData("""{"type":"dashAlerts.update","alertType":"tc_change","lapsLeft":3}""", "lapsLeft is only for fuel_low")]
+    [InlineData("""{"type":"dashAlerts.update","alertType":"fuel_low","lapsLeft":10}""", "lapsLeft must be a whole number from 1 to 9")]
+    [InlineData("""{"type":"dashAlerts.update","alertType":"fuel_low","lapsLeft":2.5}""", "lapsLeft must be a whole number from 1 to 9")]
+    public void DashAlertsUpdate_RejectsBadInputAndChangesNothing(string json, string expected)
+    {
+        RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
+        try
+        {
+            // A valid field beside the bad one must not be applied either.
+            Assert.False(coordinator.Execute(Command(json), out string error));
+            Assert.Equal(expected, error);
+            Assert.Equal(DashAlertTypes.Defaults, runtime.Settings.DashAlerts.Alerts);
+        }
+        finally
+        {
+            Cleanup(dataRoot);
+        }
+    }
+
+    [Fact]
+    public void DashAlertsUpdate_PatchesOneTypeAndPersists()
+    {
+        RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
+        try
+        {
+            JsonElement update = Command("""{"type":"dashAlerts.update","alertType":"fuel_low","size":"full","untilAck":false,"durationSeconds":4,"lapsLeft":3}""");
+            Assert.True(coordinator.Execute(update, out string error), error);
+            // The same patch again is fine and changes nothing.
+            Assert.True(coordinator.Execute(update, out error), error);
+            Assert.True(coordinator.Execute(Command("""{"type":"dashAlerts.update","alertType":"arb_change","enabled":true,"invertColors":true}"""), out error), error);
+
+            DashAlertSettings fuel = new("fuel_low", true, DashAlertSize.Full, false, 4, false, 3);
+            DashAlertSettings arb = new("arb_change", true, DashAlertSize.Strip, true, 2, false);
+            Assert.Equal(fuel, runtime.Settings.DashAlerts.Of("fuel_low"));
+            Assert.Equal(arb, runtime.Settings.DashAlerts.Of("arb_change"));
+
+            AppDashAlerts reloaded = new DesktopRuntime(dataRoot, PresetRoot).Settings.DashAlerts;
+            Assert.Equal(AppDashAlerts.Default.With(fuel).With(arb).Alerts, reloaded.Alerts);
+        }
+        finally
+        {
+            Cleanup(dataRoot);
+        }
+    }
+
+    [Fact]
+    public void Ack_IsAButtonOnEveryDeviceAndAPressOrTheCommandAcknowledgesEveryDash()
+    {
+        string dataRoot = NewTempDataRoot();
+        try
+        {
+            DesktopRuntime runtime = new(dataRoot, PresetRoot);
+            DashAcknowledgements acknowledgements = new();
+            RuntimeCoordinator coordinator = new(runtime, acknowledgements: acknowledgements);
+            Assert.True(coordinator.Execute(Command("""{"type":"devices.add","catalogId":"generic-vocore"}"""), out _));
+            Assert.True(coordinator.Execute(Command("""{"type":"devices.add","catalogId":"bavarian-omega-v2-pro"}"""), out _));
+            Assert.All(
+                coordinator.ButtonFunctionsByDevice().Values,
+                functions => Assert.Contains(new ButtonFunction("dash.acknowledge", "Acknowledge"), functions));
+
+            Assert.True(coordinator.Execute(Command("""{"type":"dash.acknowledge"}"""), out string error), error);
+            Assert.Equal(1, acknowledgements.Count);
+
+            SavedDevice wheel = runtime.Devices.First(device => device.PresetId == "bavarian-omega-v2-pro");
+            Assert.True(coordinator.Execute(Command($$"""{"type":"devices.buttonListen","deviceId":"{{wheel.Id}}","command":"dash.acknowledge"}"""), out error), error);
+            coordinator.Press(new HardwareInputEvent(1, 2, "button:9"));
+            Assert.Equal(1, acknowledgements.Count);
+            coordinator.Press(new HardwareInputEvent(1, 2, "button:9"));
+            Assert.Equal(2, acknowledgements.Count);
         }
         finally
         {
@@ -610,17 +827,21 @@ public sealed class RuntimeCoordinatorTests
         }
     }
 
+    /// <summary>The dash seeded from the default preset (the presets seed it and Hypercar).</summary>
+    private static DashLayout DefaultDash(DesktopRuntime runtime) => runtime.DashLayouts.Single(dash => dash.Id == "default");
+
     [Fact]
-    public void DashDelete_DeletesEvenTheLastDash_AndItStaysGone()
+    public void DashDelete_DeletesEveryDashEvenTheLast_AndItStaysGone()
     {
         RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
         try
         {
-            DashLayout only = Assert.Single(runtime.DashLayouts);
+            foreach (DashLayout dash in runtime.DashLayouts.ToList())
+            {
+                bool ok = coordinator.Execute(Command($$"""{"type":"dash.delete","dashId":"{{dash.Id}}"}"""), out string error);
+                Assert.True(ok, error);
+            }
 
-            bool ok = coordinator.Execute(Command($$"""{"type":"dash.delete","dashId":"{{only.Id}}"}"""), out string error);
-
-            Assert.True(ok, error);
             Assert.Empty(runtime.DashLayouts);
             Assert.Empty(new DesktopRuntime(dataRoot, PresetRoot).DashLayouts);
         }
@@ -642,9 +863,10 @@ public sealed class RuntimeCoordinatorTests
 
             Assert.True(ok, error);
             DashLayout created = runtime.DashLayouts.Single(layout => layout.Name == "Quali");
-            ScreenProfile profile = ScreenProfileCatalog.Resolve("portrait-480x800");
-            Assert.Equal(profile.Id, created.ScreenProfileId);
-            Assert.Equal((profile.GridCols, profile.GridRows), (created.GridCols, created.GridRows));
+            // Zoned: the profile names the screen; the grid stays the zones' own.
+            Assert.Equal("portrait-480x800", created.ScreenProfileId);
+            Assert.True(created.Zoned);
+            Assert.Equal((DashZones.Cols, DashZones.Rows), (created.GridCols, created.GridRows));
             DashPage page = Assert.Single(created.Pages);
             Assert.Empty(page.Widgets);
             Assert.Equal("Qualifying", created.Category);
@@ -661,7 +883,7 @@ public sealed class RuntimeCoordinatorTests
         RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
         try
         {
-            DashLayout source = runtime.DashLayouts.Single();
+            DashLayout source = DefaultDash(runtime);
             Assert.True(coordinator.Execute(Command($$"""{"type":"dash.setCategory","dashId":"{{source.Id}}","category":"Endurance"}"""), out string error), error);
 
             Assert.True(coordinator.Execute(Command($$"""{"type":"dash.create","sourceDashId":"{{source.Id}}","profileId":"square-800x800"}"""), out error), error);
@@ -696,7 +918,7 @@ public sealed class RuntimeCoordinatorTests
 
             Assert.False(ok);
             Assert.Equal(expected, error);
-            Assert.Single(runtime.DashLayouts);
+            Assert.Equal(["default", "hypercar"], runtime.DashLayouts.Select(dash => dash.Id).Order());
         }
         finally
         {
@@ -710,7 +932,7 @@ public sealed class RuntimeCoordinatorTests
         RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
         try
         {
-            DashLayout dash = runtime.DashLayouts.Single();
+            DashLayout dash = DefaultDash(runtime);
 
             Assert.True(coordinator.Execute(Command($$"""{"type":"dash.category.create","name":" Sprint races ","dashId":"{{dash.Id}}"}"""), out string error), error);
             Assert.Equal(["Sprint races"], runtime.Settings.CustomDashCategories);
@@ -722,12 +944,12 @@ public sealed class RuntimeCoordinatorTests
 
             DesktopRuntime reloaded = new(dataRoot, PresetRoot);
             Assert.Equal(["Sprints"], reloaded.Settings.CustomDashCategories);
-            Assert.Equal("Sprints", reloaded.DashLayouts.Single().Category);
+            Assert.Equal("Sprints", DefaultDash(reloaded).Category);
 
             Assert.True(coordinator.Execute(Command("""{"type":"dash.category.delete","name":"Sprints"}"""), out error), error);
             Assert.Empty(runtime.Settings.CustomDashCategories);
             Assert.Null(dash.Category);
-            Assert.Null(new DesktopRuntime(dataRoot, PresetRoot).DashLayouts.Single().Category);
+            Assert.Null(DefaultDash(new DesktopRuntime(dataRoot, PresetRoot)).Category);
         }
         finally
         {
@@ -797,44 +1019,6 @@ public sealed class RuntimeCoordinatorTests
 
             Assert.False(ok);
             Assert.Contains("fuelLoad must be between", error);
-        }
-        finally
-        {
-            Cleanup(dataRoot);
-        }
-    }
-
-    [Fact]
-    public void EngineerAcknowledge_RequiresSucceededField()
-    {
-        RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
-        try
-        {
-            bool ok = coordinator.Execute(Command("""{"type":"engineer.acknowledge"}"""), out string error);
-            Assert.False(ok);
-            Assert.Equal("succeeded is required", error);
-        }
-        finally
-        {
-            Cleanup(dataRoot);
-        }
-    }
-
-    [Fact]
-    public void EngineerStage_ClampsValueToControlRange()
-    {
-        RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
-        try
-        {
-            string key = runtime.EngineerControls.First().Key;
-            double max = runtime.EngineerControls.First().Max;
-
-            bool ok = coordinator.Execute(
-                Command($$"""{"type":"engineer.stage","key":"{{key}}","value":{{max + 1000}} }"""),
-                out string error);
-
-            Assert.True(ok, error);
-            Assert.Equal(max, runtime.EngineerControls.First().StagedValue);
         }
         finally
         {
@@ -1312,6 +1496,33 @@ public sealed class RuntimeCoordinatorTests
         RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
         try
         {
+            Assert.False(coordinator.Execute(Command(command), out string error));
+            Assert.Equal(expected, error);
+        }
+        finally
+        {
+            Cleanup(dataRoot);
+        }
+    }
+
+    [Theory]
+    [InlineData("""{"type":"setups.tag","session":"Race","style":null}""", "setupId is required")]
+    [InlineData("""{"type":"setups.tag","setupId":"file-a","style":null}""", "session must be Quali, Race or null")]
+    [InlineData("""{"type":"setups.tag","setupId":"file-a","session":"race","style":null}""", "session must be Quali, Race or null")]
+    [InlineData("""{"type":"setups.tag","setupId":"file-a","session":"Race","style":"Dry"}""", "style must be Esport, Safe, Wet or null")]
+    [InlineData("""{"type":"setups.untag"}""", "setupId is required")]
+    public void SetupsTag_RefusesWhatThePageCouldNeverSend(string command, string expected)
+    {
+        string dataRoot = NewTempDataRoot();
+        try
+        {
+            // Every case is refused before the library looks at any setup folder.
+            SetupLibrary setups = new(
+                new LeMansUltimateGameProvider(),
+                new LocalSetupSnapshotStore(Path.Combine(dataRoot, "setup-snapshots")),
+                tags: new SetupTags(Path.Combine(dataRoot, "setup-tags.json")));
+            RuntimeCoordinator coordinator = new(new DesktopRuntime(dataRoot, PresetRoot), setups: setups);
+
             Assert.False(coordinator.Execute(Command(command), out string error));
             Assert.Equal(expected, error);
         }

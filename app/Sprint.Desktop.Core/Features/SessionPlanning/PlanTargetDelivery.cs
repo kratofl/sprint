@@ -17,6 +17,18 @@ namespace Sprint.Desktop.Features.SessionPlanning;
 /// out of the car, or on the first frame of a stint, a pending target applies at once.
 /// </para>
 /// <para>
+/// <b>Without a target the delta runs against your fastest lap.</b> A session with no plan target
+/// (practice, or no plan) is measured against the driver's own fastest valid lap with a line for
+/// the game, car and track being driven, from any session, so the delta is there from the first
+/// lap. Laps are saved as they are completed, so a faster one takes over from the next line.
+/// </para>
+/// <para>
+/// <b>The engineer's target lap wins over the plan's.</b> A target lap time the engineer sent over
+/// the live link (<c>engineerTarget</c>) replaces the plan's <see cref="DashTargets.LapTimeSeconds"/>
+/// from the next line, for as long as the link lasts. It is a number, not a lap, so the delta's
+/// reference curve stays the plan's lap or your fastest.
+/// </para>
+/// <para>
 /// This is the only latch. <see cref="DeltaTracker.SetPlanReference"/> applies immediately and
 /// is called from here, so "when does a target change take effect" is decided in one place
 /// rather than once per delivery route.
@@ -48,8 +60,14 @@ namespace Sprint.Desktop.Features.SessionPlanning;
 /// (the host just started, or a car or track no poll has asked about yet) means no fuel target yet: it fills in at the
 /// next line after a poll has worked the figure out, as does a median a new lap moved.
 /// </param>
-public sealed class PlanTargetDelivery(Func<PlanTargetDelivery.Aim?> activePlan, ILapHistoryStore history, IFuelHistorySource? fuelHistory = null)
+public sealed class PlanTargetDelivery(
+    Func<PlanTargetDelivery.Aim?> activePlan,
+    ILapHistoryStore history,
+    IFuelHistorySource? fuelHistory = null,
+    Func<double?>? engineerTarget = null)
 {
+    private readonly Func<double?> _engineerTarget = engineerTarget ?? (() => null);
+
     private readonly IFuelHistorySource _fuelHistory = fuelHistory ?? NoFuelHistorySource.Instance;
 
     private readonly Func<Aim?> _activePlan =
@@ -67,6 +85,14 @@ public sealed class PlanTargetDelivery(Func<PlanTargetDelivery.Aim?> activePlan,
     // The reference curves of the active plan's target laps, as the last ResolveReferences found
     // them. Replaced whole and never changed after, so the telemetry loop reads it without a lock.
     private volatile IReadOnlyDictionary<(string SessionId, int LapNumber), LapReferenceCurve> _curves = NoCurves;
+
+    // The driver's fastest lap for the context being driven, as the last ResolveReferences found
+    // it; null without one. Replaced whole, read by the telemetry loop without a lock.
+    private volatile FastestLap? _fastest;
+
+    // The game, car and track being driven, as the telemetry loop last saw them; read by
+    // ResolveReferences. Null until a frame names all three.
+    private volatile LapHistoryContext? _driving;
 
     // One resolve at a time, so an older corpus read can never replace a newer one's curves.
     private readonly Lock _resolveGate = new();
@@ -117,6 +143,7 @@ public sealed class PlanTargetDelivery(Func<PlanTargetDelivery.Aim?> activePlan,
 
         this._track = frame.Session.Track;
         this._sessionType = frame.Session.SessionType;
+        this.NoteDriving(frame.Session);
 
         if (!frame.Session.InCar)
         {
@@ -148,10 +175,10 @@ public sealed class PlanTargetDelivery(Func<PlanTargetDelivery.Aim?> activePlan,
 
         this.Targets = new DashTargets
         {
-            LapTimeSeconds = target?.LapTimeSeconds,
+            LapTimeSeconds = this._engineerTarget() ?? target?.LapTimeSeconds,
             FuelPerLapLiters = aim is null ? null : this.FuelPerLapFor(aim),
         };
-        this.Reference = this.ReferenceFor(target);
+        this.Reference = this.ReferenceFor(target, frame.Session);
     }
 
     // A typed figure wins (RaceFuelEstimate.TypedValue: a legacy 0 is none); a plan that left it to
@@ -163,7 +190,7 @@ public sealed class PlanTargetDelivery(Func<PlanTargetDelivery.Aim?> activePlan,
 
     /// <summary>
     /// Finds the reference curve of each lap the active plan targets (qualifying and race) in the
-    /// corpus, for the next line to use. Reads the whole corpus and may wait on the store's lock,
+    /// corpus, and the driver's fastest lap for what is being driven, for the next line to use. Reads the whole corpus and may wait on the store's lock,
     /// so never from the telemetry loop: the host calls it on every state poll, beside asking for
     /// every plan's race fuel, which over the cached corpus costs a lookup. A changed target, or a
     /// target lap that left the corpus, is picked up by the next call.
@@ -182,13 +209,14 @@ public sealed class PlanTargetDelivery(Func<PlanTargetDelivery.Aim?> activePlan,
                 }
             }
 
+            IReadOnlyList<LapHistorySession> corpus = this._history.LoadAll();
+            this._fastest = this._driving is { } driving ? Fastest(corpus, driving) : null;
             if (wanted.Count == 0)
             {
                 this._curves = NoCurves;
                 return;
             }
 
-            IReadOnlyList<LapHistorySession> corpus = this._history.LoadAll();
             Dictionary<(string SessionId, int LapNumber), LapReferenceCurve> curves = [];
             foreach ((string sessionId, int lapNumber) in wanted)
             {
@@ -211,8 +239,15 @@ public sealed class PlanTargetDelivery(Func<PlanTargetDelivery.Aim?> activePlan,
 
     // Only a curve ResolveReferences already found: this runs on the telemetry loop, which must
     // never read the corpus or wait on the store's lock.
-    private DeltaReference? ReferenceFor(PlanTarget? target)
+    private DeltaReference? ReferenceFor(PlanTarget? target, SessionInfo session)
     {
+        if (target is null)
+        {
+            return this._fastest is { } fastest && SameContext(fastest.Context, session)
+                ? new DeltaReference { PositionStep = fastest.Curve.PositionStep, TimesSeconds = fastest.Curve.TimesSeconds, LapTimeSeconds = fastest.LapTimeSeconds }
+                : null;
+        }
+
         if (target is not { LapSessionId: { } sessionId, LapNumber: { } lapNumber }
             || !this._curves.TryGetValue((sessionId, lapNumber), out LapReferenceCurve? curve))
         {
@@ -228,6 +263,48 @@ public sealed class PlanTargetDelivery(Func<PlanTargetDelivery.Aim?> activePlan,
             LapTimeSeconds = target.LapTimeSeconds,
         };
     }
+
+    /// <summary>Remembers the game, car and track being driven, by the names laps are filed under (<see cref="CarNames"/>).</summary>
+    private void NoteDriving(SessionInfo session)
+    {
+        if (string.IsNullOrWhiteSpace(session.Game) || string.IsNullOrWhiteSpace(session.Track) || string.IsNullOrWhiteSpace(session.Car))
+            return;
+        if (this._driving is { } known && SameContext(known, session))
+            return;
+        this._driving = new LapHistoryContext { Game = session.Game, TrackCourse = session.Track, CarModel = CarNames.Of(session) };
+    }
+
+    private static bool SameContext(LapHistoryContext context, SessionInfo session) =>
+        context.Game == session.Game && context.TrackCourse == session.Track && context.CarModel == CarNames.Of(session);
+
+    /// <summary>The driver's own fastest valid lap with a line in <paramref name="context"/>; friends' shared laps do not count.</summary>
+    private static FastestLap? Fastest(IReadOnlyList<LapHistorySession> corpus, LapHistoryContext context)
+    {
+        FastestLap? fastest = null;
+        foreach (LapHistorySession session in corpus)
+        {
+            if (session.SharedFrom is not null
+                || session.Context.Game != context.Game
+                || session.Context.TrackCourse != context.TrackCourse
+                || session.Context.CarModel != context.CarModel)
+            {
+                continue;
+            }
+
+            foreach (LapHistoryRecord lap in session.Laps)
+            {
+                if (lap is { IsValid: true, HasReferenceCurve: true, ReferenceCurve: { } curve, LapTimeSeconds: > 0 }
+                    && (fastest is null || lap.LapTimeSeconds < fastest.LapTimeSeconds))
+                {
+                    fastest = new FastestLap(context, curve, lap.LapTimeSeconds);
+                }
+            }
+        }
+
+        return fastest;
+    }
+
+    private sealed record FastestLap(LapHistoryContext Context, LapReferenceCurve Curve, double LapTimeSeconds);
 
     // The planner only ever holds a qualifying and a race set, so practice, warmup and an
     // unreported session type get no target rather than the nearest one.

@@ -8,6 +8,7 @@ import {
   dragDelta,
   isZoomed,
   lapTimesPlot,
+  mapFrame,
   panWindow,
   samplesInWindow,
   stepCursor,
@@ -140,4 +141,13 @@ test('a zoomed window draws its samples and one either side, so a line reaches t
   assert.equal(samplesInWindow(samples, WHOLE_LAP), samples)
   assert.deepEqual(samplesInWindow(samples, { from: 0.15, to: 0.32 }).map((sample) => sample.x), [0.1, 0.2, 0.3, 0.4])
   assert.deepEqual(samplesInWindow(samples, { from: 0.45, to: 0.9 }).map((sample) => sample.x), [0.4, 0.5])
+})
+
+test('the close-up map frames the stretch the charts show, with a margin, never under 120 m', () => {
+  // A straight 1000 m down x, a sample every metre.
+  const xs = Array.from({ length: 1001 }, (_, index) => index)
+  const zs = xs.map(() => 0)
+  assert.deepEqual(mapFrame(xs, zs, 0.001, null), { minX: 0, maxX: 1000, minZ: 0, maxZ: 0 })
+  // 200 m to 400 m, plus 30% across; the flat z still gets 120 m.
+  assert.deepEqual(mapFrame(xs, zs, 0.001, { from: 0.2, to: 0.4 }), { minX: 170, maxX: 430, minZ: -60, maxZ: 60 })
 })
