@@ -1,0 +1,44 @@
+/* The launch splash (SplashWindow.tsx): a small frameless window over the ambient light trails. */
+
+[data-surface="splash"],
+[data-surface="splash"] body {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.splash {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  isolation: isolate;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background: var(--window);
+  color: var(--label);
+  /* No caption bar: the whole window drags. */
+  -webkit-app-region: drag;
+  user-select: none;
+}
+
+.splash-mark {
+  width: 44px;
+  height: 44px;
+  margin-bottom: 6px;
+}
+
+.splash strong {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.splash-meter {
+  width: 200px;
+}
+
+.splash-detail {
+  color: var(--label-secondary);
+  font-size: 12px;
+}

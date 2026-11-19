@@ -944,7 +944,9 @@
         1: { kind: 'available', version: '0.3.0' },
         available: { kind: 'available', version: '0.3.0' },
         downloading: { kind: 'downloading', version: '0.3.0', percent: 42 },
-        ready: { kind: 'ready', version: '0.3.0' },
+        installing: { kind: 'installing', version: '0.3.0' },
+        checking: { kind: 'checking' },
+        idle: { kind: 'idle' },
         failed: { kind: 'failed', reason: 'net::ERR_INTERNET_DISCONNECTED' },
         unsupported: { kind: 'unsupported' },
       }
@@ -952,8 +954,7 @@
       return () => undefined
     },
     checkUpdates: async () => null,
-    downloadUpdate: async () => null,
-    restartToUpdate: async () => null,
+    installUpdate: async () => null,
     // Any password signs in except "wrong", which shows the error.
     signIn: async (serverUrl, email, password) =>
       password === 'wrong' ? { ok: false, error: 'Invalid credentials.' } : { ok: true },

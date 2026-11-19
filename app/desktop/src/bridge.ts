@@ -416,9 +416,9 @@ export type LapImportResult =
   | { outcome: 'failed'; error: string }
 
 /**
- * Where Sprint's self-update stands (electron/updatePolicy.ts). `available` only happens with
- * automatic installs off; `ready` installs when Sprint quits, or now via `restartToUpdate`.
- * `unsupported` is a dev build, another platform, or no Electron at all.
+ * Where Sprint's self-update stands (electron/updatePolicy.ts). `available` waits for the driver:
+ * `installUpdate` downloads it (`downloading`), then Sprint quits into the installer
+ * (`installing`). `unsupported` is a dev build, another platform, or no Electron at all.
  */
 export type UpdateStatus =
   | { kind: 'unsupported' }
@@ -427,7 +427,7 @@ export type UpdateStatus =
   | { kind: 'up-to-date' }
   | { kind: 'available'; version: string }
   | { kind: 'downloading'; version: string; percent: number }
-  | { kind: 'ready'; version: string }
+  | { kind: 'installing'; version: string }
   | { kind: 'failed'; reason: string }
 
 export type SprintBridge = {
@@ -467,9 +467,8 @@ export type SprintBridge = {
   subscribeUpdates(listener: (status: UpdateStatus) => void): () => void
   /** Each resolves once started; the outcome arrives through `subscribeUpdates`. */
   checkUpdates(): Promise<void>
-  downloadUpdate(): Promise<void>
-  /** Quits, installs the downloaded update and starts the new version. */
-  restartToUpdate(): Promise<void>
+  /** Downloads the update on offer, then quits, installs it and starts the new version. */
+  installUpdate(): Promise<void>
   signIn(serverUrl: string, email: string, password: string, createAccount: boolean): Promise<SignInResult>
   /** Opens Discord in the system browser and resolves once the sign-in came back, was cancelled or timed out. */
   signInWithDiscord(serverUrl: string): Promise<DiscordSignInResult>
@@ -529,8 +528,7 @@ type RawBridge = {
   /** All four absent in the preview harness's stub. */
   subscribeUpdates?(listener: (status: unknown) => void): () => void
   checkUpdates?(): Promise<unknown>
-  downloadUpdate?(): Promise<unknown>
-  restartToUpdate?(): Promise<unknown>
+  installUpdate?(): Promise<unknown>
   signIn(serverUrl: string, email: string, password: string, createAccount: boolean): Promise<unknown>
   signInWithDiscord(serverUrl: string): Promise<unknown>
   cancelDiscordSignIn(): Promise<unknown>
@@ -1130,8 +1128,7 @@ export const bridge: SprintBridge = raw
         return raw.subscribeUpdates((status) => listener(parseUpdateStatus(status)))
       },
       checkUpdates: async () => { await raw.checkUpdates?.() },
-      downloadUpdate: async () => { await raw.downloadUpdate?.() },
-      restartToUpdate: async () => { await raw.restartToUpdate?.() },
+      installUpdate: async () => { await raw.installUpdate?.() },
       signIn: async (serverUrl, email, password, createAccount) => parseSignInResult(await raw.signIn(serverUrl, email, password, createAccount)),
       signInWithDiscord: (serverUrl) => raw.signInWithDiscord(serverUrl).then(parseDiscordSignInResult, discordFailed),
       cancelDiscordSignIn: async () => { await raw.cancelDiscordSignIn() },
@@ -1183,8 +1180,7 @@ export const bridge: SprintBridge = raw
         return () => undefined
       },
       checkUpdates: async () => undefined,
-      downloadUpdate: async () => undefined,
-      restartToUpdate: async () => undefined,
+      installUpdate: async () => undefined,
       signIn: async () => ({ ok: false, error: 'There is no Sprint host to sign in from.' }),
       signInWithDiscord: async () => ({ outcome: 'failed', error: 'There is no Sprint host to sign in from.' }),
       cancelDiscordSignIn: async () => undefined,

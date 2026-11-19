@@ -141,6 +141,8 @@ export class TrainingHud {
         backgroundThrottling: false,
       },
     })
+    // Laid out to its placement in pixels: the app windows' Ctrl +/− zoom (same origin) must not reach it.
+    window.webContents.setZoomMode('disabled')
     // Above a borderless fullscreen game; 'screen-saver' is the level that stays above it.
     window.setAlwaysOnTop(true, 'screen-saver')
     const palette = placement.id === ARRANGE_WINDOW_ID
