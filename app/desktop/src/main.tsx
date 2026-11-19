@@ -11,14 +11,16 @@ import { DashDesigner } from './designer/DashDesigner'
 import { PitWallRoot } from './pitwall/PitWallRoot'
 import { pitWallRoute } from './pitwall/route'
 import { platform } from './platform'
+import { SplashWindow } from './splash/SplashWindow'
 
 // One bundle serves every surface: the app shell, the training HUD's windows (electron/hud.ts),
 // the dash designer's windows (electron/designerWindows.ts), the pit wall's
-// (electron/pitWallWindows.ts) and, in dev runs, the debug window (electron/debugWindow.ts). The
-// query string picks.
+// (electron/pitWallWindows.ts), the launch splash (electron/main.ts) and, in dev runs, the debug
+// window (electron/debugWindow.ts). The query string picks.
 const hudWindow = new URLSearchParams(window.location.search).has('hud')
 const designerDashId = new URLSearchParams(window.location.search).get('designer')
 const pitWall = pitWallRoute(window.location.search)
+const splash = new URLSearchParams(window.location.search).has('splash')
 
 // The dev debug window (?debug=1, electron/debugWindow.ts). Like the mockups, only a dev run and the
 // preview harness build it; a packaged build drops the window and everything in it.
@@ -42,6 +44,9 @@ if (designerDashId) document.documentElement.dataset.surface = 'designer'
 // The pit wall fills its window too, from a full screen down to one tile.
 if (pitWall) document.documentElement.dataset.surface = 'pitwall'
 
+// The splash is a small window of its own: no app minimum width.
+if (splash) document.documentElement.dataset.surface = 'splash'
+
 // The debug window is narrow: no app minimum width.
 if (debugWindow) document.documentElement.dataset.surface = 'debug'
 
@@ -50,7 +55,7 @@ document.documentElement.dataset.platform = platform
 
 // On macOS the main window draws vibrancy (or its solid fallback) behind the page, so the
 // sidebar leaves it showing (styles.mac.css `[data-backdrop]`).
-if (!hudWindow && !designerDashId && !pitWall && !debugWindow && new URLSearchParams(window.location.search).get('backdrop') === 'window') {
+if (!hudWindow && !designerDashId && !pitWall && !splash && !debugWindow && new URLSearchParams(window.location.search).get('backdrop') === 'window') {
   document.documentElement.dataset.backdrop = 'window'
 }
 
@@ -65,6 +70,8 @@ createRoot(document.getElementById('root')!).render(
     <DashDesigner dashId={designerDashId} />
   ) : pitWall ? (
     <PitWallRoot route={pitWall} />
+  ) : splash ? (
+    <SplashWindow />
   ) : DebugWindow && debugWindow ? (
     <Suspense>
       <DebugWindow />

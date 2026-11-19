@@ -330,6 +330,48 @@ a:hover {
   order: -1;
 }
 
+/* The self-update (TitleBar.tsx `UpdateIndicator`): a brand glyph on offer, a ring while it
+   downloads, then a word while it installs. */
+/* Through .titlebar so it outranks .icon-button's colours, which come later in this file. */
+.titlebar .titlebar-update,
+.titlebar .titlebar-update:hover {
+  color: var(--brand-500);
+}
+
+.titlebar-update-ring {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  flex: none;
+}
+
+.titlebar-update-ring svg {
+  transform: rotate(-90deg);
+}
+
+.titlebar-update-ring circle {
+  fill: none;
+  stroke-width: 2;
+}
+
+.titlebar-update-ring-track {
+  stroke: var(--track);
+}
+
+.titlebar-update-ring-fill {
+  stroke: var(--brand-500);
+  stroke-linecap: round;
+  transition: stroke-dashoffset 200ms ease-out;
+}
+
+.titlebar-update-text {
+  flex: none;
+  color: var(--label-secondary);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
 /* ── Sidebar (224px, full height; a 56px rail when collapsed) ────────────── */
 
 .navview {

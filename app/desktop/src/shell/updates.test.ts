@@ -4,9 +4,9 @@ import { displayVersion, parseUpdateStatus } from './updates'
 
 test('the update status is narrowed once, and anything malformed reads as a failure', () => {
   assert.deepEqual(parseUpdateStatus({ kind: 'downloading', version: '1.2.0', percent: 40 }), { kind: 'downloading', version: '1.2.0', percent: 40 })
-  assert.deepEqual(parseUpdateStatus({ kind: 'ready', version: '1.2.0' }), { kind: 'ready', version: '1.2.0' })
+  assert.deepEqual(parseUpdateStatus({ kind: 'installing', version: '1.2.0' }), { kind: 'installing', version: '1.2.0' })
   assert.deepEqual(parseUpdateStatus({ kind: 'up-to-date' }), { kind: 'up-to-date' })
-  assert.equal(parseUpdateStatus({ kind: 'ready' }).kind, 'failed')
+  assert.equal(parseUpdateStatus({ kind: 'installing' }).kind, 'failed')
   assert.equal(parseUpdateStatus({ kind: 'nope' }).kind, 'failed')
   assert.equal(parseUpdateStatus(null).kind, 'failed')
 })

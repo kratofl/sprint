@@ -61,7 +61,8 @@ drops them.
 | `collapsed=1` | The sidebar collapsed to its 56px icon rail; with `platform=mac` it is hidden |
 | `palette=1` | Opens the command palette |
 | `version=<x.y.z>` | The version the sidebar shows; `readme-shots.mjs` passes the latest release tag. Default: the sample's |
-| `update=1` | Reports an available update (Settings dot + notification) |
+| `update=1` | Reports an available update (Settings dot + the toolbar's update button); also `downloading`, `installing`, `checking`, `idle`, `failed`, `unsupported` |
+| `splash=1` | The launch splash window instead of the app (open it at `--size 440,300`) |
 | `frame=none` | Drops the live telemetry frame; dash previews render their no-data state |
 | `telemetry=unsupported` | The LMU source reports `Unsupported` with no frame, as on a Mac. The Overview's game card reads "Not supported here", the sidebar's status row says so too, and Help's Checks give the reason |
 | `import=offer` | The startup results scan finds four sessions, so the import prompt opens; otherwise every scan finds nothing new |

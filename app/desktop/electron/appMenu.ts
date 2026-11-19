@@ -1,4 +1,5 @@
 import type { MenuItemConstructorOptions } from 'electron'
+import type { ZoomStep } from './uiZoom.js'
 
 /** Dev-only shortcut that reopens the main window in the other look, brand or macOS (see `main.ts`). */
 export const TOGGLE_LOOK_ACCELERATOR = 'CmdOrCtrl+Alt+Shift+L'
@@ -14,6 +15,9 @@ export const OPEN_DEBUG_ACCELERATOR = 'CmdOrCtrl+Alt+Shift+D'
  * app's own shortcuts (⌘K, ⌘1…7, ⌘[) are handled by the renderer and must not
  * be claimed here. Windows and Linux keep no menu bar.
  *
+ * The View menu's zoom items only display their shortcuts too: `main.ts` reads Ctrl/⌘ +, − and 0
+ * on every window, so they work on Windows and with the = and keypad keys.
+ *
  * Dev builds add a Developer menu. Its look toggle and debug window only display their shortcuts:
  * `main.ts` handles the keys itself so they work on Windows too, which has no menu.
  */
@@ -21,15 +25,25 @@ export function macMenuTemplate({
   packaged,
   onToggleLook,
   onOpenDebug,
+  onZoom,
 }: {
   packaged: boolean
   onToggleLook: () => void
   onOpenDebug: () => void
+  onZoom: (step: ZoomStep) => void
 }): MenuItemConstructorOptions[] {
   const template: MenuItemConstructorOptions[] = [
     { role: 'appMenu' },
     { role: 'fileMenu' },
     { role: 'editMenu' },
+    {
+      label: 'View',
+      submenu: [
+        { label: 'Actual Size', accelerator: 'CmdOrCtrl+0', registerAccelerator: false, click: () => onZoom('reset') },
+        { label: 'Zoom In', accelerator: 'CmdOrCtrl+Plus', registerAccelerator: false, click: () => onZoom('in') },
+        { label: 'Zoom Out', accelerator: 'CmdOrCtrl+-', registerAccelerator: false, click: () => onZoom('out') },
+      ],
+    },
     { role: 'windowMenu' },
   ]
   if (!packaged) {

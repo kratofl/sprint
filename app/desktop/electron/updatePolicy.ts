@@ -11,8 +11,9 @@ export type UpdateSettings = { prerelease: boolean; autoInstall: boolean }
 
 /**
  * Where the updater stands, pushed to every renderer (`src/bridge.ts` narrows it again).
- * `available` only happens with automatic installs off: the driver starts the download.
- * `ready` installs when Sprint quits, or right away from "Restart now".
+ * While Sprint runs nothing downloads on its own: `available` waits for the driver, and
+ * installing it downloads (`downloading`), then quits into the installer (`installing`).
+ * At launch, with automatic installs on, the splash goes through the same steps by itself.
  */
 export type UpdateStatus =
   | { kind: 'unsupported' }
@@ -21,7 +22,7 @@ export type UpdateStatus =
   | { kind: 'up-to-date' }
   | { kind: 'available'; version: string }
   | { kind: 'downloading'; version: string; percent: number }
-  | { kind: 'ready'; version: string }
+  | { kind: 'installing'; version: string }
   | { kind: 'failed'; reason: string }
 
 /** Null until the host's state carries the settings. */
@@ -32,17 +33,12 @@ export const readUpdateSettings = (state: unknown): UpdateSettings | null => {
   return { prerelease: channel === 'pre-release', autoInstall }
 }
 
-export type FollowUp = 'none' | 'check' | 'download'
+/** An update is on its way: another check would only get in its way. */
+export const isBusy = (status: UpdateStatus): boolean => status.kind === 'checking' || status.kind === 'downloading' || status.kind === 'installing'
 
 /**
- * What the updater does after the settings were read. The first read is the startup check. A
- * channel switch checks again, unless an update is already on its way. Turning automatic
- * installs on fetches an update the driver had left waiting.
+ * Whether a settings change asks for a check: only a channel switch does, unless an update is
+ * already on its way. The first read asks for nothing; the launch has already decided.
  */
-export const followUp = (previous: UpdateSettings | null, next: UpdateSettings, status: UpdateStatus): FollowUp => {
-  if (previous === null) return 'check'
-  const busy = status.kind === 'checking' || status.kind === 'downloading' || status.kind === 'ready'
-  if (previous.prerelease !== next.prerelease && !busy) return 'check'
-  if (!previous.autoInstall && next.autoInstall && status.kind === 'available') return 'download'
-  return 'none'
-}
+export const checkAfter = (previous: UpdateSettings | null, next: UpdateSettings, status: UpdateStatus): boolean =>
+  previous !== null && previous.prerelease !== next.prerelease && !isBusy(status)
