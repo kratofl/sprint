@@ -55,6 +55,14 @@ public sealed class AppSettings
     public string DriverNumber { get; set; } = "22";
 
     /// <summary>
+    /// What every dash prints speeds, temperatures, tyre pressures and fuel in: the wheel, browser
+    /// displays and the app's dash pictures alike. The host hands it to the renderer in each
+    /// scene's settings; frames stay metric.
+    /// </summary>
+    [JsonPropertyName("units")]
+    public UnitSystem Units { get; set; } = UnitSystem.Metric;
+
+    /// <summary>
     /// The first-run setup (driver, game folder, results import) was finished, so it is not
     /// shown again. False by default, so an install from before the setup existed sees it once.
     /// </summary>
@@ -160,6 +168,17 @@ public sealed class CloudSettings
 
     [JsonExtensionData]
     public Dictionary<string, JsonElement>? ExtensionData { get; set; }
+}
+
+/// <summary>The driver's measurement system. Stored, and sent to the renderer, by name.</summary>
+[JsonConverter(typeof(JsonStringEnumConverter<UnitSystem>))]
+public enum UnitSystem
+{
+    /// <summary>km/h, °C, kPa and litres.</summary>
+    Metric,
+
+    /// <summary>US customary: mph, °F, psi and US gallons.</summary>
+    Imperial,
 }
 
 /// <summary>Which Sprint server the driver chose. Stored by name.</summary>
@@ -457,12 +476,6 @@ public sealed class NewDashDefaults
 
     [JsonPropertyName("display")]
     public string Display { get; set; } = "";
-
-    [JsonPropertyName("speedUnit")]
-    public string SpeedUnit { get; set; } = "km/h";
-
-    [JsonPropertyName("tempUnit")]
-    public string TempUnit { get; set; } = "c";
 
     [JsonExtensionData]
     public Dictionary<string, JsonElement>? ExtensionData { get; set; }

@@ -1,19 +1,19 @@
-import { useState } from 'react'
+import { useContext, useState } from 'react'
 import { Bell, Check, RotateCcw } from 'lucide-react'
-import { LAP_REVIEW_TOP_SHARE, dashAlertDefaults, dashAlertFromSettings, dashLapReviewFields, lapReviewCells, previewAlertBanner, resolveDashPalette } from '@sprint/dashboard'
+import { DashUnitsContext, LAP_REVIEW_TOP_SHARE, dashAlertDefaults, dashAlertFromSettings, dashLapReviewFields, lapReviewCells, previewAlertBanner, resolveDashPalette } from '@sprint/dashboard'
 import type { DashLapReviewField, DashLayout } from '@sprint/dashboard'
 import type { TelemetryFrame } from '@sprint/types'
 import { layoutScreenProfile } from '../views/DashesDomain'
 import { ScaledDash } from '../views/ScaledDash'
 import { hasOwnLapReview, resetLapReview, setLapReviewCell } from './layoutOps'
-import { BEZEL } from './useStageCanvas'
+import { BEZEL, useStageCanvas } from './useStageCanvas'
 import type { Mutate } from './useDesignerDoc'
 
 /** The fields in the library's sections; `none` stands apart at the end. */
 const SECTIONS: readonly { title: string; ids: readonly DashLapReviewField[] }[] = [
-  { title: 'Timing', ids: ['sector1', 'sector2', 'sector3', 'target', 'best_lap'] },
+  { title: 'Timing', ids: ['sector1', 'sector2', 'sector3', 'sector1_delta', 'sector2_delta', 'sector3_delta', 'target', 'best_lap', 'validity'] },
   { title: 'Race', ids: ['position', 'lap', 'gap_ahead'] },
-  { title: 'Car', ids: ['fuel_used', 'fuel_left', 'energy_used', 'tyre_wear'] },
+  { title: 'Car', ids: ['top_speed', 'fuel_used', 'fuel_left', 'energy_used', 'energy_left', 'fuel_energy_used', 'tyre_wear'] },
   { title: '', ids: ['none'] },
 ]
 const ROWS = ['middle row', 'bottom row']
@@ -25,8 +25,8 @@ const labelOf = (id: DashLapReviewField): string => dashLapReviewFields.find((fi
 const LAP_ALERT = dashAlertFromSettings(dashAlertDefaults.find((alert) => alert.type === 'lap_summary') ?? dashAlertDefaults[0])
 
 /**
- * The page dock's Lap review stop in the Layout section: this dash's lap review on the stage, held,
- * with a box over each of its six cells. Picking a box, then a field in the library on the left,
+ * The Lap review section: this dash's lap review on the stage, held, with a box over each of its
+ * six cells. Picking a box, then a field in the library on the left,
  * puts that field there; the right panel explains the fixed top row, points to Dashes > Settings
  * (where every dash's lap review is turned on and timed) and resets the boxes.
  */
@@ -34,23 +34,20 @@ export function LapReviewEditor({
   layout,
   apply,
   frame,
-  canvas,
-  setFitElement,
   onOpenDashSettings,
 }: {
   layout: DashLayout
   apply: (mutate: Mutate) => boolean
   frame: TelemetryFrame | null
-  /** The dash's size on the stage (`useStageCanvas`). */
-  canvas: { width: number; height: number } | null
-  setFitElement: (element: HTMLDivElement | null) => void
   onOpenDashSettings: () => void
 }) {
   const [box, setBox] = useState(0)
+  const { setFitElement, canvas } = useStageCanvas(layout)
   const cells = lapReviewCells(layout.lapReview)
   const shown = cells[box] ?? 'none'
   const profile = layoutScreenProfile(layout)
-  const banner = previewAlertBanner(layout, LAP_ALERT, resolveDashPalette(layout.theme, layout.colorSystem))
+  const units = useContext(DashUnitsContext)
+  const banner = previewAlertBanner(layout, LAP_ALERT, resolveDashPalette(layout.theme, layout.colorSystem), units)
 
   return (
     <>

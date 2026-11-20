@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent } from 'react'
-import { ArrowLeft, ArrowRight, Eraser, Layers, Moon, MoreHorizontal, Pencil, Plus, Timer, Trash2 } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Eraser, Layers, Moon, MoreHorizontal, Pencil, Plus, Trash2 } from 'lucide-react'
 import type { DashLayout, DashPage } from '@sprint/dashboard'
 import { MenuLayer, type MenuAnchor } from '../shell/Menu'
 import { addIdlePage, addPage, clearPage, deletePage, removeIdlePage, renamePage } from '../views/DashesDomain'
@@ -16,16 +16,13 @@ type DockMenu = { kind: 'page'; pageId: string; anchor: MenuAnchor } | { kind: '
 /**
  * The dock at the bottom of the stage: "Pages in" — which pages the wheel cycles in a session or
  * one of the driver's modes, the others struck through — the pages (idle page first) to switch between, their
- * actions (rename, move, clear, delete — the ⋯ or a right-click) and a new page; after the pages,
- * set apart, the dash's lap review (`reviewing` while it is on the stage). How the dash is shown
- * is the toolbar's (`ViewTools`).
+ * actions (rename, move, clear, delete — the ⋯ or a right-click) and a new page. How the dash is
+ * shown is the toolbar's (`ViewTools`); the lap review and the pit limiter are sections of their own.
  */
 export function PageDock({
   layout,
   pageId,
   onSelectPage,
-  reviewing,
-  onReview,
   apply,
   cyclePreview,
   onCyclePreview,
@@ -34,8 +31,6 @@ export function PageDock({
   layout: DashLayout
   pageId: string
   onSelectPage: (pageId: string) => void
-  reviewing: boolean
-  onReview: () => void
   apply: Apply
   /** `all`, a session id or a mode id. */
   cyclePreview: string
@@ -65,18 +60,17 @@ export function PageDock({
     action()
   }
 
-  // Left/Right move between the pages and the lap review after them (WAI-ARIA tabs pattern).
+  // Left/Right move between the pages (WAI-ARIA tabs pattern).
   const onPagesKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>): void => {
     if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
     if (event.target instanceof HTMLInputElement) return
     event.preventDefault()
-    const stops = [...pages.map((page) => page.id), null]
-    const index = reviewing ? stops.length - 1 : stops.indexOf(pageId)
+    const stops = pages.map((page) => page.id)
+    const index = stops.indexOf(pageId)
     const next = stops[(index + (event.key === 'ArrowRight' ? 1 : stops.length - 1)) % stops.length]
     if (next === undefined) return
-    if (next === null) onReview()
-    else onSelectPage(next)
-    event.currentTarget.querySelector<HTMLElement>(next === null ? '[data-lap-review]' : `[data-page-id="${CSS.escape(next)}"]`)?.focus()
+    onSelectPage(next)
+    event.currentTarget.querySelector<HTMLElement>(`[data-page-id="${CSS.escape(next)}"]`)?.focus()
   }
 
   const menuPage = menu?.kind === 'page' ? (pages.find((page) => page.id === menu.pageId) ?? null) : null
@@ -114,7 +108,7 @@ export function PageDock({
         <div className="designer-pages" role="tablist" aria-label="Pages" onKeyDown={onPagesKeyDown}>
           {pages.map((page) => {
             const cycled = cycledPages(layout.pages, cyclePreview)
-            const selected = !reviewing && page.id === pageId
+            const selected = page.id === pageId
             const isIdle = page.id === layout.idlePage?.id
             const skipped = !isIdle && !cycled.has(page.id)
             if (renaming === page.id) {
@@ -164,26 +158,11 @@ export function PageDock({
               </button>
             )
           })}
-          <span className="designer-dock-sep" aria-hidden="true" />
-          <button
-            type="button"
-            role="tab"
-            data-lap-review
-            aria-selected={reviewing}
-            tabIndex={reviewing ? 0 : -1}
-            className="designer-page"
-            title="What the dash shows after each timed lap"
-            onClick={onReview}
-          >
-            <Timer size={13} aria-hidden="true" />
-            Lap review
-          </button>
         </div>
         <button
           type="button"
           className="icon-button"
           aria-label="Page actions"
-          disabled={reviewing}
           title="Rename, move or delete this page"
           aria-haspopup="menu"
           onClick={(event) => setMenu({ kind: 'page', pageId, anchor: anchorAbove(event, pageId === layout.idlePage?.id ? 120 : 190) })}

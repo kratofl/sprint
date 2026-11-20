@@ -18,11 +18,19 @@ public sealed class DashAlertSettingsTests
 
         Assert.Equal(
             ["tc_change", "abs_change", "bias_change", "enginemap_change", "migration_change", "arb_change", "dial_change",
-             "pit_limiter", "flag", "penalty", "damage", "engine_warning", "fuel_low", "lap_summary"],
+             "pit_limiter", "launch", "flag", "penalty", "damage", "engine_warning", "fuel_low", "pit_now", "lift_now", "lap_summary"],
             settings.DashAlerts.Alerts.Select(alert => alert.Type));
         Assert.Equal(DashAlertTypes.Defaults, settings.DashAlerts.Alerts);
         Assert.Equal(DashAlertTypes.Defaults, Read("""{"dashAlerts":null}""").DashAlerts.Alerts);
         Assert.Equal(DashAlertTypes.Defaults, Read("""{"dashAlerts":"nonsense"}""").DashAlerts.Alerts);
+
+        // Each type's own numbers at their defaults, and no other type's.
+        AppDashAlerts alerts = settings.DashAlerts;
+        Assert.Equal((2, 4), (alerts.Of("fuel_low").LapsLeft, alerts.Of("fuel_low").WarningLapsLeft));
+        DashAlertSettings launch = alerts.Of("launch");
+        Assert.Equal((50, 10, 5000, 6000, 20, 30), (launch.ClutchPercent, launch.SpeedKmh, launch.RpmFrom, launch.RpmTo, launch.ThrottleFrom, launch.ThrottleTo));
+        Assert.Equal(220, alerts.Of("lift_now").LiftPoint);
+        Assert.Equal(new DashAlertSettings("pit_now", true, DashAlertSize.Strip, false, 5, true), alerts.Of("pit_now"));
     }
 
     [Fact]
@@ -35,6 +43,7 @@ public sealed class DashAlertSettingsTests
               {"type":"lap_summary","durationSeconds":20},
               {"type":"flag","durationSeconds":0},
               {"type":"fuel_low","lapsLeft":42},
+              {"type":"launch","rpmFrom":7000,"rpmTo":3000,"clutchPercent":0,"liftPoint":100},
               {"type":"tc_change","size":"strip","lapsLeft":3},
               {"type":"penalty","enabled":true}
             ]}}
@@ -47,7 +56,9 @@ public sealed class DashAlertSettingsTests
         Assert.Equal(new DashAlertSettings("penalty", false, DashAlertSize.Full, true, 30, false), alerts.Of("penalty"));
         Assert.Equal(15, alerts.Of("lap_summary").DurationSeconds);
         Assert.Equal(1, alerts.Of("flag").DurationSeconds);
-        Assert.Equal(9, alerts.Of("fuel_low").LapsLeft);
+        Assert.Equal((9, 9), (alerts.Of("fuel_low").LapsLeft, alerts.Of("fuel_low").WarningLapsLeft));
+        DashAlertSettings launch = alerts.Of("launch");
+        Assert.Equal((5, 7000, 7000, (int?)null), (launch.ClutchPercent, launch.RpmFrom, launch.RpmTo, launch.LiftPoint));
         Assert.Equal(new DashAlertSettings("tc_change", true, DashAlertSize.Strip, false, 2, false), alerts.Of("tc_change"));
         Assert.Equal(DashAlertTypes.DefaultOf("abs_change"), alerts.Of("abs_change"));
     }
@@ -59,7 +70,8 @@ public sealed class DashAlertSettingsTests
         {
             DashAlerts = AppDashAlerts.Default
                 .With(new DashAlertSettings("fuel_low", true, DashAlertSize.Full, true, 7.5, false, 4))
-                .With(new DashAlertSettings("arb_change", true, DashAlertSize.Strip, false, 2, true)),
+                .With(new DashAlertSettings("arb_change", true, DashAlertSize.Strip, false, 2, true))
+                .With(new DashAlertSettings("launch", true, DashAlertSize.Full, false, 5, true, RpmFrom: 4500, RpmTo: 6500)),
         };
 
         string written = JsonSerializer.Serialize(settings, Json);
@@ -68,6 +80,7 @@ public sealed class DashAlertSettingsTests
         Assert.Equal(settings.DashAlerts.Alerts, reread.DashAlerts.Alerts);
         Assert.Contains("\"size\": \"full\"", written, StringComparison.Ordinal);
         Assert.Contains("\"lapsLeft\": 4", written, StringComparison.Ordinal);
+        Assert.Contains("\"rpmTo\": 6500", written, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -103,8 +116,10 @@ public sealed class DashAlertSettingsTests
 
         // What the renderer reads: the new fields by name, untilAck and lapsLeft left out where unset.
         string json = JsonSerializer.Serialize(stamped);
-        Assert.Contains("\"lapsLeft\":5", json, StringComparison.Ordinal);
-        Assert.Equal(4, json.Split("\"untilAck\":true").Length - 1);
+        Assert.Contains("\"lapsLeft\":5,\"warningLapsLeft\":5", json, StringComparison.Ordinal);
+        Assert.Contains("\"liftPoint\":220", json, StringComparison.Ordinal);
+        Assert.Contains("\"clutchPercent\":50,\"speedKmh\":10,\"rpmFrom\":5000,\"rpmTo\":6000,\"throttleFrom\":20,\"throttleTo\":30", json, StringComparison.Ordinal);
+        Assert.Equal(7, json.Split("\"untilAck\":true").Length - 1);
         Assert.DoesNotContain("\"untilAck\":false", json, StringComparison.Ordinal);
     }
 

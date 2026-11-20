@@ -57,6 +57,7 @@ drops them.
 | --- | --- |
 | `view=<AppView>` | `Home`, `SessionPlanner`, `OnTrack`, `Analysis`, `Setups`, `Dashes`, `Devices`, `RaceEngineer`, `Settings`, `Help` |
 | `theme=light\|dark` | Forces a theme; omitted follows the OS |
+| `units=Imperial` | The driver chose imperial units: Settings shows it, and every dash picture prints mph, °F, psi and gallons. Default: metric |
 | `platform=mac\|windows` | The look Electron would pick on that OS; omitted is the brand look (`windows`), which Linux wears too |
 | `collapsed=1` | The sidebar collapsed to its 56px icon rail; with `platform=mac` it is hidden |
 | `palette=1` | Opens the command palette |

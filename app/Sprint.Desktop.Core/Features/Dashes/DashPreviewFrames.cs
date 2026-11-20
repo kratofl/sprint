@@ -70,7 +70,7 @@ public static class DashPreviewFrames
         },
         DashPreviewState.Pit => Base() with
         {
-            Car = Base().Car with { Gear = 1, Rpm = 3200, SpeedMetersPerSecond = 16, Throttle = 0.3f },
+            Car = Base().Car with { Gear = 2, Rpm = 3200, SpeedMetersPerSecond = 16, Throttle = 0.3f, InPitLane = true, PitLimiter = true },
             Lap = Base().Lap with { Sector = 3 },
         },
         _ => Base(), // MidLap and any future state fall back to the representative base frame.
@@ -101,6 +101,13 @@ public static class DashPreviewFrames
             FuelLiters = 42f,
             FuelPerLapLiters = 2.6f,
             BrakeBiasRear = 0.435f,
+            EngineTorqueNewtonMeters = 520,
+            TurboBoostPressure = 1.4f,
+            Headlights = false,
+            WiperState = 0,
+            FuelLastLapLiters = 2.58f,
+            FuelThisLapLiters = 1.21f,
+            FuelStintPerLapLiters = 2.55f,
         },
         Lap = new LapState
         {
@@ -112,7 +119,13 @@ public static class DashPreviewFrames
             Delta = -0.184,
             Sector = 2,
             IsValid = true,
+            LastLapValid = true,
             TrackPosition = 0.46f,
+            LastFiveLapsAverage = 104.236,
+            LastTenLapsAverage = 104.518,
+            AllTimeBestLapTime = 102.947,
+            PitLossSeconds = 34.5,
+            LastLapTopSpeedMetersPerSecond = 84.2f,
         },
         Flags = new RaceFlags(),
         Electronics = new ElectronicsState
@@ -130,14 +143,32 @@ public static class DashPreviewFrames
             VirtualEnergyPerLap = 3.4f,
             RegenPower = 18,
             DeployPower = 92,
+            MotorState = ElectricMotorState.Propulsion,
+            MotorTempCelsius = 64,
+            MotorWaterTempCelsius = 51,
+            VirtualEnergyLastLap = 3.38f,
+            VirtualEnergyStintPerLap = 3.35f,
         },
-        Race = new RaceState { Position = 4, TotalPositions = 20, GapAhead = -1.2f, GapBehind = 0.8f },
+        Race = new RaceState
+        {
+            Position = 4,
+            TotalPositions = 20,
+            GapAhead = 1.2f,
+            GapBehind = 0.8f,
+            ClassGapAhead = 1.4f,
+            ClassGapBehind = 0.9f,
+            PositionGapAhead = 1.4f,
+            PositionGapBehind = 0.9f,
+            GapToLeader = 8.6f,
+            GapToClassLeader = 8.6f,
+        },
+        Penalties = new PenaltiesState { TrackLimitSteps = 1, TrackLimitStepsPerPenalty = 4, ScheduledPitStops = 2 },
         Tires =
         [
-            new() { Position = TirePosition.FrontLeft, TempSurfaceCelsius = 86, PressureKPa = 165 },
-            new() { Position = TirePosition.FrontRight, TempSurfaceCelsius = 88, PressureKPa = 166 },
-            new() { Position = TirePosition.RearLeft, TempSurfaceCelsius = 91, PressureKPa = 162 },
-            new() { Position = TirePosition.RearRight, TempSurfaceCelsius = 92, PressureKPa = 163 },
+            new() { Position = TirePosition.FrontLeft, TempSurfaceCelsius = 86, PressureKPa = 165, OptimalTempCelsius = 85, WearLastLapPercent = 0.9f, AverageTempLastLapCelsius = 85 },
+            new() { Position = TirePosition.FrontRight, TempSurfaceCelsius = 88, PressureKPa = 166, OptimalTempCelsius = 85, WearLastLapPercent = 0.9f, AverageTempLastLapCelsius = 87 },
+            new() { Position = TirePosition.RearLeft, TempSurfaceCelsius = 91, PressureKPa = 162, OptimalTempCelsius = 85, WearLastLapPercent = 0.9f, AverageTempLastLapCelsius = 90 },
+            new() { Position = TirePosition.RearRight, TempSurfaceCelsius = 92, PressureKPa = 163, OptimalTempCelsius = 85, WearLastLapPercent = 0.9f, AverageTempLastLapCelsius = 91 },
         ],
     };
 }

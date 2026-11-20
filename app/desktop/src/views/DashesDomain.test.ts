@@ -214,6 +214,14 @@ test("a dash's lap review boxes survive parsing; a malformed one is left unset",
   assert.equal(parseDashLayout(row)?.lapReview, undefined)
 })
 
+test("a dash's pit limiter survives parsing with its whole widgets; an unknown style is the default", () => {
+  const row = { id: 'd', gridCols: 11, gridRows: 9, pages: [], alerts: [] }
+  const speed = { id: 's', type: 'speed', col: 5, row: 4, colSpan: 1, rowSpan: 1 }
+  assert.deepEqual(parseDashLayout({ ...row, pitLimiter: { style: 'box', widgets: [speed, { id: 'x' }] } })?.pitLimiter, { style: 'box', widgets: [speed] })
+  assert.deepEqual(parseDashLayout({ ...row, pitLimiter: { style: 'neon' } })?.pitLimiter, { style: 'gear', widgets: [] })
+  assert.equal(parseDashLayout(row)?.pitLimiter, undefined)
+})
+
 // ── Categories and New dash ──────────────────────────────────────────────
 
 test('a stored category survives parsing; null, blank and the retired default flag leave none', () => {
@@ -357,15 +365,24 @@ const zonedDash = (widgets: DashWidget[]): DashLayout => ({
 test('on a zoned dash a new widget lands where its zone puts it, never on the gear or in the wrong spot', () => {
   const dash = zonedDash([])
   assert.deepEqual(addWidgetAt(dash, 'page-1', 'bar', 0, 4)?.widget, { id: 'bar', type: 'bar', col: 0, row: 0, colSpan: 1, rowSpan: 9 })
-  assert.equal(addWidgetAt(dash, 'page-1', 'lap_time', 0, 4), null, 'a side bar spot takes only bars')
-  assert.equal(addWidgetAt(dash, 'page-1', 'lap_time', 5, 2), null, 'the gear')
-  assert.deepEqual(addWidget(dash, 'page-1', 'lap_time')?.widget, { id: 'lap-time', type: 'lap_time', col: 1, row: 1, colSpan: 2, rowSpan: 1 })
+  assert.equal(addWidgetAt(dash, 'page-1', 'last_lap', 0, 4), null, 'a side bar spot takes only bars')
+  assert.equal(addWidgetAt(dash, 'page-1', 'last_lap', 5, 2), null, 'the gear')
+  assert.deepEqual(addWidget(dash, 'page-1', 'last_lap')?.widget, { id: 'last-lap', type: 'last_lap', col: 1, row: 1, colSpan: 2, rowSpan: 1 })
+})
+
+test('nothing new lands in a bar spot the page drops', () => {
+  const dash = zonedDash([])
+  const page = dash.pages[0]
+  if (page) page.bars = 'none'
+  assert.equal(addWidgetAt(dash, 'page-1', 'bar', 0, 4), null)
+  assert.equal(addWidgetAt(dash, 'page-1', 'position', 3, 0), null)
+  assert.deepEqual(addWidget(dash, 'page-1', 'bar')?.widget, { id: 'bar', type: 'bar', col: 1, row: 1, colSpan: 2, rowSpan: 1 })
 })
 
 test('two widgets swap places when each fits the other\'s, and not otherwise', () => {
   const dash = zonedDash([
     { id: 'tc', type: 'tc', col: 1, row: 1, colSpan: 2, rowSpan: 2 },
-    { id: 'last', type: 'lap_time', col: 5, row: 4, colSpan: 1, rowSpan: 1 },
+    { id: 'last', type: 'last_lap', col: 5, row: 4, colSpan: 1, rowSpan: 1 },
     { id: 'fuel', type: 'bar', col: 0, row: 0, colSpan: 1, rowSpan: 9 },
   ])
   const swapped = swapWidgets(dash, 'page-1', 'tc', 'last')
@@ -389,10 +406,7 @@ test('a placed widget is named by what it shows when its type alone is ambiguous
   assert.equal(widgetName(widget('bar', { channel: 've' })), 'Virtual energy bar')
   assert.equal(widgetName(widget('bar')), 'Fuel bar', 'an unset channel is the default one')
   assert.equal(widgetName(widget('tyre', { corner: 'rl' })), 'Rear left tyre')
-  assert.equal(widgetName(widget('lap_time', { show: 'best' })), 'Best lap')
-  assert.equal(widgetName(widget('lap_time', { show: 'session' })), 'Session best')
-  assert.equal(widgetName(widget('lap_time', { show: 'class' })), 'Class best')
-  assert.equal(widgetName(widget('lap_time')), 'Lap Time')
-  assert.equal(widgetName(widget('gaps', { side: 'behind' })), 'Gap behind')
-  assert.equal(widgetName(widget('tc')), 'Traction Control')
+  assert.equal(widgetName(widget('session_best')), 'Session Best')
+  assert.equal(widgetName(widget('gap_behind')), 'Gap Behind')
+  assert.equal(widgetName(widget('tc2')), 'TC 2')
 })

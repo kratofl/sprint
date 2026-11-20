@@ -4,7 +4,7 @@
 use serde::Deserialize;
 
 use crate::groups::drawn_widgets;
-use crate::model::{DashLayout, DashPage, DashWidget};
+use crate::model::{DashLayout, DashPage, DashWidget, PageBars};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct PixelRect {
@@ -68,9 +68,9 @@ pub fn grid_rect(width: f64, height: f64, cols: f64, rows: f64, span: GridSpan) 
     PixelRect { left, top, width: right - left, height: bottom - top }
 }
 
-/// A zoned layout's fixed tracks, in pixels at 800x480: the bar spots, the left grid's four
-/// columns, the centre column and the right grid's four; the top bar spot, then eight rows. Every
-/// zoned dash keeps these proportions at any size (`packages/dashboard/src/grid.ts` has the same).
+/// A zoned layout's tracks, in pixels at 800x480: the bar spots, the left grid's four columns,
+/// the centre column and the right grid's four; the top bar spot, then eight rows. Every zoned
+/// dash keeps these proportions at any size (`packages/dashboard/src/grid.ts` has the same).
 pub const ZONE_COLS: [f64; 11] = [40.0, 68.0, 68.0, 68.0, 68.0, 176.0, 68.0, 68.0, 68.0, 68.0, 40.0];
 pub const ZONE_ROWS: [f64; 9] = [36.0, 55.5, 55.5, 55.5, 55.5, 55.5, 55.5, 55.5, 55.5];
 
@@ -84,12 +84,29 @@ fn track_edge(total: f64, tracks: &[f64], edge: f64) -> f64 {
     js_round(tracks[..lines].iter().sum::<f64>() * total / sum)
 }
 
-/// A widget's rectangle in pixels on a zoned layout (the 11x9 track grid above).
-pub fn zoned_rect(width: f64, height: f64, span: GridSpan) -> PixelRect {
-    let left = track_edge(width, &ZONE_COLS, span.col);
-    let right = track_edge(width, &ZONE_COLS, span.col + span.col_span);
-    let top = track_edge(height, &ZONE_ROWS, span.row);
-    let bottom = track_edge(height, &ZONE_ROWS, span.row + span.row_span);
+/// A page's zoned tracks: a bar spot its `bars` drop is 0 wide (0 high on top), so the side grids
+/// and rows grow into the space. A widget in a dropped spot has no pixels and is not drawn.
+fn zone_tracks(bars: PageBars) -> ([f64; 11], [f64; 9]) {
+    let mut cols = ZONE_COLS;
+    let mut rows = ZONE_ROWS;
+    if !bars.keeps_sides() {
+        cols[0] = 0.0;
+        cols[10] = 0.0;
+    }
+    if !bars.keeps_top() {
+        rows[0] = 0.0;
+    }
+    (cols, rows)
+}
+
+/// A widget's rectangle in pixels on a zoned layout (the 11x9 track grid above), on a page that
+/// keeps `bars`.
+pub fn zoned_rect(width: f64, height: f64, span: GridSpan, bars: PageBars) -> PixelRect {
+    let (cols, rows) = zone_tracks(bars);
+    let left = track_edge(width, &cols, span.col);
+    let right = track_edge(width, &cols, span.col + span.col_span);
+    let top = track_edge(height, &rows, span.row);
+    let bottom = track_edge(height, &rows, span.row + span.row_span);
     PixelRect { left, top, width: (right - left).max(0.0), height: (bottom - top).max(0.0) }
 }
 
@@ -181,10 +198,23 @@ mod tests {
     #[test]
     fn a_zoned_layout_keeps_its_track_proportions_at_any_size() {
         // The centre column (col 5) and the centre cells under the gear (rows 4..8).
-        assert_eq!(zoned_rect(800.0, 480.0, span(5.0, 4.0, 1.0, 5.0)), PixelRect::new(312.0, 203.0, 176.0, 277.0));
-        assert_eq!(zoned_rect(800.0, 480.0, span(0.0, 0.0, 11.0, 9.0)), PixelRect::new(0.0, 0.0, 800.0, 480.0));
+        assert_eq!(zoned_rect(800.0, 480.0, span(5.0, 4.0, 1.0, 5.0), PageBars::Both), PixelRect::new(312.0, 203.0, 176.0, 277.0));
+        assert_eq!(zoned_rect(800.0, 480.0, span(0.0, 0.0, 11.0, 9.0), PageBars::Both), PixelRect::new(0.0, 0.0, 800.0, 480.0));
         // Twice the panel, twice every track.
-        assert_eq!(zoned_rect(1600.0, 960.0, span(1.0, 1.0, 4.0, 8.0)), PixelRect::new(80.0, 72.0, 544.0, 888.0));
+        assert_eq!(zoned_rect(1600.0, 960.0, span(1.0, 1.0, 4.0, 8.0), PageBars::Both), PixelRect::new(80.0, 72.0, 544.0, 888.0));
+    }
+
+    #[test]
+    fn a_dropped_bar_spot_folds_away_and_the_grids_grow_into_it() {
+        // Mirrored in packages/dashboard/src/zones.test.ts.
+        let left_grid = span(1.0, 1.0, 4.0, 8.0);
+        assert_eq!(zoned_rect(800.0, 480.0, left_grid, PageBars::Top), PixelRect::new(0.0, 36.0, 302.0, 444.0));
+        assert_eq!(zoned_rect(800.0, 480.0, left_grid, PageBars::Sides), PixelRect::new(40.0, 0.0, 272.0, 480.0));
+        assert_eq!(zoned_rect(800.0, 480.0, left_grid, PageBars::None), PixelRect::new(0.0, 0.0, 302.0, 480.0));
+        // The gear moves up with the rows; a dropped spot has no pixels.
+        assert_eq!(zoned_rect(800.0, 480.0, GEAR_SPOT, PageBars::None), PixelRect::new(302.0, 0.0, 196.0, 180.0));
+        assert_eq!(zoned_rect(800.0, 480.0, span(0.0, 0.0, 1.0, 9.0), PageBars::Top).width, 0.0);
+        assert_eq!(zoned_rect(800.0, 480.0, span(1.0, 0.0, 9.0, 1.0), PageBars::Sides).height, 0.0);
     }
 
     #[test]

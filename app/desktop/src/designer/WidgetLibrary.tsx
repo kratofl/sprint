@@ -13,7 +13,8 @@ import { widgetIcon } from './widgetIcons'
  * keyboard's way in: the widget goes into the first free cells) and drag-to-place: a pointer-down
  * captures the pointer on the item, follows it over the canvas (the spots that take it light up)
  * and drops onto the cell under it on release — or adds it like a click if the pointer never
- * reached the canvas. The idle page takes idle-capable widgets only.
+ * reached the canvas. The idle page takes idle-capable widgets only. `off` says why nothing can be
+ * added (the full-screen pit limiter): the items are then out of reach and the line says so.
  */
 export function WidgetLibrary({
   isIdlePage,
@@ -24,6 +25,7 @@ export function WidgetLibrary({
   setDragState,
   onAdd,
   onDrop,
+  off,
 }: {
   isIdlePage: boolean
   canvasRef: RefObject<HTMLDivElement | null>
@@ -33,13 +35,14 @@ export function WidgetLibrary({
   setDragState: (state: DragState) => void
   onAdd: (type: DashWidgetType) => void
   onDrop: (type: DashWidgetType, pointer: PointerPos) => void
+  off?: string
 }) {
   const [filter, setFilter] = useState('')
   const needle = filter.trim().toLowerCase()
   const types = ALL_WIDGET_TYPES.filter((type) => (!isIdlePage || widgetDefinition(type)?.idleCapable) && (needle === '' || widgetDisplayName(type).toLowerCase().includes(needle)))
   const sections = WIDGET_CATEGORIES.map((category) => ({
     category,
-    types: types.filter((type) => WIDGET_CATEGORY[type] === category).sort((a, b) => widgetDisplayName(a).localeCompare(widgetDisplayName(b))),
+    types: types.filter((type) => WIDGET_CATEGORY[type] === category).sort((a, b) => widgetDisplayName(a).localeCompare(widgetDisplayName(b), undefined, { numeric: true })),
   })).filter((section) => section.types.length > 0)
   const isOverCanvas = (pointer: PointerPos): boolean => pointer.x >= 0 && pointer.y >= 0 && pointer.x <= canvasWidth && pointer.y <= canvasHeight
 
@@ -65,12 +68,12 @@ export function WidgetLibrary({
   }
 
   return (
-    <aside className="designer-glass designer-sidebar designer-library" aria-label="Widget library">
+    <aside className={off ? 'designer-glass designer-sidebar designer-library is-off' : 'designer-glass designer-sidebar designer-library'} aria-label="Widget library">
       <div className="designer-sidebar-head">
         <span className="designer-sidebar-page">Widgets</span>
         {isIdlePage && <span className="muted">idle page</span>}
       </div>
-      <label className="designer-library-search">
+      <label className="designer-library-search" inert={off !== undefined}>
         <Search size={14} aria-hidden="true" />
         <input
           className="input"
@@ -87,7 +90,7 @@ export function WidgetLibrary({
           }}
         />
       </label>
-      <div className="designer-sidebar-body">
+      <div className="designer-sidebar-body" inert={off !== undefined}>
         {sections.length === 0 && <p className="field-hint designer-sidebar-empty">No widget is called that.</p>}
         {sections.map((section) => (
           <section key={section.category} className="designer-library-section" aria-label={section.category}>
@@ -117,7 +120,7 @@ export function WidgetLibrary({
           </section>
         ))}
       </div>
-      <p className="field-hint designer-sidebar-foot">{isIdlePage ? 'The idle page takes widgets that work without a session.' : 'Drag onto a lit-up spot, or click to add.'}</p>
+      <p className="field-hint designer-sidebar-foot">{off ?? (isIdlePage ? 'The idle page takes widgets that work without a session.' : 'Drag onto a lit-up spot, or click to add.')}</p>
     </aside>
   )
 }

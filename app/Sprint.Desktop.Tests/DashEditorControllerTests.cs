@@ -266,7 +266,7 @@ public sealed class DashEditorControllerTests
         DashEditorController controller = new DashEditorController(NewLayout(), _ => { });
         controller.AddWidget("fuel");     // slot 0,0
         DashWidget first = controller.SelectedWidget!;
-        controller.AddWidget("lap_time"); // next free slot
+        controller.AddWidget("last_lap"); // next free slot
         DashWidget second = controller.SelectedWidget!;
 
         // Move the second widget on top of the first: rejected, so it stays put.

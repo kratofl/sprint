@@ -23,7 +23,7 @@ public sealed class RuntimePersistenceTests
         File.WriteAllText(Path.Combine(layoutsPath, "free.json"), """
             {"id":"free","name":"Free","gridCols":20,"gridRows":12,"pages":[{"id":"main","name":"Main","widgets":[
               {"id":"gear","type":"gear_speed","col":6,"row":3,"colSpan":8,"rowSpan":6},
-              {"id":"last","type":"lap_time","col":0,"row":0,"colSpan":6,"rowSpan":3},
+              {"id":"last","type":"last_lap","col":0,"row":0,"colSpan":6,"rowSpan":3},
               {"id":"tc","type":"tc","col":14,"row":3,"colSpan":3,"rowSpan":3}]}]}
             """);
         return "free";
@@ -882,9 +882,7 @@ public sealed class RuntimePersistenceTests
                   "driverNumber": "77",
                   "newDashDefaults": {
                     "mode": "advanced",
-                    "display": "vocore",
-                    "speedUnit": "mph",
-                    "tempUnit": "f"
+                    "display": "vocore"
                   },
                   "dashEditorUI": {
                     "palette": { "open": false, "pinned": true },
@@ -902,8 +900,6 @@ public sealed class RuntimePersistenceTests
             Assert.Equal("77", runtime.Settings.DriverNumber);
             Assert.Equal("advanced", runtime.Settings.NewDashDefaults.Mode);
             Assert.Equal("vocore", runtime.Settings.NewDashDefaults.Display);
-            Assert.Equal("mph", runtime.Settings.NewDashDefaults.SpeedUnit);
-            Assert.Equal("f", runtime.Settings.NewDashDefaults.TempUnit);
             Assert.False(runtime.Settings.DashEditorUI.Palette.Open);
             Assert.False(runtime.Settings.DashEditorUI.Inspector.Pinned);
 

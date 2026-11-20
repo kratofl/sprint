@@ -206,6 +206,26 @@ public sealed class DashTheme
     [JsonPropertyName("danger")]
     public string? Danger { get; set; }
 
+    // Each driver-adjustable setting's identity colour (its knob widget and change popup);
+    // null keeps the dash's own (dashSettingColors in packages/dashboard/src/palette.ts).
+    [JsonPropertyName("settingTc")]
+    public string? SettingTc { get; set; }
+
+    [JsonPropertyName("settingAbs")]
+    public string? SettingAbs { get; set; }
+
+    [JsonPropertyName("settingBrakeBias")]
+    public string? SettingBrakeBias { get; set; }
+
+    [JsonPropertyName("settingEngineMap")]
+    public string? SettingEngineMap { get; set; }
+
+    [JsonPropertyName("settingMigration")]
+    public string? SettingMigration { get; set; }
+
+    [JsonPropertyName("settingArb")]
+    public string? SettingArb { get; set; }
+
     [JsonIgnore]
     public bool IsEmpty =>
         string.IsNullOrEmpty(this.Neutral) && string.IsNullOrEmpty(this.GoodOnTarget) &&
@@ -215,7 +235,10 @@ public sealed class DashTheme
         string.IsNullOrEmpty(this.Primary) && string.IsNullOrEmpty(this.Accent) &&
         string.IsNullOrEmpty(this.Foreground) && string.IsNullOrEmpty(this.Surface) &&
         string.IsNullOrEmpty(this.Border) && string.IsNullOrEmpty(this.Success) &&
-        string.IsNullOrEmpty(this.Warning) && string.IsNullOrEmpty(this.Danger);
+        string.IsNullOrEmpty(this.Warning) && string.IsNullOrEmpty(this.Danger) &&
+        string.IsNullOrEmpty(this.SettingTc) && string.IsNullOrEmpty(this.SettingAbs) &&
+        string.IsNullOrEmpty(this.SettingBrakeBias) && string.IsNullOrEmpty(this.SettingEngineMap) &&
+        string.IsNullOrEmpty(this.SettingMigration) && string.IsNullOrEmpty(this.SettingArb);
 
     public DashTheme Clone() => new()
     {
@@ -235,6 +258,12 @@ public sealed class DashTheme
         Success = this.Success,
         Warning = this.Warning,
         Danger = this.Danger,
+        SettingTc = this.SettingTc,
+        SettingAbs = this.SettingAbs,
+        SettingBrakeBias = this.SettingBrakeBias,
+        SettingEngineMap = this.SettingEngineMap,
+        SettingMigration = this.SettingMigration,
+        SettingArb = this.SettingArb,
     };
 
     public bool NormalizeProtectedColors()
@@ -340,6 +369,15 @@ public sealed class DashPage
     [JsonConverter(typeof(DashPageJumpJsonConverter))]
     public DashPageJump? Jump { get; set; }
 
+    /// <summary>
+    /// The bar spots a zoned page keeps (<see cref="DashZones"/>); a dropped one folds away and the
+    /// grids grow into it. Written only when not <see cref="DashPageBars.Both"/>.
+    /// </summary>
+    [JsonPropertyName("bars")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    [JsonConverter(typeof(DashPageBarsJsonConverter))]
+    public DashPageBars Bars { get; set; }
+
     [JsonExtensionData]
     public Dictionary<string, JsonElement>? ExtensionData { get; set; }
 }
@@ -355,6 +393,49 @@ public enum DashPageJump
 
     /// <summary>The car crosses the line on track: the out lap (or the lap before) ends and a flying lap starts.</summary>
     FlyingLap,
+}
+
+/// <summary>
+/// Which bar spots a zoned page keeps (<see cref="DashPage.Bars"/>). A widget in a spot the page
+/// drops stays on the page and stays valid, but the wheel does not draw it.
+/// </summary>
+public enum DashPageBars
+{
+    /// <summary>The side bars and the top bar.</summary>
+    Both,
+
+    /// <summary>Only the top bar: the side grids grow to the edges.</summary>
+    Top,
+
+    /// <summary>Only the side bars: the rows and the gear move up to the top edge.</summary>
+    Sides,
+
+    /// <summary>No bars: the widgets use the whole screen.</summary>
+    None,
+}
+
+/// <summary>Writes "both"/"top"/"sides"/"none"; reads leniently, an unknown name meaning both.</summary>
+public sealed class DashPageBarsJsonConverter : JsonConverter<DashPageBars>
+{
+    public override DashPageBars Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
+        reader.TokenType == JsonTokenType.String
+            ? reader.GetString()?.ToLowerInvariant() switch
+            {
+                "top" => DashPageBars.Top,
+                "sides" => DashPageBars.Sides,
+                "none" => DashPageBars.None,
+                _ => DashPageBars.Both,
+            }
+            : DashPageBars.Both;
+
+    public override void Write(Utf8JsonWriter writer, DashPageBars value, JsonSerializerOptions options) =>
+        writer.WriteStringValue(value switch
+        {
+            DashPageBars.Top => "top",
+            DashPageBars.Sides => "sides",
+            DashPageBars.None => "none",
+            _ => "both",
+        });
 }
 
 /// <summary>Writes "outLap"/"flyingLap"; reads leniently, an unknown name meaning no jump.</summary>
@@ -584,10 +665,53 @@ public sealed class DashAlert
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public bool UntilAck { get; set; }
 
-    /// <summary><c>fuel_low</c>'s threshold: it fires when the laps of fuel left drop to this or below. Null on every other type.</summary>
+    /// <summary><c>fuel_low</c>'s two levels, laps left: LOW FUEL (and red widgets) at <see cref="LapsLeft"/>, amber widgets at <see cref="WarningLapsLeft"/>. Null on every other type.</summary>
     [JsonPropertyName("lapsLeft")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public int? LapsLeft { get; set; }
+
+    [JsonPropertyName("warningLapsLeft")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? WarningLapsLeft { get; set; }
+
+    /// <summary><c>engine_warning</c>'s water and oil limits, °C, which the Water and Oil widgets warn from too. Null on every other type.</summary>
+    [JsonPropertyName("waterLimitCelsius")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? WaterLimitCelsius { get; set; }
+
+    [JsonPropertyName("oilLimitCelsius")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? OilLimitCelsius { get; set; }
+
+    /// <summary><c>launch</c>'s window: clutch %, speed (km/h), revs and throttle % from–to. Null on every other type.</summary>
+    [JsonPropertyName("clutchPercent")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? ClutchPercent { get; set; }
+
+    [JsonPropertyName("speedKmh")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? SpeedKmh { get; set; }
+
+    [JsonPropertyName("rpmFrom")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? RpmFrom { get; set; }
+
+    [JsonPropertyName("rpmTo")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? RpmTo { get; set; }
+
+    [JsonPropertyName("throttleFrom")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? ThrottleFrom { get; set; }
+
+    [JsonPropertyName("throttleTo")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? ThrottleTo { get; set; }
+
+    /// <summary><c>lift_now</c>'s point on the game's 0–255 lift-and-coast cue, where the Lift &amp; coast widget lights too. Null on every other type.</summary>
+    [JsonPropertyName("liftPoint")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? LiftPoint { get; set; }
 
     [JsonIgnore]
     public bool UsesGlobalSettings => this.DisplayMode is null && this.ColorToken is null && this.DurationSeconds is null && this.InvertColors is null;

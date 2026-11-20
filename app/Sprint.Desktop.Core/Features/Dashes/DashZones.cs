@@ -4,7 +4,9 @@ namespace Sprint.Desktop.Features.Dashes;
 /// A zoned dash's zones and what may go where (<c>packages/dashboard/src/zones.ts</c>, which the
 /// designer works with, holds the same). The grid is 11 x 9 cells: bar spots down both sides and
 /// across the top, a 4 x 8 grid either side, and the centre column, whose top three rows are the
-/// gear's. The renderer always draws the gear there, so no widget may cover it.
+/// gear's. The renderer always draws the gear there, so no widget may cover it. A page may drop
+/// bar spots (<see cref="DashPage.Bars"/>): the renderer folds them away, and a widget sitting in
+/// one stays where it is and stays valid, only undrawn.
 /// </summary>
 public static class DashZones
 {
@@ -24,7 +26,7 @@ public static class DashZones
     private static readonly HashSet<string> BarTypes = new(StringComparer.OrdinalIgnoreCase) { "bar", "rpm_bar" };
 
     /// <summary>Widgets small enough for the top bar spot, besides the bars.</summary>
-    private static readonly HashSet<string> TopTypes = new(StringComparer.OrdinalIgnoreCase) { "position", "laps", "time_left", "flag" };
+    private static readonly HashSet<string> TopTypes = new(StringComparer.OrdinalIgnoreCase) { "position", "class_position", "laps", "time_left" };
 
     /// <summary>
     /// Whether a widget of <paramref name="type"/> may sit at its cells: wholly in one zone that

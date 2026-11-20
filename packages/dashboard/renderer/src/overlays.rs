@@ -1,7 +1,7 @@
 // What draws over the widgets, each over the whole canvas and independent of the grid: the
 // RaceLogic lap timer island, the alert banners (an alert popup full screen, as a strip across
 // the middle or centered in its alert rect, the lap review and the multi-dial popup) and the flag
-// overlay. Ported from `FlagOverlay`, `AlertBanner`, `FullScreenSettingPopup` and
+// bar. Ported from `AlertBanner`, `FullScreenSettingPopup` and
 // `RaceLogicLapTimerOverlay` in the retired React renderer's `DashRenderer.tsx`, and
 // `MultiDialPopup` in its `multiDial.tsx` (the lap review is the renderer's own); `dash.rs`
 // decides which of them draw, in what order.
@@ -10,19 +10,19 @@
 // box with a border every child sits the border width further in. The TypeScript lays children
 // out from the box's full width anyway; that offset is reproduced, not corrected.
 
-use crate::alerts::{AlertPlacement, AlertSize, DashAlertBanner, DashAlertPopup, DashRadioBanner};
+use crate::alerts::{AlertPlacement, AlertSize, DashAlertBanner, DashAlertPopup, DashRadioBanner, FlagBar};
 use crate::chrome::{ChromeContext, WidgetFrame, widget_frame};
 use crate::draw::{Builder, Radii};
-use crate::format::{format_delta, format_lap, js_number_string, to_fixed};
+use crate::format::{Units, format_delta, format_lap, format_speed, js_number_string, to_fixed};
 use crate::grid::{AlertSpan, PixelRect, alert_panel_rect, race_logic_panel_bounds};
 use crate::lap_summary::{LapReview, LapReviewField, LapSummary};
 use crate::model::TelemetryFrame;
 use crate::multi_dial::DashMultiDialPopup;
-use crate::palette::{CssForm, DashPaletteColors, Rgba, with_alpha};
+use crate::palette::{CssForm, DashPaletteColors, Rgba};
 use crate::primitives::{TextAlign, TextLine, TextSizing, ValueWithUnit, dot, text_line, value_size, value_with_unit};
 use crate::racelogic::RaceLogicLapTimerView;
 use crate::text::TextWeight;
-use crate::widgets::sector_color;
+use crate::widgets::{sector_color, value_unit_size};
 
 /// A CSS border width as Blink lays it out: a visible border is at least 1px, and anything wider
 /// is floored to whole px (`1.888px` paints and offsets the children as 1px).
@@ -36,47 +36,16 @@ fn border_width(width: f64) -> f64 {
     }
 }
 
-/// The full-screen flag-state tint and bottom banner. Only red/safety-car/yellow trigger it — a
-/// narrower set than the header chip's full flag priority.
-fn flag_overlay_info(frame: &TelemetryFrame, palette: &DashPaletteColors) -> Option<(&'static str, Rgba)> {
-    let flags = &frame.flags;
-    if flags.red {
-        Some(("RED FLAG", palette.critical))
-    } else if flags.safety_car {
-        Some(("SAFETY CAR", palette.race_control_yellow))
-    } else if flags.yellow {
-        Some(("YELLOW FLAG", palette.race_control_yellow))
-    } else {
-        None
-    }
+/// The flag bar: a thin band in the flag's colour across the very top of the dash, no lettering
+/// (its popup named the flag). Thin enough to sit above a zoned dash's top bar, so the shift
+/// lights stay in view for as long as the flag is out.
+pub fn flag_bar(b: &mut Builder, bar: FlagBar, width: f64, height: f64) {
+    let bar_height = (FLAG_BAR_PX * (width / 800.0).min(height / 480.0)).max(3.0);
+    b.rect(PixelRect::new(0.0, 0.0, width, bar_height), Radii::ZERO, bar.color);
 }
 
-/// `FlagOverlay`: the canvas tinted in the flag's color and a bar along the bottom naming it.
-pub fn flag_overlay(b: &mut Builder, frame: &TelemetryFrame, palette: &DashPaletteColors, width: f64, height: f64) {
-    let Some((text, color)) = flag_overlay_info(frame, palette) else {
-        return;
-    };
-    let bar_height = (height * 0.06).max(20.0);
-    b.rect(PixelRect::new(0.0, 0.0, width, height), Radii::ZERO, with_alpha(color, 25.0 / 255.0));
-    let bar = PixelRect::new(0.0, height - bar_height, width, bar_height);
-    b.rect(bar, Radii::ZERO, color);
-    b.translated(bar.left, bar.top, |b| {
-        text_line(
-            b,
-            TextLine {
-                text,
-                left: width / 2.0,
-                top: bar_height / 2.0,
-                size: bar_height * 0.6,
-                color: palette.background,
-                align: TextAlign::Center,
-                max_width: Some(width),
-                weight: TextWeight::LabelBold,
-                sizing: TextSizing::Fit,
-            },
-        );
-    });
-}
+/// The flag bar's height at the 800x480 the dash is authored at; it scales with the screen.
+const FLAG_BAR_PX: f64 = 8.0;
 
 /// A strip is a band this share of the dash tall, across its middle.
 const STRIP_SHARE: f64 = 1.0 / 3.0;
@@ -94,18 +63,20 @@ pub fn strip_fits(height: f64) -> bool {
 
 /// `AlertBanner`: the lap review (laid out by the layout's `review`), an alert popup (full
 /// screen, a strip, or centered in its alert rect), the multi-dial popup (full screen or a strip)
-/// or the engineer's message.
+/// or the engineer's message. The lap review prints its fuel in `units`.
+#[allow(clippy::too_many_arguments)]
 pub fn alert_banner(
     b: &mut Builder,
     banner: &DashAlertBanner,
     review: &LapReview,
     palette: &DashPaletteColors,
     chrome: ChromeContext,
+    units: Units,
     width: f64,
     height: f64,
 ) {
     match banner {
-        DashAlertBanner::LapSummary(summary) => lap_review_screen(b, summary, review, palette, chrome, width, height),
+        DashAlertBanner::LapSummary(summary) => lap_review_screen(b, summary, review, palette, chrome, units, width, height),
         DashAlertBanner::Alert(popup) => {
             let text = PopupText { title: &popup.title, value: &popup.value, detail: popup.detail.as_deref() };
             // The alert's colour lettered in the background colour; inverted, dark lettered and
@@ -351,7 +322,8 @@ const REVIEW_TOP_SHARE: f64 = 0.56;
 const REVIEW_CELL_TEMPLATE: &str = "0:00.000";
 
 /// One lap review cell: its title, its value with a unit after it, the value's colour (`None`:
-/// the frame's foreground, ink on a fill) and a condition fill.
+/// the frame's foreground, ink on a fill), a condition fill and a second value that shares the
+/// cell with the first, side by side (fuel and virtual energy used).
 #[derive(Clone, Debug, PartialEq)]
 struct ReviewCell {
     title: &'static str,
@@ -359,11 +331,12 @@ struct ReviewCell {
     unit: String,
     color: Option<Rgba>,
     fill: Option<Rgba>,
+    beside: Option<(String, String, Option<Rgba>)>,
 }
 
 impl ReviewCell {
     fn new(title: &'static str, value: String, unit: String, color: Option<Rgba>) -> ReviewCell {
-        ReviewCell { title, value, unit, color, fill: None }
+        ReviewCell { title, value, unit, color, fill: None, beside: None }
     }
 
     /// A value the lap did not report: "--", quiet.
@@ -374,9 +347,10 @@ impl ReviewCell {
 
 /// What `field` shows for `summary`, or `None` for an empty cell. Sectors fill in their timing
 /// colour like a timing screen (yellow for slower); elsewhere only the value is coloured: the plan
-/// met (green), fuel over its target (warning), a new best (green), a tyre wearing out (warning,
-/// then critical). A lap time is never coloured just for being slower.
-fn review_cell(field: LapReviewField, summary: &LapSummary, palette: &DashPaletteColors) -> Option<ReviewCell> {
+/// met (green), fuel over its target (warning), a new best lap or sector (green), a tyre wearing
+/// out (warning, then critical), an invalid lap (the quiet grey the timing widgets give it). A
+/// time is never coloured just for being slower.
+fn review_cell(field: LapReviewField, summary: &LapSummary, palette: &DashPaletteColors, units: Units) -> Option<ReviewCell> {
     use LapReviewField as F;
     let of = |total: Option<f64>| total.map_or_else(String::new, |total| format!("/{}", js_number_string(total)));
     let cell = match field {
@@ -394,6 +368,23 @@ fn review_cell(field: LapReviewField, summary: &LapSummary, palette: &DashPalett
                 None => ReviewCell::missing(title, palette),
             }
         }
+        F::Sector1Delta | F::Sector2Delta | F::Sector3Delta => {
+            let (index, title) = match field {
+                F::Sector1Delta => (0, "SECTOR 1 Δ"),
+                F::Sector2Delta => (1, "SECTOR 2 Δ"),
+                _ => (2, "SECTOR 3 Δ"),
+            };
+            match summary.sectors[index].and_then(|sector| sector.delta) {
+                Some(delta) => ReviewCell::new(title, format_delta(delta), String::new(), (delta < 0.0).then_some(palette.timing_personal_best)),
+                None => ReviewCell::missing(title, palette),
+            }
+        }
+        F::Validity if summary.valid => ReviewCell::new("VALIDITY", "VALID".to_owned(), String::new(), None),
+        F::Validity => ReviewCell::new("VALIDITY", "INVALID".to_owned(), String::new(), Some(palette.muted)),
+        F::TopSpeed => match summary.top_speed {
+            Some(speed) => ReviewCell::new("TOP SPEED", format_speed(speed, units), units.speed_unit().to_owned(), None),
+            None => ReviewCell::missing("TOP SPEED", palette),
+        },
         F::Target => match summary.target_delta {
             Some(delta) => {
                 let met = summary.valid && delta <= 0.0;
@@ -418,10 +409,7 @@ fn review_cell(field: LapReviewField, summary: &LapSummary, palette: &DashPalett
         },
         F::Lap => ReviewCell::new("LAP", js_number_string(summary.lap), of(summary.total_laps), None),
         F::FuelUsed => match summary.fuel_used {
-            Some(used) => {
-                let color = summary.fuel_delta.map(|delta| if delta > 0.0 { palette.warning } else { palette.good_on_target });
-                ReviewCell::new("FUEL USED", to_fixed(used, 2), "L".to_owned(), color)
-            }
+            Some(used) => ReviewCell::new("FUEL USED", to_fixed(units.fuel(used), 2), units.fuel_unit().to_owned(), fuel_color(summary, palette)),
             None => ReviewCell::missing("FUEL USED", palette),
         },
         F::FuelLeft => match summary.fuel_left_laps {
@@ -429,8 +417,24 @@ fn review_cell(field: LapReviewField, summary: &LapSummary, palette: &DashPalett
             None => ReviewCell::missing("FUEL LEFT", palette),
         },
         F::EnergyUsed => match summary.energy_used {
-            Some(used) => ReviewCell::new("ENERGY USED", to_fixed(used, 1), "%".to_owned(), None),
-            None => ReviewCell::missing("ENERGY USED", palette),
+            Some(used) => ReviewCell::new("VE USED", to_fixed(used, 1), "%".to_owned(), None),
+            None => ReviewCell::missing("VE USED", palette),
+        },
+        F::EnergyLeft => match summary.energy_left_laps {
+            Some(laps) => ReviewCell::new("VE LEFT", to_fixed(laps, 1), "LAPS".to_owned(), None),
+            None => ReviewCell::missing("VE LEFT", palette),
+        },
+        // A car without virtual energy shows its fuel beside a quiet "--".
+        F::FuelEnergyUsed => match (summary.fuel_used, summary.energy_used) {
+            (None, None) => ReviewCell::missing("FUEL · VE USED", palette),
+            (fuel, energy) => {
+                let fuel = fuel.map_or_else(
+                    || ("--".to_owned(), String::new(), Some(palette.muted)),
+                    |used| (to_fixed(units.fuel(used), 2), units.fuel_unit().to_owned(), fuel_color(summary, palette)),
+                );
+                let energy = energy.map_or_else(|| ("--".to_owned(), String::new(), Some(palette.muted)), |used| (to_fixed(used, 1), "%".to_owned(), None));
+                ReviewCell { beside: Some(energy), ..ReviewCell::new("FUEL · VE USED", fuel.0, fuel.1, fuel.2) }
+            }
         },
         F::TyreWear => match summary.tyre_wear_left {
             // The tyre widgets' ladder: plain while healthy, then amber, then red.
@@ -450,13 +454,28 @@ fn review_cell(field: LapReviewField, summary: &LapSummary, palette: &DashPalett
     Some(cell)
 }
 
+/// The fuel a lap used against the plan's target: over it warns, on it is green, no target is plain.
+fn fuel_color(summary: &LapSummary, palette: &DashPaletteColors) -> Option<Rgba> {
+    summary.fuel_delta.map(|delta| if delta > 0.0 { palette.warning } else { palette.good_on_target })
+}
+
 /// The lap review, shown for a few seconds after each timed lap. The top row is fixed: the lap
 /// time big, and under it the delta to the best valid lap before it (green when it is a new
-/// best); an invalid lap's time is struck through in the critical colour and "INVALID" stands in
-/// for the delta, since it never counts as a best. Below, two rows of three cells show the
+/// best); an invalid lap's time and the "INVALID" standing in for its delta go the quiet grey the
+/// timing widgets give invalid laps, since it never counts as a best. Below, two rows of three cells show the
 /// layout's `review` fields, framed in the dash's own style so the review looks like the dash; an
-/// empty cell draws nothing.
-fn lap_review_screen(b: &mut Builder, summary: &LapSummary, review: &LapReview, palette: &DashPaletteColors, chrome: ChromeContext, width: f64, height: f64) {
+/// empty cell draws nothing, and a cell with two values splits in halves.
+#[allow(clippy::too_many_arguments)]
+fn lap_review_screen(
+    b: &mut Builder,
+    summary: &LapSummary,
+    review: &LapReview,
+    palette: &DashPaletteColors,
+    chrome: ChromeContext,
+    units: Units,
+    width: f64,
+    height: f64,
+) {
     b.rect(PixelRect::new(0.0, 0.0, width, height), Radii::ZERO, palette.background);
     let top_height = height * REVIEW_TOP_SHARE;
     let frame = |rect: PixelRect, title: Option<&'static str>, fill: Option<Rgba>| WidgetFrame {
@@ -478,20 +497,15 @@ fn lap_review_screen(b: &mut Builder, summary: &LapSummary, review: &LapReview, 
             left: w / 2.0,
             top: time_top,
             size,
-            color: if summary.valid { p.foreground } else { p.secondary },
+            color: if summary.valid { p.foreground } else { p.muted },
             align: TextAlign::Center,
             max_width: Some(w),
             weight: TextWeight::Value,
             sizing: TextSizing::Stable,
         };
         text_line(b, line);
-        if !summary.valid {
-            let struck = b.text_width(&time, size, TextWeight::Value).min(w);
-            let rule = border_width(size * 0.07);
-            b.rect(PixelRect::new((w - struck) / 2.0, time_top - rule / 2.0, struck, rule), Radii::ZERO, p.critical);
-        }
         let (value, unit, color) = match summary.lap_delta {
-            _ if !summary.valid => ("INVALID".to_owned(), "", p.critical),
+            _ if !summary.valid => ("INVALID".to_owned(), "", p.muted),
             Some(delta) if delta < 0.0 => (format_delta(delta), "NEW BEST", p.timing_personal_best),
             Some(delta) => (format_delta(delta), "VS BEST", p.foreground),
             None => ("--".to_owned(), "VS BEST", p.muted),
@@ -514,23 +528,27 @@ fn lap_review_screen(b: &mut Builder, summary: &LapSummary, review: &LapReview, 
 
     let (cell_width, cell_height) = (width / 3.0, (height - top_height) / 2.0);
     for (i, field) in review.cells.iter().enumerate() {
-        let Some(cell) = review_cell(*field, summary, palette) else { continue };
+        let Some(cell) = review_cell(*field, summary, palette, units) else { continue };
         let rect = PixelRect::new((i % 3) as f64 * cell_width, top_height + (i / 3) as f64 * cell_height, cell_width, cell_height);
         widget_frame(b, frame(rect, Some(cell.title), cell.fill), |b, w, h, p| {
-            value_with_unit(
-                b,
-                ValueWithUnit {
-                    value: &cell.value,
-                    unit: &cell.unit,
-                    left: w / 2.0,
-                    top: h / 2.0,
-                    size: value_size(REVIEW_CELL_TEMPLATE, w, h, 0.62),
-                    color: cell.color.unwrap_or(p.foreground),
-                    unit_color: p.secondary,
-                    align: TextAlign::Center,
-                    max_width: w,
-                },
-            );
+            let size = value_size(REVIEW_CELL_TEMPLATE, w, h, 0.62);
+            // One value with its unit, centred at `centre` in a box `max_width` wide.
+            let draw = |b: &mut Builder, (value, unit, color): (&str, &str, Option<Rgba>), centre: f64, size: f64, max_width: f64| {
+                let color = color.unwrap_or(p.foreground);
+                let line = ValueWithUnit { value, unit, left: centre, top: h / 2.0, size, color, unit_color: p.secondary, align: TextAlign::Center, max_width };
+                value_with_unit(b, line);
+            };
+            let first = (cell.value.as_str(), cell.unit.as_str(), cell.color);
+            match &cell.beside {
+                None => draw(b, first, w / 2.0, size, w),
+                // Two halves, each sized for "0.00 gal".
+                Some((value, unit, color)) => {
+                    let half = w / 2.0;
+                    let size = value_unit_size(size, half - 6.0, 4.0, 3.0);
+                    draw(b, first, half / 2.0, size, half - 6.0);
+                    draw(b, (value, unit, *color), half * 1.5, size, half - 6.0);
+                }
+            }
         });
     }
 }
@@ -545,6 +563,7 @@ pub fn race_logic_lap_timer_overlay(
     view: &RaceLogicLapTimerView,
     frame: &TelemetryFrame,
     palette: &DashPaletteColors,
+    units: Units,
     width: f64,
     height: f64,
 ) {
@@ -554,7 +573,7 @@ pub fn race_logic_lap_timer_overlay(
     }
     let inset = (bounds.height * 0.035).max(2.0);
     let (cw, ch) = ((bounds.width - inset * 2.0).max(0.0), (bounds.height - inset * 2.0).max(0.0));
-    let speed = (frame.car.speed_ms * 3.6).max(0.0);
+    let speed = units.speed(frame.car.speed_ms).max(0.0);
     let (bar_left, bar_right) = (cw * 0.2, cw * 0.66);
 
     b.translated(bounds.left, bounds.top, |b| {
@@ -594,7 +613,7 @@ pub fn race_logic_lap_timer_overlay(
             text_line(
                 b,
                 TextLine {
-                    text: "km/h",
+                    text: units.speed_unit(),
                     left: right,
                     top: ch * 0.54,
                     size: ch * 0.08,
@@ -679,11 +698,17 @@ mod tests {
         banner_ops_at(banner, style, 800.0, 480.0)
     }
 
+    /// What a still draws: `banner`, and the flag bar of the flag out (`alerts::flag_bar`).
+    fn draw_still(scene: &Scene, frame: &TelemetryFrame, banner: Option<&DashAlertBanner>) -> Vec<DrawOp> {
+        let flag_bar = crate::alerts::flag_bar(&scene.layout, frame, &P);
+        draw(scene, frame, Overlays { banner, flag_bar, ..Overlays::default() })
+    }
+
     fn banner_ops_at(banner: serde_json::Value, style: &str, width: f64, height: f64) -> Vec<DrawOp> {
         let banner = parse_banner(banner.to_string().as_bytes()).expect("banner");
         let mut scene = scene("l", style);
         (scene.width, scene.height) = (width, height);
-        draw(&scene, &TelemetryFrame::default(), Overlays { banner: Some(&banner), lap_timer: None })
+        draw(&scene, &TelemetryFrame::default(), Overlays { banner: Some(&banner), ..Overlays::default() })
     }
 
     fn runs(ops: &[DrawOp]) -> Vec<&TextRun> {
@@ -710,7 +735,7 @@ mod tests {
 
     /// A TC change popup in `display_mode`.
     fn alert(display_mode: &str, invert: bool) -> serde_json::Value {
-        json!({ "kind": "alert", "alertType": "tc_change", "title": "TC", "value": "5", "detail": "WAS 4 · OF 9", "color": "#1F7FE6",
+        json!({ "kind": "alert", "alertType": "tc_change", "title": "TC", "value": "5", "detail": "WAS 4", "color": "#1F7FE6",
                 "invertColors": invert, "displayMode": display_mode })
     }
 
@@ -720,7 +745,7 @@ mod tests {
         // 480 / 3 = 160 tall at 160; a 4.8 -> 4px rule each side in the background colour.
         assert_eq!(ops[1], DrawOp::Rect { rect: PixelRect::new(0.0, 156.0, 800.0, 168.0), radii: Radii::ZERO, color: P.background });
         assert_eq!(ops[2], DrawOp::Rect { rect: PixelRect::new(0.0, 160.0, 800.0, 160.0), radii: Radii::ZERO, color: dash_setting_colors::TC });
-        let (title, detail, value) = (run(&ops, "TC"), run(&ops, "WAS 4 · OF 9"), run(&ops, "5"));
+        let (title, detail, value) = (run(&ops, "TC"), run(&ops, "WAS 4"), run(&ops, "5"));
         assert!([title.color, detail.color, value.color].iter().all(|c| *c == P.background));
         assert_eq!((title.weight, detail.weight, value.weight), (TextWeight::Value, TextWeight::LabelBold, TextWeight::Value));
         assert_eq!((title.size, detail.size, value.size), (160.0 * 0.34, 160.0 * 0.15, 160.0 * 0.8));
@@ -770,18 +795,19 @@ mod tests {
     }
 
     #[test]
-    fn the_flag_alert_stands_in_for_the_flag_overlay_while_it_is_up() {
+    fn the_flag_alert_stands_in_for_the_flag_bar_while_it_is_up() {
         let mut frame = TelemetryFrame::default();
         frame.flags.yellow = true;
         let mut flag = alert("strip", false);
         (flag["alertType"], flag["title"], flag["value"], flag["detail"], flag["color"]) =
             (json!("flag"), json!("FLAG"), json!("YELLOW"), json!(null), json!("#E0A30C"));
         let flag = parse_banner(flag.to_string().as_bytes()).expect("flag");
-        let ops = draw(&scene("l", "panels"), &frame, Overlays { banner: Some(&flag), lap_timer: None });
-        assert!(runs(&ops).iter().all(|r| r.text != "YELLOW FLAG"), "no second account of the flag");
+        let ops = draw_still(&scene("l", "panels"), &frame, Some(&flag));
+        let bar = DrawOp::Rect { rect: PixelRect::new(0.0, 0.0, 800.0, 8.0), radii: Radii::ZERO, color: P.race_control_yellow };
+        assert!(!ops.contains(&bar), "no second account of the flag");
         run(&ops, "YELLOW");
         let tc = parse_banner(alert("strip", false).to_string().as_bytes()).expect("tc");
-        run(&draw(&scene("l", "panels"), &frame, Overlays { banner: Some(&tc), lap_timer: None }), "YELLOW FLAG");
+        assert_eq!(draw_still(&scene("l", "panels"), &frame, Some(&tc)).last(), Some(&bar), "over another popup");
     }
 
     #[test]
@@ -799,29 +825,25 @@ mod tests {
     }
 
     #[test]
-    fn the_flag_overlay_tints_the_canvas_and_names_the_flag_in_ink_on_a_bottom_bar() {
+    fn the_flag_bar_is_a_thin_band_across_the_top_in_the_highest_flags_colour() {
         let mut frame = TelemetryFrame::default();
         (frame.flags.yellow, frame.flags.safety_car) = (true, true);
-        let ops = draw(&scene("l", "panels"), &frame, Overlays::default());
-        let n = ops.len();
-        let tint = with_alpha(P.race_control_yellow, 25.0 / 255.0);
-        assert_eq!(ops[n - 3], DrawOp::Rect { rect: PixelRect::new(0.0, 0.0, 800.0, 480.0), radii: Radii::ZERO, color: tint });
-        assert!(matches!(ops[n - 2], DrawOp::Rect { rect, color, .. } if color == P.race_control_yellow && rect.top == 451.1875 && rect.height == 28.796875));
-        let text = run(&ops, "SAFETY CAR");
-        assert_eq!((text.weight, text.color, text.size), (TextWeight::LabelBold, P.background, 480.0 * 0.06 * 0.6));
-        assert!((text.x + text.width(&Fonts::new()) / 2.0 - 400.0).abs() < 1e-6, "centered on the canvas");
+        let band = |color: Rgba, width: f64, height: f64| DrawOp::Rect { rect: PixelRect::new(0.0, 0.0, width, height), radii: Radii::ZERO, color };
+        assert_eq!(draw_still(&scene("l", "panels"), &frame, None)[1..], [band(P.race_control_yellow, 800.0, 8.0)], "nothing else: no tint, no lettering");
 
         frame.flags.red = true;
-        assert_eq!(run(&draw(&scene("l", "panels"), &frame, Overlays::default()), "RED FLAG").color, P.background);
-        assert_eq!(draw(&scene("purpose-lap-times", "panels"), &frame, Overlays::default()).len(), 1, "never on the focused lap timer screen");
-        assert_eq!(draw(&scene("l", "panels"), &TelemetryFrame::default(), Overlays::default()).len(), 1, "no flag, no overlay");
+        let mut big = scene("l", "panels");
+        (big.width, big.height) = (1600.0, 960.0);
+        assert_eq!(draw_still(&big, &frame, None)[1..], [band(P.critical, 1600.0, 16.0)], "it scales with the screen");
+        assert_eq!(draw_still(&scene("purpose-lap-times", "panels"), &frame, None).len(), 1, "never on the focused lap timer screen");
+        assert_eq!(draw_still(&scene("l", "panels"), &TelemetryFrame::default(), None).len(), 1, "no flag, no bar");
     }
 
     #[test]
     fn a_full_screen_setting_fills_the_canvas_in_its_color_with_ink_text() {
         let ops = banner_ops(setting(true, false), "panels");
         assert_eq!(ops[1], DrawOp::Rect { rect: PixelRect::new(0.0, 0.0, 800.0, 480.0), radii: Radii::ZERO, color: dash_setting_colors::TC });
-        let (title, was, value) = (run(&ops, "TC"), run(&ops, "WAS 4 · OF 9"), run(&ops, "5"));
+        let (title, was, value) = (run(&ops, "TC"), run(&ops, "WAS 4"), run(&ops, "5"));
         assert!([title.color, was.color, value.color].iter().all(|c| *c == P.background));
         assert_eq!((title.weight, was.weight), (TextWeight::Value, TextWeight::LabelBold));
         assert!((title.x - 26.4).abs() < 1e-9);
@@ -897,8 +919,10 @@ mod tests {
     fn sample_lap() -> serde_json::Value {
         json!({ "kind": "lapSummary", "lap": 12, "totalLaps": 24, "position": 4, "totalPositions": 22, "lapTime": 124.912, "valid": true,
                 "lapDelta": -0.214, "bestLap": 124.912, "targetDelta": -0.088,
-                "sectors": [{ "seconds": 38.412, "rating": "personalBest" }, { "seconds": 44.187, "rating": "fastest" }, { "seconds": 42.313, "rating": "slower" }],
-                "fuelUsed": 2.41, "fuelDelta": -0.09, "fuelLeftLaps": 12.4, "energyUsed": 4.2, "tyreWearLeft": 81, "gapAhead": 1.384 })
+                "sectors": [{ "seconds": 38.412, "rating": "personalBest", "delta": -0.104 }, { "seconds": 44.187, "rating": "fastest", "delta": -0.051 },
+                            { "seconds": 42.313, "rating": "slower", "delta": 0.213 }],
+                "fuelUsed": 2.41, "fuelDelta": -0.09, "fuelLeftLaps": 12.4, "energyUsed": 4.2, "energyLeftLaps": 13.8, "tyreWearLeft": 81, "gapAhead": 1.384,
+                "topSpeed": 86.4 })
     }
 
     /// `summary` with its fields replaced by `fields`.
@@ -918,7 +942,7 @@ mod tests {
             layout["lapReview"] = json!({ "cells": cells });
         }
         let scene = parse_scene(json!({ "layout": layout, "width": 800, "height": 480 }).to_string().as_bytes()).expect("scene");
-        draw(&scene, &TelemetryFrame::default(), Overlays { banner: Some(&banner), lap_timer: None })
+        draw(&scene, &TelemetryFrame::default(), Overlays { banner: Some(&banner), ..Overlays::default() })
     }
 
     fn rounded_fills(ops: &[DrawOp]) -> Vec<Rgba> {
@@ -972,7 +996,7 @@ mod tests {
         let cells = json!(["none", "energy_used", "lap", "best_lap", "gap_ahead", "tyre_wear"]);
         let ops = review_ops(sample_lap(), Some(cells));
         assert_eq!(ops.iter().filter(|op| matches!(op, DrawOp::Border { .. })).count(), 6, "no frame for the empty cell");
-        for text in ["ENERGY USED", "4.2", "%", "LAP", "12", "/24", "BEST LAP", "GAP AHEAD", "1.384", "TYRE WEAR", "81"] {
+        for text in ["VE USED", "4.2", "%", "LAP", "12", "/24", "BEST LAP", "GAP AHEAD", "1.384", "TYRE WEAR", "81"] {
             run(&ops, text);
         }
         assert_eq!(run(&ops, "BEST LAP").baseline, run(&ops, "TYRE WEAR").baseline, "row 3");
@@ -982,29 +1006,33 @@ mod tests {
     }
 
     #[test]
-    fn an_invalid_lap_is_struck_through_and_says_so_instead_of_a_delta() {
+    fn fuel_and_energy_used_share_one_cell_side_by_side() {
+        let ops = review_ops(sample_lap(), Some(json!(["fuel_energy_used", "none", "none", "none", "none", "none"])));
+        let (fuel, energy) = (run(&ops, "2.41"), run(&ops, "4.2"));
+        let cell = 800.0 / 3.0;
+        assert!(centre(fuel) < cell / 2.0 && centre(energy) > cell / 2.0 && centre(energy) < cell, "fuel left of the middle, energy right");
+        assert_eq!(fuel.baseline, energy.baseline);
+        assert!(run(&ops, "%").x + run(&ops, "%").width(&Fonts::new()) < cell, "inside its cell");
+    }
+
+    #[test]
+    fn an_invalid_lap_goes_grey_and_says_so_instead_of_a_delta() {
         let ops = review_ops(with(sample_lap(), json!({ "valid": false, "lapDelta": 0.531, "bestLap": 125.126 })), None);
         let time = run(&ops, "2:04.912");
-        assert_eq!((time.color, run(&ops, "INVALID").color), (P.secondary, P.critical));
+        assert_eq!((time.color, run(&ops, "INVALID").color), (P.muted, P.muted));
         assert!(runs(&ops).iter().all(|r| r.text != "+0.531" && r.text != "NEW BEST"), "an invalid lap claims no delta");
-        let strike = ops.iter().find_map(|op| match op {
-            DrawOp::Rect { rect, color, .. } if *color == P.critical => Some(*rect),
-            _ => None,
-        });
-        let strike = strike.expect("a strike-through");
-        assert!((strike.left + strike.width / 2.0 - centre(time)).abs() < 1.0 && (strike.width - time.width(&Fonts::new())).abs() < 1.0, "{strike:?}");
-        assert!(strike.top < time.baseline && strike.top > time.baseline - time.size, "across the digits");
+        assert!(!ops.iter().any(|op| matches!(op, DrawOp::Rect { color, .. } if *color == P.critical)), "no red strike-through");
         assert_eq!(run(&ops, "-0.088").color, P.foreground, "an invalid lap never meets its target");
     }
 
     #[test]
     fn each_review_field_formats_its_value_and_colours_only_what_the_driver_should_act_on() {
         let summary = match parse_banner(sample_lap().to_string().as_bytes()) {
-            Ok(DashAlertBanner::LapSummary(summary)) => summary,
+            Ok(DashAlertBanner::LapSummary(summary)) => *summary,
             other => panic!("{other:?}"),
         };
         let cell = |field: &str, summary: &LapSummary| {
-            let cell = review_cell(LapReviewField::parse(field).expect(field), summary, &P).expect("a cell");
+            let cell = review_cell(LapReviewField::parse(field).expect(field), summary, &P, Units::Metric).expect("a cell");
             (cell.value, cell.unit, cell.color, cell.fill)
         };
         let shown = |value: &str, unit: &str, color: Option<Rgba>, fill: Option<Rgba>| (value.to_owned(), unit.to_owned(), color, fill);
@@ -1017,8 +1045,23 @@ mod tests {
         assert_eq!(cell("fuel_used", &summary), shown("2.41", "L", Some(P.good_on_target), None));
         assert_eq!(cell("fuel_left", &summary), shown("12.4", "LAPS", None, None));
         assert_eq!(cell("energy_used", &summary), shown("4.2", "%", None, None));
+        assert_eq!(cell("energy_left", &summary), shown("13.8", "LAPS", None, None));
         assert_eq!(cell("tyre_wear", &summary), shown("81", "%", None, None));
-        assert_eq!(review_cell(LapReviewField::Empty, &summary, &P), None);
+        assert_eq!(cell("sector1_delta", &summary), shown("-0.104", "", Some(P.timing_personal_best), None), "a new best sector");
+        assert_eq!(cell("sector3_delta", &summary), shown("+0.213", "", None, None), "slower is never a warning");
+        assert_eq!(cell("validity", &summary), shown("VALID", "", None, None));
+        assert_eq!(cell("validity", &LapSummary { valid: false, ..summary }), shown("INVALID", "", Some(P.muted), None), "the invalid laps' grey");
+        assert_eq!(cell("top_speed", &summary), shown("311", "km/h", None, None));
+        let mph = review_cell(LapReviewField::TopSpeed, &summary, &P, Units::Imperial).expect("a cell");
+        assert_eq!((mph.value.as_str(), mph.unit.as_str()), ("193", "mph"), "86.4 m/s");
+        let both = review_cell(LapReviewField::FuelEnergyUsed, &summary, &P, Units::Metric).expect("a cell");
+        assert_eq!((both.value.as_str(), both.unit.as_str(), both.color), ("2.41", "L", Some(P.good_on_target)), "the fuel like Fuel used");
+        assert_eq!(both.beside, Some(("4.2".to_owned(), "%".to_owned(), None)), "the energy beside it");
+        let no_energy = review_cell(LapReviewField::FuelEnergyUsed, &LapSummary { energy_used: None, ..summary }, &P, Units::Metric).expect("a cell");
+        assert_eq!((no_energy.value.as_str(), no_energy.beside), ("2.41", Some(("--".to_owned(), String::new(), Some(P.muted)))), "a car without it");
+        assert_eq!(review_cell(LapReviewField::Empty, &summary, &P, Units::Metric), None);
+        let gallons = review_cell(LapReviewField::FuelUsed, &summary, &P, Units::Imperial).expect("a cell");
+        assert_eq!((gallons.value.as_str(), gallons.unit.as_str()), ("0.64", "gal"), "2.41 L in US gallons");
 
         let slow =
             LapSummary { target_delta: Some(0.4), fuel_delta: Some(0.3), best_lap: Some(124.5), tyre_wear_left: Some(45.0), total_laps: None, ..summary };
@@ -1030,7 +1073,7 @@ mod tests {
         assert_eq!(cell("lap", &slow), shown("12", "", None, None), "no lap limit");
 
         let unreported = LapSummary { lap: 3.0, lap_time: 124.9, valid: true, ..LapSummary::default() };
-        for field in LapReviewField::ALL.into_iter().filter(|field| !matches!(field, LapReviewField::Empty | LapReviewField::Lap)) {
+        for field in LapReviewField::ALL.into_iter().filter(|field| !matches!(field, LapReviewField::Empty | LapReviewField::Lap | LapReviewField::Validity)) {
             assert_eq!(cell(field.id(), &unreported), shown("--", "", Some(P.muted), None), "{field:?}");
         }
     }
@@ -1044,7 +1087,7 @@ mod tests {
         let mut frame = TelemetryFrame::default();
         (frame.lap.current_lap, frame.lap.best_lap_time, frame.car.speed_ms) = (14.0, 208.44, 78.4);
         let v = view(true, -0.41);
-        let ops = draw(&scene("purpose-lap-times", "panels"), &frame, Overlays { banner: None, lap_timer: Some(&v) });
+        let ops = draw(&scene("purpose-lap-times", "panels"), &frame, Overlays { lap_timer: Some(&v), ..Overlays::default() });
         // Bounds 0,140 800x200; inset 7 -> content 786x186 at (7, 147).
         let (cw, ch) = (786.0, 186.0);
         let primary = run(&ops, "-0.41");
@@ -1060,7 +1103,7 @@ mod tests {
         }
 
         let no_bar = view(false, 0.0);
-        let ops = draw(&scene("purpose-lap-times", "panels"), &frame, Overlays { banner: None, lap_timer: Some(&no_bar) });
+        let ops = draw(&scene("purpose-lap-times", "panels"), &frame, Overlays { lap_timer: Some(&no_bar), ..Overlays::default() });
         assert!(!ops.iter().any(|op| matches!(op, DrawOp::Oval { .. })));
     }
 
@@ -1070,9 +1113,11 @@ mod tests {
         frame.flags.red = true;
         let banner = parse_banner(setting(true, false).to_string().as_bytes()).expect("banner");
         let v = view(false, 0.0);
-        let ops = draw(&scene("l", "grid"), &frame, Overlays { banner: Some(&banner), lap_timer: Some(&v) });
+        let s = scene("l", "grid");
+        let ops = draw(&s, &frame, Overlays { banner: Some(&banner), lap_timer: Some(&v), flag_bar: crate::alerts::flag_bar(&s.layout, &frame, &P) });
         let at = |text: &str| ops.iter().position(|op| matches!(op, DrawOp::Text(r) if r.text == text)).expect(text);
-        assert!(at("PREDICTIVE") < at("WAS 4 · OF 9") && at("WAS 4 · OF 9") < at("RED FLAG"));
+        assert!(at("PREDICTIVE") < at("WAS 4"));
+        assert!(matches!(ops.last(), Some(DrawOp::Rect { color, .. }) if *color == P.critical), "the flag bar last");
         let cut = ops.iter().position(|op| matches!(op, DrawOp::CornerCut { .. })).expect("grid corners");
         assert!(cut < at("PREDICTIVE"), "the overlays are not clipped by the grid's rounded canvas");
     }

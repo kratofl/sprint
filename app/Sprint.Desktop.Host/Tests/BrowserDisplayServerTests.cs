@@ -8,6 +8,7 @@ using Sprint.Desktop.Features.Devices;
 using Sprint.Desktop.Features.Diagnostics;
 using Sprint.Desktop.Features.Hardware;
 using Sprint.Desktop.Features.Input;
+using Sprint.Desktop.Runtime;
 using Xunit;
 
 namespace Sprint.Desktop.Host.Tests;
@@ -249,7 +250,7 @@ public sealed class BrowserDisplayServerTests
     };
 
     private static DashSceneInputs Scenes(params DashLayout[] layouts) =>
-        new(layouts, DriverCar.None, "Driver", "22", DashTargets.None, AppDashAlerts.Default);
+        new(layouts, DriverCar.None, "Driver", "22", UnitSystem.Metric, DashTargets.None, AppDashAlerts.Default);
 
     private static int FreePort()
     {

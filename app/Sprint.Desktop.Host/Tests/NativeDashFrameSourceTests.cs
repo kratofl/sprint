@@ -4,6 +4,7 @@ using Sprint.Desktop.Features.Dashes;
 using Sprint.Desktop.Features.Devices;
 using Sprint.Desktop.Features.Hardware;
 using Sprint.Desktop.Features.Input;
+using Sprint.Desktop.Runtime;
 using Xunit;
 
 namespace Sprint.Desktop.Host.Tests;
@@ -195,6 +196,18 @@ public sealed class NativeDashFrameSourceTests
         Assert.Equal(0, source.RenderCount);
     }
 
+    [Fact]
+    public void TheSceneCarriesTheDriversUnitsByNameSoChangingThemIsANewScene()
+    {
+        DashLayout layout = TestDash.Layout("dash");
+        DashSceneContent metric = DashSceneContent.Build(layout, "Driver", "22", UnitSystem.Metric, DashTargets.None, Json);
+        DashSceneContent imperial = DashSceneContent.Build(layout, "Driver", "22", UnitSystem.Imperial, DashTargets.None, Json);
+
+        using JsonDocument settings = JsonDocument.Parse(imperial.Settings);
+        Assert.Equal("Imperial", settings.RootElement.GetProperty("units").GetString());
+        Assert.False(imperial.HasSameBytes(metric));
+    }
+
     private static byte[] Draw(NativeDashFrameSource source, TelemetryFrame frame)
     {
         byte[] rgb565 = new byte[source.Width * source.Height * 2];
@@ -213,7 +226,7 @@ public sealed class NativeDashFrameSourceTests
     }
 
     private static DashSceneContent Content(DashLayout layout) =>
-        DashSceneContent.Build(layout, "Driver", "22", DashTargets.None, Json);
+        DashSceneContent.Build(layout, "Driver", "22", UnitSystem.Metric, DashTargets.None, Json);
 
     private static ScreenConfig Config(int width, int height, DeviceOrientation orientation = DeviceOrientation.Portrait) => new()
     {

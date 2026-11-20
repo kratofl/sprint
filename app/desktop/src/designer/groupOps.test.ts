@@ -76,6 +76,15 @@ test('a stack moves with all its layers, and a resized group scales its widgets'
   assert.deepEqual(scaled.widgets.filter((item) => item.group === 'top').map((item) => [item.col, item.colSpan]), [[0, 4], [4, 4]])
 })
 
+test('nothing moves into a bar spot the page drops, and what already sits there does not block other edits', () => {
+  const zoned: DashLayout = {
+    id: 'z', name: 'Z', mode: 'basic', zoned: true, gridCols: 11, gridRows: 9, alerts: [],
+    pages: [{ id: 'p', name: 'P', bars: 'sides', widgets: [{ id: 'pos', type: 'position', col: 1, row: 1, colSpan: 2, rowSpan: 1 }, { id: 'laps', type: 'laps', col: 3, row: 0, colSpan: 2, rowSpan: 1 }] }],
+  }
+  assert.equal(translateNodes(zoned, 'p', ['pos'], 0, -1), null, 'up into the dropped top bar')
+  assert.deepEqual(pageOf(translateNodes(zoned, 'p', ['pos'], 0, 1)).widgets.map((item) => [item.id, item.row]), [['pos', 2], ['laps', 0]])
+})
+
 test('a copy gets fresh ids, keeps which layer its stack shows, and lands in free space', () => {
   const copied = duplicateNodes(dash, 'p', ['right'])
   assert.ok(copied)

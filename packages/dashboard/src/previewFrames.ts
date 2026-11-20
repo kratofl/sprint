@@ -77,12 +77,19 @@ function baseFrame(): TelemetryFrame {
       inPitLane: null,
       pitState: null,
       pitLimiter: null,
+      engineTorque: 520,
+      turboBoost: 1.4,
+      headlights: false,
+      wiperState: 0,
+      fuelLastLap: 2.58,
+      fuelThisLap: 1.21,
+      fuelStintPerLap: 2.55,
     },
     tires: [
-      { position: TirePosition.FrontLeft, tempInner: 84, tempMiddle: 86, tempOuter: 88, tempSurface: 86, tempCore: 90, pressureKPa: 165, wearPercent: 12, compound: 'Medium', brakeTemp: 420 },
-      { position: TirePosition.FrontRight, tempInner: 86, tempMiddle: 88, tempOuter: 90, tempSurface: 88, tempCore: 92, pressureKPa: 166, wearPercent: 12, compound: 'Medium', brakeTemp: 434 },
-      { position: TirePosition.RearLeft, tempInner: 89, tempMiddle: 91, tempOuter: 93, tempSurface: 91, tempCore: 95, pressureKPa: 162, wearPercent: 14, compound: 'Medium', brakeTemp: 372 },
-      { position: TirePosition.RearRight, tempInner: 90, tempMiddle: 92, tempOuter: 94, tempSurface: 92, tempCore: 96, pressureKPa: 163, wearPercent: 14, compound: 'Medium', brakeTemp: 381 },
+      { position: TirePosition.FrontLeft, tempInner: 84, tempMiddle: 86, tempOuter: 88, tempSurface: 86, tempCore: 90, pressureKPa: 165, wearPercent: 12, compound: 'Medium', brakeTemp: 420, optimalTemp: 85, wearLastLap: 0.9, avgTempLastLap: 85, flat: false, detached: false },
+      { position: TirePosition.FrontRight, tempInner: 86, tempMiddle: 88, tempOuter: 90, tempSurface: 88, tempCore: 92, pressureKPa: 166, wearPercent: 12, compound: 'Medium', brakeTemp: 434, optimalTemp: 85, wearLastLap: 0.9, avgTempLastLap: 87, flat: false, detached: false },
+      { position: TirePosition.RearLeft, tempInner: 89, tempMiddle: 91, tempOuter: 93, tempSurface: 91, tempCore: 95, pressureKPa: 162, wearPercent: 14, compound: 'Medium', brakeTemp: 372, optimalTemp: 85, wearLastLap: 0.9, avgTempLastLap: 90, flat: false, detached: false },
+      { position: TirePosition.RearRight, tempInner: 90, tempMiddle: 92, tempOuter: 94, tempSurface: 92, tempCore: 96, pressureKPa: 163, wearPercent: 14, compound: 'Medium', brakeTemp: 381, optimalTemp: 85, wearLastLap: 0.9, avgTempLastLap: 91, flat: false, detached: false },
     ],
     lap: {
       currentLap: 7,
@@ -106,7 +113,13 @@ function baseFrame(): TelemetryFrame {
       isInLap: false,
       isOutLap: false,
       isValid: true,
+      lastLapValid: true,
       trackPosition: 0.46,
+      lastFiveLapsAverage: 104.236,
+      lastTenLapsAverage: 104.518,
+      allTimeBestLapTime: 102.947,
+      pitLoss: 34.5,
+      lastLapTopSpeedMS: 84.2,
     },
     flags: NO_FLAGS,
     electronics: {
@@ -136,9 +149,13 @@ function baseFrame(): TelemetryFrame {
       motorMapAvailable: true,
     },
     // K. Ito (behind) is alongside on the right, a little back.
-    race: { position: 4, totalPositions: 20, gapAhead: -1.2, gapBehind: 0.8, carLeftMeters: null, carRightMeters: -1.8 },
-    energy: { virtualEnergy: 68, virtualEnergyPerLap: 3.4, soc: 0.68, regenPower: 18, deployPower: 92 },
-    penalties: { incidents: 0, trackLimitSteps: 0, pitStops: 0 },
+    race: {
+      position: 4, totalPositions: 20, gapAhead: 1.2, gapBehind: 0.8,
+      classGapAhead: 1.4, classGapBehind: 0.9, positionGapAhead: 1.4, positionGapBehind: 0.9, gapToLeader: 8.6, gapToClassLeader: 8.6,
+      carLeftMeters: null, carRightMeters: -1.8,
+    },
+    energy: { virtualEnergy: 68, virtualEnergyPerLap: 3.4, soc: 0.68, regenPower: 18, deployPower: 92, motorState: 'propulsion', motorTemp: 64, motorWaterTemp: 51, liftAndCoast: 0, virtualEnergyLastLap: 3.38, virtualEnergyStintPerLap: 3.35 },
+    penalties: { incidents: 0, trackLimitSteps: 1, trackLimitStepsPerPenalty: 4, pitStops: 0, scheduledPitStops: 2 },
     conditions: { pathWetness: null, trackGripLevel: null, fuelMultiplier: null, tireMultiplier: null, fixedSetup: null, airTemperature: 24, trackTemperature: 33, raining: 0 },
     field: PREVIEW_FIELD,
   }
@@ -171,7 +188,7 @@ export function previewFrame(state: Exclude<DashPreviewState, 'live'>): Telemetr
     case 'red_flag':
       return { ...base, flags: { ...NO_FLAGS, red: true }, car: withCar(base, { gear: 0, rpm: 1200, speedMS: 0, throttle: 0, brake: 1 }) }
     case 'pit':
-      return { ...base, car: withCar(base, { gear: 1, rpm: 3200, speedMS: 16, throttle: 0.3 }), lap: withLap(base, { sector: 3 }) }
+      return { ...base, car: withCar(base, { gear: 2, rpm: 3200, speedMS: 16, throttle: 0.3, inPitLane: true, pitLimiter: true }), lap: withLap(base, { sector: 3 }) }
     case 'mid_lap':
     default:
       return base

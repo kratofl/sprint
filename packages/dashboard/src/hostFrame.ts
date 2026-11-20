@@ -1,4 +1,4 @@
-import { TirePosition, type FieldCar, type FinishStatus, type PitState, type SessionType, type TelemetryFrame, type TireState } from '@sprint/types'
+import { TirePosition, type ElectricMotorState, type FieldCar, type FinishStatus, type PitState, type SessionType, type TelemetryFrame, type TireState } from '@sprint/types'
 
 // The host serialises `Sprint.Desktop.Api.Telemetry.TelemetryFrame` (C# names in camelCase,
 // enums as names, ISO timestamp): that JSON is the telemetry contract, and it is what the dash
@@ -21,6 +21,7 @@ const str = (value: unknown): string => (typeof value === 'string' ? value : '')
 type HostSessionType = 'Practice' | 'Qualify' | 'Race' | 'Warmup' | 'Unknown'
 type HostPitState = 'None' | 'Requested' | 'Entering' | 'Stopped' | 'Exiting'
 type HostTirePosition = 'FrontLeft' | 'FrontRight' | 'RearLeft' | 'RearRight'
+type HostElectricMotorState = 'Unavailable' | 'Inactive' | 'Propulsion' | 'Regeneration'
 
 // Each enum as pairs of (host name, mirror value), read in both directions.
 const sessionTypePairs: readonly (readonly [HostSessionType, SessionType])[] = [
@@ -35,6 +36,9 @@ const finishStatusPairs: readonly (readonly [string, FinishStatus])[] = [
 const tirePositionPairs: readonly (readonly [HostTirePosition, TirePosition])[] = [
   ['FrontLeft', TirePosition.FrontLeft], ['FrontRight', TirePosition.FrontRight], ['RearLeft', TirePosition.RearLeft], ['RearRight', TirePosition.RearRight],
 ]
+const motorStatePairs: readonly (readonly [HostElectricMotorState, ElectricMotorState])[] = [
+  ['Unavailable', 'unavailable'], ['Inactive', 'inactive'], ['Propulsion', 'propulsion'], ['Regeneration', 'regeneration'],
+]
 
 /** Host name -> mirror value; a name that is not in the table reads as `undefined`. */
 const byName = <H extends string, V>(pairs: readonly (readonly [H, V])[]): Map<string, V> => new Map<string, V>(pairs)
@@ -45,9 +49,11 @@ const sessionTypes = byName(sessionTypePairs)
 const pitStates = byName(pitStatePairs)
 const finishStatuses = byName(finishStatusPairs)
 const tirePositions = byName(tirePositionPairs)
+const motorStates = byName(motorStatePairs)
 const sessionTypeNames = byValue(sessionTypePairs)
 const pitStateNames = byValue(pitStatePairs)
 const tirePositionNames = byValue(tirePositionPairs)
+const motorStateNames = byValue(motorStatePairs)
 
 const tire = (position: TirePosition, value: unknown): TireState => {
   const t = bag(value)
@@ -62,6 +68,11 @@ const tire = (position: TirePosition, value: unknown): TireState => {
     wearPercent: num(t.wearPercent),
     compound: str(t.compound),
     brakeTemp: num(t.brakeTempCelsius),
+    optimalTemp: num(t.optimalTempCelsius),
+    wearLastLap: numOrNull(t.wearLastLapPercent),
+    avgTempLastLap: numOrNull(t.averageTempLastLapCelsius),
+    flat: bool(t.flat),
+    detached: bool(t.detached),
   }
 }
 
@@ -115,6 +126,7 @@ export const parseFieldCar = (value: unknown): FieldCar => {
     finishStatus: finishStatuses.get(str(c.finishStatus)) ?? 'none',
     positionX: num(c.positionX),
     positionZ: num(c.positionZ),
+    relativeGapSeconds: numOrNull(c.relativeGapSeconds),
   }
 }
 
@@ -174,6 +186,13 @@ export function parseHostFrame(value: unknown): TelemetryFrame | null {
       inPitLane: boolOrNull(car.inPitLane),
       pitState: pitStates.get(str(car.pitState)) ?? null,
       pitLimiter: boolOrNull(car.pitLimiter),
+      engineTorque: numOrNull(car.engineTorqueNewtonMeters),
+      turboBoost: numOrNull(car.turboBoostPressure),
+      headlights: boolOrNull(car.headlights),
+      wiperState: numOrNull(car.wiperState),
+      fuelLastLap: numOrNull(car.fuelLastLapLiters),
+      fuelThisLap: numOrNull(car.fuelThisLapLiters),
+      fuelStintPerLap: numOrNull(car.fuelStintPerLapLiters),
     },
     tires: tires(value.tires),
     lap: {
@@ -197,7 +216,13 @@ export function parseHostFrame(value: unknown): TelemetryFrame | null {
       isInLap: false,
       isOutLap: false,
       isValid: bool(lap.isValid, true),
+      lastLapValid: bool(lap.lastLapValid, true),
       trackPosition: num(lap.trackPosition),
+      lastFiveLapsAverage: numOrNull(lap.lastFiveLapsAverage),
+      lastTenLapsAverage: numOrNull(lap.lastTenLapsAverage),
+      allTimeBestLapTime: numOrNull(lap.allTimeBestLapTime),
+      pitLoss: numOrNull(lap.pitLossSeconds),
+      lastLapTopSpeedMS: numOrNull(lap.lastLapTopSpeedMetersPerSecond),
     },
     flags: {
       yellow: bool(flags.yellow),
@@ -207,8 +232,7 @@ export function parseHostFrame(value: unknown): TelemetryFrame | null {
       vsc: bool(flags.virtualSafetyCar),
       checkered: bool(flags.checkered),
     },
-    // The host publishes no ABS-active channel; a setting counts as available when the car
-    // reports a non-zero maximum for it.
+    // A setting counts as available when the car reports a non-zero maximum for it.
     electronics: {
       tcActive: bool(electronics.tractionControlActive),
       tc: num(electronics.tractionControl),
@@ -217,7 +241,7 @@ export function parseHostFrame(value: unknown): TelemetryFrame | null {
       tcCutMax,
       tcSlip: num(electronics.tractionControlSlip),
       tcSlipMax,
-      absActive: false,
+      absActive: bool(electronics.absActive),
       abs: num(electronics.abs),
       absMax,
       motorMap: num(electronics.motorMap),
@@ -240,6 +264,12 @@ export function parseHostFrame(value: unknown): TelemetryFrame | null {
       totalPositions: num(race.totalPositions),
       gapAhead: num(race.gapAhead),
       gapBehind: num(race.gapBehind),
+      classGapAhead: numOrNull(race.classGapAhead),
+      classGapBehind: numOrNull(race.classGapBehind),
+      positionGapAhead: numOrNull(race.positionGapAhead),
+      positionGapBehind: numOrNull(race.positionGapBehind),
+      gapToLeader: numOrNull(race.gapToLeader),
+      gapToClassLeader: numOrNull(race.gapToClassLeader),
       carLeftMeters: numOrNull(race.carLeftMeters),
       carRightMeters: numOrNull(race.carRightMeters),
     },
@@ -249,11 +279,19 @@ export function parseHostFrame(value: unknown): TelemetryFrame | null {
       soc: num(energy.stateOfCharge),
       regenPower: num(energy.regenPower),
       deployPower: num(energy.deployPower),
+      motorState: motorStates.get(str(energy.motorState)) ?? 'unavailable',
+      motorTemp: numOrNull(energy.motorTempCelsius),
+      motorWaterTemp: numOrNull(energy.motorWaterTempCelsius),
+      liftAndCoast: num(energy.liftAndCoastProgress),
+      virtualEnergyLastLap: numOrNull(energy.virtualEnergyLastLap),
+      virtualEnergyStintPerLap: numOrNull(energy.virtualEnergyStintPerLap),
     },
     penalties: {
       incidents: num(penalties.incidents),
       trackLimitSteps: num(penalties.trackLimitSteps),
+      trackLimitStepsPerPenalty: num(penalties.trackLimitStepsPerPenalty),
       pitStops: num(penalties.pitStops),
+      scheduledPitStops: num(penalties.scheduledPitStops),
     },
     conditions: {
       pathWetness: numOrNull(conditions.pathWetness),
@@ -272,7 +310,7 @@ export function parseHostFrame(value: unknown): TelemetryFrame | null {
 /** One other car on the wire, as far as the dash renderer reads it (and the ids that name it). */
 export interface HostFieldCar {
   id: number; driver: string; car: string; carClass: string; isPlayer: boolean; place: number; classPlace: number; lapsCompleted: number; lapDistanceMeters: number
-  penalties: number
+  inPitLane: boolean; penalties: number; relativeGapSeconds: number | null
 }
 
 /**
@@ -291,27 +329,40 @@ export interface HostTelemetryFrame {
     throttle: number; brake: number; clutch: number; steering: number
     fuelLiters: number; fuelPerLapLiters: number; positionX: number; positionY: number; positionZ: number; brakeBiasRear: number
     inGarage: boolean | null; inPitLane: boolean | null; pitState: HostPitState | null; pitLimiter: boolean | null
+    engineTorqueNewtonMeters: number | null; turboBoostPressure: number | null; headlights: boolean | null; wiperState: number | null
+    fuelLastLapLiters: number | null; fuelThisLapLiters: number | null; fuelStintPerLapLiters: number | null
   }
   tires: {
     position: HostTirePosition; tempInnerCelsius: number; tempMiddleCelsius: number; tempOuterCelsius: number; tempSurfaceCelsius: number
-    tempCoreCelsius: number; pressureKPa: number; wearPercent: number; compound: string; brakeTempCelsius: number
+    tempCoreCelsius: number; pressureKPa: number; wearPercent: number; compound: string; brakeTempCelsius: number; optimalTempCelsius: number
+    wearLastLapPercent: number | null; averageTempLastLapCelsius: number | null; flat: boolean; detached: boolean
   }[]
   lap: {
     currentLap: number; currentLapTime: number; lastLapTime: number; bestLapTime: number; targetLapTime: number; delta: number; sector: number
     lastLapSectorsSeconds: number[]; currentLapSectorsSeconds: number[]; personalBestSectorsSeconds: (number | null)[]
     sessionBestSectorsSeconds: (number | null)[]; classBestSectorsSeconds: (number | null)[]; sessionBestLapTime: number | null; classBestLapTime: number | null
-    isValid: boolean; trackPosition: number
+    isValid: boolean; lastLapValid: boolean; trackPosition: number
+    lastFiveLapsAverage: number | null; lastTenLapsAverage: number | null; allTimeBestLapTime: number | null; pitLossSeconds: number | null
+    lastLapTopSpeedMetersPerSecond: number | null
   }
   flags: { yellow: boolean; doubleYellow: boolean; red: boolean; safetyCar: boolean; virtualSafetyCar: boolean; checkered: boolean }
   electronics: {
-    tractionControlActive: boolean; tractionControl: number; tractionControlMax: number; tractionControlSlip: number; tractionControlSlipMax: number
+    tractionControlActive: boolean; absActive: boolean; tractionControl: number; tractionControlMax: number; tractionControlSlip: number; tractionControlSlipMax: number
     tractionControlCut: number; tractionControlCutMax: number; abs: number; absMax: number; motorMap: number; motorMapMax: number
     migration: number; migrationMax: number; frontAntiRollBar: number; frontAntiRollBarMax: number; rearAntiRollBar: number; rearAntiRollBarMax: number
     drsActive: boolean
   }
-  race: { position: number; totalPositions: number; gapAhead: number; gapBehind: number; carLeftMeters: number | null; carRightMeters: number | null }
-  energy: { virtualEnergy: number; virtualEnergyPerLap: number; stateOfCharge: number; regenPower: number; deployPower: number }
-  penalties: { incidents: number; trackLimitSteps: number; pitStops: number }
+  race: {
+    position: number; totalPositions: number; gapAhead: number; gapBehind: number
+    classGapAhead: number | null; classGapBehind: number | null; positionGapAhead: number | null; positionGapBehind: number | null
+    gapToLeader: number | null; gapToClassLeader: number | null; carLeftMeters: number | null; carRightMeters: number | null
+  }
+  energy: {
+    virtualEnergy: number; virtualEnergyPerLap: number; stateOfCharge: number; regenPower: number; deployPower: number
+    motorState: HostElectricMotorState; motorTempCelsius: number | null; motorWaterTempCelsius: number | null; liftAndCoastProgress: number
+    virtualEnergyLastLap: number | null; virtualEnergyStintPerLap: number | null
+  }
+  penalties: { incidents: number; trackLimitSteps: number; trackLimitStepsPerPenalty: number; pitStops: number; scheduledPitStops: number }
   conditions: {
     pathWetness: number | null; trackGripLevel: number | null; fuelMultiplier: number | null; tireMultiplier: number | null; fixedSetup: boolean | null
     airTemperatureCelsius: number | null; trackTemperatureCelsius: number | null; raining: number | null
@@ -323,7 +374,7 @@ export interface HostTelemetryFrame {
  * A mirror frame as the host would have sent it: the inverse of `parseHostFrame` for every field
  * the renderer reads, so the editor's frames (live ones and `previewFrames`) reach the renderer
  * in the one shape it reads. The mirror fields the host does not publish (`positionLapTime`,
- * the sector times, in/out lap, ABS active, the availability flags, which follow the maxima)
+ * the sector times, in/out lap, the availability flags, which follow the maxima)
  * have no place on the wire, and of the other cars only what the renderer reads is written.
  */
 export function toHostFrame(frame: TelemetryFrame): HostTelemetryFrame {
@@ -353,6 +404,13 @@ export function toHostFrame(frame: TelemetryFrame): HostTelemetryFrame {
       inPitLane: car.inPitLane,
       pitState: car.pitState === null ? null : (pitStateNames.get(car.pitState) ?? null),
       pitLimiter: car.pitLimiter,
+      engineTorqueNewtonMeters: car.engineTorque,
+      turboBoostPressure: car.turboBoost,
+      headlights: car.headlights,
+      wiperState: car.wiperState,
+      fuelLastLapLiters: car.fuelLastLap,
+      fuelThisLapLiters: car.fuelThisLap,
+      fuelStintPerLapLiters: car.fuelStintPerLap,
     },
     tires: frame.tires.flatMap((t) => {
       const position = tirePositionNames.get(t.position)
@@ -368,6 +426,11 @@ export function toHostFrame(frame: TelemetryFrame): HostTelemetryFrame {
         wearPercent: t.wearPercent,
         compound: t.compound,
         brakeTempCelsius: t.brakeTemp,
+        optimalTempCelsius: t.optimalTemp,
+        wearLastLapPercent: t.wearLastLap,
+        averageTempLastLapCelsius: t.avgTempLastLap,
+        flat: t.flat,
+        detached: t.detached,
       }]
     }),
     lap: {
@@ -386,11 +449,18 @@ export function toHostFrame(frame: TelemetryFrame): HostTelemetryFrame {
       sessionBestLapTime: lap.sessionBestLapTime,
       classBestLapTime: lap.classBestLapTime,
       isValid: lap.isValid,
+      lastLapValid: lap.lastLapValid,
       trackPosition: lap.trackPosition,
+      lastFiveLapsAverage: lap.lastFiveLapsAverage,
+      lastTenLapsAverage: lap.lastTenLapsAverage,
+      allTimeBestLapTime: lap.allTimeBestLapTime,
+      pitLossSeconds: lap.pitLoss,
+      lastLapTopSpeedMetersPerSecond: lap.lastLapTopSpeedMS,
     },
     flags: { yellow: flags.yellow, doubleYellow: flags.doubleYellow, red: flags.red, safetyCar: flags.safetyCar, virtualSafetyCar: flags.vsc, checkered: flags.checkered },
     electronics: {
       tractionControlActive: e.tcActive,
+      absActive: e.absActive,
       tractionControl: e.tc,
       tractionControlMax: e.tcMax,
       tractionControlSlip: e.tcSlip,
@@ -410,7 +480,19 @@ export function toHostFrame(frame: TelemetryFrame): HostTelemetryFrame {
       drsActive: e.drsActive,
     },
     race: { ...race },
-    energy: { virtualEnergy: energy.virtualEnergy, virtualEnergyPerLap: energy.virtualEnergyPerLap, stateOfCharge: energy.soc, regenPower: energy.regenPower, deployPower: energy.deployPower },
+    energy: {
+      virtualEnergy: energy.virtualEnergy,
+      virtualEnergyPerLap: energy.virtualEnergyPerLap,
+      stateOfCharge: energy.soc,
+      regenPower: energy.regenPower,
+      deployPower: energy.deployPower,
+      motorState: motorStateNames.get(energy.motorState) ?? 'Unavailable',
+      motorTempCelsius: energy.motorTemp,
+      motorWaterTempCelsius: energy.motorWaterTemp,
+      liftAndCoastProgress: energy.liftAndCoast,
+      virtualEnergyLastLap: energy.virtualEnergyLastLap,
+      virtualEnergyStintPerLap: energy.virtualEnergyStintPerLap,
+    },
     penalties: { ...penalties },
     conditions: {
       pathWetness: conditions.pathWetness,
@@ -422,8 +504,8 @@ export function toHostFrame(frame: TelemetryFrame): HostTelemetryFrame {
       trackTemperatureCelsius: conditions.trackTemperature,
       raining: conditions.raining,
     },
-    field: frame.field.map(({ id, driver, car, carClass, isPlayer, place, classPlace, lapsCompleted, lapDistanceMeters, penalties }) => ({
-      id, driver, car, carClass, isPlayer, place, classPlace, lapsCompleted, lapDistanceMeters, penalties,
+    field: frame.field.map(({ id, driver, car, carClass, isPlayer, place, classPlace, lapsCompleted, lapDistanceMeters, inPitLane, penalties, relativeGapSeconds }) => ({
+      id, driver, car, carClass, isPlayer, place, classPlace, lapsCompleted, lapDistanceMeters, inPitLane, penalties, relativeGapSeconds,
     })),
   }
 }

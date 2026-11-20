@@ -183,7 +183,11 @@ internal sealed class DemoTelemetrySource : ITelemetrySource
                 Throttle = throttle,
                 Brake = brake,
                 FuelLiters = fuelLiters,
-                FuelPerLapLiters = 2.6f
+                FuelPerLapLiters = 2.6f,
+                EngineTorqueNewtonMeters = 120 + (throttle * 540),
+                TurboBoostPressure = 0.4f + (throttle * 1.2f),
+                Headlights = false,
+                WiperState = 0
             },
             Tires =
             [
@@ -201,10 +205,12 @@ internal sealed class DemoTelemetrySource : ITelemetrySource
                 // Delta + TargetLapTime are computed by the engine's DeltaTracker, not faked here.
                 Sector = sector,
                 IsValid = true,
+                LastLapValid = true,
                 TrackPosition = trackPosition
             },
             Electronics = new ElectronicsState
             {
+                AbsActive = brake > 0.5f,
                 TractionControl = 4,
                 TractionControlMax = 12,
                 Abs = 7,
@@ -218,6 +224,25 @@ internal sealed class DemoTelemetrySource : ITelemetrySource
                 TotalPositions = 28,
                 GapAhead = 1.2f,
                 GapBehind = 0.8f
+            },
+            // The hybrid deploys on throttle and harvests under braking, as an LMDh does.
+            Energy = new EnergyState
+            {
+                VirtualEnergy = 64,
+                VirtualEnergyPerLap = 3.2f,
+                StateOfCharge = 0.6f,
+                DeployPower = brake > 0.1f ? 0 : throttle * 50,
+                RegenPower = brake > 0.1f ? brake * 200 : 0,
+                MotorState = brake > 0.1f ? ElectricMotorState.Regeneration : throttle > 0.1f ? ElectricMotorState.Propulsion : ElectricMotorState.Inactive,
+                MotorTempCelsius = 62,
+                MotorWaterTempCelsius = 48,
+                LiftAndCoastProgress = 0
+            },
+            Penalties = new PenaltiesState
+            {
+                TrackLimitSteps = 1,
+                TrackLimitStepsPerPenalty = 4,
+                ScheduledPitStops = 2
             }
         };
     }
@@ -231,7 +256,8 @@ internal sealed class DemoTelemetrySource : ITelemetrySource
             TempCoreCelsius = temp - 2,
             PressureKPa = 188,
             WearPercent = 4,
-            Compound = "Medium"
+            Compound = "Medium",
+            OptimalTempCelsius = 85
         };
     }
 }

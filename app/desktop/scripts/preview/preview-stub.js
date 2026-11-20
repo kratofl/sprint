@@ -277,6 +277,7 @@
 
   const state = structuredClone(window.__SPRINT_PREVIEW_STATE__ ?? {})
   if (params.get('collapsed') === '1') state.settings = { ...state.settings, sidebarCollapsed: true }
+  if (params.get('units') === 'Imperial') state.settings = { ...state.settings, units: 'Imperial' }
   state.foundDevices = (params.get('found') ?? '').split(',').filter((id) => id !== '')
   // listening=<deviceId>:<function>: that function waits for its wheel button (devices.buttonListen).
   const listening = params.get('listening')

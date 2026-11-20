@@ -41,9 +41,12 @@ Conditions are modeled separately from the colors that render them:
 - Yellow race-control signals stay literal yellow and are separate from orange Warning.
 - Color is always paired with a non-color cue: stable position, text, icon or threshold
   direction.
-- A condition may fill a widget's whole frame (delta gaining, tyre temperature, low fuel)
-  because a fill reads at a glance on washed-out USB panels. Values on a fill turn to the
-  dark canvas color. A neutral value never gets a fill.
+- A condition may fill a widget's whole frame (TC or ABS working, the hybrid deploying or
+  regenerating, a penalty to serve) because a fill reads at a glance on washed-out USB panels.
+  Values on a fill turn to the dark canvas color. A neutral value never gets a fill.
+- Fuel and energy running low colour the value instead (fuel, fuel and VE laps, range): amber
+  within twice the app-wide fuel warning's laps (the `fuel_low` alert's `lapsLeft`, which the
+  host stamps on every dash it shows), red at or under them.
 - Bar widgets carry no label and no value (the driver's call, 2026-11): twenty segments, and
   an energy bar's segments each wear their zone's color (red below a fifth, amber below half,
   green above), lit or as a dim tint, so the scale reads at a glance even when full. The fuel
@@ -55,14 +58,16 @@ Conditions are modeled separately from the colors that render them:
 
 ## Setting identity colors
 
-The one exception to "color means a condition". Each driver-adjustable setting has a fixed
-identity color (`dashSettingColors` in `palette.ts`): TC blue, ABS purple, brake bias
-white, engine map green. A knob widget carries it in its chrome only (border, grid tab or
-title bar), never on its value at rest, and its change popup fills the screen with it, so
-the driver knows which knob moved before reading the number. Identity colors stay fixed
-across themes. They share hues with conditions (TC blue with AssistActive, ABS purple with
-session-fastest timing) but never share a surface: identity lives in a knob's chrome,
-conditions live on values and fills.
+The one exception to "color means a condition". Each driver-adjustable setting has an identity
+color (`dashSettingColors` in `palette.ts`): TC, TC 2 and TC slip blue, ABS and brake bias yellow,
+engine map green, migration red, the anti-roll bars orange. A knob widget carries it in its chrome
+only (border, grid tab, title bar or flat label), never on its value at rest, and its change popup
+fills the screen with it, so the driver knows which knob moved before reading the number. The one
+lit state: while TC or ABS is working, its whole frame fills with the color and the value turns to
+ink. A theme may override each color (`settingTc`, `settingAbs`, `settingBrakeBias`,
+`settingEngineMap`, `settingMigration`, `settingArb`), the widget and its popup alike. They share
+hues with conditions (TC blue with AssistActive, ABS yellow with race-control yellow) but identity
+lives in a knob's chrome, conditions on values and fills.
 
 ## Dash style
 
@@ -70,7 +75,7 @@ A layout's `dashStyle` decides how every widget is framed and titled: `panels` (
 rounded boxes, the default), `grid` (one ruled frame, cells share their lines) or `bars`
 (boxes with a title bar). It is chrome only. Positions, sizes, values and colors are the
 same in each, so switching it never breaks a layout. Frames are therefore not a per-widget
-choice: a widget's type says whether it is framed, bare (gear, header, text, RPM, flag) or
+choice: a widget's type says whether it is framed, bare (gear, text, RPM, flag) or
 split into several frames of its own (the four tyres), and `chrome.rs` draws the style.
 Widgets render only their values; the title belongs to the chrome so every style can place
 it (inside the frame, or in the bar).
@@ -159,20 +164,28 @@ are not.
   so a preview drawn smaller than its panel can fall back where the wheel shows the strip. Alerts
   that are up stack, one per type, newest on top, so one held until Ack is never lost under a
   passing one. A held alert never makes the picture time dependent: whoever calls `acknowledge`
-  renders again. While the flag alert is up the flag overlay is not drawn; it would name the
+  renders again. While the flag alert is up the flag bar is not drawn; it would name the
   flag twice.
 - **The lap review draws only what the lap left behind.** The `lap_summary` alert's six cells
   are the layout's `lapReview.cells` (`LapReview` in `lap_summary.rs`; a missing or unknown cell
   is the default's in its place). `LapSummaryWatcher` captures every value a cell can show as the
   lap finishes (the sectors and best with the lap time, the rest on the frame the lap counter
   moves), and the screen draws from that capture, never from the live frame, so a review held
-  for 15 s still shows the lap it is about.
+  for 15 s still shows the lap it is about. Sector deltas compare with the driver's sector bests
+  as the watcher took them when the previous lap's time arrived: the host improves a sector's best
+  the moment the sector is done, so the frame's bests at the line already hold this lap's sectors.
+- **The pit limiter is an overlay, not an alert.** The `pit_limiter` alert type raises no popup;
+  its setting only says whether the layout's `pitLimiter` overlay (`pit_limiter.rs`) draws while
+  the limiter is on. It draws over the page's widgets and under the lap timer, alert popups and
+  flag bar, never on the idle page. The gear look follows the page's bars; the box look always
+  lays out on the full grid (both bars), so its yellow covers the screen edges even on a page that
+  dropped them. An even-grid dash has no gear or bar spots and always gets the full screen.
 - **A panic is an error, not a crash.** Every C ABI entry point catches panics, which needs
   `panic = "unwind"` in the release profile; in WebAssembly a panic traps and
   `src/dashWasm.js` starts a fresh instance.
 - **The editor's copies are guarded.** The widget types the editor offers
-  (`src/widgetTypes.ts`), the alert types (`src/alerts.ts`) and the lap review fields
-  (`src/lapReview.ts`) are checked against the renderer's by Rust tests that read those files. Palette, grid math and groups exist in both languages because the WebAssembly build only
+  (`src/widgetTypes.ts`), the alert types (`src/alerts.ts`), the lap review fields
+  (`src/lapReview.ts`) and the pit limiter looks (`src/pitLimiter.ts`) are checked against the renderer's by Rust tests that read those files. Palette, grid math and groups exist in both languages because the WebAssembly build only
   turns a scene into pixels, and the editor needs those answers itself while editing (swatches, the
   selection overlay that must line up to the pixel, the group tree). Each Rust module's tests are
   ported from the TypeScript ones; a change to one side is a change to both, tests included.

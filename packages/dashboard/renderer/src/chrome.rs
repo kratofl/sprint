@@ -96,6 +96,13 @@ pub fn frame_geometry(ctx: ChromeContext, width: f64, height: f64, titled: bool)
     FrameGeometry { box_, title, content: PixelRect::new(inner.left + pad, top, (inner.width - pad * 2.0).max(0.0), (bottom - top).max(0.0)) }
 }
 
+/// The box a frame fills in a `width` x `height` cell, and its corner radius: where an unframed
+/// widget gets its fill when an overlay lights it (the pit limiter's own widgets).
+pub fn frame_box(ctx: ChromeContext, width: f64, height: f64) -> (PixelRect, f64) {
+    let box_ = frame_geometry(ctx, width, height, false).box_;
+    (box_, frame_radius(ctx).min(box_.width / 2.0).min(box_.height / 2.0))
+}
+
 /// Where an unframed widget's content goes: the same margin a frame keeps, so bare and framed
 /// widgets line up.
 pub fn bare_content(ctx: ChromeContext, width: f64, height: f64) -> PixelRect {

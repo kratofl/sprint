@@ -97,7 +97,13 @@ public static class DashThemePresets
         SameColor(a.Border, b.Border) &&
         SameColor(a.Success, b.Success) &&
         SameColor(a.Warning, b.Warning) &&
-        SameColor(a.Danger, b.Danger);
+        SameColor(a.Danger, b.Danger) &&
+        SameColor(a.SettingTc, b.SettingTc) &&
+        SameColor(a.SettingAbs, b.SettingAbs) &&
+        SameColor(a.SettingBrakeBias, b.SettingBrakeBias) &&
+        SameColor(a.SettingEngineMap, b.SettingEngineMap) &&
+        SameColor(a.SettingMigration, b.SettingMigration) &&
+        SameColor(a.SettingArb, b.SettingArb);
 
     private static bool SameColor(string? a, string? b) =>
         string.Equals(a, b, StringComparison.OrdinalIgnoreCase);

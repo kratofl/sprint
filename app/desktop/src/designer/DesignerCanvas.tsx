@@ -1,9 +1,9 @@
-import type { CSSProperties, PointerEvent as ReactPointerEvent, RefObject } from 'react'
+import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode, RefObject } from 'react'
 import { EyeOff, Group, Plus } from 'lucide-react'
-import { DASH_ZONES, DashCanvas, GEAR_SPOT, cellAt, drawnWidgets, layoutRect, pageTree, zoneTakes } from '@sprint/dashboard'
-import type { DashGroupNode, DashLayout, DashNode, DashPage, DashWidget, DashWidgetType, DashZone, LayoutGrid, PixelRect } from '@sprint/dashboard'
+import { DASH_ZONES, DashCanvas, GEAR_SPOT, cellAt, drawnWidgets, layoutRect, pageTree, zoneKept, zoneOf, zoneTakes } from '@sprint/dashboard'
+import type { DashGroupNode, DashLayout, DashNode, DashPage, DashPageBars, DashWidget, DashWidgetType, DashZone, LayoutGrid, PixelRect } from '@sprint/dashboard'
 import type { TelemetryFrame } from '@sprint/types'
-import { canPlaceNewWidget, newWidgetRect, previewMoveRect, previewResizeRect, swapWidgets, widgetName, type GridRect, type ResizeHandle } from '../views/DashesDomain'
+import { canPlaceNewWidget, newWidgetRect, outOfSight, previewMoveRect, previewResizeRect, swapWidgets, widgetName, type GridRect, type ResizeHandle } from '../views/DashesDomain'
 import { boundsOf, clickTarget, findNode, hiddenWidgets, nodeRect, parentGroup, selectionWidgets, setNodeRect, translateNodes } from './groupOps'
 import { DashLabels, DashOutline, type CanvasView } from './CanvasViews'
 import { nodeName } from './NodeLabel'
@@ -37,9 +37,9 @@ export function relativePointerPos(event: ReactPointerEvent, element: HTMLElemen
   return { x: event.clientX - rect.left, y: event.clientY - rect.top }
 }
 
-/** The cell under `pointer` on a `width` x `height` canvas of `grid`, where a dropped widget goes from. */
-export function dropCell(grid: LayoutGrid, pointer: PointerPos, width: number, height: number): { col: number; row: number } {
-  return cellAt(grid, width, height, pointer.x, pointer.y)
+/** The cell under `pointer` on a `width` x `height` canvas of `grid`, on a page keeping `bars`, where a dropped widget goes from. */
+export function dropCell(grid: LayoutGrid, bars: DashPageBars | undefined, pointer: PointerPos, width: number, height: number): { col: number; row: number } {
+  return cellAt(grid, width, height, pointer.x, pointer.y, bars)
 }
 
 /** A zone's cells drawn as lines: the side grids 4 x 8, the centre 1 x 5, the top 9 x 1; none in a side bar spot. */
@@ -83,11 +83,14 @@ const box = (rect: PixelRect): CSSProperties => ({ left: rect.left, top: rect.to
  * The dash as `view` shows it — its outline, or the live dash faded back or tagged
  * (`CanvasViews.tsx`) — with an interactive overlay placed with the same `gridRect` math the
  * renderer places widgets with, so it never drifts from what is drawn. A widget hidden
- * on the wheel keeps a crossed-out eye where it sits. A click on a widget selects its outermost group (a
+ * on the wheel keeps a crossed-out eye where it sits; one in a bar spot the page drops has no
+ * overlay at all (`outOfSight`). A click on a widget selects its outermost group (a
  * double-click the widget itself; Ctrl/Cmd/Shift-click adds to the selection); a drag moves the
  * selection as one, and a single selected item resizes from its handles — a group scales its
  * widgets. Over a stack being worked on, tabs pick the layer to arrange (designer only; the wheel
  * shows its first layer). `shownPage` is the page as drawn here, with those layers showing.
+ * `backdrop` draws instead of the dash (the pit limiter's stage), and nothing shows or goes in the
+ * `covered` zones (the spots its yellow covers).
  */
 export function DesignerCanvas({
   canvasRef,
@@ -115,6 +118,8 @@ export function DesignerCanvas({
   dragState,
   setDragState,
   commit,
+  backdrop,
+  covered = [],
 }: {
   canvasRef: RefObject<HTMLDivElement | null>
   layout: DashLayout
@@ -147,12 +152,24 @@ export function DesignerCanvas({
   dragState: DragState
   setDragState: (state: DragState) => void
   commit: (mutate: Mutate, failureMessage: string) => void
+  /** Draws in place of the dash, at the canvas size, under the labels (not in the outline view). */
+  backdrop?: (width: number, height: number) => ReactNode
+  /** Zones nothing is shown, hit-tested or dropped in. */
+  covered?: readonly DashZone[]
 }) {
   // Same fallback as the renderer's own cols/rows resolution: the overlay's grid must match what is drawn.
   const cols = layout.gridCols > 0 ? layout.gridCols : 20
   const rows = layout.gridRows > 0 ? layout.gridRows : 12
-  const pixels = (rect: GridRect): PixelRect => layoutRect(layout, width, height, rect)
-  const cellOf = (pointer: PointerPos): { col: number; row: number } => cellAt(layout, width, height, pointer.x, pointer.y)
+  const pixels = (rect: GridRect): PixelRect => layoutRect(layout, width, height, rect, page.bars)
+  const cellOf = (pointer: PointerPos): { col: number; row: number } => cellAt(layout, width, height, pointer.x, pointer.y, page.bars)
+  // What the canvas shows and hit-tests: never a widget in a bar spot the page drops or a covered zone.
+  const isCovered = (rect: GridRect): boolean => {
+    const zone = zoneOf(rect)
+    return zone !== null && covered.includes(zone)
+  }
+  const inSight = (widget: DashWidget): boolean => !outOfSight(layout, page, widget) && !isCovered(widget)
+  const shownWidgets = drawnWidgets(shownPage).filter(inSight)
+  const zones = ZONE_NAMES.filter((zone) => zoneKept(zone, page.bars) && !covered.includes(zone))
   const shownLayout: DashLayout = layout.idlePage?.id === page.id ? { ...layout, idlePage: shownPage } : { ...layout, pages: layout.pages.map((item) => (item.id === page.id ? shownPage : item)) }
 
   const selectedNodes = selection.map((id) => findNode(tree, id)).filter((node): node is DashNode => node !== null)
@@ -215,7 +232,7 @@ export function DesignerCanvas({
     const moving = movingWidget(state)
     if (!moving || state.kind !== 'moving') return null
     const { col, row } = cellOf(state.pointer)
-    return drawnWidgets(shownPage).find((item) => item.id !== moving.id && col >= item.col && col < item.col + item.colSpan && row >= item.row && row < item.row + item.rowSpan) ?? null
+    return shownWidgets.find((item) => item.id !== moving.id && col >= item.col && col < item.col + item.colSpan && row >= item.row && row < item.row + item.rowSpan) ?? null
   }
 
   /** The edit a drag would make, or null when it changes nothing. */
@@ -250,7 +267,7 @@ export function DesignerCanvas({
     ghost = { rect: dragRect(dragState), valid: edit === null || edit(layout) !== null }
   } else if (dragState.kind === 'placing' && dragState.pointer) {
     const cell = cellOf(dragState.pointer)
-    const rect = newWidgetRect(layout, dragState.widgetType, cell.col, cell.row)
+    const rect = newWidgetRect(layout, dragState.widgetType, cell.col, cell.row, page.bars)
     ghost = rect ? { rect, valid: canPlaceNewWidget(layout, page.id, dragState.widgetType, rect, placeGroup) } : { rect: { ...cell, colSpan: 1, rowSpan: 1 }, valid: false }
   }
   const dragging = dragState.kind === 'moving' || dragState.kind === 'resizing'
@@ -258,8 +275,8 @@ export function DesignerCanvas({
   // Where the dragged widget may go: on a zoned dash the zones that take its type, and anywhere the
   // widgets it could swap with (none for a new one from the library).
   const draggedType = dragState.kind === 'placing' ? dragState.widgetType : moving?.type ?? null
-  const targetZones = layout.zoned && draggedType !== null ? ZONE_NAMES.filter((zone) => zoneTakes(zone, draggedType)) : []
-  const swapTargets = moving ? drawnWidgets(shownPage).filter((item) => item.id !== moving.id && swapWidgets(layout, page.id, moving.id, item.id) !== null) : []
+  const targetZones = layout.zoned && draggedType !== null ? zones.filter((zone) => zoneTakes(zone, draggedType)) : []
+  const swapTargets = moving ? shownWidgets.filter((item) => item.id !== moving.id && swapWidgets(layout, page.id, moving.id, item.id) !== null) : []
 
   return (
     <div
@@ -281,13 +298,13 @@ export function DesignerCanvas({
         <DashOutline layout={layout} page={shownPage} width={width} height={height} />
       ) : (
         <>
-          <DashCanvas layout={shownLayout} frame={frame} width={width} height={height} pageId={page.id} idle={isIdlePage} />
+          {backdrop ? backdrop(width, height) : <DashCanvas layout={shownLayout} frame={frame} width={width} height={height} pageId={page.id} idle={isIdlePage} />}
           <DashLabels view={view} layout={layout} page={shownPage} width={width} height={height} />
         </>
       )}
       {layout.zoned ? (
         <>
-          {ZONE_NAMES.map((zone) => {
+          {zones.map((zone) => {
             const rect = pixels(DASH_ZONES[zone])
             const cells = ZONE_CELLS[zone]
             const lined = showGrid && view !== 'outline' && cells !== null
@@ -308,7 +325,7 @@ export function DesignerCanvas({
         <div key={item.id} className="designer-swap-target" style={box(pixels(item))} />
       ))}
 
-      {drawnWidgets(shownPage).map((widget) => (
+      {shownWidgets.map((widget) => (
         <div
           key={widget.id}
           className="designer-widget-overlay"
@@ -323,7 +340,7 @@ export function DesignerCanvas({
         />
       ))}
 
-      {hiddenWidgets(pageTree(shownPage)).map((widget) => (
+      {hiddenWidgets(pageTree(shownPage)).filter(inSight).map((widget) => (
         <div
           key={widget.id}
           className="designer-hidden-widget"

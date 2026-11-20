@@ -756,13 +756,13 @@ public sealed class LeMansUltimateTelemetryTests
                 [
                     new LmuWheel
                     {
-                        TempInnerKelvin = 363.15, TempMiddleKelvin = 365.15, TempOuterKelvin = 367.15, CarcassTempKelvin = 360.15, PressureKPa = 190, WearFraction = .12,
+                        TempLeftKelvin = 363.15, TempCentreKelvin = 365.15, TempRightKelvin = 367.15, CarcassTempKelvin = 360.15, PressureKPa = 190, WearFraction = .12,
                         RotationRadiansPerSecond = 2.5, LongitudinalPatchVelocity = -61.0, GripFraction = 0.75, LoadNewtons = 4200,
                         SurfaceType = 4, Flat = true, RadiusCentimeters = 34
                     },
-                    new LmuWheel { TempInnerKelvin = 363.15, TempMiddleKelvin = 365.15, TempOuterKelvin = 367.15, CarcassTempKelvin = 360.15, PressureKPa = 191, WearFraction = .13 },
-                    new LmuWheel { TempInnerKelvin = 363.15, TempMiddleKelvin = 365.15, TempOuterKelvin = 367.15, CarcassTempKelvin = 360.15, PressureKPa = 192, WearFraction = .14 },
-                    new LmuWheel { TempInnerKelvin = 363.15, TempMiddleKelvin = 365.15, TempOuterKelvin = 367.15, CarcassTempKelvin = 360.15, PressureKPa = 193, WearFraction = .15 }
+                    new LmuWheel { TempLeftKelvin = 363.15, TempCentreKelvin = 365.15, TempRightKelvin = 367.15, CarcassTempKelvin = 360.15, PressureKPa = 191, WearFraction = .13 },
+                    new LmuWheel { TempLeftKelvin = 363.15, TempCentreKelvin = 365.15, TempRightKelvin = 367.15, CarcassTempKelvin = 360.15, PressureKPa = 192, WearFraction = .14 },
+                    new LmuWheel { TempLeftKelvin = 363.15, TempCentreKelvin = 365.15, TempRightKelvin = 367.15, CarcassTempKelvin = 360.15, PressureKPa = 193, WearFraction = .15 }
                 ]
             },
             Scoring = new LmuVehicleScoring
@@ -802,7 +802,8 @@ public sealed class LeMansUltimateTelemetryTests
         Assert.Equal(30, frame.Race.TotalPositions);
         Assert.Equal(62, frame.Energy.VirtualEnergy);
         Assert.Equal(2, frame.Penalties.Incidents);
-        Assert.Equal(90, frame.Tires[0].TempInnerCelsius, precision: 1);
+        // The front left's inner shoulder is mTemperature's right reading (94 °C, not the left's 90).
+        Assert.Equal(94, frame.Tires[0].TempInnerCelsius, precision: 1);
         Assert.Equal(12, frame.Tires[0].WearPercent, precision: 1);
         Assert.Equal("Medium", frame.Tires[0].Compound);
         Assert.Equal("Soft", frame.Tires[2].Compound);
@@ -819,6 +820,119 @@ public sealed class LeMansUltimateTelemetryTests
         // that read it were previously getting 0 and falling back to the carcass value.
         Assert.Equal(92, frame.Tires[0].TempSurfaceCelsius, precision: 1);
         Assert.Equal(87, frame.Tires[0].TempCoreCelsius, precision: 1);
+    }
+
+    [Fact]
+    public void Lmu_mapper_reads_the_tread_from_the_cars_side_on_each_corner()
+    {
+        LmuTelemetryMapper mapper = new(() => DateTimeOffset.UnixEpoch);
+        LmuParsedFrame parsed = CreateInCarParsedFrame(lapNumber: 7);
+        // mTemperature is left/centre/right across the tyre: 80 / 90 / 100 °C on every wheel.
+        LmuWheel wheel = new() { TempLeftKelvin = 353.15, TempCentreKelvin = 363.15, TempRightKelvin = 373.15 };
+
+        TelemetryFrame frame = mapper.Map(parsed with
+        {
+            Telemetry = parsed.Telemetry! with { Wheels = [wheel, wheel, wheel, wheel] },
+        });
+
+        // A left wheel's inner shoulder is its right side, a right wheel's its left side.
+        Assert.Equal<(float, float, float)>(
+            [(100, 90, 80), (80, 90, 100), (100, 90, 80), (80, 90, 100)],
+            frame.Tires.Select(tire => (MathF.Round(tire.TempInnerCelsius), MathF.Round(tire.TempMiddleCelsius), MathF.Round(tire.TempOuterCelsius))));
+    }
+
+    [Fact]
+    public void Lmu_mapper_remembers_whether_the_finished_lap_counted()
+    {
+        LmuTelemetryMapper mapper = new(() => DateTimeOffset.UnixEpoch);
+        LmuParsedFrame lap3 = CreateInCarParsedFrame(lapNumber: 3);
+        LmuParsedFrame lap4 = CreateInCarParsedFrame(lapNumber: 4);
+        LmuParsedFrame Invalidated(LmuParsedFrame frame) => frame with { Telemetry = frame.Telemetry! with { LapInvalidated = true } };
+
+        TelemetryFrame clean = mapper.Map(lap3);
+        TelemetryFrame offTrack = mapper.Map(Invalidated(lap3));
+        // The crossing frame describes lap 4 (valid again); lap 3 was invalidated before the line.
+        TelemetryFrame crossed = mapper.Map(lap4);
+        TelemetryFrame nextLap = mapper.Map(CreateInCarParsedFrame(lapNumber: 5));
+
+        Assert.Equal((true, true), (clean.Lap.IsValid, clean.Lap.LastLapValid));
+        Assert.Equal((false, true), (offTrack.Lap.IsValid, offTrack.Lap.LastLapValid));
+        Assert.Equal((true, false), (crossed.Lap.IsValid, crossed.Lap.LastLapValid));
+        Assert.True(nextLap.Lap.LastLapValid);
+    }
+
+    [Fact]
+    public void Lmu_source_reads_the_hybrid_lights_lift_cue_strategy_and_track_limit_budget()
+    {
+        byte[] buffer = InCarBuffer(playerIndex: 0);
+        // ScoringInfoV01 under pack(4): mTrackLimitsStepsPerPenalty@351, after mCloudCoverage@350.
+        buffer[LmuBinary.ScoringStart + 351] = 4;
+        int telemetry = LmuBinary.TelemetryInfoBase;
+        // TelemInfoV01 under pack(4), the walk that lands the struct on 1888 bytes:
+        // mScheduledStops@540, mHeadlights@543, mEngineTorque@592, mTurboBoostPressure@672,
+        // the electric boost motor's torque, rpm, temperature and water temperature @712..736,
+        // its state@744, mLapInvalidated@745, mABSActive@746, mWiperState@749,
+        // mLiftAndCoastProgress@766, mTrackLimitsSteps@767.
+        buffer[telemetry + 540] = 2;
+        WriteBool(buffer, telemetry + 543, true);
+        WriteDouble(buffer, telemetry + 592, 612.5);
+        WriteDouble(buffer, telemetry + 672, 1.75);
+        WriteDouble(buffer, telemetry + 712, 200.0);
+        WriteDouble(buffer, telemetry + 720, 6000.0);
+        WriteDouble(buffer, telemetry + 728, 71.5);
+        WriteDouble(buffer, telemetry + 736, 48.25);
+        buffer[telemetry + 744] = 2;
+        WriteBool(buffer, telemetry + 745, true);
+        WriteBool(buffer, telemetry + 746, true);
+        buffer[telemetry + 749] = 1;
+        buffer[telemetry + 766] = 230;
+        buffer[telemetry + 767] = 3;
+        // TelemWheelV01: mOptimalTemp, a float, @236 after mTireInnerLayerTemperature[3]@212.
+        // Front left in Kelvin; front right as if it were °C, which is no tyre temperature in Kelvin.
+        WriteSingle(buffer, telemetry + 848 + 236, 358.15f);
+        WriteSingle(buffer, telemetry + 848 + 260 + 236, 90f);
+        // mCountLapFlag@506: scoring counts the lap and its time.
+        buffer[LmuBinary.VehicleScoringBase + 506] = 2;
+        using LeMansUltimateTelemetrySource source = new(new InMemoryLmuSnapshotProvider(buffer));
+        source.Connect();
+
+        Assert.True(source.TryRead(out TelemetryFrame frame));
+
+        Assert.Equal(2, frame.Penalties.ScheduledPitStops);
+        Assert.True(frame.Car.Headlights);
+        Assert.Equal(612.5f, frame.Car.EngineTorqueNewtonMeters);
+        Assert.Equal(1.75f, frame.Car.TurboBoostPressure);
+        Assert.Equal((byte)1, frame.Car.WiperState);
+        // 200 Nm at 6000 rpm is 200 * 6000 * 2π / 60 W, 125.7 kW.
+        Assert.Equal(ElectricMotorState.Propulsion, frame.Energy.MotorState);
+        Assert.Equal(125.66f, frame.Energy.DeployPower, precision: 2);
+        Assert.Equal(71.5f, frame.Energy.MotorTempCelsius);
+        Assert.Equal(48.25f, frame.Energy.MotorWaterTempCelsius);
+        Assert.Equal(230, frame.Energy.LiftAndCoastProgress);
+        Assert.False(frame.Lap.IsValid, "invalidated by the game although scoring counts it");
+        Assert.True(frame.Electronics.AbsActive);
+        Assert.Equal((3, 4), (frame.Penalties.TrackLimitSteps, frame.Penalties.TrackLimitStepsPerPenalty));
+        Assert.Equal(85, frame.Tires[0].OptimalTempCelsius, precision: 2);
+        Assert.Equal(0, frame.Tires[1].OptimalTempCelsius);
+    }
+
+    [Fact]
+    public void Lmu_mapper_reports_no_deploy_power_or_motor_readings_while_the_motor_does_not_propel()
+    {
+        LmuTelemetryMapper mapper = new(() => DateTimeOffset.UnixEpoch);
+        LmuParsedFrame parsed = CreateInCarParsedFrame(lapNumber: 3);
+
+        TelemetryFrame regenerating = mapper.Map(parsed with
+        {
+            Telemetry = parsed.Telemetry! with { ElectricMotorState = 3, ElectricMotorTorque = -150, ElectricMotorRpm = 5000, ElectricMotorTemperature = 60 },
+        });
+        TelemetryFrame noHybrid = mapper.Map(parsed);
+
+        Assert.Equal((ElectricMotorState.Regeneration, 0f), (regenerating.Energy.MotorState, regenerating.Energy.DeployPower));
+        Assert.Null(regenerating.Energy.MotorWaterTempCelsius);
+        Assert.Equal(
+            (ElectricMotorState.Unavailable, (float?)null, (float?)null),
+            (noHybrid.Energy.MotorState, noHybrid.Energy.MotorTempCelsius, noHybrid.Car.TurboBoostPressure));
     }
 
     [Fact]
@@ -858,7 +972,7 @@ public sealed class LeMansUltimateTelemetryTests
                 // Middle sensor absent: the average must not be dragged toward zero.
                 Wheels =
                 [
-                    new LmuWheel { TempInnerKelvin = 363.15, TempOuterKelvin = 373.15 },
+                    new LmuWheel { TempLeftKelvin = 363.15, TempRightKelvin = 373.15 },
                     new LmuWheel(),
                     new LmuWheel(),
                     new LmuWheel(),

@@ -3,14 +3,17 @@
 // its inputs: the stateful parts (which banner is up, what the lap timer shows) arrive already
 // decided, as `Overlays`.
 
-use crate::alerts::DashAlertBanner;
-use crate::chrome::{CHROME_CELL_PX, ChromeContext, WidgetFrame, bare_content, grid_outer_frame, group_frame, widget_frame};
-use crate::draw::{Builder, DrawOp};
+use crate::alerts::{AlertLimits, DashAlertBanner, FlagBar, alert_limits, pit_limiter_alert_on};
+use crate::chrome::{
+    CHROME_CELL_PX, ChromeContext, WidgetFrame, bare_content, frame_box, frame_geometry, grid_outer_frame, group_frame, ink_palette, widget_frame,
+};
+use crate::draw::{Builder, DrawOp, Radii};
 use crate::grid::{GEAR_SPOT, GridSpan, PixelRect, grid_rect, page_has_race_logic_lap_timer, select_page, zoned_rect};
 use crate::groups::drawn_widgets;
-use crate::model::{DashStyle, DashWidget, DashWidgetStyle, Scene, TelemetryFrame};
-use crate::overlays::{alert_banner, flag_overlay, race_logic_lap_timer_overlay};
+use crate::model::{DashStyle, DashWidget, DashWidgetStyle, PageBars, Scene, TelemetryFrame};
+use crate::overlays::{alert_banner, flag_bar, race_logic_lap_timer_overlay};
 use crate::palette::{DashPaletteColors, Rgba, effective_color_system, resolve_dash_palette, resolve_style_color};
+use crate::pit_limiter::{PIT_INK, PIT_YELLOW, PitLimiter, PitLimiterStyle, draw_box_frame, draw_full_screen, draw_gear_box};
 use crate::racelogic::RaceLogicLapTimerView;
 use crate::text::Fonts;
 use crate::widgets::{WidgetChrome, WidgetContext, widget_chrome, widget_content, zoned_gear};
@@ -18,12 +21,14 @@ use crate::widgets::{WidgetChrome, WidgetContext, widget_chrome, widget_content,
 /// The layout id of the focused RaceLogic purpose screen, which keeps a pure black canvas.
 const PURPOSE_LAP_TIMES: &str = "purpose-lap-times";
 
-/// The overlays decided outside the display list: the alert banner to draw (`alertBanner`), and
-/// what the RaceLogic lap timer shows when the page has one (see `draws_race_logic_lap_timer`).
+/// The overlays decided outside the display list: the alert banner to draw (`alertBanner`),
+/// what the RaceLogic lap timer shows when the page has one (see `draws_race_logic_lap_timer`),
+/// and the bar of a flag that is out (`alerts::flag_bar`, or the live tracker's).
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Overlays<'a> {
     pub banner: Option<&'a DashAlertBanner>,
     pub lap_timer: Option<&'a RaceLogicLapTimerView>,
+    pub flag_bar: Option<FlagBar>,
 }
 
 /// The palette the scene's layout draws in.
@@ -53,15 +58,20 @@ struct TileInputs<'a> {
     scene: &'a Scene,
     palette: &'a DashPaletteColors,
     chrome: ChromeContext,
+    /// The app-wide limits the widgets warn from (`alert_limits`).
+    limits: AlertLimits,
 }
 
 /// One widget's cell: its frame and title in the layout's dash style, then its values in the
-/// content box (`WidgetTile`).
-fn widget_tile(b: &mut Builder, widget: &DashWidget, rect: PixelRect, inputs: &TileInputs) {
+/// content box (`WidgetTile`). `lit` fills its box in that colour with every text in the dark ink
+/// whatever its condition (the pit limiter's own widgets).
+fn widget_tile(b: &mut Builder, widget: &DashWidget, rect: PixelRect, inputs: &TileInputs, lit: Option<Rgba>) {
     if rect.width < 1.0 || rect.height < 1.0 {
         return;
     }
-    let tile_palette = style_palette(inputs.palette, widget.style.as_ref());
+    let styled = style_palette(inputs.palette, widget.style.as_ref());
+    // On a lit box the ink is the pit limiter's, not the theme's background.
+    let tile_palette = if lit.is_some() { DashPaletteColors { background: PIT_INK, ..styled } } else { styled };
     // The flat chrome: the widget's own edge and label win over the dash's.
     let mut chrome = inputs.chrome;
     if let Some(style) = &widget.style {
@@ -78,23 +88,25 @@ fn widget_tile(b: &mut Builder, widget: &DashWidget, rect: PixelRect, inputs: &T
             targets: inputs.scene.targets.as_ref(),
             settings: inputs.scene.settings.as_ref(),
             chrome,
+            limits: inputs.limits,
         };
         widget_content(b, &ctx);
     };
     let cell = PixelRect::new(0.0, 0.0, rect.width, rect.height);
 
-    // Mockup: the flat delta colors its value instead of filling its frame.
-    let kind = match widget_chrome(widget, inputs.frame, &tile_palette) {
-        WidgetChrome::Framed { title, accent, .. } if chrome.style.is_flat() && widget.widget_type == "delta" => {
-            WidgetChrome::Framed { title, accent, fill: None }
-        }
-        kind => kind,
-    };
+    let kind = widget_chrome(widget, inputs.frame, &tile_palette, inputs.scene.units(), inputs.limits.lift_point);
     b.translated(rect.left, rect.top, |b| match kind {
         WidgetChrome::Framed { title, accent, fill } => {
             let title_color = resolve_style_color(widget.style.as_ref().and_then(|s| s.label_color.as_deref()), inputs.palette);
-            let frame = WidgetFrame { ctx: chrome, rect: cell, title: Some(title), accent, fill, title_color, palette: tile_palette };
+            let frame = WidgetFrame { ctx: chrome, rect: cell, title: Some(title), accent, fill: lit.or(fill), title_color, palette: tile_palette };
             widget_frame(b, frame, content);
+        }
+        // An unframed widget lit up gets the box a frame would have, its values inked.
+        WidgetChrome::Split | WidgetChrome::Bare if let Some(fill) = lit => {
+            let (box_, radius) = frame_box(chrome, cell.width, cell.height);
+            b.rect(box_, Radii::all(radius), fill);
+            let inset = frame_geometry(chrome, cell.width, cell.height, false).content;
+            b.translated(inset.left, inset.top, |b| content(b, inset.width, inset.height, &ink_palette(&tile_palette)));
         }
         WidgetChrome::Split => content(b, cell.width, cell.height, &tile_palette),
         // The grid rules every cell, so an unframed widget still sits inside its lines.
@@ -107,6 +119,38 @@ fn widget_tile(b: &mut Builder, widget: &DashWidget, rect: PixelRect, inputs: &T
             b.translated(inset.left, inset.top, |b| content(b, inset.width, inset.height, &tile_palette));
         }
     });
+}
+
+/// The pit limiter overlay over the page (`pit_limiter.rs`): its yellow parts in the layout's
+/// style, then its own widgets lit yellow on its grid (`PitLimiter::grid_bars`).
+fn pit_limiter_overlay(b: &mut Builder, inputs: &TileInputs, page_bars: PageBars, width: f64, height: f64) {
+    let layout = &inputs.scene.layout;
+    let style = PitLimiter::style_on(layout);
+    let scale = inputs.chrome.scale;
+    match style {
+        PitLimiterStyle::Full => return draw_full_screen(b, &inputs.frame.car, inputs.scene.units(), width, height),
+        PitLimiterStyle::Box => draw_box_frame(b, width, height, scale),
+        PitLimiterStyle::Gear => {
+            let spot = zoned_rect(width, height, GEAR_SPOT, page_bars);
+            let (box_, radius) = frame_box(inputs.chrome, spot.width, spot.height);
+            let rect = PixelRect::new(spot.left + box_.left, spot.top + box_.top, box_.width, box_.height);
+            draw_gear_box(b, &inputs.frame.car, spot, rect, radius, scale);
+        }
+    }
+    let bars = PitLimiter::grid_bars(style, page_bars);
+    for widget in drawn_widgets(&layout.pit_limiter.page).into_iter().filter(|widget| PitLimiter::draws(style, widget)) {
+        let rect = zoned_rect(width, height, GridSpan::from(widget), bars);
+        // The cell is the overlay's: nothing of the page shows through the gutters round its box.
+        if has_area(rect) {
+            b.rect(rect, Radii::ZERO, inputs.palette.background);
+        }
+        widget_tile(b, widget, rect, inputs, Some(PIT_YELLOW));
+    }
+}
+
+/// Whether a widget's rect covers a pixel; one in a bar spot its page drops does not.
+fn has_area(rect: PixelRect) -> bool {
+    rect.width >= 1.0 && rect.height >= 1.0
 }
 
 fn union_rect(a: PixelRect, b: PixelRect) -> PixelRect {
@@ -142,7 +186,7 @@ pub fn build_display_list(fonts: &Fonts, scene: &Scene, frame: &TelemetryFrame, 
     let (width, height) = (scene.width, scene.height);
 
     // Focused purpose screens own their visual language: the canvas stays pure black and the
-    // flag overlay never covers it.
+    // flag bar never covers it.
     let focused_lap_timer = layout.id == PURPOSE_LAP_TIMES;
     let background = if focused_lap_timer { Rgba::BLACK } else { palette.background };
     let style = layout.dash_style.unwrap_or_default();
@@ -151,17 +195,23 @@ pub fn build_display_list(fonts: &Fonts, scene: &Scene, frame: &TelemetryFrame, 
     let chrome = ChromeContext { style, scale, flat: layout.chrome };
     // The grid style rounds the whole canvas, so corner cells clip to its outer frame.
     let ruled = chrome.style == DashStyle::Grid && !focused_lap_timer;
-    let canvas_color = if scene.transparent { Rgba::TRANSPARENT } else { background };
+    let canvas_color = if scene.transparent || scene.pit_limiter_only { Rgba::TRANSPARENT } else { background };
 
     let mut b = Builder::new(fonts, ops);
     b.fill(canvas_color);
-    let inputs = TileInputs { frame, scene, palette: &palette, chrome };
-    // Drawn widgets never overlap (only layers of one stack may, and a stack draws one), so
-    // their order never shows.
-    let drawn = page.map(drawn_widgets).unwrap_or_default();
+    let inputs = TileInputs { frame, scene, palette: &palette, chrome, limits: alert_limits(layout) };
+    let bars = page.map(|page| page.bars).unwrap_or_default();
+    if scene.pit_limiter_only {
+        pit_limiter_overlay(&mut b, &inputs, bars, width, height);
+        return b.into_failure().map_or(Ok(()), Err);
+    }
     let rect_of = |widget: &DashWidget| {
-        if layout.zoned { zoned_rect(width, height, GridSpan::from(widget)) } else { grid_rect(width, height, cols, rows, GridSpan::from(widget)) }
+        if layout.zoned { zoned_rect(width, height, GridSpan::from(widget), bars) } else { grid_rect(width, height, cols, rows, GridSpan::from(widget)) }
     };
+    // Drawn widgets never overlap (only layers of one stack may, and a stack draws one), so
+    // their order never shows. One in a bar spot the page drops has no pixels: it stays on the
+    // page but is not drawn.
+    let drawn: Vec<&DashWidget> = page.map(drawn_widgets).unwrap_or_default().into_iter().filter(|widget| has_area(rect_of(widget))).collect();
     // Mockup v2: a styled group draws its frame round its widgets' cells, and they step inside it.
     let mut framed_groups: Vec<(&str, PixelRect, f64)> = Vec::new();
     if style.is_flat()
@@ -177,7 +227,7 @@ pub fn build_display_list(fonts: &Fonts, scene: &Scene, frame: &TelemetryFrame, 
     }
     // A zoned page's gear is always there; no widget may cover its spot.
     if layout.zoned && page.is_some() {
-        let spot = zoned_rect(width, height, GEAR_SPOT);
+        let spot = zoned_rect(width, height, GEAR_SPOT, bars);
         b.translated(spot.left, spot.top, |b| zoned_gear(b, &frame.car, &palette, spot.width, spot.height));
     }
     for widget in drawn {
@@ -185,24 +235,31 @@ pub fn build_display_list(fonts: &Fonts, scene: &Scene, frame: &TelemetryFrame, 
         if let Some((_, union, pad)) = framed_groups.iter().find(|(id, ..)| widget.group.as_deref() == Some(*id)) {
             rect = inset_touching(rect, *union, *pad);
         }
-        widget_tile(&mut b, widget, rect, &inputs);
+        widget_tile(&mut b, widget, rect, &inputs, None);
     }
     if ruled {
         let canvas = PixelRect::new(0.0, 0.0, width, height);
         b.corner_cut(canvas, 14.0 * chrome.scale, canvas_color);
         grid_outer_frame(&mut b, chrome, width, height, &palette);
     }
-    // Over everything, outside the grid style's rounded clip: the lap timer island, the alert
-    // banner, then the flag overlay (never on the focused lap-timer screen, and not while the
-    // flag alert is up: it names the flag itself, so the overlay would say it twice).
+    // Over everything, outside the grid style's rounded clip: the pit limiter while it is on
+    // (never over the idle page or the focused lap-timer screen), the lap timer island, the alert
+    // banner, then the flag bar (never on the focused lap-timer screen, and not while the flag
+    // alert is up: it names the flag itself, so the bar would say it twice).
+    if frame.car.pit_limiter == Some(true) && !scene.idle && !focused_lap_timer && page.is_some() && pit_limiter_alert_on(layout) {
+        pit_limiter_overlay(&mut b, &inputs, bars, width, height);
+    }
     if let Some(view) = overlays.lap_timer {
-        race_logic_lap_timer_overlay(&mut b, view, frame, &palette, width, height);
+        race_logic_lap_timer_overlay(&mut b, view, frame, &palette, scene.units(), width, height);
     }
     if let Some(banner) = overlays.banner {
-        alert_banner(&mut b, banner, &layout.lap_review, &palette, chrome, width, height);
+        alert_banner(&mut b, banner, &layout.lap_review, &palette, chrome, scene.units(), width, height);
     }
-    if !focused_lap_timer && !overlays.banner.is_some_and(DashAlertBanner::is_flag_alert) {
-        flag_overlay(&mut b, frame, &palette, width, height);
+    if let Some(bar) = overlays.flag_bar
+        && !focused_lap_timer
+        && !overlays.banner.is_some_and(DashAlertBanner::is_flag_alert)
+    {
+        flag_bar(&mut b, bar, width, height);
     }
     b.into_failure().map_or(Ok(()), Err)
 }
@@ -242,7 +299,7 @@ mod tests {
     fn a_widget_renders_the_value_bound_to_its_telemetry_channel() {
         let mut frame = TelemetryFrame::default();
         frame.lap.current_lap_time = 92.345;
-        let s = scene(layout("panels", json!([{ "id": "w", "type": "lap_time", "col": 0, "row": 0, "colSpan": 20, "rowSpan": 12 }])));
+        let s = scene(layout("panels", json!([{ "id": "w", "type": "current_lap", "col": 0, "row": 0, "colSpan": 20, "rowSpan": 12 }])));
         assert!(texts(&ops_for(&s, &frame)).contains(&"1:32.345".to_owned()));
     }
 
@@ -258,6 +315,131 @@ mod tests {
         let text = texts(&ops_for(&s, &TelemetryFrame::default()));
         assert!(text.contains(&"SHOWN_ONE".to_owned()));
         assert!(!text.contains(&"HIDDEN_ONE".to_owned()));
+    }
+
+    #[test]
+    fn a_widget_in_a_bar_spot_the_page_drops_stays_on_the_page_but_does_not_draw() {
+        let zoned = |bars: &str| {
+            let mut l = json!({ "id": "z", "name": "Z", "gridCols": 11, "gridRows": 9, "zoned": true, "pages": [{ "id": "p", "name": "P", "widgets": [
+                { "id": "a", "type": "in_grid", "col": 1, "row": 1, "colSpan": 2, "rowSpan": 1 },
+                { "id": "b", "type": "on_top", "col": 1, "row": 0, "colSpan": 2, "rowSpan": 1 }
+            ] }] });
+            l["pages"][0]["bars"] = json!(bars);
+            texts(&ops_for(&scene(l), &TelemetryFrame::default()))
+        };
+        for bars in ["both", "top"] {
+            assert!(zoned(bars).contains(&"ON_TOP".to_owned()), "{bars}");
+        }
+        for bars in ["sides", "none"] {
+            let text = zoned(bars);
+            assert!(text.contains(&"IN_GRID".to_owned()) && !text.contains(&"ON_TOP".to_owned()), "{bars}: {text:?}");
+        }
+    }
+
+    /// A zoned dash with a TC widget top left and the app's pit limiter alert on (`enabled`), its
+    /// overlay in `style` with its own speed widget under the gear, one over the gear and a bar in
+    /// the left bar spot.
+    fn pit_layout(style: &str, enabled: bool) -> serde_json::Value {
+        json!({ "id": "z", "name": "Z", "gridCols": 11, "gridRows": 9, "zoned": true, "dashStyle": "flat",
+            "pages": [{ "id": "p", "name": "P", "widgets": [{ "id": "t", "type": "tc", "col": 1, "row": 1, "colSpan": 2, "rowSpan": 1 }] }],
+            "alerts": [{ "id": "pit_limiter", "type": "pit_limiter", "enabled": enabled, "col": 0, "row": 0, "colSpan": 1, "rowSpan": 1 }],
+            "pitLimiter": { "style": style, "widgets": [
+                { "id": "s", "type": "speed", "col": 5, "row": 4, "colSpan": 1, "rowSpan": 1 },
+                { "id": "g", "type": "laps", "col": 5, "row": 3, "colSpan": 1, "rowSpan": 1 },
+                { "id": "b", "type": "bar", "col": 0, "row": 0, "colSpan": 1, "rowSpan": 9 }
+            ] } })
+    }
+
+    fn pit_frame(on: bool) -> TelemetryFrame {
+        let mut frame = TelemetryFrame::default();
+        (frame.car.pit_limiter, frame.car.gear, frame.car.speed_ms) = (Some(on), 2.0, 16.0);
+        frame
+    }
+
+    fn ink_texts(ops: &[DrawOp]) -> Vec<String> {
+        ops.iter()
+            .filter_map(|op| match op {
+                DrawOp::Text(run) if run.color == PIT_INK => Some(run.text.clone()),
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn yellow_rects(ops: &[DrawOp]) -> Vec<PixelRect> {
+        ops.iter()
+            .filter_map(|op| match op {
+                DrawOp::Rect { rect, color, .. } if *color == PIT_YELLOW => Some(*rect),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn the_pit_limiter_overlay_shows_while_the_limiter_is_on_and_its_alert_is_on() {
+        let shows = |layout: serde_json::Value, on: bool, idle: bool| {
+            let mut s = scene(layout);
+            s.idle = idle;
+            texts(&ops_for(&s, &pit_frame(on))).contains(&"PIT LIMITER".to_owned())
+        };
+        assert!(shows(pit_layout("gear", true), true, false));
+        assert!(!shows(pit_layout("gear", true), false, false), "the limiter off");
+        assert!(!shows(pit_layout("gear", false), true, false), "the alert off");
+        assert!(!shows(pit_layout("gear", true), true, true), "never over the idle page");
+        let mut no_alert = pit_layout("gear", true);
+        no_alert["alerts"] = json!([]);
+        assert!(!shows(no_alert, true, false), "a dash nothing stamped the alert on");
+    }
+
+    #[test]
+    fn the_gear_style_lights_the_gears_box_and_the_overlays_widgets_never_the_gear_spot() {
+        let ops = ops_for(&scene(pit_layout("gear", true)), &pit_frame(true));
+        let gear = zoned_rect(800.0, 480.0, GEAR_SPOT, PageBars::Both);
+        let lit = yellow_rects(&ops);
+        assert!(lit.iter().any(|r| r.left > gear.left && r.top > gear.top && r.left + r.width < gear.left + gear.width), "{lit:?}");
+        let ink = ink_texts(&ops);
+        for text in ["2", "PIT LIMITER", "58"] {
+            assert!(ink.contains(&text.to_owned()), "{text}: {ink:?}");
+        }
+        assert!(!texts(&ops).contains(&"LAP".to_owned()), "a widget over the gear is not drawn");
+        // The bar spot is free in this style: the bar draws there, lit.
+        assert!(lit.iter().any(|r| r.left < 40.0 && r.height > 400.0), "{lit:?}");
+    }
+
+    #[test]
+    fn the_box_style_covers_the_three_bar_spots_with_its_name_across_the_top() {
+        let ops = ops_for(&scene(pit_layout("box", true)), &pit_frame(true));
+        let lit = yellow_rects(&ops);
+        assert!(lit.contains(&PixelRect::new(0.0, 0.0, 40.0, 480.0)) && lit.contains(&PixelRect::new(760.0, 0.0, 40.0, 480.0)), "{lit:?}");
+        assert!(lit.contains(&PixelRect::new(40.0, 0.0, 720.0, 36.0)), "{lit:?}");
+        let label = ops.iter().find_map(|op| match op {
+            DrawOp::Text(run) if run.text == "PIT LIMITER" => Some(run.baseline),
+            _ => None,
+        });
+        assert!(label.is_some_and(|baseline| baseline < 36.0), "across the top, never the bottom: {label:?}");
+        assert!(ink_texts(&ops).contains(&"58".to_owned()), "its own speed widget, inked");
+        assert_eq!(lit.iter().filter(|r| r.left < 40.0).count(), 1, "no bar drawn in the box's bar spot");
+    }
+
+    #[test]
+    fn the_full_screen_is_all_yellow_with_the_gear_and_speed_and_no_widgets() {
+        let ops = ops_for(&scene(pit_layout("full", true)), &pit_frame(true));
+        assert!(ops.contains(&DrawOp::Fill { color: PIT_YELLOW }));
+        let ink = ink_texts(&ops);
+        assert_eq!(ink, ["2", "58", "PIT LIMITER"]);
+        // An even-grid dash has no gear spot or bar spots: it always shows the full screen.
+        let mut even = pit_layout("box", true);
+        even["zoned"] = json!(false);
+        assert!(ops_for(&scene(even), &pit_frame(true)).contains(&DrawOp::Fill { color: PIT_YELLOW }));
+    }
+
+    #[test]
+    fn the_designers_pit_limiter_stage_draws_only_the_overlay_on_a_clear_canvas() {
+        let mut s = scene(pit_layout("gear", false));
+        s.pit_limiter_only = true;
+        let ops = ops_for(&s, &pit_frame(false));
+        assert_eq!(ops[0], DrawOp::Fill { color: Rgba::TRANSPARENT });
+        let text = texts(&ops);
+        assert!(text.contains(&"PIT LIMITER".to_owned()) && !text.contains(&"TC".to_owned()), "the page is not drawn: {text:?}");
     }
 
     #[test]
@@ -303,7 +485,7 @@ mod tests {
     #[test]
     fn a_framed_widget_sits_in_the_cell_its_grid_span_maps_to() {
         // col 5 row 2, span 4x3 -> cell (200, 80, 160, 120); panels inset the frame by 4px.
-        let s = scene(layout("panels", json!([{ "id": "w", "type": "lap_time", "col": 5, "row": 2, "colSpan": 4, "rowSpan": 3 }])));
+        let s = scene(layout("panels", json!([{ "id": "w", "type": "current_lap", "col": 5, "row": 2, "colSpan": 4, "rowSpan": 3 }])));
         let ops = ops_for(&s, &TelemetryFrame::default());
         let border = ops.iter().find_map(|op| match op {
             DrawOp::Border { rect, .. } => Some(*rect),
@@ -330,7 +512,7 @@ mod tests {
 
     #[test]
     fn the_grid_style_rounds_the_canvas_and_draws_the_outer_frame_last() {
-        let s = scene(layout("grid", json!([{ "id": "w", "type": "lap_time", "col": 0, "row": 0, "colSpan": 4, "rowSpan": 3 }])));
+        let s = scene(layout("grid", json!([{ "id": "w", "type": "current_lap", "col": 0, "row": 0, "colSpan": 4, "rowSpan": 3 }])));
         let ops = ops_for(&s, &TelemetryFrame::default());
         let n = ops.len();
         assert!(matches!(ops[n - 2], DrawOp::CornerCut { radius: 14.0, color, .. } if color == DEFAULT_DASH_PALETTE.background));
@@ -353,7 +535,7 @@ mod tests {
     fn a_widget_style_recolors_its_values_and_title() {
         let s = scene(layout(
             "panels",
-            json!([{ "id": "w", "type": "lap_time", "col": 0, "row": 0, "colSpan": 8, "rowSpan": 4, "config": { "show": "current" }, "style": { "textColor": "red", "labelColor": "ember" } }]),
+            json!([{ "id": "w", "type": "current_lap", "col": 0, "row": 0, "colSpan": 8, "rowSpan": 4, "style": { "textColor": "red", "labelColor": "ember" } }]),
         ));
         let ops = ops_for(&s, &TelemetryFrame::default());
         let colors: Vec<Rgba> = ops

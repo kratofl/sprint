@@ -5,7 +5,7 @@
 // `narrowDashTargets` is the scene parser's `targets` narrowing (`model::parse_scene`), so it
 // does not appear here again.
 
-use crate::format::{js_number_string, round_to_even};
+use crate::format::{Units, js_number_string, round_to_even};
 use crate::model::{DashSettings, DashTargets, Flags, TelemetryFrame, TireState};
 
 /// Everything a binding can be resolved against: the car, the driver, and their plan.
@@ -55,13 +55,16 @@ fn optional_text(value: Option<&str>) -> BindingValue<'_> {
 pub fn resolve_binding<'a>(context: BindingContext<'a>, path: &str) -> BindingValue<'a> {
     use BindingValue::{Bool, Number, Text};
     let frame = context.frame;
+    let units = context.settings.map_or(Units::Metric, |s| s.units);
     let tire = |i: usize| &frame.tires[i];
+    let surface = |i: usize| Number(round_to_even(units.temperature(tire(i).temp_surface)));
     match path {
         "session.name" => Text(&frame.session.session_type),
         "session.game" => Text(&frame.session.game),
         "session.track" => Text(&frame.session.track),
         "session.car" => Text(&frame.session.car),
-        "car.speed" => Number(round_to_even(frame.car.speed_ms * 3.6)),
+        // In the driver's units, as every speed and temperature on a dash; the litre keys say their unit.
+        "car.speed" => Number(round_to_even(units.speed(frame.car.speed_ms))),
         "car.gear" => Number(frame.car.gear),
         "car.rpm" => Number(round_to_even(frame.car.rpm)),
         "car.maxRpm" => Number(round_to_even(frame.car.max_rpm)),
@@ -103,10 +106,10 @@ pub fn resolve_binding<'a>(context: BindingContext<'a>, path: &str) -> BindingVa
         "tires.fr" => BindingValue::Tire(tire(1)),
         "tires.rl" => BindingValue::Tire(tire(2)),
         "tires.rr" => BindingValue::Tire(tire(3)),
-        "tires.fl.surfaceTemp" => Number(round_to_even(tire(0).temp_surface)),
-        "tires.fr.surfaceTemp" => Number(round_to_even(tire(1).temp_surface)),
-        "tires.rl.surfaceTemp" => Number(round_to_even(tire(2).temp_surface)),
-        "tires.rr.surfaceTemp" => Number(round_to_even(tire(3).temp_surface)),
+        "tires.fl.surfaceTemp" => surface(0),
+        "tires.fr.surfaceTemp" => surface(1),
+        "tires.rl.surfaceTemp" => surface(2),
+        "tires.rr.surfaceTemp" => surface(3),
         "profile.driverName" => optional_text(context.settings.and_then(|s| s.driver_name.as_deref())),
         "profile.driverNumber" => optional_text(context.settings.and_then(|s| s.driver_number.as_deref())),
         _ => BindingValue::Undefined,
@@ -260,6 +263,16 @@ mod tests {
     }
 
     #[test]
+    fn speed_and_surface_temps_follow_the_drivers_units() {
+        let f = base_frame();
+        let imperial = DashSettings { units: Units::Imperial, ..DashSettings::default() };
+        let with = BindingContext { frame: &f, settings: Some(&imperial), targets: None };
+        assert_eq!(resolve_binding(with, "car.speed"), BindingValue::Number(112.0), "50 m/s is 111.85 mph");
+        assert_eq!(resolve_binding(with, "tires.fl.surfaceTemp"), BindingValue::Number(186.0), "85.4 °C is 185.7 °F");
+        assert_eq!(resolve(&f, "car.speed"), BindingValue::Number(180.0), "metric without settings");
+    }
+
+    #[test]
     fn race_reads_the_race_state_directly() {
         let f = base_frame();
         assert_eq!(resolve(&f, "race.position"), BindingValue::Number(4.0));
@@ -269,7 +282,7 @@ mod tests {
     #[test]
     fn profile_reads_from_settings_and_is_undefined_when_settings_are_absent() {
         let f = base_frame();
-        let settings = DashSettings { driver_name: Some("Alex".to_owned()), driver_number: Some("7".to_owned()), utc_offset_minutes: None };
+        let settings = DashSettings { driver_name: Some("Alex".to_owned()), driver_number: Some("7".to_owned()), ..DashSettings::default() };
         let with = BindingContext { frame: &f, settings: Some(&settings), targets: None };
         assert_eq!(resolve(&f, "profile.driverName"), BindingValue::Undefined);
         assert_eq!(resolve_binding(with, "profile.driverName"), BindingValue::Text("Alex"));

@@ -9,22 +9,30 @@
  * set and order against the Rust list.
  */
 export type DashLapReviewField =
-  | 'sector1' | 'sector2' | 'sector3' | 'target' | 'best_lap' | 'position' | 'gap_ahead' | 'lap'
-  | 'fuel_used' | 'fuel_left' | 'energy_used' | 'tyre_wear' | 'none'
+  | 'sector1' | 'sector2' | 'sector3' | 'sector1_delta' | 'sector2_delta' | 'sector3_delta' | 'target' | 'best_lap'
+  | 'validity' | 'position' | 'gap_ahead' | 'lap' | 'top_speed' | 'fuel_used' | 'fuel_left' | 'energy_used' | 'energy_left'
+  | 'fuel_energy_used' | 'tyre_wear' | 'none'
 
 /** The fields an editor offers for a cell, in order, with their driver-facing names. */
 export const dashLapReviewFields: readonly { id: DashLapReviewField; label: string }[] = [
   { id: 'sector1', label: 'Sector 1' },
   { id: 'sector2', label: 'Sector 2' },
   { id: 'sector3', label: 'Sector 3' },
+  { id: 'sector1_delta', label: 'Sector 1 delta' },
+  { id: 'sector2_delta', label: 'Sector 2 delta' },
+  { id: 'sector3_delta', label: 'Sector 3 delta' },
   { id: 'target', label: 'Lap time target' },
   { id: 'best_lap', label: 'Best lap' },
+  { id: 'validity', label: 'Lap validity' },
   { id: 'position', label: 'Position' },
   { id: 'gap_ahead', label: 'Gap ahead' },
   { id: 'lap', label: 'Lap' },
+  { id: 'top_speed', label: 'Top speed' },
   { id: 'fuel_used', label: 'Fuel used' },
   { id: 'fuel_left', label: 'Fuel left (laps)' },
-  { id: 'energy_used', label: 'Energy used' },
+  { id: 'energy_used', label: 'VE used' },
+  { id: 'energy_left', label: 'VE left (laps)' },
+  { id: 'fuel_energy_used', label: 'Fuel + VE used' },
   { id: 'tyre_wear', label: 'Tyre wear' },
   { id: 'none', label: 'Empty' },
 ]

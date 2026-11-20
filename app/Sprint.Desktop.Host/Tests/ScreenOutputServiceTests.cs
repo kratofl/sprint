@@ -2,6 +2,7 @@ using Sprint.Desktop.Api.Telemetry;
 using Sprint.Desktop.Features.Dashes;
 using Sprint.Desktop.Features.Devices;
 using Sprint.Desktop.Features.Hardware;
+using Sprint.Desktop.Runtime;
 using Xunit;
 
 namespace Sprint.Desktop.Host.Tests;
@@ -251,7 +252,7 @@ public sealed class ScreenOutputServiceTests
     }
 
     private static DashSceneInputs Scenes(params DashLayout[] layouts) =>
-        new(layouts, DriverCar.None, "Driver", "22", DashTargets.None, AppDashAlerts.Default);
+        new(layouts, DriverCar.None, "Driver", "22", UnitSystem.Metric, DashTargets.None, AppDashAlerts.Default);
 
     private static async Task WaitUntilAsync(Func<bool> condition, TimeSpan timeout)
     {

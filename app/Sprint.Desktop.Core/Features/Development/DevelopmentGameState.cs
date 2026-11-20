@@ -32,7 +32,7 @@ public sealed record DevelopmentGameValues
     public bool CheckeredFlag { get; init; }
     public bool TractionControlActive { get; init; }
 
-    /// <summary>Assist settings (levels), independent from the activity flags so a level change — and only a level change — fires the dash change alerts. (The telemetry contract has no ABS-activity flag, so the simulator offers none.)</summary>
+    /// <summary>Assist settings (levels), independent from the activity flags so a level change — and only a level change — fires the dash change alerts. (The simulator offers no ABS-activity flag.)</summary>
     public int TractionControl { get; init; } = 4;
     public int Abs { get; init; } = 3;
     public int MotorMap { get; init; } = 3;

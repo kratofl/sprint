@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { pageTree, resolvePreviewFrame, type DashGroupNode, type DashLayout, type DashNode, type DashPreviewState, type DashWidgetType } from '@sprint/dashboard'
+import type { ReactNode } from 'react'
+import { pageTree, resolvePreviewFrame, type DashGroupNode, type DashLayout, type DashNode, type DashPreviewState, type DashWidgetType, type DashZone } from '@sprint/dashboard'
 import type { TelemetryFrame } from '@sprint/types'
 import { addWidget, addWidgetAt } from '../views/DashesDomain'
 import { DesignerCanvas, dropCell, type DragState, type PointerPos } from './DesignerCanvas'
 import { swapWidgets } from '../views/DashesDomain'
 import { GroupInspector, SelectionInspector } from './GroupInspector'
-import { LapReviewEditor } from './LapReviewEditor'
 import { PageDock } from './PageDock'
 import { PageInspector, type ModeActions } from './PageInspector'
 import { WidgetInspector } from './WidgetInspector'
@@ -22,43 +22,46 @@ import type { DesignerDocApi, Mutate } from './useDesignerDoc'
 const ARROWS: Record<string, [number, number]> = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }
 
 /**
+ * What the section shows round the widgets when it edits an overlay's instead of a page's (the
+ * Pit limiter section): the picture under them, what sits above the stage, the panel while nothing
+ * is selected (in place of the page's), and the zones the overlay covers. There is no page dock.
+ */
+export type OverlayStage = { backdrop: (width: number, height: number) => ReactNode; aboveStage: ReactNode; panel: ReactNode; covered: readonly DashZone[] }
+
+/**
  * The Layout section: the dash in a device-style bezel in the middle of the stage — its outline, or
  * the real dash faded back or tagged (`view`, the toolbar picks) — the widget library on the left, the selection's inspector on the right
  * and the page dock at the bottom. The dash is drawn at its real size when the window has room, smaller
  * otherwise. Keys (never while typing in a field): Delete removes the selection, the arrows move
  * it a cell, Ctrl+G groups it, Ctrl+Shift+G ungroups, Ctrl+D copies it, Escape deselects. A
  * right-click on a widget or group offers the same as a menu (`NodeMenu`), and moves it into a group. With nothing selected, the right panel is
- * the page's own (`PageInspector`): the sessions and modes it shows in, and when it jumps. The
- * dock's last stop, Lap review, swaps all of that for the dash's lap review (`LapReviewEditor`).
+ * the page's own (`PageInspector`): the sessions and modes it shows in, and when it jumps. With
+ * an `overlay`, the same tools edit an overlay's widgets (`PitLimiterSection` hands it a doc whose
+ * one page is the overlay).
  */
 export function LayoutSection({
   doc,
   frame,
   chosenPageId,
   onChoosePage,
-  reviewing,
-  onReview,
-  onOpenDashSettings,
   modes,
   view,
   previewState,
   showGrid,
+  overlay,
 }: {
   doc: DesignerDocApi
   frame: TelemetryFrame | null
   /** The page being designed; kept by the window so it survives a trip to another section. */
   chosenPageId: string
   onChoosePage: (pageId: string) => void
-  /** The lap review is on the stage instead of the page (the dock's Lap review stop). */
-  reviewing: boolean
-  onReview: () => void
-  onOpenDashSettings: () => void
   /** The driver's own dash modes, for the page panel and the dock's preview. */
   modes: ModeActions
   /** How the canvas shows the dash, what it shows and the grid: the toolbar's (`ViewTools`). */
   view: CanvasView
   previewState: DashPreviewState
   showGrid: boolean
+  overlay?: OverlayStage
 }) {
   const { layout, apply } = doc
   const [selection, setSelection] = useState<string[]>([])
@@ -100,13 +103,6 @@ export function LayoutSection({
     onChoosePage(next)
     setSelection([])
     setDragState({ kind: 'idle' })
-  }
-
-  const review = (): void => {
-    onReview()
-    setSelection([])
-    setDragState({ kind: 'idle' })
-    setMenu(null)
   }
 
   const commit = (mutate: Mutate, failureMessage: string): void => {
@@ -244,15 +240,15 @@ export function LayoutSection({
   }
 
   const onDrop = (type: DashWidgetType, pointer: PointerPos): void => {
-    if (!canvas) return
-    addAndSelect(type, dropCell(layout, pointer, canvas.width, canvas.height))
+    if (!canvas || !page) return
+    addAndSelect(type, dropCell(layout, page.bars, pointer, canvas.width, canvas.height))
   }
 
   // The designer's keys, from anywhere in the window but a text field.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
       // A dialog or menu owns its keys: Delete in a confirm must not delete the selection behind it.
-      if (reviewing || event.defaultPrevented || isTypingTarget(event.target) || isInOverlay(event.target) || event.altKey) return
+      if (event.defaultPrevented || isTypingTarget(event.target) || isInOverlay(event.target) || event.altKey) return
       if (event.ctrlKey || event.metaKey) {
         const key = event.key.toLowerCase()
         if (key === 'g') {
@@ -294,24 +290,45 @@ export function LayoutSection({
   const dockPreview = modes.modes.some((mode) => mode.id === cyclePreview) || ['all', 'practice', 'qualifying', 'race'].includes(cyclePreview) ? cyclePreview : 'all'
   const only = selectedNodes.length === 1 ? selectedNodes[0] : undefined
 
-  if (reviewing) {
-    return (
-      <>
-        <LapReviewEditor layout={layout} apply={apply} frame={frameShown} canvas={canvas} setFitElement={setFitElement} onOpenDashSettings={onOpenDashSettings} />
-        <PageDock
+  const stage =
+    page && canvas ? (
+      <div className="designer-bezel" style={{ padding: BEZEL }}>
+        <DesignerCanvas
+          canvasRef={canvasRef}
           layout={layout}
-          pageId={pageId}
-          onSelectPage={selectPage}
-          reviewing
-          onReview={review}
-          apply={apply}
-          cyclePreview={dockPreview}
-          onCyclePreview={setCyclePreview}
-          modes={modes.modes}
+          page={page}
+          shownPage={withLayersShown(page, arranged)}
+          tree={tree}
+          isIdlePage={isIdlePage}
+          frame={frameShown}
+          width={canvas.width}
+          height={canvas.height}
+          showGrid={overlay ? false : showGrid}
+          view={overlay ? 'preview' : view}
+          selection={selected}
+          onSelect={setSelection}
+          stacks={openStacks(tree, selected)}
+          arranged={arranged}
+          onPickLayer={(stackId, layerId) => {
+            setPicked(new Map(picked).set(stackId, layerId))
+            setSelection([layerId])
+          }}
+          onAddLayer={addLayerTo}
+          onGroup={groupSelection}
+          onStackOnto={stackWidgetOnto}
+          onSwap={swapWidget}
+          onMenu={openMenu}
+          placeGroup={target.group}
+          dragState={dragState}
+          setDragState={setDragState}
+          commit={commit}
+          backdrop={overlay?.backdrop}
+          covered={overlay?.covered}
         />
-      </>
+      </div>
+    ) : (
+      !page && <p className="muted">This dash has no pages yet.</p>
     )
-  }
 
   return (
     <>
@@ -328,44 +345,18 @@ export function LayoutSection({
         />
       )}
 
-      <div ref={setFitElement} className="designer-fit">
-        {page && canvas ? (
-          <div className="designer-bezel" style={{ padding: BEZEL }}>
-            <DesignerCanvas
-              canvasRef={canvasRef}
-              layout={layout}
-              page={page}
-              shownPage={withLayersShown(page, arranged)}
-              tree={tree}
-              isIdlePage={isIdlePage}
-              frame={frameShown}
-              width={canvas.width}
-              height={canvas.height}
-              showGrid={showGrid}
-              view={view}
-              selection={selected}
-              onSelect={setSelection}
-              stacks={openStacks(tree, selected)}
-              arranged={arranged}
-              onPickLayer={(stackId, layerId) => {
-                setPicked(new Map(picked).set(stackId, layerId))
-                setSelection([layerId])
-              }}
-              onAddLayer={addLayerTo}
-              onGroup={groupSelection}
-              onStackOnto={stackWidgetOnto}
-              onSwap={swapWidget}
-              onMenu={openMenu}
-              placeGroup={target.group}
-              dragState={dragState}
-              setDragState={setDragState}
-              commit={commit}
-            />
+      {overlay ? (
+        <div className="designer-fit is-stacked">
+          {overlay.aboveStage}
+          <div ref={setFitElement} className="designer-fit-box">
+            {stage}
           </div>
-        ) : (
-          !page && <p className="muted">This dash has no pages yet.</p>
-        )}
-      </div>
+        </div>
+      ) : (
+        <div ref={setFitElement} className="designer-fit">
+          {stage}
+        </div>
+      )}
 
       {only?.kind === 'widget' && (
         <WidgetInspector key={only.id} layout={layout} pageId={pageId} widget={only.widget} apply={apply} onDeselect={() => setSelection([])} />
@@ -382,7 +373,7 @@ export function LayoutSection({
           onRefused={flashValidation}
         />
       )}
-      {selectedNodes.length === 0 && page && <PageInspector key={page.id} layout={layout} page={page} isIdlePage={isIdlePage} apply={apply} modes={modes} />}
+      {selectedNodes.length === 0 && (overlay ? overlay.panel : page && <PageInspector key={page.id} layout={layout} page={page} isIdlePage={isIdlePage} apply={apply} modes={modes} />)}
       {selectedNodes.length > 1 && <SelectionInspector pageId={pageId} nodes={selectedNodes} apply={apply} onSelect={setSelection} onGroup={groupSelection} />}
 
       {menu && (
@@ -412,17 +403,9 @@ export function LayoutSection({
         </div>
       )}
 
-      <PageDock
-        layout={layout}
-        pageId={pageId}
-        onSelectPage={selectPage}
-        reviewing={false}
-        onReview={review}
-        apply={apply}
-        cyclePreview={dockPreview}
-        onCyclePreview={setCyclePreview}
-        modes={modes.modes}
-      />
+      {!overlay && (
+        <PageDock layout={layout} pageId={pageId} onSelectPage={selectPage} apply={apply} cyclePreview={dockPreview} onCyclePreview={setCyclePreview} modes={modes.modes} />
+      )}
     </>
   )
 }

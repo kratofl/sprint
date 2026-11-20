@@ -102,18 +102,102 @@ pub fn format_delta(seconds: f64) -> String {
     if rounded > 0.0 { format!("+{}", to_fixed(rounded, 3)) } else { to_fixed(rounded, 3) }
 }
 
-/// Speed in m/s -> integer km/h.
-pub fn format_speed_kph(meters_per_second: f64) -> String {
-    js_number_string(round_to_even(meters_per_second * 3.6))
+/// The driver's measurement system (`AppSettings.Units` on the host, sent by name in the scene's
+/// settings): every speed, temperature, pressure and fuel volume a dash prints is in it. Frames
+/// always carry metric values (m/s, °C, kPa, litres); only the printing converts, so thresholds
+/// and colours keep reading the frame's own numbers. Imperial is US customary: mph, °F, psi and
+/// US gallons.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Units {
+    #[default]
+    Metric,
+    Imperial,
 }
 
-/// Celsius -> up to one decimal place, trimming a trailing `.0`.
-pub fn format_temp(celsius: f64) -> String {
+impl Units {
+    /// The host's name for it; anything else, or nothing, is metric.
+    pub fn parse(name: Option<&str>) -> Units {
+        if name == Some("Imperial") { Units::Imperial } else { Units::Metric }
+    }
+
+    /// What a speed is printed in: `km/h` or `mph`.
+    pub fn speed_unit(self) -> &'static str {
+        match self {
+            Units::Metric => "km/h",
+            Units::Imperial => "mph",
+        }
+    }
+
+    /// What a tyre pressure is printed in: `kPa` or `psi`.
+    pub fn pressure_unit(self) -> &'static str {
+        match self {
+            Units::Metric => "kPa",
+            Units::Imperial => "psi",
+        }
+    }
+
+    /// What a fuel volume is printed in: `L` or `gal`.
+    pub fn fuel_unit(self) -> &'static str {
+        match self {
+            Units::Metric => "L",
+            Units::Imperial => "gal",
+        }
+    }
+
+    /// m/s in km/h or mph.
+    pub fn speed(self, meters_per_second: f64) -> f64 {
+        match self {
+            Units::Metric => meters_per_second * 3.6,
+            Units::Imperial => meters_per_second * 3600.0 / 1609.344,
+        }
+    }
+
+    /// °C in °C or °F.
+    pub fn temperature(self, celsius: f64) -> f64 {
+        match self {
+            Units::Metric => celsius,
+            Units::Imperial => celsius * 1.8 + 32.0,
+        }
+    }
+
+    /// kPa in kPa or psi.
+    pub fn pressure(self, kpa: f64) -> f64 {
+        match self {
+            Units::Metric => kpa,
+            Units::Imperial => kpa / 6.894_757_293_168_361,
+        }
+    }
+
+    /// Litres in litres or US gallons.
+    pub fn fuel(self, liters: f64) -> f64 {
+        match self {
+            Units::Metric => liters,
+            Units::Imperial => liters / 3.785_411_784,
+        }
+    }
+}
+
+/// Speed in m/s -> an integer in the driver's unit (km/h or mph).
+pub fn format_speed(meters_per_second: f64, units: Units) -> String {
+    js_number_string(round_to_even(units.speed(meters_per_second)))
+}
+
+/// Celsius -> up to one decimal place, trimming a trailing `.0`; in °F whole degrees, which keeps
+/// a tyre's three digits inside the width its widgets size for (`000°`).
+pub fn format_temp(celsius: f64, units: Units) -> String {
+    if units == Units::Imperial {
+        return to_fixed(units.temperature(celsius), 0);
+    }
     let fixed = to_fixed(celsius, 1);
     match fixed.strip_suffix(".0") {
         Some(trimmed) => trimmed.to_owned(),
         None => fixed,
     }
+}
+
+/// Celsius -> whole degrees in the driver's unit, as "104°".
+pub fn format_degrees(celsius: f64, units: Units) -> String {
+    format!("{}°", js_number_string(units.temperature(celsius).round()))
 }
 
 /// Gear index -> driver-facing glyph (N neutral, R reverse, otherwise the number).
@@ -157,23 +241,25 @@ pub fn format_gap(seconds: f64) -> String {
     if seconds <= 0.0 || !seconds.is_finite() { "--".to_owned() } else { to_fixed(seconds, 3) }
 }
 
-/// Tyre pressure in kPa -> one decimal place, or `--` when not reported.
-pub fn format_pressure(kpa: f64) -> String {
-    if kpa <= 0.0 || !kpa.is_finite() { "--".to_owned() } else { to_fixed(kpa, 1) }
+/// Tyre pressure in kPa -> one decimal place in the driver's unit, or `--` when not reported.
+pub fn format_pressure(kpa: f64, units: Units) -> String {
+    if kpa <= 0.0 || !kpa.is_finite() { "--".to_owned() } else { to_fixed(units.pressure(kpa), 1) }
 }
 
-pub fn format_fuel(liters: f64) -> String {
-    to_fixed(liters, 1)
+/// Litres -> one decimal place in the driver's unit.
+pub fn format_fuel(liters: f64, units: Units) -> String {
+    to_fixed(units.fuel(liters), 1)
 }
 
-pub fn format_fuel_per_lap(liters: f64) -> String {
-    to_fixed(liters, 2)
+/// Litres per lap -> two decimal places in the driver's unit.
+pub fn format_fuel_per_lap(liters: f64, units: Units) -> String {
+    to_fixed(units.fuel(liters), 2)
 }
 
 /// A planned fuel figure -> `0.00`, or `--` when nothing was planned (absent is not zero).
-pub fn format_fuel_per_lap_target(liters: Option<f64>) -> String {
+pub fn format_fuel_per_lap_target(liters: Option<f64>, units: Units) -> String {
     match liters {
-        Some(l) if l.is_finite() => format_fuel_per_lap(l),
+        Some(l) if l.is_finite() => format_fuel_per_lap(l, units),
         _ => "--".to_owned(),
     }
 }
@@ -181,6 +267,13 @@ pub fn format_fuel_per_lap_target(liters: Option<f64>) -> String {
 /// Front brake bias as a percentage with one decimal, from the frame's rear 0-1 fraction.
 pub fn format_front_brake_bias(rear_fraction: f64) -> String {
     to_fixed((1.0 - rear_fraction) * 100.0, 1)
+}
+
+/// A driver-adjustable setting's step as its widget and popup print it: the whole step, and `OFF`
+/// at 0 for the assists (`off_at_zero`). Never with the highest step.
+pub fn format_setting(value: f64, off_at_zero: bool) -> String {
+    let step = value.trunc();
+    if off_at_zero && step == 0.0 { "OFF".to_owned() } else { js_number_string(step) }
 }
 
 /// Signed liters -> `+0.10` / `-0.05` / `0.00`, for fuel against a target.
@@ -222,6 +315,13 @@ mod tests {
     }
 
     #[test]
+    fn a_setting_prints_its_whole_step_and_an_assist_at_zero_prints_off() {
+        assert_eq!(format_setting(4.9, true), "4");
+        assert_eq!(format_setting(0.4, true), "OFF");
+        assert_eq!(format_setting(0.0, false), "0");
+    }
+
+    #[test]
     fn format_lap_shows_a_placeholder_for_non_positive_or_non_finite_times() {
         for value in [0.0, -1.0, f64::NAN, f64::INFINITY] {
             assert_eq!(format_lap(value), "--:--.---");
@@ -251,17 +351,27 @@ mod tests {
     }
 
     #[test]
-    fn format_speed_kph_converts_m_s_to_an_integer_km_h() {
-        assert_eq!(format_speed_kph(50.0), "180");
-        assert_eq!(format_speed_kph(0.0), "0");
-        assert_eq!(format_speed_kph(-0.01), "0");
+    fn format_speed_converts_m_s_to_an_integer_in_the_drivers_unit() {
+        assert_eq!(format_speed(50.0, Units::Metric), "180");
+        assert_eq!(format_speed(0.0, Units::Metric), "0");
+        assert_eq!(format_speed(-0.01, Units::Metric), "0");
+        assert_eq!(format_speed(50.0, Units::Imperial), "112"); // 111.85 mph
     }
 
     #[test]
     fn format_temp_keeps_at_most_one_decimal_and_trims_a_trailing_zero() {
-        assert_eq!(format_temp(70.0), "70");
-        assert_eq!(format_temp(70.5), "70.5");
-        assert_eq!(format_temp(70.04), "70");
+        assert_eq!(format_temp(70.0, Units::Metric), "70");
+        assert_eq!(format_temp(70.5, Units::Metric), "70.5");
+        assert_eq!(format_temp(70.04, Units::Metric), "70");
+        assert_eq!(format_temp(70.0, Units::Imperial), "158");
+        assert_eq!(format_temp(70.5, Units::Imperial), "159", "whole °F");
+    }
+
+    #[test]
+    fn format_degrees_prints_whole_degrees_in_the_drivers_unit() {
+        assert_eq!(format_degrees(104.4, Units::Metric), "104°");
+        assert_eq!(format_degrees(118.0, Units::Imperial), "244°"); // 244.4 °F
+        assert_eq!(format_degrees(-40.0, Units::Imperial), "-40°");
     }
 
     #[test]
@@ -288,21 +398,34 @@ mod tests {
 
     #[test]
     fn format_pressure_shows_a_placeholder_when_not_reported() {
-        assert_eq!(format_pressure(0.0), "--");
-        assert_eq!(format_pressure(180.26), "180.3");
+        assert_eq!(format_pressure(0.0, Units::Metric), "--");
+        assert_eq!(format_pressure(0.0, Units::Imperial), "--");
+        assert_eq!(format_pressure(180.26, Units::Metric), "180.3");
+        assert_eq!(format_pressure(180.26, Units::Imperial), "26.1");
     }
 
     #[test]
     fn format_fuel_and_format_fuel_per_lap_use_fixed_decimal_places() {
-        assert_eq!(format_fuel(42.5), "42.5");
-        assert_eq!(format_fuel_per_lap(2.756), "2.76");
+        assert_eq!(format_fuel(42.5, Units::Metric), "42.5");
+        assert_eq!(format_fuel_per_lap(2.756, Units::Metric), "2.76");
+        assert_eq!(format_fuel(42.5, Units::Imperial), "11.2"); // US gallons
+        assert_eq!(format_fuel_per_lap(2.756, Units::Imperial), "0.73");
     }
 
     #[test]
     fn format_fuel_per_lap_target_distinguishes_no_plan_from_plan_for_0() {
-        assert_eq!(format_fuel_per_lap_target(None), "--");
-        assert_eq!(format_fuel_per_lap_target(Some(0.0)), "0.00");
-        assert_eq!(format_fuel_per_lap_target(Some(2.4)), "2.40");
+        assert_eq!(format_fuel_per_lap_target(None, Units::Metric), "--");
+        assert_eq!(format_fuel_per_lap_target(Some(0.0), Units::Metric), "0.00");
+        assert_eq!(format_fuel_per_lap_target(Some(2.4), Units::Metric), "2.40");
+        assert_eq!(format_fuel_per_lap_target(Some(2.4), Units::Imperial), "0.63");
+    }
+
+    #[test]
+    fn units_are_metric_unless_the_host_names_imperial() {
+        assert_eq!(Units::parse(Some("Imperial")), Units::Imperial);
+        assert_eq!(Units::parse(Some("Metric")), Units::Metric);
+        assert_eq!(Units::parse(Some("imperial")), Units::Metric);
+        assert_eq!(Units::parse(None), Units::Metric);
     }
 
     #[test]

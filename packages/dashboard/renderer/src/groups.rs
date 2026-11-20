@@ -194,7 +194,7 @@ mod tests {
     }
 
     fn page(widgets: Vec<DashWidget>, groups: Vec<DashWidgetGroup>) -> DashPage {
-        DashPage { id: "p".to_owned(), name: "P".to_owned(), widgets, groups }
+        DashPage { id: "p".to_owned(), name: "P".to_owned(), widgets, groups, ..DashPage::default() }
     }
 
     /// The tree as `outline` prints it in groups.test.ts: widget ids, and `id[children]` for groups.

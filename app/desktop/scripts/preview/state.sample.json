@@ -172,6 +172,7 @@
     "updateChannel": "stable",
     "driverName": "Alex Driver",
     "driverNumber": "7",
+    "units": "Metric",
     "dashEditorUI": {
       "palette": {
         "open": true,
@@ -184,9 +185,7 @@
     },
     "newDashDefaults": {
       "mode": "basic",
-      "display": "",
-      "speedUnit": "km/h",
-      "tempUnit": "c"
+      "display": ""
     },
     "devicesUI": {
       "viewMode": "gallery",
@@ -339,7 +338,7 @@
     }
   ],
   "dashLayouts": [
-    {"id":"zoned-race","name":"Zoned race (sample)","category":"Endurance","mode":"basic","zoned":true,"dashStyle":"flat","colorSystem":"functional","gridCols":11,"gridRows":9,"alerts":[],"pages":[{"id":"race","name":"Race","groups":[{"id":"tyres","name":"Tyres","mode":"together","style":{"border":"thin","label":"capsule","align":"center"}}],"widgets":[{"id":"rpm","type":"bar","col":1,"row":0,"colSpan":9,"rowSpan":1,"config":{"channel":"rpm"}},{"id":"ve","type":"bar","col":0,"row":0,"colSpan":1,"rowSpan":9,"config":{"channel":"ve"}},{"id":"fuel","type":"bar","col":10,"row":0,"colSpan":1,"rowSpan":9,"config":{"channel":"fuel"}},{"id":"tc","type":"tc","col":1,"row":1,"colSpan":2,"rowSpan":2},{"id":"abs","type":"abs","col":3,"row":1,"colSpan":2,"rowSpan":2},{"id":"slip","type":"slip","col":1,"row":3,"colSpan":2,"rowSpan":1},{"id":"cut","type":"cut","col":3,"row":3,"colSpan":2,"rowSpan":1},{"id":"map","type":"engine_map","col":1,"row":4,"colSpan":2,"rowSpan":1},{"id":"bias","type":"brake_bias","col":3,"row":4,"colSpan":2,"rowSpan":1},{"id":"fl","type":"tyre","col":1,"row":5,"colSpan":2,"rowSpan":2,"config":{"corner":"fl"},"group":"tyres","style":{"border":"none","label":"off"}},{"id":"fr","type":"tyre","col":3,"row":5,"colSpan":2,"rowSpan":2,"config":{"corner":"fr"},"group":"tyres","style":{"border":"none","label":"off"}},{"id":"rl","type":"tyre","col":1,"row":7,"colSpan":2,"rowSpan":2,"config":{"corner":"rl"},"group":"tyres","style":{"border":"none","label":"off"}},{"id":"rr","type":"tyre","col":3,"row":7,"colSpan":2,"rowSpan":2,"config":{"corner":"rr"},"group":"tyres","style":{"border":"none","label":"off"}},{"id":"delta","type":"delta","col":5,"row":4,"colSpan":1,"rowSpan":2},{"id":"sectors","type":"sectors","col":5,"row":6,"colSpan":1,"rowSpan":1},{"id":"last","type":"lap_time","col":5,"row":7,"colSpan":1,"rowSpan":1,"config":{"show":"last"}},{"id":"time-left","type":"time_left","col":5,"row":8,"colSpan":1,"rowSpan":1},{"id":"pos","type":"position","col":6,"row":1,"colSpan":2,"rowSpan":1},{"id":"lap","type":"laps","col":8,"row":1,"colSpan":2,"rowSpan":1},{"id":"best","type":"lap_time","col":6,"row":2,"colSpan":4,"rowSpan":2,"config":{"show":"best"}},{"id":"ahead","type":"gaps","col":6,"row":4,"colSpan":2,"rowSpan":2,"config":{"side":"ahead"}},{"id":"behind","type":"gaps","col":8,"row":4,"colSpan":2,"rowSpan":2,"config":{"side":"behind"}},{"id":"fuel-laps","type":"fuel_laps","col":6,"row":6,"colSpan":2,"rowSpan":1},{"id":"ve-laps","type":"ve_laps","col":8,"row":6,"colSpan":2,"rowSpan":1},{"id":"soc","type":"soc","col":6,"row":7,"colSpan":2,"rowSpan":1},{"id":"speed","type":"speed","col":8,"row":7,"colSpan":2,"rowSpan":1},{"id":"target","type":"fuel_target","col":6,"row":8,"colSpan":4,"rowSpan":1}]}]},
+    {"id":"zoned-race","name":"Zoned race (sample)","category":"Endurance","mode":"basic","zoned":true,"dashStyle":"flat","colorSystem":"functional","gridCols":11,"gridRows":9,"alerts":[],"pages":[{"id":"race","name":"Race","groups":[{"id":"tyres","name":"Tyres","mode":"together","style":{"border":"thin","label":"capsule","align":"center"}}],"widgets":[{"id":"rpm","type":"bar","col":1,"row":0,"colSpan":9,"rowSpan":1,"config":{"channel":"rpm"}},{"id":"ve","type":"bar","col":0,"row":0,"colSpan":1,"rowSpan":9,"config":{"channel":"ve"}},{"id":"fuel","type":"bar","col":10,"row":0,"colSpan":1,"rowSpan":9,"config":{"channel":"fuel"}},{"id":"tc","type":"tc","col":1,"row":1,"colSpan":2,"rowSpan":2},{"id":"abs","type":"abs","col":3,"row":1,"colSpan":2,"rowSpan":2},{"id":"slip","type":"tc_slip","col":1,"row":3,"colSpan":2,"rowSpan":1},{"id":"cut","type":"tc2","col":3,"row":3,"colSpan":2,"rowSpan":1},{"id":"map","type":"engine_map","col":1,"row":4,"colSpan":2,"rowSpan":1},{"id":"bias","type":"brake_bias","col":3,"row":4,"colSpan":2,"rowSpan":1},{"id":"fl","type":"tyre","col":1,"row":5,"colSpan":2,"rowSpan":2,"config":{"corner":"fl"},"group":"tyres","style":{"border":"none","label":"off"}},{"id":"fr","type":"tyre","col":3,"row":5,"colSpan":2,"rowSpan":2,"config":{"corner":"fr"},"group":"tyres","style":{"border":"none","label":"off"}},{"id":"rl","type":"tyre","col":1,"row":7,"colSpan":2,"rowSpan":2,"config":{"corner":"rl"},"group":"tyres","style":{"border":"none","label":"off"}},{"id":"rr","type":"tyre","col":3,"row":7,"colSpan":2,"rowSpan":2,"config":{"corner":"rr"},"group":"tyres","style":{"border":"none","label":"off"}},{"id":"delta","type":"delta","col":5,"row":4,"colSpan":1,"rowSpan":2},{"id":"sectors","type":"sectors","col":5,"row":6,"colSpan":1,"rowSpan":1},{"id":"last","type":"last_lap","col":5,"row":7,"colSpan":1,"rowSpan":1},{"id":"time-left","type":"time_left","col":5,"row":8,"colSpan":1,"rowSpan":1},{"id":"pos","type":"position","col":6,"row":1,"colSpan":2,"rowSpan":1},{"id":"lap","type":"laps","col":8,"row":1,"colSpan":2,"rowSpan":1},{"id":"best","type":"best_lap","col":6,"row":2,"colSpan":4,"rowSpan":2},{"id":"ahead","type":"gap_ahead","col":6,"row":4,"colSpan":2,"rowSpan":2},{"id":"behind","type":"gap_behind","col":8,"row":4,"colSpan":2,"rowSpan":2},{"id":"fuel-laps","type":"fuel_laps","col":6,"row":6,"colSpan":2,"rowSpan":1},{"id":"ve-laps","type":"ve_laps","col":8,"row":6,"colSpan":2,"rowSpan":1},{"id":"soc","type":"battery","col":6,"row":7,"colSpan":2,"rowSpan":1},{"id":"speed","type":"speed","col":8,"row":7,"colSpan":2,"rowSpan":1},{"id":"target","type":"fuel_target","col":6,"row":8,"colSpan":4,"rowSpan":1}]}]},
     {
       "id": "default",
       "name": "Driver Focus",
@@ -463,7 +462,7 @@
             },
             {
               "id": "driving-laps",
-              "type": "lap_time",
+              "type": "current_lap",
               "col": 0,
               "row": 3,
               "colSpan": 5,
@@ -501,7 +500,7 @@
             },
             {
               "id": "driving-sectors",
-              "type": "sector",
+              "type": "sectors",
               "col": 15,
               "row": 3,
               "colSpan": 5,
@@ -608,7 +607,7 @@
             },
             {
               "id": "endurance-ers",
-              "type": "virtual_energy",
+              "type": "ve_percent",
               "col": 14,
               "row": 1,
               "colSpan": 6,
@@ -693,7 +692,7 @@
           "widgets": [
             {
               "id": "timing-laps",
-              "type": "lap_time",
+              "type": "current_lap",
               "col": 0,
               "row": 1,
               "colSpan": 7,
@@ -721,7 +720,7 @@
             },
             {
               "id": "timing-sectors",
-              "type": "sector",
+              "type": "sectors",
               "col": 13,
               "row": 1,
               "colSpan": 7,
@@ -755,7 +754,7 @@
             },
             {
               "id": "timing-gaps",
-              "type": "gaps",
+              "type": "gap_ahead",
               "col": 3,
               "row": 10,
               "colSpan": 9,
@@ -906,7 +905,7 @@
             },
             {
               "id": "vehicle-ers",
-              "type": "virtual_energy",
+              "type": "ve_percent",
               "col": 13,
               "row": 9,
               "colSpan": 7,
@@ -1059,7 +1058,7 @@
             },
             {
               "id": "driving-laps",
-              "type": "lap_time",
+              "type": "current_lap",
               "col": 0,
               "row": 3,
               "colSpan": 5,
@@ -1097,7 +1096,7 @@
             },
             {
               "id": "driving-sectors",
-              "type": "sector",
+              "type": "sectors",
               "col": 15,
               "row": 3,
               "colSpan": 5,
@@ -1132,7 +1131,7 @@
           "widgets": [
             {
               "id": "timing-laps",
-              "type": "lap_time",
+              "type": "current_lap",
               "col": 0,
               "row": 1,
               "colSpan": 7,
@@ -1160,7 +1159,7 @@
             },
             {
               "id": "timing-sectors",
-              "type": "sector",
+              "type": "sectors",
               "col": 13,
               "row": 1,
               "colSpan": 7,
@@ -1194,7 +1193,7 @@
             },
             {
               "id": "timing-gaps",
-              "type": "gaps",
+              "type": "gap_ahead",
               "col": 3,
               "row": 10,
               "colSpan": 9,
@@ -1239,7 +1238,7 @@
           "widgets": [
             {
               "id": "timing-laps",
-              "type": "lap_time",
+              "type": "current_lap",
               "col": 0,
               "row": 1,
               "colSpan": 7,
@@ -1267,7 +1266,7 @@
             },
             {
               "id": "timing-sectors",
-              "type": "sector",
+              "type": "sectors",
               "col": 13,
               "row": 1,
               "colSpan": 7,
@@ -1301,7 +1300,7 @@
             },
             {
               "id": "timing-gaps",
-              "type": "gaps",
+              "type": "gap_ahead",
               "col": 3,
               "row": 10,
               "colSpan": 9,
@@ -1396,7 +1395,7 @@
             },
             {
               "id": "driving-laps",
-              "type": "lap_time",
+              "type": "current_lap",
               "col": 0,
               "row": 3,
               "colSpan": 5,
@@ -1434,7 +1433,7 @@
             },
             {
               "id": "driving-sectors",
-              "type": "sector",
+              "type": "sectors",
               "col": 15,
               "row": 3,
               "colSpan": 5,
@@ -1510,7 +1509,7 @@
             },
             {
               "id": "endurance-ers",
-              "type": "virtual_energy",
+              "type": "ve_percent",
               "col": 14,
               "row": 1,
               "colSpan": 6,
@@ -1715,7 +1714,7 @@
             },
             {
               "id": "vehicle-ers",
-              "type": "virtual_energy",
+              "type": "ve_percent",
               "col": 13,
               "row": 9,
               "colSpan": 7,
@@ -1806,7 +1805,7 @@
             },
             {
               "id": "driving-laps",
-              "type": "lap_time",
+              "type": "current_lap",
               "col": 0,
               "row": 3,
               "colSpan": 5,
@@ -1844,7 +1843,7 @@
             },
             {
               "id": "driving-sectors",
-              "type": "sector",
+              "type": "sectors",
               "col": 15,
               "row": 3,
               "colSpan": 5,
@@ -2012,7 +2011,7 @@
             },
             {
               "id": "vehicle-ers",
-              "type": "virtual_energy",
+              "type": "ve_percent",
               "col": 13,
               "row": 9,
               "colSpan": 7,
@@ -2069,7 +2068,7 @@
             },
             {
               "id": "lap-time",
-              "type": "lap_time",
+              "type": "current_lap",
               "col": 0,
               "row": 11,
               "colSpan": 12,
@@ -2099,7 +2098,7 @@
           "widgets": [
             {
               "id": "lap-time",
-              "type": "lap_time",
+              "type": "current_lap",
               "col": 0,
               "row": 0,
               "colSpan": 12,
@@ -2107,7 +2106,7 @@
             },
             {
               "id": "sector",
-              "type": "sector",
+              "type": "sectors",
               "col": 0,
               "row": 10,
               "colSpan": 12,
@@ -2115,7 +2114,7 @@
             },
             {
               "id": "gaps",
-              "type": "gaps",
+              "type": "gap_ahead",
               "col": 0,
               "row": 16,
               "colSpan": 12,
@@ -2205,7 +2204,7 @@
             },
             {
               "id": "driving-laps",
-              "type": "lap_time",
+              "type": "current_lap",
               "col": 0,
               "row": 3,
               "colSpan": 5,
@@ -2243,7 +2242,7 @@
             },
             {
               "id": "driving-sectors",
-              "type": "sector",
+              "type": "sectors",
               "col": 15,
               "row": 3,
               "colSpan": 5,
@@ -2323,25 +2322,19 @@
           "widgets": [
             {
               "id": "practice-last",
-              "type": "lap_time",
+              "type": "last_lap",
               "col": 0,
               "row": 0,
               "colSpan": 6,
-              "rowSpan": 3,
-              "config": {
-                "show": "last"
-              }
+              "rowSpan": 3
             },
             {
               "id": "practice-best",
-              "type": "lap_time",
+              "type": "best_lap",
               "col": 0,
               "row": 3,
               "colSpan": 6,
-              "rowSpan": 3,
-              "config": {
-                "show": "best"
-              }
+              "rowSpan": 3
             },
             {
               "id": "practice-gear",
@@ -2377,7 +2370,7 @@
             },
             {
               "id": "practice-energy",
-              "type": "virtual_energy",
+              "type": "ve_percent",
               "col": 6,
               "row": 6,
               "colSpan": 8,
@@ -2470,7 +2463,7 @@
           "widgets": [
             {
               "id": "energy-budget",
-              "type": "virtual_energy",
+              "type": "ve_percent",
               "col": 0,
               "row": 0,
               "colSpan": 10,
@@ -2530,7 +2523,7 @@
             },
             {
               "id": "outlap-gaps",
-              "type": "gaps",
+              "type": "gap_ahead",
               "col": 7,
               "row": 6,
               "colSpan": 6,
@@ -2606,38 +2599,29 @@
           "widgets": [
             {
               "id": "race-last",
-              "type": "lap_time",
+              "type": "last_lap",
               "col": 0,
               "row": 0,
               "colSpan": 6,
               "rowSpan": 4,
-              "config": {
-                "show": "last"
-              },
               "group": "race-left"
             },
             {
               "id": "race-best",
-              "type": "lap_time",
+              "type": "best_lap",
               "col": 0,
               "row": 4,
               "colSpan": 6,
               "rowSpan": 4,
-              "config": {
-                "show": "best"
-              },
               "group": "race-left"
             },
             {
               "id": "race-current",
-              "type": "lap_time",
+              "type": "current_lap",
               "col": 0,
               "row": 8,
               "colSpan": 6,
               "rowSpan": 4,
-              "config": {
-                "show": "current"
-              },
               "group": "race-left"
             },
             {
@@ -2737,7 +2721,7 @@
             },
             {
               "id": "car-energy",
-              "type": "virtual_energy",
+              "type": "ve_percent",
               "col": 13,
               "row": 0,
               "colSpan": 7,
@@ -5366,11 +5350,14 @@
     { "type": "arb_change", "enabled": false, "size": "strip", "invertColors": false, "durationSeconds": 2, "untilAck": false },
     { "type": "dial_change", "enabled": true, "size": "strip", "invertColors": false, "durationSeconds": 2, "untilAck": false },
     { "type": "pit_limiter", "enabled": true, "size": "strip", "invertColors": false, "durationSeconds": 3, "untilAck": true },
+    { "type": "launch", "enabled": true, "size": "strip", "invertColors": false, "durationSeconds": 5, "untilAck": true, "clutchPercent": 50, "speedKmh": 10, "rpmFrom": 5000, "rpmTo": 6000, "throttleFrom": 20, "throttleTo": 30 },
     { "type": "flag", "enabled": true, "size": "strip", "invertColors": false, "durationSeconds": 3, "untilAck": false },
     { "type": "penalty", "enabled": true, "size": "full", "invertColors": true, "durationSeconds": 5, "untilAck": true },
     { "type": "damage", "enabled": true, "size": "full", "invertColors": false, "durationSeconds": 5, "untilAck": false },
-    { "type": "engine_warning", "enabled": true, "size": "full", "invertColors": true, "durationSeconds": 5, "untilAck": true },
-    { "type": "fuel_low", "enabled": true, "size": "strip", "invertColors": false, "durationSeconds": 3, "untilAck": true, "lapsLeft": 2 },
+    { "type": "engine_warning", "enabled": true, "size": "full", "invertColors": true, "durationSeconds": 5, "untilAck": true, "waterLimitCelsius": 110, "oilLimitCelsius": 130 },
+    { "type": "fuel_low", "enabled": true, "size": "strip", "invertColors": false, "durationSeconds": 3, "untilAck": true, "lapsLeft": 2, "warningLapsLeft": 4 },
+    { "type": "pit_now", "enabled": true, "size": "strip", "invertColors": false, "durationSeconds": 5, "untilAck": true },
+    { "type": "lift_now", "enabled": true, "size": "strip", "invertColors": false, "durationSeconds": 2, "untilAck": true, "liftPoint": 220 },
     { "type": "lap_summary", "enabled": true, "size": "full", "invertColors": false, "durationSeconds": 5, "untilAck": false }
   ],
   "multiDials": [
@@ -5521,7 +5508,7 @@
               },
               {
                 "id": "driving-laps",
-                "type": "lap_time",
+                "type": "current_lap",
                 "col": 0,
                 "row": 3,
                 "colSpan": 5,
@@ -5559,7 +5546,7 @@
               },
               {
                 "id": "driving-sectors",
-                "type": "sector",
+                "type": "sectors",
                 "col": 15,
                 "row": 3,
                 "colSpan": 5,
@@ -5622,7 +5609,7 @@
               },
               {
                 "id": "endurance-ers",
-                "type": "virtual_energy",
+                "type": "ve_percent",
                 "col": 14,
                 "row": 1,
                 "colSpan": 6,
@@ -5707,7 +5694,7 @@
             "widgets": [
               {
                 "id": "timing-laps",
-                "type": "lap_time",
+                "type": "current_lap",
                 "col": 0,
                 "row": 1,
                 "colSpan": 7,
@@ -5735,7 +5722,7 @@
               },
               {
                 "id": "timing-sectors",
-                "type": "sector",
+                "type": "sectors",
                 "col": 13,
                 "row": 1,
                 "colSpan": 7,
@@ -5769,7 +5756,7 @@
               },
               {
                 "id": "timing-gaps",
-                "type": "gaps",
+                "type": "gap_ahead",
                 "col": 3,
                 "row": 10,
                 "colSpan": 9,
@@ -5920,7 +5907,7 @@
               },
               {
                 "id": "vehicle-ers",
-                "type": "virtual_energy",
+                "type": "ve_percent",
                 "col": 13,
                 "row": 9,
                 "colSpan": 7,
@@ -6138,7 +6125,7 @@
               },
               {
                 "id": "driving-laps",
-                "type": "lap_time",
+                "type": "current_lap",
                 "col": 0,
                 "row": 3,
                 "colSpan": 5,
@@ -6176,7 +6163,7 @@
               },
               {
                 "id": "driving-sectors",
-                "type": "sector",
+                "type": "sectors",
                 "col": 15,
                 "row": 3,
                 "colSpan": 5,
@@ -6239,7 +6226,7 @@
               },
               {
                 "id": "endurance-ers",
-                "type": "virtual_energy",
+                "type": "ve_percent",
                 "col": 14,
                 "row": 1,
                 "colSpan": 6,
@@ -6324,7 +6311,7 @@
             "widgets": [
               {
                 "id": "timing-laps",
-                "type": "lap_time",
+                "type": "current_lap",
                 "col": 0,
                 "row": 1,
                 "colSpan": 7,
@@ -6352,7 +6339,7 @@
               },
               {
                 "id": "timing-sectors",
-                "type": "sector",
+                "type": "sectors",
                 "col": 13,
                 "row": 1,
                 "colSpan": 7,
@@ -6386,7 +6373,7 @@
               },
               {
                 "id": "timing-gaps",
-                "type": "gaps",
+                "type": "gap_ahead",
                 "col": 3,
                 "row": 10,
                 "colSpan": 9,
@@ -6537,7 +6524,7 @@
               },
               {
                 "id": "vehicle-ers",
-                "type": "virtual_energy",
+                "type": "ve_percent",
                 "col": 13,
                 "row": 9,
                 "colSpan": 7,

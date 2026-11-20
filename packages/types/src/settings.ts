@@ -14,14 +14,14 @@ export interface DashEditorUIPreferences {
 export interface NewDashDefaults {
   mode?: 'advanced' | 'basic'
   display?: string
-  speedUnit?: 'km/h' | 'mph'
-  tempUnit?: 'c' | 'f'
 }
 
 export interface AppSettings {
   updateChannel: 'stable' | 'pre-release'
   driverName?: string
   driverNumber?: string
+  /** What every dash prints speeds, temperatures, pressures and fuel in. */
+  units?: 'Metric' | 'Imperial'
   newDashDefaults?: NewDashDefaults
   dashEditorUI?: DashEditorUIPreferences
 }

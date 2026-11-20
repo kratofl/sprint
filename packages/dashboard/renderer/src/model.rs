@@ -13,7 +13,9 @@ use std::collections::BTreeMap;
 use serde::Deserialize;
 use serde_json::{Map, Value};
 
+use crate::format::Units;
 use crate::lap_summary::{LapReview, LapReviewField};
+use crate::pit_limiter::{PitLimiter, PitLimiterStyle};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum DashStyle {
@@ -172,6 +174,37 @@ pub struct DashPage {
     pub name: String,
     pub widgets: Vec<DashWidget>,
     pub groups: Vec<DashWidgetGroup>,
+    pub bars: PageBars,
+}
+
+/// Which bar spots a zoned page keeps (the page's `bars`; absent or unknown: both). A spot it
+/// drops folds away, and the side grids and rows grow into the space (`grid::zoned_rect`).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum PageBars {
+    #[default]
+    Both,
+    Top,
+    Sides,
+    None,
+}
+
+impl PageBars {
+    pub const fn keeps_top(self) -> bool {
+        matches!(self, PageBars::Both | PageBars::Top)
+    }
+
+    pub const fn keeps_sides(self) -> bool {
+        matches!(self, PageBars::Both | PageBars::Sides)
+    }
+
+    fn parse(value: Option<&Value>) -> PageBars {
+        match value.and_then(Value::as_str) {
+            Some("top") => PageBars::Top,
+            Some("sides") => PageBars::Sides,
+            Some("none") => PageBars::None,
+            _ => PageBars::Both,
+        }
+    }
 }
 
 /// One alert as the layout carries it. Only `id`/`type` are validated (as in the TypeScript);
@@ -201,6 +234,8 @@ pub struct DashLayout {
     pub alert_config: Option<Map<String, Value>>,
     /// What the lap review (`lap_summary`) shows in its six cells.
     pub lap_review: LapReview,
+    /// What the dash shows over its page while the pit limiter is on (`pit_limiter.rs`).
+    pub pit_limiter: PitLimiter,
     pub chrome: DashChrome,
     /// The zones (bar spots, side grids, gear centre) instead of an even grid: see `grid::zoned_rect`.
     pub zoned: bool,
@@ -213,6 +248,8 @@ pub struct DashSettings {
     pub driver_number: Option<String>,
     /// The viewer's local time minus UTC, minutes: what the clock widget adds to the frame's time.
     pub utc_offset_minutes: Option<f64>,
+    /// What speeds, temperatures, pressures and fuel print in (the app-wide Units setting).
+    pub units: Units,
 }
 
 /// What the driver planned to be aiming at (`DashTargets` in bindings.ts). `None` is "no plan",
@@ -238,9 +275,17 @@ pub struct Scene {
     pub targets: Option<DashTargets>,
     /// Leave the canvas background clear (alpha 0) instead of the palette background.
     pub transparent: bool,
+    /// The designer's pit limiter stage: nothing but the pit limiter overlay, on a clear canvas,
+    /// whatever the frame and the alerts say (the page underneath is drawn separately, faded).
+    pub pit_limiter_only: bool,
 }
 
 impl Scene {
+    /// What the scene's values print in: its settings' units, metric without settings.
+    pub fn units(&self) -> Units {
+        self.settings.as_ref().map_or(Units::Metric, |s| s.units)
+    }
+
     /// The pixmap size for this scene, in device pixels.
     pub fn size_px(&self) -> (u32, u32) {
         let px = |logical: f64| (logical * self.scale).round().clamp(0.0, f64::from(u32::MAX)) as u32;
@@ -279,12 +324,14 @@ pub fn parse_scene(json: &[u8]) -> Result<Scene, String> {
             driver_name: string_field(raw, "driverName"),
             driver_number: string_field(raw, "driverNumber"),
             utc_offset_minutes: raw.get("utcOffsetMinutes").and_then(Value::as_f64),
+            units: Units::parse(raw.get("units").and_then(Value::as_str)),
         }),
         targets: root.get("targets").and_then(Value::as_object).map(|raw| DashTargets {
             lap_time_seconds: raw.get("lapTimeSeconds").and_then(Value::as_f64),
             fuel_per_lap_liters: raw.get("fuelPerLapLiters").and_then(Value::as_f64),
         }),
         transparent: root.get("transparent") == Some(&Value::Bool(true)),
+        pit_limiter_only: root.get("pitLimiterOnly") == Some(&Value::Bool(true)),
     };
     let (w, h) = scene.size_px();
     if w == 0 || h == 0 {
@@ -339,6 +386,7 @@ fn parse_layout(raw: &Map<String, Value>) -> Result<DashLayout, String> {
             .map(|theme| theme.iter().filter_map(|(key, value)| value.as_str().map(|v| (key.clone(), v.to_owned()))).collect()),
         alert_config: raw.get("alertConfig").and_then(Value::as_object).cloned(),
         lap_review: parse_lap_review(raw.get("lapReview")),
+        pit_limiter: parse_pit_limiter(raw.get("pitLimiter")),
         chrome: raw
             .get("chrome")
             .and_then(Value::as_object)
@@ -359,7 +407,13 @@ fn parse_page(value: &Value) -> Option<DashPage> {
         None => Vec::new(),
         Some(groups) => groups.as_array()?.iter().map(parse_group).collect::<Option<Vec<_>>>()?,
     };
-    Some(DashPage { id: raw.get("id")?.as_str()?.to_owned(), name: raw.get("name")?.as_str()?.to_owned(), widgets, groups })
+    Some(DashPage {
+        id: raw.get("id")?.as_str()?.to_owned(),
+        name: raw.get("name")?.as_str()?.to_owned(),
+        widgets,
+        groups,
+        bars: PageBars::parse(raw.get("bars")),
+    })
 }
 
 fn parse_widget(value: &Value) -> Option<DashWidget> {
@@ -426,6 +480,26 @@ fn parse_lap_review(value: Option<&Value>) -> LapReview {
         }
     }
     review
+}
+
+/// The layout's `pitLimiter: { style, widgets, groups? }`. Never an error: an unknown style is the
+/// default one, and a widget or group that does not parse is left out rather than losing the
+/// whole overlay.
+fn parse_pit_limiter(value: Option<&Value>) -> PitLimiter {
+    let Some(raw) = value.and_then(Value::as_object) else {
+        return PitLimiter::default();
+    };
+    let list = |key: &str| raw.get(key).and_then(Value::as_array).map(Vec::as_slice).unwrap_or_default();
+    PitLimiter {
+        style: PitLimiterStyle::parse(raw.get("style").and_then(Value::as_str)),
+        page: DashPage {
+            id: "pit-limiter".to_owned(),
+            name: "Pit limiter".to_owned(),
+            widgets: list("widgets").iter().filter_map(parse_widget).collect(),
+            groups: list("groups").iter().filter_map(parse_group).collect(),
+            bars: PageBars::Both,
+        },
+    }
 }
 
 fn parse_alert(value: &Value) -> Option<DashAlert> {
@@ -510,6 +584,18 @@ pub struct CarState {
     pub in_pit_lane: Option<bool>,
     pub pit_state: Option<String>,
     pub pit_limiter: Option<bool>,
+    /// Engine torque, Nm (negative on the overrun); `None` when the game does not say.
+    pub engine_torque: Option<f64>,
+    /// Turbo boost pressure as the game reports it (LMU states no unit); `None` without a turbo.
+    pub turbo_boost: Option<f64>,
+    pub headlights: Option<bool>,
+    /// The wiper setting as the game numbers it (0 presumably off); `None` when the game does not say.
+    pub wiper_state: Option<f64>,
+    /// Fuel the last lap used, this lap so far, and per clean lap of the stint, litres (the host
+    /// measures them); `None` until known.
+    pub fuel_last_lap: Option<f64>,
+    pub fuel_this_lap: Option<f64>,
+    pub fuel_stint_per_lap: Option<f64>,
 }
 
 impl Default for CarState {
@@ -536,6 +622,13 @@ impl Default for CarState {
             in_pit_lane: None,
             pit_state: None,
             pit_limiter: None,
+            engine_torque: None,
+            turbo_boost: None,
+            headlights: None,
+            wiper_state: None,
+            fuel_last_lap: None,
+            fuel_this_lap: None,
+            fuel_stint_per_lap: None,
         }
     }
 }
@@ -552,6 +645,15 @@ pub struct TireState {
     pub wear_percent: f64,
     pub compound: String,
     pub brake_temp: f64,
+    /// The compound's ideal temperature, °C; 0 when unknown.
+    pub optimal_temp: f64,
+    /// Over the last lap (the host measures them): the wear it took, percentage points, and the
+    /// average tread temperature, °C; `None` until known.
+    pub wear_last_lap: Option<f64>,
+    pub avg_temp_last_lap: Option<f64>,
+    /// The tyre is punctured, or the wheel has come off the car.
+    pub flat: bool,
+    pub detached: bool,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -579,7 +681,19 @@ pub struct LapState {
     pub is_in_lap: bool,
     pub is_out_lap: bool,
     pub is_valid: bool,
+    /// Whether the last completed lap counted; true until one has been completed.
+    pub last_lap_valid: bool,
     pub track_position: f64,
+    /// The average of the driver's last five and last ten valid laps, the all-time best at this
+    /// track in this car, and what a pit stop costs, seconds (the host works them out); `None`
+    /// until known.
+    pub last_five_laps_average: Option<f64>,
+    pub last_ten_laps_average: Option<f64>,
+    pub all_time_best_lap: Option<f64>,
+    pub pit_loss: Option<f64>,
+    /// The fastest the car went on the last completed lap, m/s (the host measures it); `None`
+    /// until a lap was seen from the line.
+    pub last_lap_top_speed_ms: Option<f64>,
 }
 
 impl Default for LapState {
@@ -605,7 +719,13 @@ impl Default for LapState {
             is_in_lap: false,
             is_out_lap: false,
             is_valid: true,
+            last_lap_valid: true,
             track_position: 0.0,
+            last_five_laps_average: None,
+            last_ten_laps_average: None,
+            all_time_best_lap: None,
+            pit_loss: None,
+            last_lap_top_speed_ms: None,
         }
     }
 }
@@ -652,28 +772,72 @@ pub struct Electronics {
 pub struct RaceState {
     pub position: f64,
     pub total_positions: f64,
+    /// Seconds to the nearest car ahead and behind on the road; 0 when unknown. Every gap here is
+    /// timed by the host from where the cars were when, so it holds while both cars brake.
     pub gap_ahead: f64,
     pub gap_behind: f64,
+    /// Seconds to the car one place ahead and behind in our class and overall, and to the overall
+    /// and class leader; `None` when there is no such car or the gap is unknown.
+    pub class_gap_ahead: Option<f64>,
+    pub class_gap_behind: Option<f64>,
+    pub position_gap_ahead: Option<f64>,
+    pub position_gap_behind: Option<f64>,
+    pub gap_to_leader: Option<f64>,
+    pub gap_to_class_leader: Option<f64>,
     /// The spotter: how far ahead (negative: behind) the nearest car alongside is on each side,
     /// metres; `None` when nobody is alongside.
     pub car_left: Option<f64>,
     pub car_right: Option<f64>,
 }
 
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct EnergyState {
     pub virtual_energy: f64,
     pub virtual_energy_per_lap: f64,
     pub soc: f64,
     pub regen_power: f64,
     pub deploy_power: f64,
+    /// What the hybrid motor is doing: "unavailable" (no hybrid), "inactive", "propulsion" or
+    /// "regeneration".
+    pub motor_state: String,
+    /// The hybrid motor and its cooling water, °C; `None` without a hybrid (or a cooler).
+    pub motor_temp: Option<f64>,
+    pub motor_water_temp: Option<f64>,
+    /// The game's lift-and-coast cue, 0–255, counting up towards the point to lift.
+    pub lift_and_coast: f64,
+    /// Virtual energy the last lap used and per clean lap of the stint (the host measures them);
+    /// `None` until known.
+    pub ve_last_lap: Option<f64>,
+    pub ve_stint_per_lap: Option<f64>,
+}
+
+impl Default for EnergyState {
+    fn default() -> Self {
+        EnergyState {
+            virtual_energy: 0.0,
+            virtual_energy_per_lap: 0.0,
+            soc: 0.0,
+            regen_power: 0.0,
+            deploy_power: 0.0,
+            motor_state: "unavailable".to_owned(),
+            motor_temp: None,
+            motor_water_temp: None,
+            lift_and_coast: 0.0,
+            ve_last_lap: None,
+            ve_stint_per_lap: None,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Penalties {
     pub incidents: f64,
     pub track_limit_steps: f64,
+    /// The track-limit steps that earn a penalty; 0 when unknown.
+    pub track_limit_steps_per_penalty: f64,
     pub pit_stops: f64,
+    /// The pit stops the game's own strategy plans; 0 when none.
+    pub scheduled_pit_stops: f64,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -732,6 +896,14 @@ pub struct FieldCar {
     pub penalties: f64,
     /// The car is being shown the blue flag (let a faster car by).
     pub blue_flag: bool,
+    /// Seconds on the road from ours (negative: ahead), as the host times it; `None` for our own
+    /// car and while the host has too little history.
+    pub relative_gap: Option<f64>,
+    /// The class as the game states it (`palette::class_color` reads LMU's spellings), the place
+    /// within it (0 when unknown), and whether the car is in the pit lane.
+    pub car_class: String,
+    pub class_place: f64,
+    pub in_pit_lane: bool,
 }
 
 fn empty_tire(index: usize) -> TireState {
@@ -832,6 +1004,10 @@ const SESSION_TYPES: [(&str, &str); 5] = [("Practice", "practice"), ("Qualify", 
 /// `PitState`, by name. Anything else (or null) reads as "the game did not say".
 const PIT_STATES: [(&str, &str); 5] = [("None", "none"), ("Requested", "requested"), ("Entering", "entering"), ("Stopped", "stopped"), ("Exiting", "exiting")];
 
+/// `ElectricMotorState`, by name. Anything else reads as "unavailable".
+const MOTOR_STATES: [(&str, &str); 4] =
+    [("Unavailable", "unavailable"), ("Inactive", "inactive"), ("Propulsion", "propulsion"), ("Regeneration", "regeneration")];
+
 /// `TirePosition` names in index order: the model holds each tyre at its position's index.
 const TIRE_POSITIONS: [&str; 4] = ["FrontLeft", "FrontRight", "RearLeft", "RearRight"];
 
@@ -875,6 +1051,13 @@ fn narrow_car(f: Fields) -> CarState {
         in_pit_lane: f.opt_flag("inPitLane"),
         pit_state: enum_name(f.get("pitState"), &PIT_STATES).map(str::to_owned),
         pit_limiter: f.opt_flag("pitLimiter"),
+        engine_torque: f.opt_num("engineTorqueNewtonMeters"),
+        turbo_boost: f.opt_num("turboBoostPressure"),
+        headlights: f.opt_flag("headlights"),
+        wiper_state: f.opt_num("wiperState"),
+        fuel_last_lap: f.opt_num("fuelLastLapLiters"),
+        fuel_this_lap: f.opt_num("fuelThisLapLiters"),
+        fuel_stint_per_lap: f.opt_num("fuelStintPerLapLiters"),
     }
 }
 
@@ -890,6 +1073,11 @@ fn narrow_tire(f: Fields, index: usize) -> TireState {
         wear_percent: f.num("wearPercent", 0.0),
         compound: f.text("compound", ""),
         brake_temp: f.num("brakeTempCelsius", 0.0),
+        optimal_temp: f.num("optimalTempCelsius", 0.0),
+        wear_last_lap: f.opt_num("wearLastLapPercent"),
+        avg_temp_last_lap: f.opt_num("averageTempLastLapCelsius"),
+        flat: f.flag("flat", false),
+        detached: f.flag("detached", false),
     }
 }
 
@@ -937,7 +1125,13 @@ fn narrow_lap(f: Fields) -> LapState {
         is_in_lap: false,
         is_out_lap: false,
         is_valid: f.flag("isValid", true),
+        last_lap_valid: f.flag("lastLapValid", true),
         track_position: f.num("trackPosition", 0.0),
+        last_five_laps_average: f.opt_num("lastFiveLapsAverage"),
+        last_ten_laps_average: f.opt_num("lastTenLapsAverage"),
+        all_time_best_lap: f.opt_num("allTimeBestLapTime"),
+        pit_loss: f.opt_num("pitLossSeconds"),
+        last_lap_top_speed_ms: f.opt_num("lastLapTopSpeedMetersPerSecond"),
     }
 }
 
@@ -957,8 +1151,7 @@ fn narrow_flags(f: Fields) -> Flags {
     }
 }
 
-/// The host publishes no ABS-active channel; a setting counts as available when the car reports
-/// a non-zero maximum for it.
+/// A setting counts as available when the car reports a non-zero maximum for it.
 fn narrow_electronics(f: Fields) -> Electronics {
     let tc_max = f.num("tractionControlMax", 0.0);
     let tc_cut_max = f.num("tractionControlCutMax", 0.0);
@@ -973,7 +1166,7 @@ fn narrow_electronics(f: Fields) -> Electronics {
         tc_cut_max,
         tc_slip: f.num("tractionControlSlip", 0.0),
         tc_slip_max,
-        abs_active: false,
+        abs_active: f.flag("absActive", false),
         abs: f.num("abs", 0.0),
         abs_max,
         motor_map: f.num("motorMap", 0.0),
@@ -999,6 +1192,12 @@ fn narrow_race(f: Fields) -> RaceState {
         total_positions: f.num("totalPositions", 0.0),
         gap_ahead: f.num("gapAhead", 0.0),
         gap_behind: f.num("gapBehind", 0.0),
+        class_gap_ahead: f.opt_num("classGapAhead"),
+        class_gap_behind: f.opt_num("classGapBehind"),
+        position_gap_ahead: f.opt_num("positionGapAhead"),
+        position_gap_behind: f.opt_num("positionGapBehind"),
+        gap_to_leader: f.opt_num("gapToLeader"),
+        gap_to_class_leader: f.opt_num("gapToClassLeader"),
         car_left: f.opt_num("carLeftMeters"),
         car_right: f.opt_num("carRightMeters"),
     }
@@ -1011,11 +1210,23 @@ fn narrow_energy(f: Fields) -> EnergyState {
         soc: f.num("stateOfCharge", 0.0),
         regen_power: f.num("regenPower", 0.0),
         deploy_power: f.num("deployPower", 0.0),
+        motor_state: enum_name(f.get("motorState"), &MOTOR_STATES).unwrap_or("unavailable").to_owned(),
+        motor_temp: f.opt_num("motorTempCelsius"),
+        motor_water_temp: f.opt_num("motorWaterTempCelsius"),
+        lift_and_coast: f.num("liftAndCoastProgress", 0.0),
+        ve_last_lap: f.opt_num("virtualEnergyLastLap"),
+        ve_stint_per_lap: f.opt_num("virtualEnergyStintPerLap"),
     }
 }
 
 fn narrow_penalties(f: Fields) -> Penalties {
-    Penalties { incidents: f.num("incidents", 0.0), track_limit_steps: f.num("trackLimitSteps", 0.0), pit_stops: f.num("pitStops", 0.0) }
+    Penalties {
+        incidents: f.num("incidents", 0.0),
+        track_limit_steps: f.num("trackLimitSteps", 0.0),
+        track_limit_steps_per_penalty: f.num("trackLimitStepsPerPenalty", 0.0),
+        pit_stops: f.num("pitStops", 0.0),
+        scheduled_pit_stops: f.num("scheduledPitStops", 0.0),
+    }
 }
 
 fn narrow_conditions(f: Fields) -> SessionConditions {
@@ -1059,6 +1270,10 @@ fn narrow_field(value: &Value) -> Vec<FieldCar> {
                 lap_distance_meters: f.num("lapDistanceMeters", 0.0),
                 penalties: f.num("penalties", 0.0),
                 blue_flag: f.flag("blueFlag", false),
+                relative_gap: f.opt_num("relativeGapSeconds"),
+                car_class: f.text("carClass", ""),
+                class_place: f.num("classPlace", 0.0),
+                in_pit_lane: f.flag("inPitLane", false),
             }
         })
         .collect()
@@ -1152,6 +1367,14 @@ mod tests {
     }
 
     #[test]
+    fn a_scenes_units_are_its_settings_or_metric() {
+        assert_eq!(scene(r#","settings":{"units":"Imperial"}"#).map(|s| s.units()), Ok(Units::Imperial));
+        assert_eq!(scene(r#","settings":{"units":"Metric"}"#).map(|s| s.units()), Ok(Units::Metric));
+        assert_eq!(scene(r#","settings":{}"#).map(|s| s.units()), Ok(Units::Metric));
+        assert_eq!(scene("").map(|s| s.units()), Ok(Units::Metric));
+    }
+
+    #[test]
     fn the_tanks_size_is_read_when_the_game_says_it() {
         let capacity = |car: &str| {
             let frame = format!(r#"{{"session":{{}},"car":{car},"lap":{{}},"flags":{{}},"electronics":{{}},"race":{{}},"energy":{{}}}}"#);
@@ -1160,6 +1383,19 @@ mod tests {
         assert_eq!(capacity(r#"{"fuelCapacityLiters":90}"#), Ok(Some(90.0)));
         assert_eq!(capacity(r#"{"fuelCapacityLiters":null}"#), Ok(None));
         assert_eq!(capacity(r#"{"fuelCapacityLiters":0}"#), Ok(None), "a tank of nothing is unknown");
+    }
+
+    #[test]
+    fn a_pit_limiter_keeps_its_style_and_the_widgets_that_parse() {
+        let pit = |json: &str| parse_pit_limiter(serde_json::from_str::<Value>(json).ok().as_ref());
+        let read = pit(r#"{"style":"box","widgets":[{"id":"s","type":"speed","col":5,"row":4,"colSpan":1,"rowSpan":1},{"id":"x"}]}"#);
+        assert_eq!(read.style, PitLimiterStyle::Box);
+        assert_eq!(read.page.widgets.iter().map(|w| w.id.as_str()).collect::<Vec<_>>(), ["s"], "a broken widget is left out, not the overlay");
+        assert_eq!(pit(r#"{"style":"neon"}"#).style, PitLimiterStyle::Gear);
+        for missing in ["null", "{}", "[]"] {
+            let read = pit(missing);
+            assert!(read.style == PitLimiterStyle::Gear && read.page.widgets.is_empty(), "{missing}");
+        }
     }
 
     #[test]

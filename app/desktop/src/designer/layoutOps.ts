@@ -1,5 +1,5 @@
-import { DASH_ZONES, lapReviewCells, type DashLapReviewField, type DashLayout, type DashPage, type GridSpan } from '@sprint/dashboard'
-import { findPage } from '../views/DashesDomain'
+import { DASH_ZONES, lapReviewCells, type DashLapReviewField, type DashLayout, type DashPage, type DashPageBars, type GridSpan } from '@sprint/dashboard'
+import { findPage, outOfSight } from '../views/DashesDomain'
 
 /**
  * Page edits the designer needs on top of the `DashesDomain` mutators (group edits are in
@@ -15,6 +15,20 @@ export function movePage(layout: DashLayout, pageId: string, offset: -1 | 1): Da
   const [page] = pages.splice(index, 1)
   pages.splice(target, 0, page)
   return { ...layout, pages }
+}
+
+/**
+ * Sets which bar spots a page keeps (the idle page too); `both` drops the field. Widgets in a spot
+ * it drops stay on the page, out of sight, and come back when the spot does. Null when unchanged.
+ */
+export function setPageBars(layout: DashLayout, pageId: string, bars: DashPageBars): DashLayout | null {
+  const page = findPage(layout, pageId)
+  if (!page || (page.bars ?? 'both') === bars) return null
+  const next: DashPage = { ...page }
+  if (bars === 'both') delete next.bars
+  else next.bars = bars
+  if (layout.idlePage?.id === pageId) return { ...layout, idlePage: next }
+  return { ...layout, pages: layout.pages.map((candidate) => (candidate.id === pageId ? next : candidate)) }
 }
 
 /** Puts `field` in the lap review's box `index` (0–5, rows 2 and 3 left to right); null when it is already there. */
@@ -44,12 +58,12 @@ const overlaps = (a: GridSpan, b: GridSpan): boolean => a.col < b.col + b.colSpa
 
 /**
  * The places on `page` no widget takes (a hidden one or a stack's other layer still does), for the
- * outline view: on a zoned dash each side bar spot whole and every other free cell alone, on a
- * free grid every free cell.
+ * outline view: on a zoned dash each side bar spot whole and every other free cell alone, none in a
+ * bar spot the page drops; on a free grid every free cell.
  */
 export function emptyCells(layout: DashLayout, page: DashPage): GridSpan[] {
   const places = layout.zoned
     ? [DASH_ZONES.barLeft, DASH_ZONES.barRight, ...cellsOf(DASH_ZONES.top), ...cellsOf(DASH_ZONES.left), ...cellsOf(DASH_ZONES.centre), ...cellsOf(DASH_ZONES.right)]
     : cellsOf({ col: 0, row: 0, colSpan: layout.gridCols > 0 ? layout.gridCols : 20, rowSpan: layout.gridRows > 0 ? layout.gridRows : 12 })
-  return places.filter((place) => !page.widgets.some((widget) => overlaps(place, widget)))
+  return places.filter((place) => !outOfSight(layout, page, place) && !page.widgets.some((widget) => overlaps(place, widget)))
 }

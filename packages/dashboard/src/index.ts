@@ -6,8 +6,16 @@
 
 import type { DashAlertDisplayMode } from './alerts'
 import type { DashLapReview } from './lapReview'
+import type { DashPitLimiter } from './pitLimiter'
+import type { DashPageBars } from './zones'
 
 export type DashColorSystem = 'functional' | 'styled'
+/**
+ * The driver's measurement system (host `AppSettings.Units`, by name): every speed, temperature,
+ * pressure and fuel volume a dash prints is in it (the renderer's `Units`). Imperial is US
+ * customary: mph, °F, psi and US gallons.
+ */
+export type DashUnits = 'Metric' | 'Imperial'
 /**
  * How every widget on a dash is framed and titled: separate rounded panels, one ruled grid,
  * or panels with a title bar. Independent of layout: switching it never moves or resizes a
@@ -51,27 +59,36 @@ export type DashPageJump = 'outLap' | 'flyingLap'
 /**
  * `showIn` lists the sessions (`practice`, `qualifying`, `race`) and the driver's own mode ids the
  * wheel cycles the page in; absent means every session. `jump`: when the wheel shows it by itself.
- * The renderer ignores both.
+ * The renderer ignores both. `bars`: the bar spots a zoned page keeps; absent means both.
  */
-export interface DashPage { id: string; name: string; widgets: DashWidget[]; groups?: DashWidgetGroup[]; showIn?: string[]; jump?: DashPageJump }
+export interface DashPage { id: string; name: string; widgets: DashWidget[]; groups?: DashWidgetGroup[]; showIn?: string[]; jump?: DashPageJump; bars?: DashPageBars }
 /**
  * One alert on a dash, as the host stamps the app-wide alert settings onto it
  * (`dashAlertFromSettings`). The look fields (`displayMode`, `colorToken`, `durationSeconds`,
  * `invertColors`) are the alert's own look; all absent means it uses the layout's `alertConfig`.
  * `displayMode` "full" shows the popup over the whole dash, "strip" as a band across its middle,
- * "center" in the alert's grid rect. `untilAck` keeps it up until the driver acknowledges it;
- * `lapsLeft` is `fuel_low`'s threshold.
+ * "center" in the alert's grid rect. `untilAck` keeps it up until the driver acknowledges it.
+ * The rest are a type's own settings (`DashAlertSettings`): `lapsLeft`/`warningLapsLeft` are
+ * `fuel_low`'s two levels, `waterLimitCelsius`/`oilLimitCelsius` `engine_warning`'s limits, the
+ * launch window `launch`'s and `liftPoint` `lift_now`'s; the widgets warn from them too.
  */
-export interface DashAlert { id: string; type: string; enabled: boolean; col: number; row: number; colSpan: number; rowSpan: number; displayMode?: DashAlertDisplayMode; colorToken?: string; durationSeconds?: number; invertColors?: boolean; untilAck?: boolean; lapsLeft?: number }
+export interface DashAlert {
+  id: string; type: string; enabled: boolean; col: number; row: number; colSpan: number; rowSpan: number
+  displayMode?: DashAlertDisplayMode; colorToken?: string; durationSeconds?: number; invertColors?: boolean; untilAck?: boolean
+  lapsLeft?: number; warningLapsLeft?: number; waterLimitCelsius?: number; oilLimitCelsius?: number
+  clutchPercent?: number; speedKmh?: number; rpmFrom?: number; rpmTo?: number; throttleFrom?: number; throttleTo?: number; liftPoint?: number
+}
 /**
  * `category` is the Dashes page grouping (host `DashLayout.Category`); absent means "Other". The
  * renderer ignores it. `zoned`: the bar spots, side grids and gear centre of `zones.ts` instead of
  * an even grid (then `gridCols`/`gridRows` are 11 x 9). `chrome`: the flat style's look.
  * `lapReview`: the lap review's six cells (`lapReviewCells` reads them); absent shows the defaults.
+ * `pitLimiter`: the overlay shown while the pit limiter is on (`pitLimiterOf` reads it); absent
+ * shows the default style with no widgets of its own.
  */
-export interface DashLayout { id: string; name: string; category?: string; mode: string; colorSystem?: DashColorSystem; dashStyle?: DashStyle; chrome?: DashChrome; zoned?: boolean; screenProfile?: string; gridCols: number; gridRows: number; pages: DashPage[]; idlePage?: DashPage | null; alerts: DashAlert[]; theme?: DashTheme; alertConfig?: Record<string, unknown>; lapReview?: DashLapReview }
+export interface DashLayout { id: string; name: string; category?: string; mode: string; colorSystem?: DashColorSystem; dashStyle?: DashStyle; chrome?: DashChrome; zoned?: boolean; screenProfile?: string; gridCols: number; gridRows: number; pages: DashPage[]; idlePage?: DashPage | null; alerts: DashAlert[]; theme?: DashTheme; alertConfig?: Record<string, unknown>; lapReview?: DashLapReview; pitLimiter?: DashPitLimiter }
 
-export { DashCanvas, type DashCanvasProps } from './DashCanvas'
+export { DashCanvas, DashUnitsContext, type DashCanvasProps } from './DashCanvas'
 export { dashboardWidgetTypes, isDashWidgetType, type DashWidgetType } from './widgetTypes'
 // Palette and alert looks are part of the package's public contract: the desktop editor picks
 // colours and alert looks from these same lists, so a consumer never keeps its own copy in step.
@@ -82,15 +99,23 @@ export {
 export {
   dashAlertTypes, isDashAlertType, dashAlertDefaults, dashAlertFromSettings, previewAlertBanner, alertColorSwatch, maxAlertSeconds,
   LAP_SUMMARY_SECONDS, LAP_SUMMARY_MAX_SECONDS, MIN_ALERT_SECONDS, MAX_ALERT_SECONDS, FUEL_LAPS_LEFT_MIN, FUEL_LAPS_LEFT_MAX,
-  type DashAlertBanner, type DashAlertType, type DashAlertSize, type DashAlertDisplayMode, type DashAlertSettings, type DashAlertPopup,
+  ENGINE_LIMIT_MIN, ENGINE_LIMIT_MAX, LIFT_POINT_MIN, LIFT_POINT_MAX, LAUNCH_RANGES,
+  type DashAlertBanner, type DashLaunchWindow, type DashAlertType, type DashAlertSize, type DashAlertDisplayMode, type DashAlertSettings, type DashAlertPopup,
   type DashAlertPlacement, type DashLapSummaryPopup, type DashLapSector, type DashSectorRating,
 } from './alerts'
 export { dashLapReviewFields, isDashLapReviewField, lapReviewCells, DEFAULT_LAP_REVIEW_CELLS, LAP_REVIEW_TOP_SHARE, type DashLapReviewField, type DashLapReview } from './lapReview'
+export {
+  dashPitLimiterStyles, isDashPitLimiterStyle, pitLimiterOf, pitLimiterStyle, pitLimiterBars, pitLimiterCovers, DEFAULT_PIT_LIMITER_STYLE,
+  type DashPitLimiterStyle, type DashPitLimiter,
+} from './pitLimiter'
 export { multiDialInk, multiDialSwatches, type DashMultiDialPopup } from './multiDial'
 // The editor's direct-manipulation overlay (drag/resize handles) positions itself with the same
 // grid math the renderer places widgets with, so it never drifts a pixel from what is drawn.
 export { gridRect, layoutRect, cellAt, zonedRect, ZONE_COLS, ZONE_ROWS, type PixelRect, type GridSpan, type LayoutGrid } from './grid'
-export { DASH_ZONES, GEAR_SPOT, ZONED_COLS, ZONED_ROWS, BAR_WIDGET_TYPES, TOP_WIDGET_TYPES, zoneOf, zoneTakes, fitsZone, zoneAtCell, dropRect, type DashZone } from './zones'
+export {
+  DASH_ZONES, GEAR_SPOT, ZONED_COLS, ZONED_ROWS, BAR_WIDGET_TYPES, TOP_WIDGET_TYPES, DASH_PAGE_BARS, zoneOf, zoneTakes, fitsZone, zoneAtCell, dropRect, zoneKept, inFoldedSpot,
+  keepsTopBar, keepsSideBars, type DashZone, type DashPageBars,
+} from './zones'
 export { pageTree, shownChild, nodeWidgets, drawnWidgets, groupParents, stackLayers, mayOverlap, type DashNode, type DashGroupNode } from './groups'
 export { dashPreviewStates, previewFrame, resolvePreviewFrame, type DashPreviewState } from './previewFrames'
 // The host's telemetry JSON is what the renderer reads; the app's views read the @sprint/types mirror.

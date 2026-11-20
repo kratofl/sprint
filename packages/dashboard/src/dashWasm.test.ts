@@ -38,7 +38,7 @@ test("a dash the renderer cannot draw throws the renderer's own message and keep
 test("the app's sample lap review is a banner the renderer reads", () => {
   wasm.setScene(scene({}))
   const lapReview = { id: 'lr', type: 'lap_summary', enabled: true, col: 0, row: 0, colSpan: 1, rowSpan: 1 }
-  const banner = previewAlertBanner({ ...layout, mode: 'basic', alerts: [lapReview] }, lapReview, defaultDashPalette)
+  const banner = previewAlertBanner({ ...layout, mode: 'basic', alerts: [lapReview] }, lapReview, defaultDashPalette, 'Metric')
   assert.equal(banner?.kind, 'lapSummary')
   assert.deepEqual(wasm.renderStill('', JSON.stringify(banner), 0), { timeDependent: false })
 })

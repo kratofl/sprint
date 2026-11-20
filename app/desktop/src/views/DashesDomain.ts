@@ -1,7 +1,7 @@
 import type { DashCategoryLists, DashRefitLosses, SprintCommand } from '../bridge'
-import { dashboardWidgetTypes, groupParents, isDashStyle, parseDashChrome, fitsZone, dropRect, isDashWidgetGroup, isDashWidgetType, mayOverlap, stackLayers, styleColorTokens } from '@sprint/dashboard'
-import { DEFAULT_DASH_CHROME, ZONED_COLS, ZONED_ROWS } from '@sprint/dashboard'
-import type { DashAlert, DashChrome, DashColorSystem, DashLayout, DashStyle, DashPage, DashTheme, DashWidget, DashWidgetStyle, DashWidgetType, LayoutGrid } from '@sprint/dashboard'
+import { dashboardWidgetTypes, groupParents, isDashStyle, isDashPitLimiterStyle, parseDashChrome, fitsZone, dropRect, inFoldedSpot, isDashWidgetGroup, isDashWidgetType, mayOverlap, stackLayers, styleColorTokens } from '@sprint/dashboard'
+import { DEFAULT_DASH_CHROME, DEFAULT_PIT_LIMITER_STYLE, ZONED_COLS, ZONED_ROWS } from '@sprint/dashboard'
+import type { DashAlert, DashChrome, DashColorSystem, DashLayout, DashPitLimiter, DashStyle, DashPage, DashPageBars, DashTheme, DashWidget, DashWidgetStyle, DashWidgetType, LayoutGrid } from '@sprint/dashboard'
 import type { TelemetryFrame } from '@sprint/types'
 
 /**
@@ -46,6 +46,16 @@ function isDashPageRow(value: unknown): value is DashPage {
   }
 
   return value.groups === undefined || (Array.isArray(value.groups) && value.groups.every(isDashWidgetGroup))
+}
+
+/** The layout's pit limiter as the host keeps it (it does not model it): its style, and the widget and group rows that are whole. */
+function parsePitLimiter(value: Record<string, unknown>): DashPitLimiter {
+  const pitLimiter: DashPitLimiter = {
+    style: isDashPitLimiterStyle(value.style) ? value.style : DEFAULT_PIT_LIMITER_STYLE,
+    widgets: Array.isArray(value.widgets) ? value.widgets.filter(isDashWidgetRow) : [],
+  }
+  if (Array.isArray(value.groups)) pitLimiter.groups = value.groups.filter(isDashWidgetGroup)
+  return pitLimiter
 }
 
 /**
@@ -97,6 +107,7 @@ export function parseDashLayout(row: Record<string, unknown>): DashLayout | null
   if (isRecord(row.alertConfig)) layout.alertConfig = row.alertConfig
   // The renderer reads each cell defensively (lapReviewCells); only the shape is checked here.
   if (isRecord(row.lapReview) && Array.isArray(row.lapReview.cells)) layout.lapReview = { cells: row.lapReview.cells.filter((cell): cell is string => typeof cell === 'string') }
+  if (isRecord(row.pitLimiter)) layout.pitLimiter = parsePitLimiter(row.pitLimiter)
 
   return layout
 }
@@ -192,24 +203,10 @@ const TEXT_CONFIG: readonly DashConfigField[] = [
       { value: 'profile.driverNumber', label: 'Driver number' },
       { value: 'session.track', label: 'Track' },
       { value: 'session.car', label: 'Car' },
-      { value: 'car.speed', label: 'Speed (km/h)' },
+      { value: 'car.speed', label: 'Speed' },
       { value: 'car.gear', label: 'Gear' },
       { value: 'lap.current', label: 'Current lap time' },
       { value: 'lap.delta', label: 'Delta' },
-    ],
-  },
-]
-
-const VIRTUAL_ENERGY_CONFIG: readonly DashConfigField[] = [
-  {
-    key: 'mode',
-    label: 'Display',
-    kind: 'select',
-    default: 'budget',
-    options: [
-      { value: 'budget', label: 'Budget (%, per lap, laps left)' },
-      { value: 'percent', label: 'Percentage only' },
-      { value: 'power', label: 'Percentage + power (kW)' },
     ],
   },
 ]
@@ -228,36 +225,6 @@ const ALIGN_CONFIG: readonly DashConfigField[] = [
   },
 ]
 
-const TYRE_TEMP_CONFIG: readonly DashConfigField[] = [
-  {
-    key: 'channel',
-    label: 'Reading',
-    kind: 'select',
-    default: 'surface',
-    options: [
-      { value: 'surface', label: 'Surface (tread average)' },
-      { value: 'core', label: 'Core (carcass)' },
-    ],
-  },
-]
-
-const LAP_TIME_CONFIG: readonly DashConfigField[] = [
-  {
-    key: 'show',
-    label: 'Show',
-    kind: 'select',
-    default: 'all',
-    options: [
-      { value: 'all', label: 'Current, last and best' },
-      { value: 'current', label: 'Current lap' },
-      { value: 'last', label: 'Last lap' },
-      { value: 'best', label: 'Best lap' },
-      { value: 'session', label: 'Session best (anyone)' },
-      { value: 'class', label: 'Class best' },
-    ],
-  },
-]
-
 const BAR_CONFIG: readonly DashConfigField[] = [
   {
     key: 'channel',
@@ -269,11 +236,17 @@ const BAR_CONFIG: readonly DashConfigField[] = [
       { value: 've', label: 'Virtual energy' },
       { value: 'soc', label: 'Battery charge' },
       { value: 'delta', label: 'Delta' },
+      { value: 'sectors', label: 'Sectors' },
       { value: 'inputs', label: 'Throttle and brake' },
+      { value: 'throttle', label: 'Throttle' },
+      { value: 'brake', label: 'Brake' },
+      { value: 'clutch', label: 'Clutch' },
       { value: 'rpm', label: 'RPM' },
-      { value: 'gap', label: 'Gaps ahead and behind' },
+      { value: 'gap', label: 'Track gaps' },
+      { value: 'class_gap', label: 'Class gaps' },
       { value: 'fuel_ve', label: 'Fuel and virtual energy' },
       { value: 'spotter', label: 'Spotter' },
+      { value: 'linear_map', label: 'Linear map' },
     ],
   },
 ]
@@ -293,68 +266,100 @@ const TYRE_CONFIG: readonly DashConfigField[] = [
   },
 ]
 
-const GAPS_CONFIG: readonly DashConfigField[] = [
-  {
-    key: 'side',
-    label: 'Show',
-    kind: 'select',
-    default: 'both',
-    options: [
-      { value: 'both', label: 'Ahead and behind' },
-      { value: 'ahead', label: 'Car ahead' },
-      { value: 'behind', label: 'Car behind' },
-    ],
-  },
-]
-
 /** UI metadata in catalog order (DashWidgetCatalog.cs — see the section comment above). `idleCapable` hides live-telemetry widgets from the idle-page palette. */
 const WIDGET_CATALOG: Readonly<Record<DashWidgetType, DashWidgetDefinition>> = {
-  header: { type: 'header', name: 'Header', idleCapable: true, config: NO_CONFIG },
   text: { type: 'text', name: 'Text', idleCapable: true, config: TEXT_CONFIG },
   rpm_bar: { type: 'rpm_bar', name: 'RPM Bar', idleCapable: false, config: NO_CONFIG },
   gear_speed: { type: 'gear_speed', name: 'Gear + Speed', idleCapable: true, config: ALIGN_CONFIG },
   input_trace: { type: 'input_trace', name: 'Input Trace', idleCapable: false, config: NO_CONFIG },
-  sector: { type: 'sector', name: 'Sectors', idleCapable: false, config: NO_CONFIG },
-  lap_time: { type: 'lap_time', name: 'Lap Time', idleCapable: false, config: LAP_TIME_CONFIG },
+  current_lap: { type: 'current_lap', name: 'Current Lap', idleCapable: false, config: NO_CONFIG },
+  last_lap: { type: 'last_lap', name: 'Last Lap', idleCapable: false, config: NO_CONFIG },
+  best_lap: { type: 'best_lap', name: 'Best Lap', idleCapable: false, config: NO_CONFIG },
+  session_best: { type: 'session_best', name: 'Session Best', idleCapable: false, config: NO_CONFIG },
+  class_best: { type: 'class_best', name: 'Class Best', idleCapable: false, config: NO_CONFIG },
   delta: { type: 'delta', name: 'Delta', idleCapable: false, config: NO_CONFIG },
   fuel: { type: 'fuel', name: 'Fuel', idleCapable: true, config: NO_CONFIG },
-  tyre_temp: { type: 'tyre_temp', name: 'Tyre Temperature', idleCapable: true, config: TYRE_TEMP_CONFIG },
-  flag: { type: 'flag', name: 'Flags', idleCapable: true, config: NO_CONFIG },
-  tc: { type: 'tc', name: 'Traction Control', idleCapable: false, config: NO_CONFIG },
+  tyre_temp: { type: 'tyre_temp', name: 'Tyre Temperature', idleCapable: true, config: NO_CONFIG },
+  tc: { type: 'tc', name: 'TC', idleCapable: false, config: NO_CONFIG },
+  tc2: { type: 'tc2', name: 'TC 2', idleCapable: false, config: NO_CONFIG },
+  tc_slip: { type: 'tc_slip', name: 'TC Slip', idleCapable: false, config: NO_CONFIG },
   abs: { type: 'abs', name: 'ABS', idleCapable: false, config: NO_CONFIG },
   engine_map: { type: 'engine_map', name: 'Engine Map', idleCapable: false, config: NO_CONFIG },
   brake_bias: { type: 'brake_bias', name: 'Brake Bias', idleCapable: false, config: NO_CONFIG },
+  migration: { type: 'migration', name: 'Brake Migration', idleCapable: false, config: NO_CONFIG },
+  arb_front: { type: 'arb_front', name: 'ARB Front', idleCapable: false, config: NO_CONFIG },
+  arb_rear: { type: 'arb_rear', name: 'ARB Rear', idleCapable: false, config: NO_CONFIG },
+  lights: { type: 'lights', name: 'Lights', idleCapable: false, config: NO_CONFIG },
   fuel_target: { type: 'fuel_target', name: 'Fuel Target', idleCapable: false, config: NO_CONFIG },
   position: { type: 'position', name: 'Position', idleCapable: false, config: NO_CONFIG },
-  gaps: { type: 'gaps', name: 'Gaps', idleCapable: false, config: GAPS_CONFIG },
-  predictive_lap: { type: 'predictive_lap', name: 'Predictive Lap', idleCapable: false, config: NO_CONFIG },
-  racelogic_lap_timer: { type: 'racelogic_lap_timer', name: 'RaceLogic Lap Timer', idleCapable: false, config: NO_CONFIG },
+  class_position: { type: 'class_position', name: 'Class Position', idleCapable: false, config: NO_CONFIG },
+  gap_ahead: { type: 'gap_ahead', name: 'Gap Ahead', idleCapable: false, config: NO_CONFIG },
+  gap_behind: { type: 'gap_behind', name: 'Gap Behind', idleCapable: false, config: NO_CONFIG },
+  class_gap_ahead: { type: 'class_gap_ahead', name: 'Class Gap Ahead', idleCapable: false, config: NO_CONFIG },
+  class_gap_behind: { type: 'class_gap_behind', name: 'Class Gap Behind', idleCapable: false, config: NO_CONFIG },
+  position_gap_ahead: { type: 'position_gap_ahead', name: 'Position Gap Ahead', idleCapable: false, config: NO_CONFIG },
+  position_gap_behind: { type: 'position_gap_behind', name: 'Position Gap Behind', idleCapable: false, config: NO_CONFIG },
+  gap_to_leader: { type: 'gap_to_leader', name: 'Gap to Leader', idleCapable: false, config: NO_CONFIG },
+  gap_to_class_leader: { type: 'gap_to_class_leader', name: 'Gap to Class Leader', idleCapable: false, config: NO_CONFIG },
+  track_limits: { type: 'track_limits', name: 'Track Limits', idleCapable: false, config: NO_CONFIG },
+  incidents: { type: 'incidents', name: 'Incidents', idleCapable: false, config: NO_CONFIG },
+  pit_stops: { type: 'pit_stops', name: 'Pit Stops', idleCapable: false, config: NO_CONFIG },
+  predictive_lap: { type: 'predictive_lap', name: 'Predicted Lap', idleCapable: false, config: NO_CONFIG },
+  optimal_lap: { type: 'optimal_lap', name: 'Optimal Lap', idleCapable: false, config: NO_CONFIG },
+  lap_avg_5: { type: 'lap_avg_5', name: '5 Lap Average', idleCapable: false, config: NO_CONFIG },
+  lap_avg_10: { type: 'lap_avg_10', name: '10 Lap Average', idleCapable: false, config: NO_CONFIG },
+  all_time_best: { type: 'all_time_best', name: 'All-Time Best', idleCapable: false, config: NO_CONFIG },
+  session_name: { type: 'session_name', name: 'Session', idleCapable: false, config: NO_CONFIG },
+  session_time: { type: 'session_time', name: 'Session Time', idleCapable: false, config: NO_CONFIG },
+  pit_loss: { type: 'pit_loss', name: 'Pit Loss', idleCapable: false, config: NO_CONFIG },
   tyre_pressure: { type: 'tyre_pressure', name: 'Tyre Pressure', idleCapable: true, config: NO_CONFIG },
-  virtual_energy: { type: 'virtual_energy', name: 'Virtual Energy', idleCapable: false, config: VIRTUAL_ENERGY_CONFIG },
+  tyre_core_temp: { type: 'tyre_core_temp', name: 'Tyre Core Temperature', idleCapable: true, config: NO_CONFIG },
+  tyre_avg: { type: 'tyre_avg', name: 'Tyre Average Temperature', idleCapable: false, config: NO_CONFIG },
+  brake_temp: { type: 'brake_temp', name: 'Brake Temperature', idleCapable: true, config: NO_CONFIG },
+  tyre_wear_lap: { type: 'tyre_wear_lap', name: 'Wear Per Lap', idleCapable: false, config: NO_CONFIG },
+  tyre_laps_left: { type: 'tyre_laps_left', name: 'Tyre Laps Left', idleCapable: false, config: NO_CONFIG },
+  ve_percent: { type: 've_percent', name: 'Virtual Energy', idleCapable: false, config: NO_CONFIG },
+  ve_per_lap: { type: 've_per_lap', name: 'VE Per Lap', idleCapable: false, config: NO_CONFIG },
+  ve_last_lap: { type: 've_last_lap', name: 'VE Last Lap', idleCapable: false, config: NO_CONFIG },
+  ve_stint_avg: { type: 've_stint_avg', name: 'VE Stint Average', idleCapable: false, config: NO_CONFIG },
+  ve_refuel: { type: 've_refuel', name: 'VE Refuel', idleCapable: false, config: NO_CONFIG },
   battery: { type: 'battery', name: 'Battery', idleCapable: false, config: NO_CONFIG },
+  deploy: { type: 'deploy', name: 'Deploy', idleCapable: false, config: NO_CONFIG },
+  regen: { type: 'regen', name: 'Regen', idleCapable: false, config: NO_CONFIG },
+  motor_state: { type: 'motor_state', name: 'Motor State', idleCapable: false, config: NO_CONFIG },
+  lift_coast: { type: 'lift_coast', name: 'Lift & Coast', idleCapable: false, config: NO_CONFIG },
   relative: { type: 'relative', name: 'Relative', idleCapable: false, config: NO_CONFIG },
   damage: { type: 'damage', name: 'Damage', idleCapable: false, config: NO_CONFIG },
   bar: { type: 'bar', name: 'Bar', idleCapable: false, config: BAR_CONFIG },
   tyre: { type: 'tyre', name: 'Tyre', idleCapable: true, config: TYRE_CONFIG },
-  sectors: { type: 'sectors', name: 'Sector Colours', idleCapable: false, config: NO_CONFIG },
+  sectors: { type: 'sectors', name: 'Sectors', idleCapable: false, config: NO_CONFIG },
   speed: { type: 'speed', name: 'Speed', idleCapable: true, config: NO_CONFIG },
   laps: { type: 'laps', name: 'Lap', idleCapable: false, config: NO_CONFIG },
   fuel_laps: { type: 'fuel_laps', name: 'Fuel Laps Left', idleCapable: false, config: NO_CONFIG },
   ve_laps: { type: 've_laps', name: 'Energy Laps Left', idleCapable: false, config: NO_CONFIG },
   time_left: { type: 'time_left', name: 'Time Left', idleCapable: false, config: NO_CONFIG },
-  soc: { type: 'soc', name: 'Battery Charge', idleCapable: false, config: NO_CONFIG },
-  slip: { type: 'slip', name: 'TC Slip', idleCapable: false, config: NO_CONFIG },
-  cut: { type: 'cut', name: 'TC Cut', idleCapable: false, config: NO_CONFIG },
-  fuel_avg: { type: 'fuel_avg', name: 'Fuel Per Lap', idleCapable: false, config: NO_CONFIG },
+  fuel_avg: { type: 'fuel_avg', name: 'Fuel Average (5 Laps)', idleCapable: false, config: NO_CONFIG },
+  fuel_stint_avg: { type: 'fuel_stint_avg', name: 'Fuel Stint Average', idleCapable: false, config: NO_CONFIG },
+  fuel_last_lap: { type: 'fuel_last_lap', name: 'Fuel Last Lap', idleCapable: false, config: NO_CONFIG },
+  fuel_this_lap: { type: 'fuel_this_lap', name: 'Fuel This Lap', idleCapable: false, config: NO_CONFIG },
+  fuel_percent: { type: 'fuel_percent', name: 'Fuel Percent', idleCapable: true, config: NO_CONFIG },
+  range: { type: 'range', name: 'Range', idleCapable: false, config: NO_CONFIG },
+  fuel_ve: { type: 'fuel_ve', name: 'Fuel + VE', idleCapable: false, config: NO_CONFIG },
+  pit_window: { type: 'pit_window', name: 'Pit Window', idleCapable: false, config: NO_CONFIG },
   fuel_time: { type: 'fuel_time', name: 'Fuel Time Left', idleCapable: false, config: NO_CONFIG },
   laps_left: { type: 'laps_left', name: 'Race Laps Left', idleCapable: false, config: NO_CONFIG },
   refuel: { type: 'refuel', name: 'Refuel', idleCapable: false, config: NO_CONFIG },
   clock: { type: 'clock', name: 'Clock', idleCapable: true, config: NO_CONFIG },
-  weather: { type: 'weather', name: 'Weather', idleCapable: true, config: NO_CONFIG },
+  air_temp: { type: 'air_temp', name: 'Air Temperature', idleCapable: true, config: NO_CONFIG },
+  track_temp: { type: 'track_temp', name: 'Track Temperature', idleCapable: true, config: NO_CONFIG },
+  rain: { type: 'rain', name: 'Rain', idleCapable: true, config: NO_CONFIG },
   oil_temp: { type: 'oil_temp', name: 'Oil Temperature', idleCapable: true, config: NO_CONFIG },
   water_temp: { type: 'water_temp', name: 'Water Temperature', idleCapable: true, config: NO_CONFIG },
-  migration: { type: 'migration', name: 'Brake Migration', idleCapable: false, config: NO_CONFIG },
-  arb: { type: 'arb', name: 'Anti-Roll Bars', idleCapable: false, config: NO_CONFIG },
+  boost: { type: 'boost', name: 'Boost', idleCapable: false, config: NO_CONFIG },
+  torque: { type: 'torque', name: 'Torque', idleCapable: false, config: NO_CONFIG },
+  rpm: { type: 'rpm', name: 'RPM', idleCapable: false, config: NO_CONFIG },
+  motor_temp: { type: 'motor_temp', name: 'Motor Temperature', idleCapable: true, config: NO_CONFIG },
+  motor_water_temp: { type: 'motor_water_temp', name: 'Motor Water Temperature', idleCapable: true, config: NO_CONFIG },
   penalty: { type: 'penalty', name: 'Penalties', idleCapable: false, config: NO_CONFIG },
   tyre_wear: { type: 'tyre_wear', name: 'Tyre Wear', idleCapable: true, config: NO_CONFIG },
   sector_time: { type: 'sector_time', name: 'Sector Time', idleCapable: false, config: NO_CONFIG },
@@ -379,7 +384,7 @@ function chosenOptionLabel(widget: DashWidget, key: string): string | null {
 /**
  * What one placed widget is called in the designer (sidebar, canvas tag, inspector): its catalog
  * name, or what it shows when its config makes the catalog name ambiguous ("Fuel bar", "Front
- * left tyre", "Best lap", "Gap ahead").
+ * left tyre").
  */
 export function widgetName(widget: DashWidget): string {
   const name = widgetDisplayName(widget.type)
@@ -391,15 +396,6 @@ export function widgetName(widget: DashWidget): string {
     case 'tyre': {
       const corner = chosenOptionLabel(widget, 'corner')
       return corner ? `${corner} tyre` : name
-    }
-    case 'lap_time': {
-      const show = widget.config?.show
-      if (show === 'session') return 'Session best'
-      return show === 'current' || show === 'last' || show === 'best' || show === 'class' ? (chosenOptionLabel(widget, 'show') ?? name) : name
-    }
-    case 'gaps': {
-      const side = widget.config?.side
-      return side === 'ahead' ? 'Gap ahead' : side === 'behind' ? 'Gap behind' : name
     }
     default:
       return name
@@ -439,6 +435,23 @@ export function pageOverlaps(page: DashPage, candidate: GridRect, id: string, gr
 /** Whether a widget of `type` may sit at `rect`: inside the grid, and on a zoned dash in a zone that takes it (`fitsZone`). */
 export const fitsLayout = (layout: LayoutGrid, type: string, rect: GridRect): boolean =>
   isValidRect(rect, layout.gridCols, layout.gridRows) && (!layout.zoned || fitsZone(type, rect))
+
+/**
+ * Whether `rect` is out of sight on `page`: in a bar spot a zoned page drops (`inFoldedSpot`). A
+ * widget there stays on the page, but the wheel does not draw it and the designer neither shows
+ * nor hit-tests it.
+ */
+export const outOfSight = (layout: LayoutGrid, page: DashPage, rect: GridRect): boolean => layout.zoned === true && inFoldedSpot(rect, page.bars)
+
+/** Whether an edit from `before` to `next` leaves every widget it moved or added in sight; one already out of sight may stay there. */
+export function keepsMovedInSight(layout: LayoutGrid, before: DashPage, next: DashPage): boolean {
+  const was = new Map(before.widgets.map((widget) => [widget.id, widget]))
+  return next.widgets.every((widget) => {
+    const old = was.get(widget.id)
+    const unmoved = old !== undefined && old.col === widget.col && old.row === widget.row && old.colSpan === widget.colSpan && old.rowSpan === widget.rowSpan
+    return unmoved || !outOfSight(layout, next, widget)
+  })
+}
 
 /** Whether every widget on the page sits where `fitsLayout` allows and shares cells only as `pageOverlaps` allows. */
 export function pageFits(page: DashPage, layout: LayoutGrid): boolean {
@@ -609,7 +622,7 @@ export function addWidget(layout: DashLayout, pageId: string, type: DashWidgetTy
 
   const occupied = (candidate: GridRect): boolean => pageOverlaps(page, candidate, '', target.group)
   const rect = next.zoned
-    ? firstZonedFit(type, occupied, target.within)
+    ? firstZonedFit(type, page.bars, occupied, target.within)
     : (target.within && firstFit(next.gridCols, next.gridRows, DEFAULT_WIDGET_COL_SPAN, DEFAULT_WIDGET_ROW_SPAN, occupied, target.within)) ||
       firstFit(next.gridCols, next.gridRows, DEFAULT_WIDGET_COL_SPAN, DEFAULT_WIDGET_ROW_SPAN, occupied)
   if (!rect) return null
@@ -619,12 +632,12 @@ export function addWidget(layout: DashLayout, pageId: string, type: DashWidgetTy
   return { layout: next, widget }
 }
 
-/** The first free place on a zoned dash a widget of `type` drops into, preferring `within` (a stack's region). */
-function firstZonedFit(type: string, occupied: (rect: GridRect) => boolean, within?: GridRect): GridRect | null {
+/** The first free place on a zoned page keeping `bars` a widget of `type` drops into, preferring `within` (a stack's region). */
+function firstZonedFit(type: string, bars: DashPageBars | undefined, occupied: (rect: GridRect) => boolean, within?: GridRect): GridRect | null {
   const candidates: GridRect[] = []
   for (let row = 0; row < ZONED_ROWS; row++) {
     for (let col = 0; col < ZONED_COLS; col++) {
-      const rect = dropRect(type, col, row)
+      const rect = dropRect(type, col, row, bars)
       if (rect && !occupied(rect)) candidates.push(rect)
     }
   }
@@ -642,10 +655,10 @@ export function canPlaceNewWidget(layout: DashLayout, pageId: string, type: stri
 /**
  * Where a new widget of `type` dropped on cell (`col`, `row`) goes: the default size from that
  * cell, pulled back inside the grid; on a zoned dash, where its zone puts it (`dropRect`), or null
- * when that zone does not take it.
+ * when that zone does not take it or the page (keeping `bars`) drops it.
  */
-export function newWidgetRect(layout: LayoutGrid, type: string, col: number, row: number): GridRect | null {
-  if (layout.zoned) return dropRect(type, col, row)
+export function newWidgetRect(layout: LayoutGrid, type: string, col: number, row: number, bars: DashPageBars | undefined): GridRect | null {
+  if (layout.zoned) return dropRect(type, col, row, bars)
   const colSpan = Math.min(DEFAULT_WIDGET_COL_SPAN, layout.gridCols)
   const rowSpan = Math.min(DEFAULT_WIDGET_ROW_SPAN, layout.gridRows)
   return { col: Math.max(0, Math.min(col, layout.gridCols - colSpan)), row: Math.max(0, Math.min(row, layout.gridRows - rowSpan)), colSpan, rowSpan }
@@ -657,7 +670,7 @@ export function addWidgetAt(layout: DashLayout, pageId: string, type: DashWidget
   const page = findPage(next, pageId)
   if (!page) return null
 
-  const rect = newWidgetRect(next, type, col, row)
+  const rect = newWidgetRect(next, type, col, row, page.bars)
   if (!rect || pageOverlaps(page, rect, '', group)) return null
 
   const widget = newWidget(page, type, rect, group)

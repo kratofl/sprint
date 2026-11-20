@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { dashAlertDefaults, dashAlertTypes, type DashAlertSettings, type DashLayout } from '@sprint/dashboard'
-import { ALERT_GROUPS, ackRows, alertSummary, buildAlertUpdate, durationAtStep, durationStep, durationStepText, previewDash, stampDashAlerts, stepLapsLeft } from './DashSettingsDomain'
+import {
+  ALERT_GROUPS, ackRows, alertSummary, buildAlertUpdate, durationAtStep, durationStep, durationStepText, engineLimitText, launchSpeedText, previewDash, stampDashAlerts, stepEngineLimit,
+  stepLapsLeft, stepLaunch, stepLaunchSpeed, stepLiftPoint,
+} from './DashSettingsDomain'
 import { parseDevice, type Device } from './DevicesDomain'
 
 const device = (fields: Record<string, unknown>): Device => {
@@ -27,9 +30,18 @@ test('an alert row sums up its look in a line', () => {
   assert.equal(alertSummary(settings('tc_change')), 'Full screen · 2 s')
   assert.equal(alertSummary(settings('penalty')), 'Full screen · Until Ack · Inverted')
   assert.equal(alertSummary(settings('arb_change')), 'Off')
-  assert.equal(alertSummary(settings('fuel_low')), '2 laps left · Strip · Until Ack')
+  assert.equal(alertSummary(settings('fuel_low')), '4 and 2 laps left · Strip · Until Ack')
   // The lap review has no size or colours of its own.
   assert.equal(alertSummary({ ...settings('lap_summary'), invertColors: true }), '5 s')
+  assert.equal(alertSummary(settings('pit_limiter')), 'On', 'an overlay up while the limiter is on: no look, no duration')
+})
+
+test('the engine limits step by five degrees inside their range and read in the driver\'s units', () => {
+  assert.equal(stepEngineLimit(110, 1), 115)
+  assert.equal(stepEngineLimit(60, -1), null)
+  assert.equal(stepEngineLimit(160, 1), null)
+  assert.equal(engineLimitText(110, 'Metric'), '110 °C')
+  assert.equal(engineLimitText(110, 'Imperial'), '230 °F')
 })
 
 test("the duration slider's last step is Until Ack, which keeps the seconds", () => {
@@ -45,10 +57,34 @@ test("the duration slider's last step is Until Ack, which keeps the seconds", ()
   assert.deepEqual(buildAlertUpdate('tc_change', durationAtStep('tc_change', 31)), { type: 'dashAlerts.update', alertType: 'tc_change', untilAck: true })
 })
 
-test('the fuel warning mark steps within 1 to 9 laps', () => {
+test('the fuel warning levels step within 1 to 9 laps and never cross', () => {
   assert.equal(stepLapsLeft(2, 1), 3)
   assert.equal(stepLapsLeft(1, -1), null)
   assert.equal(stepLapsLeft(9, 1), null)
+  // The first level stops at LOW FUEL's, and LOW FUEL at the first level's.
+  assert.equal(stepLapsLeft(3, -1, 3), null)
+  assert.equal(stepLapsLeft(3, 1, undefined, 3), null)
+})
+
+test('the launch window steps inside its range, its ends never crossing', () => {
+  const launch = { clutchPercent: 50, speedKmh: 10, rpmFrom: 5000, rpmTo: 5100, throttleFrom: 20, throttleTo: 30 }
+  assert.equal(stepLaunch(launch, 'clutchPercent', 1), 55)
+  assert.equal(stepLaunch(launch, 'rpmFrom', 1), 5100)
+  assert.equal(stepLaunch({ ...launch, rpmFrom: 5100 }, 'rpmFrom', 1), null)
+  assert.equal(stepLaunch({ ...launch, rpmFrom: 5100 }, 'rpmTo', -1), null)
+  assert.equal(stepLaunch({ ...launch, throttleFrom: 0 }, 'throttleFrom', -1), null)
+  assert.equal(stepLiftPoint(255, 1), null)
+  assert.equal(stepLiftPoint(220, -1), 215)
+})
+
+test('the launch speed reads and steps in the driver\'s units, kept in whole km/h', () => {
+  assert.equal(launchSpeedText(10, 'Metric'), '10 km/h')
+  assert.equal(launchSpeedText(10, 'Imperial'), '6 mph')
+  assert.equal(stepLaunchSpeed(10, 1, 'Metric'), 11)
+  // 6 mph up a mile an hour: 7 mph, 11 km/h, which still reads 7 mph.
+  assert.equal(stepLaunchSpeed(10, 1, 'Imperial'), 11)
+  assert.equal(launchSpeedText(11, 'Imperial'), '7 mph')
+  assert.equal(stepLaunchSpeed(1, -1, 'Imperial'), null)
 })
 
 test('the preview plays on the first dash device’s dash at its screen size, else on the first dash', () => {

@@ -247,7 +247,8 @@ TelemetryIngestionPipeline ingestion = new(
     log,
     liveUplink,
     peerLink,
-    new DashPageAutomation(runtime, dashPageCycle, multiDials));
+    new DashPageAutomation(runtime, dashPageCycle, multiDials),
+    new StoredBestLapDelivery(lapHistoryStore, telemetryEngine.RequestStoredBest));
 
 // Names history filed before cars were named by class and make (CarNames): a one-time rewrite,
 // which looks a stored livery up in the game's results archive only if one still needs naming.
@@ -393,7 +394,7 @@ Task screenReconcileLoop = Task.Run(async () =>
                 }
 
                 // Each dash screen's scene (its dash with the app-wide alerts stamped on, the
-                // driver's name and number, the plan's targets) is serialized here once a tick and
+                // driver's name, number and units, the plan's targets) is serialized here once a tick and
                 // only taken by a screen when it changed, so a dash or alert settings edit reaches
                 // the wheel within a second. The page and the
                 // live/idle switch do not wait for this loop: the screens read those per frame.
@@ -402,7 +403,7 @@ Task screenReconcileLoop = Task.Run(async () =>
                 DashSceneInputs? scenes = null;
                 try
                 {
-                    scenes = new DashSceneInputs([.. runtime.DashLayouts], DriverCar.Of(runtime.Settings.LastSeenContext), runtime.Settings.DriverName, runtime.Settings.DriverNumber, planTargets.Targets,
+                    scenes = new DashSceneInputs([.. runtime.DashLayouts], DriverCar.Of(runtime.Settings.LastSeenContext), runtime.Settings.DriverName, runtime.Settings.DriverNumber, runtime.Settings.Units, planTargets.Targets,
                         devices.Any(device => device.Bindings.Any(binding => binding.Command == SprintCommands.Acknowledge)) ? runtime.Settings.DashAlerts : runtime.Settings.DashAlerts.WithoutUntilAck());
                 }
                 catch (InvalidOperationException)

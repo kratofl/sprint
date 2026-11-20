@@ -141,6 +141,7 @@ public sealed class DesktopRuntime : IDesktopRuntime
             this.Settings.AutoInstallUpdates = defaults.AutoInstallUpdates;
             this.Settings.DriverName = defaults.DriverName;
             this.Settings.DriverNumber = defaults.DriverNumber;
+            this.Settings.Units = defaults.Units;
             this.Settings.DashEditorUI = defaults.DashEditorUI;
             this.Settings.NewDashDefaults = defaults.NewDashDefaults;
             this.SaveSettings();
@@ -1062,6 +1063,7 @@ public sealed class DesktopRuntime : IDesktopRuntime
             }
 
             DashWidgetStackMigration.Apply(layout);
+            DashWidgetTypeMigration.Apply(layout);
             if (!DashLayoutValidator.IsValid(layout))
             {
                 continue;
@@ -1307,9 +1309,8 @@ public sealed class DesktopRuntime : IDesktopRuntime
                     Name = "Main",
                     Widgets =
                     [
-                        new DashWidget { Id = "header", Type = "header", ColSpan = 20 },
                         new DashWidget { Id = "gear", Type = "gear_speed", Col = 1, Row = 1, ColSpan = 7, RowSpan = 5 },
-                        new DashWidget { Id = "lap", Type = "lap_time", Col = 9, Row = 1, ColSpan = 11, RowSpan = 3 },
+                        new DashWidget { Id = "lap", Type = "current_lap", Col = 9, Row = 1, ColSpan = 11, RowSpan = 3 },
                         new DashWidget { Id = "fuel", Type = "fuel", Col = 9, Row = 6, ColSpan = 11, RowSpan = 3 }
                     ]
                 }

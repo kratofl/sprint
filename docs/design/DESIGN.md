@@ -160,7 +160,8 @@ grows past the screen once the corpus holds hundreds of entries.
 
 ### All selection controls
 
-- Text-only OR icon-only per control — never both in one control.
+- Text-only OR icon-only per control — never both in one control. Exception: tabs may carry an
+  icon before every label (all or none), as in the dash designer's toolbar.
 - Labels are short nouns; actions are verbs.
 - Selections and actions never share one control.
 - A choice always has a visible default; a select never starts empty unless the field is optional.
@@ -262,7 +263,9 @@ text-only segments; on desktop the selected segment NEVER has a shadow, border, 
 
 Switches between 2–6 separate panes of one page. Desktop uses `.tabs`; the web has none yet and
 splits such panes into sidebar destinations. One per page, NEVER inside a card. Renders as
-`role="tablist"` with `role="tabpanel"` panes.
+`role="tablist"` with `role="tabpanel"` panes. One tablist may show its tabs in visual groups
+(the dash designer's [Layout | Lap review | Pit limiter] [Theme | Settings]); arrow keys still
+run across all of them.
 
 ### Switch
 

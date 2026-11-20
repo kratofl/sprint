@@ -41,6 +41,12 @@ test('resolveDashPalette applies valid hex overrides and ignores unparseable one
   assert.equal(palette.accent, defaultDashPalette.accent) // invalid hex falls back to default
 })
 
+test("a theme may override each setting's identity colour", () => {
+  const palette = resolveDashPalette({ settingAbs: '#123456' }, 'styled')
+  assert.equal(palette.settingAbs, '#123456')
+  assert.equal(palette.settingTc, defaultDashPalette.settingTc)
+})
+
 test('resolveDashPalette pins danger/critical/fault/rpmNearLimit regardless of the theme', () => {
   const palette = resolveDashPalette({ danger: '#00FF00', critical: '#00FF00', fault: '#00FF00' }, 'styled')
   assert.equal(palette.danger, defaultDashPalette.critical)

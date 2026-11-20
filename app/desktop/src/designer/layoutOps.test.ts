@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import type { DashLayout } from '@sprint/dashboard'
-import { emptyCells, movePage, resetLapReview, setLapReviewCell } from './layoutOps'
+import { emptyCells, movePage, resetLapReview, setLapReviewCell, setPageBars } from './layoutOps'
 
 const layout: DashLayout = {
   id: 'dash',
@@ -43,4 +43,15 @@ test('the free places of a zoned page are its empty side bar spots whole and its
   assert.deepEqual(free[0], { col: 10, row: 0, colSpan: 1, rowSpan: 9 })
   assert.ok(!free.some((cell) => cell.col === 5 && cell.row >= 1 && cell.row <= 3), 'the gear is no free place')
   assert.equal(emptyCells(layout, layout.pages[0]).length, 20 * 12 - 12, 'a free grid counts every cell')
+  assert.equal(emptyCells(zoned, { ...page, bars: 'none' }).length, 64 + 5 - 2, 'a dropped bar spot is no free place')
+})
+
+test('a page keeps the bars it picks, the idle page too, and both is no field at all', () => {
+  const zoned: DashLayout = { ...layout, zoned: true, gridCols: 11, gridRows: 9, idlePage: { id: 'idle', name: 'Idle', widgets: [] } }
+  const top = setPageBars(zoned, 'b', 'top')
+  assert.equal(top?.pages[1]?.bars, 'top')
+  assert.equal(top && setPageBars(top, 'b', 'top'), null, 'unchanged: no undo step')
+  assert.equal(top && 'bars' in (setPageBars(top, 'b', 'both')?.pages[1] ?? {}), false)
+  assert.equal(setPageBars(zoned, 'idle', 'none')?.idlePage?.bars, 'none')
+  assert.equal(setPageBars(zoned, 'b', 'both'), null)
 })
