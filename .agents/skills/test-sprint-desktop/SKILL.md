@@ -33,7 +33,7 @@ states explain what to do next instead of showing a blank list.
 ### 2. Real Electron pass
 
 Use your own hidden run: `make agent-app` (fresh data; `DATA=<copy>` without `devices.json` for real
-data, `FILE=<recording>` for live telemetry), driven with `app/desktop/scripts/cdp.mjs`
+data, `REPLAY=<recording>` for live telemetry), driven with `app/desktop/scripts/cdp.mjs`
 (`shot`, `click`, `type`, `key`, `eval`, `wait`), stopped with `agent-app.mjs stop <run folder>`
 (`docs/operations/development.md`). A replay is not a real-game pass. Check:
 

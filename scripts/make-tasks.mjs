@@ -2,16 +2,17 @@
 // Cross-platform helpers for the Makefile, so each make target has one recipe
 // that runs the same under PowerShell (Windows) and sh (macOS/Linux).
 //
-//   node scripts/make-tasks.mjs help              list `target: ## text` lines from the Makefile
+//   node scripts/make-tasks.mjs help              list the Makefile's `target: ## text` lines by section
 //   node scripts/make-tasks.mjs version           latest git tag without its leading "v", or "dev"
 //   node scripts/make-tasks.mjs rid               default .NET runtime identifier for this machine
 //   node scripts/make-tasks.mjs clean [--dry-run] delete the fixed list of build outputs below
+//   node scripts/make-tasks.mjs dev-app [--replay <recording> | --record]
+//                                                 run the desktop app on the game, on a recording, or recording
 //   node scripts/make-tasks.mjs dev-host          run the native host under dotnet watch on this checkout's dev data
-//   node scripts/make-tasks.mjs record-app        run the desktop app, recording every telemetry frame
-//   node scripts/make-tasks.mjs replay-app [file] run the desktop app on a recording instead of the game
+//   node scripts/make-tasks.mjs dev-data          file the laps of every recording into this checkout's dev data
 //   node scripts/make-tasks.mjs reset-dev-data    delete this checkout's dev data, so the next dev run starts fresh
 import { execFileSync, spawnSync } from 'node:child_process'
-import { existsSync, readdirSync, readFileSync, rmSync } from 'node:fs'
+import { closeSync, existsSync, openSync, readdirSync, readFileSync, readSync, rmSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { devDataRoot, recordingsRoot } from '../app/desktop/scripts/dev-data.mjs'
@@ -48,14 +49,17 @@ const cleanPaths = [
   'api/Sprint.Api.Tests/obj',
 ]
 
+// Each `# ─── Section` heading, then its targets, in Makefile order.
 function help() {
   const makefile = readFileSync(path.join(repoRoot, 'Makefile'), 'utf8')
   const lines = []
   for (const line of makefile.split(/\r?\n/)) {
-    const match = /^([a-zA-Z_-]+):.*?## (.*)$/.exec(line)
-    if (match) lines.push(`  ${match[1].padEnd(18)} ${match[2]}`)
+    const section = /^# ─── (.+?) ─/.exec(line)
+    if (section) lines.push('', section[1])
+    const target = /^([a-zA-Z_-]+):.*?## (.*)$/.exec(line)
+    if (target) lines.push(`  ${target[1].padEnd(16)} ${target[2]}`)
   }
-  console.log(lines.sort().join('\n'))
+  console.log(lines.join('\n').trimStart())
 }
 
 function version() {
@@ -113,11 +117,66 @@ function devHost() {
   process.exit(result.status ?? 1)
 }
 
-// `make dev-app` with extra environment for the native host Electron starts.
-function devApp(extraEnv) {
+/** The committed recordings, oldest first, as full paths. */
+function recordings() {
+  return existsSync(recordingsRoot)
+    ? readdirSync(recordingsRoot).filter((name) => name.endsWith('.jsonl.gz')).sort().map((name) => path.join(recordingsRoot, name))
+    : []
+}
+
+/**
+ * Exits when the recordings are Git LFS pointer files rather than recordings: a clone without
+ * git-lfs has those, and the host would only report each one as unreadable.
+ */
+function assertRecordingsPulled(files) {
+  const head = Buffer.alloc(24)
+  const pointers = files.filter((file) => {
+    const fd = openSync(file, 'r')
+    try {
+      return head.toString('utf8', 0, readSync(fd, head, 0, head.length, 0)).startsWith('version https://git-lfs')
+    } finally {
+      closeSync(fd)
+    }
+  })
+  if (pointers.length > 0) {
+    console.error(`${pointers.length} of the recordings are Git LFS pointers, not recordings. Install git-lfs, then run: git lfs pull`)
+    process.exit(1)
+  }
+}
+
+/**
+ * `make dev-app`: the app on the game, on a recording instead of it (`--replay`; a bare name means
+ * one in app/recordings), or recording every frame of the game into app/recordings (`--record`).
+ */
+function devApp(args) {
+  const replayAt = args.indexOf('--replay')
+  const replay = replayAt >= 0 ? args[replayAt + 1] : undefined
+  const record = args.includes('--record')
+  if (replay && record) {
+    console.error('make dev-app takes REPLAY= or RECORD=1, not both')
+    process.exit(1)
+  }
+
+  const env = { ...process.env }
+  if (replay) {
+    const recording = [path.resolve(replay), path.join(recordingsRoot, replay)].find((candidate) => existsSync(candidate))
+    if (!recording) {
+      const known = recordings().map((file) => path.basename(file))
+      console.error(`no recording at ${replay}`)
+      console.error(known.length > 0 ? `recordings in ${path.relative(repoRoot, recordingsRoot)}:\n  ${known.join('\n  ')}` : 'no recordings yet; make dev-app RECORD=1 makes them')
+      process.exit(1)
+    }
+    assertRecordingsPulled([recording])
+    console.log(`[sprint] replaying ${recording} instead of the game`)
+    env.SPRINT_TELEMETRY_REPLAY = recording
+  } else if (record) {
+    console.log(`[sprint] recording telemetry into ${path.relative(repoRoot, recordingsRoot)} (one file per session)`)
+    env.SPRINT_TELEMETRY_RECORD = recordingsRoot
+  }
+
   const result = spawnSync('pnpm', ['--filter', '@sprint/desktop', 'dev'], {
     cwd: repoRoot,
-    env: { ...process.env, ...extraEnv },
+    env,
     stdio: 'inherit',
     // pnpm is a .cmd shim on Windows, which only a shell can start.
     shell: process.platform === 'win32',
@@ -125,31 +184,26 @@ function devApp(extraEnv) {
   process.exit(result.status ?? 1)
 }
 
-function recordApp() {
-  console.log(`[sprint] recording telemetry into ${path.relative(repoRoot, recordingsRoot)} (one file per session)`)
-  devApp({ SPRINT_TELEMETRY_RECORD: recordingsRoot })
-}
+/**
+ * `make dev-data`: the host files the laps of every committed recording into this checkout's dev
+ * data at once (RecordingImport.cs), so a machine without the game has history to look at.
+ * Importing again rewrites the same sessions; `make reset-dev-data` starts over.
+ */
+function devData() {
+  const files = recordings()
+  if (files.length === 0) {
+    console.error(`no recordings in ${path.relative(repoRoot, recordingsRoot)}`)
+    process.exit(1)
+  }
+  assertRecordingsPulled(files)
 
-function replayApp(file) {
-  if (!file) {
-    const recordings = existsSync(recordingsRoot)
-      ? readdirSync(recordingsRoot).filter((name) => name.endsWith('.jsonl.gz')).sort()
-      : []
-    console.error('usage: make replay-app FILE=<recording>')
-    console.error(recordings.length > 0
-      ? `recordings in ${path.relative(repoRoot, recordingsRoot)}:\n  ${recordings.join('\n  ')}`
-      : 'no recordings yet; make record-app makes them')
-    process.exit(1)
-  }
-  // A bare file name means one of this checkout's recordings.
-  const candidates = [path.resolve(file), path.join(recordingsRoot, file)]
-  const recording = candidates.find((candidate) => existsSync(candidate))
-  if (!recording) {
-    console.error(`no recording at ${file}`)
-    process.exit(1)
-  }
-  console.log(`[sprint] replaying ${recording} instead of the game`)
-  devApp({ SPRINT_TELEMETRY_REPLAY: recording })
+  const env = { ...process.env, SPRINT_DESKTOP_DATA_ROOT: process.env.SPRINT_DESKTOP_DATA_ROOT ?? devDataRoot }
+  console.log(`[sprint] filing the laps of ${files.length} recordings into ${env.SPRINT_DESKTOP_DATA_ROOT}`)
+  const project = path.join(repoRoot, 'app', 'Sprint.Desktop.Host', 'Sprint.Desktop.Host.csproj')
+  // Debug: the host only offers import-recordings there, like the replay.
+  const result = spawnSync('dotnet', ['run', '--project', project, '-c', 'Debug', '--', 'import-recordings', ...files], { cwd: repoRoot, env, stdio: 'inherit' })
+  if (result.status === 0) console.log('[sprint] done; make dev-app shows them (close a running dev app first, it reads history once)')
+  process.exit(result.status ?? 1)
 }
 
 // Deletes the dev data of this checkout only. The installed app's data is never touched.
@@ -184,19 +238,19 @@ switch (command) {
   case 'clean':
     clean(rest.includes('--dry-run'))
     break
+  case 'dev-app':
+    devApp(rest)
+    break
   case 'dev-host':
     devHost()
+    break
+  case 'dev-data':
+    devData()
     break
   case 'reset-dev-data':
     resetDevData()
     break
-  case 'record-app':
-    recordApp()
-    break
-  case 'replay-app':
-    replayApp(rest[0])
-    break
   default:
-    console.error('usage: node scripts/make-tasks.mjs help|version|rid|clean [--dry-run]|dev-host|record-app|replay-app [file]|reset-dev-data')
+    console.error('usage: node scripts/make-tasks.mjs help|version|rid|clean [--dry-run]|dev-app [--replay <recording> | --record]|dev-host|dev-data|reset-dev-data')
     process.exit(1)
 }

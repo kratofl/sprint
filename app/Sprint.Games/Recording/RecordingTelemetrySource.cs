@@ -8,7 +8,7 @@ namespace Sprint.Games.Recording;
 /// Wraps a live source and writes everything it reports to recording files, one per session
 /// (track, car and session type), while passing every call straight through. Dev only: the
 /// host wraps the game's source in it when <c>SPRINT_TELEMETRY_RECORD</c> names a folder
-/// (<c>make record-app</c>), and <see cref="ReplayTelemetrySource"/> plays the files back.
+/// (<c>make dev-app RECORD=1</c>), and <see cref="ReplayTelemetrySource"/> plays the files back.
 /// </summary>
 /// <remarks>
 /// Writing happens on the engine's reader thread, inside the calls it wraps. A write failure

@@ -93,7 +93,7 @@ function resolveRecording(file) {
   const recording = candidates.find((candidate) => existsSync(candidate))
   if (!recording) {
     const known = existsSync(recordingsRoot) ? readdirSync(recordingsRoot).filter((name) => name.endsWith('.jsonl.gz')) : []
-    fail(`no recording at ${file}${known.length > 0 ? `; known: ${known.join(', ')}` : '; make record-app makes them'}`)
+    fail(`no recording at ${file}${known.length > 0 ? `; known: ${known.join(', ')}` : '; make dev-app RECORD=1 makes them'}`)
   }
   return recording
 }

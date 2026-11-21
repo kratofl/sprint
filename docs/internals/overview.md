@@ -26,7 +26,7 @@ a change to one is a change to both.
 Things that describe a plan rather than a car (targets, planned fuel) do not go on the frame. See
 [session-planner.md](session-planner.md#target-delivery-to-the-wheel).
 
-Dev recordings (`make record-app`, `app/Sprint.Games/Recording`) store the mapped frame, so whatever is
+Dev recordings (`make dev-app RECORD=1`, `app/Sprint.Games/Recording`) store the mapped frame, so whatever is
 not on the frame when a recording is made is gone from it for good. The other cars (`TelemetryFrame.Field`)
 come from scoring, which LMU updates ~5 times a second against ~60 frames: the source hands out the same
 list until scoring changes, and a recording writes it only on the frames where it changed — `null` on

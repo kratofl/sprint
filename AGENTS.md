@@ -144,16 +144,17 @@ short, current, and tool-agnostic. Deeper material lives in `docs/` (index:
 - Start web: `make dev-web`
 - Start desktop: `make dev-app` (Vite + Electron; Electron launches the native host)
 - An agent's own run of the app, hidden and on fresh data: `make agent-app` (`DATA=<dir>` copies
-  data in, `FILE=<recording>` replays telemetry); drive it with `app/desktop/scripts/cdp.mjs`, stop
+  data in, `REPLAY=<recording>` replays telemetry); drive it with `app/desktop/scripts/cdp.mjs`, stop
   it with `node app/desktop/scripts/agent-app.mjs stop <run folder>`
 - Smoke test the real app (CI runs it on Windows): `make smoke-app` — hidden run on a replayed
   race, every sidebar page, fails on any uncaught exception or console error
 - Start the native host alone: `make dev-host` (no UI)
 - Dev runs keep their data in the checkout's `app/desktop/.dev/data`, never the
-  installed app's; wipe it with `make reset-dev-data`
-- Record a driven session: `make record-app` (every telemetry frame, one file per
+  installed app's. Without the game, `make dev-data` fills it with the laps of every
+  recording in `app/recordings`; `make reset-dev-data` wipes it
+- Record a driven session: `make dev-app RECORD=1` (every telemetry frame, one file per
   session, into `app/recordings`, committed through Git LFS, no real names). Run
-  the app on one instead of the game, looping: `make replay-app FILE=<recording>`
+  the app on one instead of the game, looping: `make dev-app REPLAY=<recording>`
   (Debug builds only)
 - Build API: `make build-api`
 - Build web: `make build-web`
@@ -178,7 +179,7 @@ short, current, and tool-agnostic. Deeper material lives in `docs/` (index:
   to a PNG with `cargo run --release --example render -- --dash <layout.json> <out.png>`
   (`--page <id>`, `--style panels|grid|bars`, `--size 800x480`)
 - Native host tests: `dotnet test app/Sprint.Desktop.Host/Tests/Sprint.Desktop.Host.Tests.csproj`
-- Lint: `make lint`
+- Lint everything (API, desktop, `pnpm lint`): `make lint`
 - Format: `make fmt`
 
 Run the smallest relevant checks for your change set. Do not claim checks you

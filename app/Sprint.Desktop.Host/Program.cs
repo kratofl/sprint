@@ -25,6 +25,16 @@ using Sprint.Desktop.Runtime;
 using Sprint.Games;
 using Sprint.Games.Recording;
 
+#if DEBUG
+// `make dev-data`: files the laps of telemetry recordings into the dev data root and exits,
+// without starting the server (RecordingImport).
+if (args is ["import-recordings", .. string[] recordings])
+{
+    Environment.ExitCode = RecordingImport.Run(recordings, Environment.GetEnvironmentVariable("SPRINT_DESKTOP_DATA_ROOT"), Console.Out);
+    return;
+}
+#endif
+
 const string token = "SPRINT_DESKTOP_TOKEN";
 string bearer = Environment.GetEnvironmentVariable(token) ?? Convert.ToHexString(RandomNumberGenerator.GetBytes(24));
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
@@ -1087,8 +1097,8 @@ PlanContext LastSeenContext()
 }
 
 // The game's live source. Debug builds also honour two dev switches: SPRINT_TELEMETRY_REPLAY
-// plays a recording instead of the game (make replay-app), SPRINT_TELEMETRY_RECORD records
-// every frame of the game into a folder (make record-app). Release builds ignore both.
+// plays a recording instead of the game (make dev-app REPLAY=), SPRINT_TELEMETRY_RECORD records
+// every frame of the game into a folder (make dev-app RECORD=1). Release builds ignore both.
 static ITelemetrySource CreateTelemetrySource(ILog log)
 {
 #if DEBUG

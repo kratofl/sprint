@@ -2,10 +2,10 @@
 # Usage: make <target>
 # Run `make help` to list all available targets.
 
-.PHONY: help setup types dev-app record-app replay-app agent-app smoke-app dev-host dev-db dev-api dev-web dev-cloud build-api build-web build-app build \
-        test test-api test-app lint lint-app lint-api fmt schema \
-        docker-build docker-up docker-down docker-logs \
-        clean reset-dev-data
+.PHONY: help setup types dev-app dev-host agent-app smoke-app dev-data reset-dev-data \
+        dev-db dev-api dev-web dev-cloud schema build-api build-web build-app build \
+        test test-api test-app lint lint-api lint-app fmt \
+        docker-build docker-up docker-down docker-logs clean
 
 # Recipes are written to run unchanged under PowerShell (Windows) and sh
 # (macOS/Linux). Anything shell-specific goes through scripts/make-tasks.mjs.
@@ -38,12 +38,13 @@ RID ?= $(shell $(TASKS) rid)
 # Override with: make build-app VERSION=1.2.3
 VERSION ?= $(shell $(TASKS) version)
 
-# ─── Help─────────────────────────────────────────────────────────────────────
+# `make help` prints the `target: ## text` lines under the `# ─── Section` heading above them,
+# in file order.
+
+# ─── Setup ────────────────────────────────────────────────────────────────────
 
 help: ## Show this help message
 	@$(TASKS) help
-
-# ─── Setup ────────────────────────────────────────────────────────────────────
 
 setup: ## Restore project dependencies
 	dotnet restore $(APP_SOLUTION)
@@ -52,30 +53,35 @@ setup: ## Restore project dependencies
 	$(DASH_CARGO) fetch
 	echo 'Setup complete'
 
-# ─── Development ──────────────────────────────────────────────────────────────
-
 # @sprint/types is consumed from its built dist/ (gitignored), so every desktop
 # target builds it first; otherwise a fresh clone cannot resolve it.
 types: ## Build the shared TypeScript contracts (@sprint/types)
 	pnpm --filter @sprint/types build
 
-dev-app: types ## Run the desktop app in dev mode (Vite + Electron + native host)
-	pnpm --filter @sprint/desktop dev
+# ─── Desktop app ──────────────────────────────────────────────────────────────
 
-record-app: types ## Run the desktop app and record every telemetry frame into app/recordings
-	$(TASKS) record-app
+dev-app: types ## Run the app (Vite + Electron + host) on the game; REPLAY=<recording> plays one instead, RECORD=1 records the session
+	$(TASKS) dev-app $(if $(REPLAY),--replay "$(REPLAY)") $(if $(RECORD),--record)
 
-replay-app: types ## Run the desktop app on a recording instead of the game: make replay-app FILE=<recording>
-	$(TASKS) replay-app $(FILE)
+dev-host: ## Run only the native host (loopback HTTP, no UI)
+	$(TASKS) dev-host
 
-smoke-app: types ## Start the real desktop app hidden, open every page on a replayed race, fail on any error (CI runs it)
+agent-app: types ## An agent's hidden run on fresh data, driven over CDP; DATA=<dir> copies data in, REPLAY=<recording> plays one
+	node app/desktop/scripts/agent-app.mjs $(if $(DATA),--data "$(DATA)") $(if $(REPLAY),--replay "$(REPLAY)")
+
+smoke-app: types ## Start the real app hidden, open every page on a replayed race, fail on any error (CI runs it)
 	node app/desktop/scripts/smoke.mjs
 
-agent-app: types ## An agent's hidden run of the desktop app on fresh data, driven over CDP: make agent-app [DATA=<dir to copy>] [FILE=<recording>]
-	node app/desktop/scripts/agent-app.mjs $(if $(DATA),--data "$(DATA)") $(if $(FILE),--replay "$(FILE)")
+# ─── Dev data ─────────────────────────────────────────────────────────────────
+# A dev run keeps its data in this checkout's app/desktop/.dev/data, never the installed app's.
 
-dev-host: ## Run only the native desktop host (loopback HTTP, no UI)
-	$(TASKS) dev-host
+dev-data: ## Fill this checkout's dev data with the laps of every recording in app/recordings (no game needed)
+	$(TASKS) dev-data
+
+reset-dev-data: ## Delete this checkout's dev data (settings, laps, logs); the installed app is untouched
+	$(TASKS) reset-dev-data
+
+# ─── Cloud (API + web) ────────────────────────────────────────────────────────
 
 # Compose interpolates the whole file, and the prod services require .env secrets,
 # so without a .env the dev database comes up with the .env.example defaults.
@@ -96,18 +102,18 @@ schema: ## Export the GraphQL schema → web/schema.graphql (for web codegen)
 
 # ─── Build ────────────────────────────────────────────────────────────────────
 
+build-app: types ## Package the desktop app -> app/build/bin; the Windows installer too (RID=win-x64|osx-arm64|osx-x64|linux-x64)
+	dotnet publish $(APP_HOST_PROJECT) -c Release -r $(RID) -p:PublishSingleFile=true -p:InformationalVersion=$(VERSION) -o $(APP_DESKTOP_DIR)/resources/host
+	pnpm --filter @sprint/desktop build
+	pnpm --filter @sprint/desktop package $(VERSION)
+
 build-api: ## Publish the API server → api/build/bin
 	dotnet publish $(API_PROJECT) -c Release -p:InformationalVersion=$(VERSION) -o $(API_DIR)/build/bin
 
 build-web: ## Build the Next.js web app (production)
 	pnpm --filter @sprint/web build
 
-build-app: types ## Package the desktop app -> app/build/bin; the Windows installer too (RID=win-x64|osx-arm64|osx-x64|linux-x64)
-	dotnet publish $(APP_HOST_PROJECT) -c Release -r $(RID) -p:PublishSingleFile=true -p:InformationalVersion=$(VERSION) -o $(APP_DESKTOP_DIR)/resources/host
-	pnpm --filter @sprint/desktop build
-	pnpm --filter @sprint/desktop package $(VERSION)
-
-build: build-api build-web ## Build all (API + web)
+build: build-api build-web ## Build the API and the web app (the desktop app: build-app)
 
 # ─── Test ─────────────────────────────────────────────────────────────────────
 
@@ -125,9 +131,11 @@ test-app: types ## Run desktop tests (native xunit, the dash renderer crate, das
 
 # ─── Lint & Format ────────────────────────────────────────────────────────────
 
-lint: ## Build the API solution with warnings as errors and run pnpm lint
-	dotnet build $(API_SOLUTION) -warnaserror
+lint: lint-api lint-app ## Lint everything: lint-api, lint-app and pnpm lint
 	pnpm lint
+
+lint-api: ## Build the API solution with warnings as errors
+	dotnet build $(API_SOLUTION) -warnaserror
 
 lint-app: types ## Build the desktop solution with warnings as errors, lint the dash renderer crate and type-check the UI
 	dotnet build $(APP_SOLUTION) -warnaserror
@@ -135,9 +143,6 @@ lint-app: types ## Build the desktop solution with warnings as errors, lint the 
 	$(DASH_CARGO) fmt --check
 	pnpm --filter @sprint/dashboard type-check
 	pnpm --filter @sprint/desktop type-check
-
-lint-api: ## Build the API solution with warnings as errors
-	dotnet build $(API_SOLUTION) -warnaserror
 
 fmt: ## Format C#, Rust and TS/JS code
 	dotnet format $(APP_SOLUTION)
@@ -163,6 +168,3 @@ docker-logs: ## Tail logs from all running services
 
 clean: ## Remove build artifacts
 	$(TASKS) clean
-
-reset-dev-data: ## Delete this checkout's dev app data (settings, laps, logs); the installed app is untouched
-	$(TASKS) reset-dev-data
