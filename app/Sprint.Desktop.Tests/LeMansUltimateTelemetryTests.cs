@@ -795,12 +795,14 @@ public sealed class LeMansUltimateTelemetryTests
         Assert.Equal(42.5f, frame.Car.FuelLiters);
         Assert.Equal(7, frame.Lap.CurrentLap);
         Assert.Equal(12.5, frame.Lap.CurrentLapTime);
-        Assert.Equal(.5f, frame.Lap.TrackPosition);
+        // Scoring's 3502 m, carried forward the 0.5 s telemetry is ahead of it at 5 m/s.
+        Assert.Equal(3504.5f / 7004f, frame.Lap.TrackPosition, precision: 5);
         Assert.True(frame.Flags.Yellow);
         Assert.True(frame.Flags.SafetyCar);
         Assert.Equal(4, frame.Race.Position);
         Assert.Equal(30, frame.Race.TotalPositions);
         Assert.Equal(62, frame.Energy.VirtualEnergy);
+        Assert.Equal(0.725f, frame.Energy.StateOfCharge, precision: 3);
         Assert.Equal(2, frame.Penalties.Incidents);
         // The front left's inner shoulder is mTemperature's right reading (94 °C, not the left's 90).
         Assert.Equal(94, frame.Tires[0].TempInnerCelsius, precision: 1);
@@ -820,6 +822,17 @@ public sealed class LeMansUltimateTelemetryTests
         // that read it were previously getting 0 and falling back to the carcass value.
         Assert.Equal(92, frame.Tires[0].TempSurfaceCelsius, precision: 1);
         Assert.Equal(87, frame.Tires[0].TempCoreCelsius, precision: 1);
+    }
+
+    [Fact]
+    public void Lmu_mapper_keeps_scorings_lap_distance_when_telemetry_is_too_far_ahead_to_carry_it()
+    {
+        LmuTelemetryMapper mapper = new(() => DateTimeOffset.UnixEpoch);
+        LmuParsedFrame parsed = CreateInCarParsedFrame(lapNumber: 7, elapsedTime: 202.0, sessionTime: 200.0);
+
+        TelemetryFrame frame = mapper.Map(parsed with { Telemetry = parsed.Telemetry! with { LocalVelocity = new LmuVector3(50, 0, 0) } });
+
+        Assert.Equal(.5f, frame.Lap.TrackPosition);
     }
 
     [Fact]
@@ -929,6 +942,7 @@ public sealed class LeMansUltimateTelemetryTests
         TelemetryFrame noHybrid = mapper.Map(parsed);
 
         Assert.Equal((ElectricMotorState.Regeneration, 0f), (regenerating.Energy.MotorState, regenerating.Energy.DeployPower));
+        Assert.Equal(78.54f, regenerating.Energy.RegenPower, precision: 2);
         Assert.Null(regenerating.Energy.MotorWaterTempCelsius);
         Assert.Equal(
             (ElectricMotorState.Unavailable, (float?)null, (float?)null),

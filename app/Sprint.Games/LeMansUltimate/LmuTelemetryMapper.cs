@@ -174,7 +174,9 @@ internal sealed class LmuTelemetryMapper
                 CurrentLapSectorsSeconds = CurrentSectorDurations(scoring),
                 IsValid = lapValid,
                 LastLapValid = this.LastLapValid(telemetry.LapNumber, lapValid),
-                TrackPosition = TrackPosition(scoring.LapDistance, parsed.ScoringInfo.LapDistance)
+                TrackPosition = TrackPosition(
+                    ProjectedLapDistance(scoring.LapDistance, telemetry.ElapsedTime - parsed.ScoringInfo.CurrentElapsedTime, Speed(telemetry.LocalVelocity)),
+                    parsed.ScoringInfo.LapDistance)
             },
             Flags = new RaceFlags
             {
@@ -219,8 +221,8 @@ internal sealed class LmuTelemetryMapper
             {
                 VirtualEnergy = virtualEnergy,
                 VirtualEnergyPerLap = this.VirtualEnergyPerLap(telemetry.LapNumber, virtualEnergy),
-                StateOfCharge = Sanitize(telemetry.StateOfCharge),
-                RegenPower = Sanitize(telemetry.RegenPower),
+                StateOfCharge = ChargeFraction(telemetry.StateOfCharge),
+                RegenPower = RegenPower(telemetry),
                 DeployPower = DeployPower(telemetry),
                 MotorState = MapMotorState(telemetry.ElectricMotorState),
                 MotorTempCelsius = FluidTemperature(telemetry.ElectricMotorTemperature),
@@ -429,8 +431,24 @@ internal sealed class LmuTelemetryMapper
     /// </summary>
     private static float DeployPower(LmuVehicleTelemetry telemetry) =>
         telemetry.ElectricMotorState == 2
-            ? ToF32(Math.Max(0, telemetry.ElectricMotorTorque * telemetry.ElectricMotorRpm * 2 * Math.PI / 60 / 1000))
+            ? ToF32(Math.Max(0, MotorPowerKw(telemetry)))
             : 0;
+
+    /// <summary>
+    /// What the hybrid motor recovers, kW: its torque (negative while regenerating) times its
+    /// speed, like <see cref="DeployPower"/>. The game's own mRegen stayed empty on the wheel, so
+    /// it is not read.
+    /// </summary>
+    private static float RegenPower(LmuVehicleTelemetry telemetry) =>
+        telemetry.ElectricMotorState == 3
+            ? ToF32(Math.Max(0, -MotorPowerKw(telemetry)))
+            : 0;
+
+    private static double MotorPowerKw(LmuVehicleTelemetry telemetry) =>
+        telemetry.ElectricMotorTorque * telemetry.ElectricMotorRpm * 2 * Math.PI / 60 / 1000;
+
+    /// <summary>mSoC is a percentage (0–100); the frame carries the battery's charge as a 0–1 fraction.</summary>
+    private static float ChargeFraction(float percent) => Math.Clamp(Sanitize(percent) / 100f, 0, 1);
 
     /// <summary>mElectricBoostMotorState: 0 unavailable, 1 inactive, 2 propulsion, 3 regeneration.</summary>
     private static ElectricMotorState MapMotorState(byte state) => state switch
@@ -942,6 +960,28 @@ internal sealed class LmuTelemetryMapper
         z /= length;
         w /= length;
         return true;
+    }
+
+    /// <summary>
+    /// The longest a scoring update is carried forward. Scoring arrives about every 0.2 s; a gap
+    /// beyond this means a pause or a clock that disagrees, and the reported distance is kept.
+    /// </summary>
+    private const double MaxProjectionSeconds = 0.5;
+
+    /// <summary>
+    /// The lap distance now, not at the last scoring update. Scoring reports it about five times a
+    /// second while telemetry runs at the physics rate, so between updates the distance is carried
+    /// forward at the car's speed for the time telemetry is ahead of scoring. Without this the
+    /// lap delta saws up to 0.2 s between updates.
+    /// </summary>
+    private static double ProjectedLapDistance(double lapDistance, double secondsSinceScoring, double speed)
+    {
+        if (!double.IsFinite(secondsSinceScoring) || secondsSinceScoring <= 0 || secondsSinceScoring > MaxProjectionSeconds || !double.IsFinite(speed))
+        {
+            return lapDistance;
+        }
+
+        return lapDistance + (Math.Max(0, speed) * secondsSinceScoring);
     }
 
     private static float TrackPosition(double lapDistance, double trackLapDistance)
