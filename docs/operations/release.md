@@ -98,11 +98,15 @@ it reads `latest.yml` from the newest GitHub Release on the driver's channel and
 installer. Only an installed Windows build updates; dev runs and other platforms report
 `unsupported` and never check.
 
-- One check at startup, plus "Check for updates" in Settings and the palette. Switching channel
-  checks again.
-- `autoInstallUpdates` (on by default) downloads in the background and installs when Sprint quits;
-  off, Settings offers the download. Either way "Restart now" installs at once, never by itself
-  mid-session.
+- At launch a splash window covers the host's start. With `autoInstallUpdates` on, it also checks
+  and, when there is a new version, downloads and installs it before the main window opens. The
+  check gives up after 8 s so an offline launch is not held up.
+- While Sprint runs it checks once an hour (plus "Check for updates" in Settings and the palette,
+  and on a channel switch) but never downloads by itself: nothing should pull an installer
+  mid-session. A version on offer shows as the toolbar's update button; a click downloads it and
+  restarts into the installer.
+- `autoInstallUpdates` defaults per channel: on for `stable` (opt out), off for `pre-release`
+  (opt in). Switching channel resets it to the new channel's default.
 - Channels are `stable` and `pre-release`; legacy `beta`/`alpha` settings normalise to
   `pre-release`, which maps to electron-updater's `allowPrerelease`. Opting in asks for
   confirmation. Moving back to stable never downgrades.

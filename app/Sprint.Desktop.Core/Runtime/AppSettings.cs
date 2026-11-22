@@ -28,11 +28,15 @@ public sealed class AppSettings
     public static readonly string[] Channels = ["stable", "pre-release"];
 
     /// <summary>
-    /// Updates download in the background and install when Sprint quits. Off, the driver starts
-    /// each one from Settings. The Electron main process acts on it; the host only keeps it.
+    /// A new version installs at launch, behind the splash. Off, the driver starts each one from
+    /// the toolbar or Settings. Switching channel resets it to that channel's default
+    /// (<see cref="AutoInstallsByDefault"/>). The Electron main process acts on it; the host only keeps it.
     /// </summary>
     [JsonPropertyName("autoInstallUpdates")]
     public bool AutoInstallUpdates { get; set; } = true;
+
+    /// <summary>Stable installs updates on its own unless the driver opts out; pre-release only when they opt in.</summary>
+    public static bool AutoInstallsByDefault(string channel) => channel == "stable";
 
     /// <summary>
     /// Maps a persisted or user-supplied channel string to the canonical two-channel

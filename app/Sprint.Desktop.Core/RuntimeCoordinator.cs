@@ -453,7 +453,14 @@ public sealed class RuntimeCoordinator
 
             if (TryStringField(command, "updateChannel", out string updateChannel))
             {
-                this._runtime.Settings.UpdateChannel = AppSettings.NormalizeChannel(updateChannel);
+                string channel = AppSettings.NormalizeChannel(updateChannel);
+                if (channel != this._runtime.Settings.UpdateChannel)
+                {
+                    // Each channel starts from its own default; an explicit autoInstallUpdates below still wins.
+                    this._runtime.Settings.AutoInstallUpdates = AppSettings.AutoInstallsByDefault(channel);
+                }
+
+                this._runtime.Settings.UpdateChannel = channel;
                 applied = true;
             }
 

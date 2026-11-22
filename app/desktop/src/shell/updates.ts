@@ -17,7 +17,7 @@ export const parseUpdateStatus = (value: unknown): UpdateStatus => {
     case 'up-to-date':
       return { kind: value.kind }
     case 'available':
-    case 'ready':
+    case 'installing':
       return version === null ? failed : { kind: value.kind, version }
     case 'downloading':
       return version === null || typeof value.percent !== 'number' ? failed : { kind: 'downloading', version, percent: value.percent }

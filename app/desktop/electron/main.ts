@@ -17,6 +17,7 @@ import { readDashIds, readDesignerDashId } from './designerRoute.js'
 import { PitWallWindows } from './pitWallWindows.js'
 import { pitWallQuery, readPitWallTarget, readPitWallWindows, readTraceLap } from './pitWallRoute.js'
 import { Updates } from './updates.js'
+import { nextZoomFactor, zoomStepFor, type ZoomStep } from './uiZoom.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const desktopRoot = path.resolve(__dirname, '..')
@@ -222,12 +223,15 @@ ipcMain.handle('sprint:cloud-push', () => nativeHost.cloudPush())
 ipcMain.handle('sprint:cloud-pull', () => nativeHost.cloudPull())
 
 // Only an installed Windows build updates itself (the NSIS installer is the update).
-const updates = new Updates(app.isPackaged && process.platform === 'win32', () => shutdown())
+// Before installing, the designers close first: the host must outlive a designer's last save.
+const updates = new Updates(app.isPackaged && process.platform === 'win32', async () => {
+  await designers.closeAll()
+  await shutdown()
+})
 
 ipcMain.on('sprint:updates-subscribe', (event: IpcMainEvent) => updates.subscribe(event.sender))
 ipcMain.handle('sprint:updates-check', () => updates.check())
-ipcMain.handle('sprint:updates-download', () => updates.download())
-ipcMain.handle('sprint:updates-restart', () => updates.restart())
+ipcMain.handle('sprint:updates-install', () => updates.install())
 
 /** The lap file filter for both dialogs. The extension matches `SharedLapFile.Extension`. */
 const LAP_FILE_FILTERS = [{ name: 'Sprint lap', extensions: ['sprintlap'] }]
@@ -406,6 +410,28 @@ function isOpenDebugKey(input: Electron.Input): boolean {
   return input.type === 'keyDown' && input.key.toLowerCase() === 'd' && input.alt && input.shift && (isMac ? input.meta : input.control)
 }
 
+/** Every window `createAppWindow` made and still open: they share one zoom. */
+const appWindows = new Set<BrowserWindow>()
+
+/**
+ * One zoom step for the app windows: see `createAppWindow`. Chromium zooms every one of them (same
+ * origin), so each one's caption buttons follow their toolbar.
+ */
+function zoomUi(contents: WebContents, step: ZoomStep): void {
+  contents.setZoomFactor(nextZoomFactor(contents.getZoomFactor(), step))
+  for (const window of appWindows) fitCaptionButtons(window)
+}
+
+/**
+ * The OS caption buttons (Windows overlay, macOS traffic lights) are sized in screen pixels, the
+ * toolbar in page pixels: at another zoom they are moved to match it.
+ */
+function fitCaptionButtons(window: BrowserWindow): void {
+  const factor = window.webContents.getZoomFactor()
+  if (isMac) window.setWindowButtonPosition(trafficLightPosition(factor))
+  else window.setTitleBarOverlay({ height: captionButtonsHeight(factor) })
+}
+
 /** Height of the renderer's toolbar (styles.css `.titlebar`), the window title bar, including its 1px bottom edge. */
 const TITLE_BAR_HEIGHT = 48
 
@@ -413,7 +439,7 @@ const TITLE_BAR_HEIGHT = 48
  * Height of the caption buttons' overlay. One pixel short of the toolbar: the overlay paints its own
  * background over the page, and at full height it would hide the toolbar's bottom edge beneath it.
  */
-const CAPTION_BUTTONS_HEIGHT = TITLE_BAR_HEIGHT - 1
+const captionButtonsHeight = (zoom: number): number => Math.round(TITLE_BAR_HEIGHT * zoom) - 1
 
 /**
  * macOS traffic lights, as the top-left of the close button. The renderer's
@@ -422,7 +448,7 @@ const CAPTION_BUTTONS_HEIGHT = TITLE_BAR_HEIGHT - 1
  * centres them on the band. The buttons sit 23px apart on macOS 26+ (20px
  * before), so x = 16 ends the zoom button at 76px, inside the 80px.
  */
-const TRAFFIC_LIGHT_POSITION = { x: 16, y: 19 }
+const trafficLightPosition = (zoom: number): { x: number; y: number } => ({ x: Math.round(16 * zoom), y: Math.round((52 * zoom - 14) / 2) })
 
 /** BrowserWindow options that differ between the brand and macOS looks. */
 function chromeOptions(chrome: WindowChrome): BrowserWindowConstructorOptions {
@@ -436,7 +462,7 @@ function chromeOptions(chrome: WindowChrome): BrowserWindowConstructorOptions {
         // snap/maximise and close — including the Snap Layouts flyout, which a drawn
         // HTML button cannot offer.
         titleBarStyle: 'hidden',
-        titleBarOverlay: { color: chrome.background, symbolColor: chrome.symbol, height: CAPTION_BUTTONS_HEIGHT },
+        titleBarOverlay: { color: chrome.background, symbolColor: chrome.symbol, height: captionButtonsHeight(1) },
       }
     case 'vibrancy':
     case 'opaque':
@@ -449,7 +475,7 @@ function chromeOptions(chrome: WindowChrome): BrowserWindowConstructorOptions {
         // No OS title bar: the real traffic lights float over the sidebar header,
         // and the renderer's toolbar is the drag region.
         titleBarStyle: 'hidden',
-        trafficLightPosition: TRAFFIC_LIGHT_POSITION,
+        trafficLightPosition: trafficLightPosition(1),
       }
   }
 }
@@ -460,7 +486,7 @@ function applyChrome(window: BrowserWindow, chrome: WindowChrome): void {
     case 'solid':
       window.setBackgroundColor(chrome.background)
       // Windows/Linux only; macOS reaches this in the dev look toggle.
-      if (!isMac) window.setTitleBarOverlay({ color: chrome.background, symbolColor: chrome.symbol, height: CAPTION_BUTTONS_HEIGHT })
+      if (!isMac) window.setTitleBarOverlay({ color: chrome.background, symbolColor: chrome.symbol, height: captionButtonsHeight(window.webContents.getZoomFactor()) })
       return
     case 'vibrancy':
       window.setVibrancy('sidebar')
@@ -471,6 +497,39 @@ function applyChrome(window: BrowserWindow, chrome: WindowChrome): void {
       window.setBackgroundColor(chrome.background)
       return
   }
+}
+
+/**
+ * The splash (`?splash=1`, splash/SplashWindow.tsx): a small frameless window at launch, no caption
+ * buttons, in the brand's background so nothing flashes before the page paints. Only an installed
+ * Windows build shows it.
+ */
+function createSplashWindow(): BrowserWindow {
+  const chrome = currentChrome()
+  const window = new BrowserWindow({
+    width: 440,
+    height: 300,
+    center: true,
+    frame: false,
+    resizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    // Closing it would quit Sprint halfway through its launch.
+    closable: false,
+    show: false,
+    title: 'Sprint',
+    backgroundColor: chrome.kind === 'vibrancy' ? TRANSPARENT : chrome.background,
+    icon: path.join(desktopRoot, 'resources', 'icon.png'),
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.cjs'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+    },
+  })
+  window.once('ready-to-show', () => window.show())
+  void window.loadFile(path.join(desktopRoot, 'dist', 'index.html'), { query: { splash: '1', platform: look } })
+  return window
 }
 
 /** What differs between the main window and a dash designer window; the chrome is the same. */
@@ -524,6 +583,20 @@ function createAppWindow({ size, title, query }: AppWindowOptions): BrowserWindo
     }
     return { action: 'deny' }
   })
+
+  // Ctrl/⌘ +, − and 0 zoom the UI like a browser. Windows has no menu to carry them, so the keys
+  // are read here on every platform. Chromium keeps one zoom per origin, so every app window
+  // (main, designers, pit wall) shares it; the HUD opts out (hud.ts).
+  window.webContents.on('before-input-event', (event, input) => {
+    const step = zoomStepFor(input, isMac)
+    if (!step) return
+    event.preventDefault()
+    zoomUi(window.webContents, step)
+  })
+  // A window opened while zoomed takes the zoom on load; its caption buttons follow.
+  appWindows.add(window)
+  window.once('closed', () => appWindows.delete(window))
+  window.webContents.on('did-finish-load', () => fitCaptionButtons(window))
 
   // The background and caption buttons follow the OS light/dark switch, and the macOS
   // vibrancy follows "Reduce transparency", live.
@@ -667,12 +740,16 @@ async function bootstrap(): Promise<void> {
   await app.whenReady()
   // No OS menu bar on Windows: every command this app has lives in its own UI.
   // macOS needs the standard menu for Quit, Hide, window keys and text editing.
-  Menu.setApplicationMenu(isMac ? Menu.buildFromTemplate(macMenuTemplate({ packaged: app.isPackaged, onToggleLook: toggleLook, onOpenDebug: () => debugWindow?.open() })) : null)
+  Menu.setApplicationMenu(isMac ? Menu.buildFromTemplate(macMenuTemplate({ packaged: app.isPackaged, onToggleLook: toggleLook, onOpenDebug: () => debugWindow?.open(), onZoom: (step) => { const focused = BrowserWindow.getFocusedWindow(); if (focused) zoomUi(focused.webContents, step) } })) : null)
   // A packaged build gets its icon from the bundle. A dev run may be Electron's own
   // bundle (`pnpm start`), so set it here; the Dock shows this image unmasked, hence
   // the version already shaped and inset to Apple's icon grid.
   if (isMac && !app.isPackaged) app.dock?.setIcon(path.join(desktopRoot, 'resources', 'icon-mac.png'))
+  // An installed build shows the splash while the host starts and, with automatic installs on,
+  // while it looks for an update and installs one. Installing quits into the installer instead.
+  const splash = updates.supported ? createSplashWindow() : null
   await startNativeHost()
+  if (splash && (await updates.atLaunch(await nativeHost.state().catch(() => null)))) return
   const baseUrl = rendererBaseUrl()
   hud = new TrainingHud(
     (windowId) => hudRouteFor(baseUrl, windowId),
@@ -686,6 +763,9 @@ async function bootstrap(): Promise<void> {
   polling = true
   ensurePolling()
   const window = createWindow()
+  // Closed only now: with no window open, Sprint would quit (window-all-closed).
+  splash?.destroy()
+  updates.startChecking()
   if (hostStartError) {
     const message = `Sprint native host failed to start: ${hostStartError}`
     window.webContents.once('did-finish-load', () => {

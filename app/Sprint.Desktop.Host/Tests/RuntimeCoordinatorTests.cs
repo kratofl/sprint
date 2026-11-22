@@ -129,6 +129,30 @@ public sealed class RuntimeCoordinatorTests
     }
 
     [Fact]
+    public void SettingsUpdate_SwitchingChannel_ResetsAutomaticInstallsToThatChannelsDefault()
+    {
+        RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
+        try
+        {
+            Assert.True(coordinator.Execute(Command("""{"type":"settings.update","updateChannel":"pre-release"}"""), out string error), error);
+            Assert.False(runtime.Settings.AutoInstallUpdates);
+
+            // Opted in on pre-release, the same channel again keeps the choice.
+            Assert.True(coordinator.Execute(Command("""{"type":"settings.update","autoInstallUpdates":true}"""), out error), error);
+            Assert.True(coordinator.Execute(Command("""{"type":"settings.update","updateChannel":"pre-release"}"""), out error), error);
+            Assert.True(runtime.Settings.AutoInstallUpdates);
+
+            Assert.True(coordinator.Execute(Command("""{"type":"settings.update","autoInstallUpdates":false}"""), out error), error);
+            Assert.True(coordinator.Execute(Command("""{"type":"settings.update","updateChannel":"stable"}"""), out error), error);
+            Assert.True(new DesktopRuntime(dataRoot, PresetRoot).Settings.AutoInstallUpdates);
+        }
+        finally
+        {
+            Cleanup(dataRoot);
+        }
+    }
+
+    [Fact]
     public void SettingsUpdate_DashesViewMode_PersistsAndRejectsUnknownModes()
     {
         RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);

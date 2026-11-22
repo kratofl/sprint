@@ -33,8 +33,7 @@ contextBridge.exposeInMainWorld('sprint', {
     return () => { ipcRenderer.removeListener('sprint:updates', onStatus) }
   },
   checkUpdates: (): Promise<unknown> => ipcRenderer.invoke('sprint:updates-check'),
-  downloadUpdate: (): Promise<unknown> => ipcRenderer.invoke('sprint:updates-download'),
-  restartToUpdate: (): Promise<unknown> => ipcRenderer.invoke('sprint:updates-restart'),
+  installUpdate: (): Promise<unknown> => ipcRenderer.invoke('sprint:updates-install'),
   signIn: (serverUrl: string, email: string, password: string, createAccount: boolean): Promise<unknown> =>
     ipcRenderer.invoke('sprint:account-sign-in', serverUrl, email, password, createAccount),
   signInWithDiscord: (serverUrl: string): Promise<unknown> => ipcRenderer.invoke('sprint:account-discord', serverUrl),

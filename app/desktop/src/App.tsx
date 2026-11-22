@@ -21,7 +21,6 @@ import { primaryNav, viewLabel } from './shell/nav'
 import { matchShortcut } from './shell/shortcuts'
 import { platform } from './platform'
 import { readSidebarCollapsed } from './shell/settings'
-import { displayVersion } from './shell/updates'
 import { PageUpContext, type PageUp } from './shell/pageUp'
 import { describeBuild } from './shell/build'
 import { parseUpdatesInfo } from './views/SettingsUpdates'
@@ -131,10 +130,10 @@ export function App({ mockup }: { mockup?: { view: AppView; content: ReactNode }
     ;(showSidebarRef.current ?? sidebarToggleRef.current)?.focus()
   }, [collapsed])
 
-  // The main process checks at startup and installs per the driver's settings; this only follows
-  // it. An update gets one toast when it turns up and one when it is ready. A check the driver
-  // asked for from the palette also answers "up to date" or "couldn't check"; a background one
-  // never nags.
+  // The main process checks at launch and every hour after; an update on offer shows as the
+  // toolbar's update button, not a toast. A check the driver asked for from the palette also
+  // answers "up to date" or "couldn't check", and an install the driver started says when it
+  // failed; a background check never nags.
   const manualCheck = useRef(false)
   const announcedKind = useRef<UpdateStatus['kind'] | null>(null)
   useEffect(
@@ -142,38 +141,20 @@ export function App({ mockup }: { mockup?: { view: AppView; content: ReactNode }
       bridge.subscribeUpdates((status) => {
         setUpdateStatus(status)
         // A resubscribe repeats the current status; only a change is news.
-        if (announcedKind.current === status.kind) return
+        const previous = announcedKind.current
+        if (previous === status.kind) return
         announcedKind.current = status.kind
         const manual = manualCheck.current
         if (status.kind !== 'checking') manualCheck.current = false
-        switch (status.kind) {
-          case 'available':
-            showToast({
-              tone: 'info',
-              title: `Sprint ${displayVersion(status.version)} is available`,
-              message: 'Update from Settings.',
-              action: { label: 'Open Settings', onClick: () => navigate('Settings') },
-            })
-            return
-          case 'ready':
-            showToast({
-              tone: 'info',
-              title: `Sprint ${displayVersion(status.version)} is ready`,
-              message: 'It installs when you quit Sprint.',
-              action: { label: 'Restart now', onClick: () => void bridge.restartToUpdate() },
-            })
-            return
-          case 'up-to-date':
-            if (manual) showToast({ tone: 'info', title: "You're up to date", message: 'Sprint is already on the latest version for your update channel.' })
-            return
-          case 'failed':
-            if (manual) showToast({ tone: 'danger', title: 'Could not check for updates', message: 'Try again later.' })
-            return
-          default:
-            return
+        if (status.kind === 'up-to-date' && manual) {
+          showToast({ tone: 'info', title: "You're up to date", message: 'Sprint is already on the latest version for your update channel.' })
+        } else if (status.kind === 'failed' && manual) {
+          showToast({ tone: 'danger', title: 'Could not check for updates', message: 'Try again later.' })
+        } else if (status.kind === 'failed' && (previous === 'downloading' || previous === 'installing')) {
+          showToast({ tone: 'danger', title: 'Could not update Sprint', message: 'Try again later.' })
         }
       }),
-    [showToast, navigate],
+    [showToast],
   )
   const checkForUpdates = useCallback(() => {
     if (updateStatus.kind === 'unsupported') {
@@ -328,6 +309,8 @@ export function App({ mockup }: { mockup?: { view: AppView; content: ReactNode }
         showSidebarRef={showSidebarRef}
         onActionsSlot={setActionsSlot}
         onActionsRoom={setActionsRoom}
+        update={updateStatus}
+        onInstallUpdate={() => void bridge.installUpdate()}
       />
       <div className="app-frame">
         <Sidebar
@@ -337,7 +320,7 @@ export function App({ mockup }: { mockup?: { view: AppView; content: ReactNode }
           toggleRef={sidebarToggleRef}
           onSelect={navigate}
           accountRow={sprintWeb ? { account, onOpen: () => (account?.signedIn ? setAccountOpen(true) : openSetup()) } : null}
-          updateAvailable={updateStatus.kind === 'available' || updateStatus.kind === 'ready'}
+          updateAvailable={updateStatus.kind === 'available'}
           build={build}
           telemetry={runtime.kind === 'ready' ? runtime.sprint.telemetry : null}
           onOpenDiagnostics={openDiagnostics}
