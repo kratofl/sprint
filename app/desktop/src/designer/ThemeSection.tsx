@@ -1,18 +1,15 @@
 import { useState } from 'react'
 import { Check } from 'lucide-react'
-import { DashCanvas, DEFAULT_DASH_CHROME, dashPreviewStates, dashStyles, dashThemePresets, matchLayoutThemeName, resolveDashPalette, resolvePreviewFrame } from '@sprint/dashboard'
-import type { DashColorSystem, DashLayout, DashPage, DashPreviewState, DashStyle } from '@sprint/dashboard'
+import { DashCanvas, DEFAULT_DASH_CHROME, dashPreviewStates, dashThemePresets, matchLayoutThemeName, resolveDashPalette, resolvePreviewFrame } from '@sprint/dashboard'
+import type { DashColorSystem, DashLayout, DashPage, DashPreviewState } from '@sprint/dashboard'
 import type { TelemetryFrame } from '@sprint/types'
-import { applyThemePreset, setDashChrome, setDashStyle } from '../views/DashesDomain'
-import { BORDER_OPTIONS, LABEL_OPTIONS, Segmented } from './controls'
-import { DashStill } from '../views/DashStill'
+import { applyThemePreset, setDashChrome } from '../views/DashesDomain'
+import { BORDER_OPTIONS, LABEL_OPTIONS, Segmented, SelectField } from './controls'
 import { BEZEL, useStageCanvas } from './useStageCanvas'
 import type { Mutate } from './useDesignerDoc'
 import './ThemeSection.css'
 
 type Apply = (mutate: Mutate, group?: string) => boolean
-
-const DASH_STYLE_LABELS: Record<DashStyle, string> = { panels: 'Panels', grid: 'Grid', bars: 'Label bars', flat: 'Flat' }
 
 const CORNER_OPTIONS: ReadonlyArray<{ value: string; label: string }> = [
   { value: '0', label: 'Square' },
@@ -29,7 +26,7 @@ const PRESETS = dashThemePresets.map((preset) => {
 })
 
 /**
- * Theme: how widgets are framed (the dash style, as small pictures) and the colour presets on
+ * Theme: the dash's one look (its corners, edges and where labels sit) and the colour presets on
  * the left, the live dash in the middle, and on the right what the dash shows meanwhile — live
  * or a sample situation — so each colour can be checked in each one. A click applies; undo
  * takes it back.
@@ -49,7 +46,6 @@ export function ThemeSection({
 }) {
   const [previewState, setPreviewState] = useState<DashPreviewState>('live')
   const { setFitElement, canvas } = useStageCanvas(layout)
-  const activeStyle = layout.dashStyle ?? 'panels'
   const chrome = layout.chrome ?? DEFAULT_DASH_CHROME
   const activePreset = matchLayoutThemeName(layout)
 
@@ -61,28 +57,6 @@ export function ThemeSection({
         </div>
         <div className="designer-sidebar-body theme-body">
           <div className="designer-group">
-            <h3 className="designer-group-title">Style</h3>
-            <div className="theme-styles" role="radiogroup" aria-label="Style">
-              {dashStyles.map((dashStyle) => (
-                <button
-                  key={dashStyle}
-                  type="button"
-                  role="radio"
-                  aria-checked={dashStyle === activeStyle}
-                  className="theme-style"
-                  onClick={() => apply((current) => setDashStyle(current, dashStyle))}
-                >
-                  <span className="theme-style-well">
-                    <DashStill layout={{ ...layout, dashStyle }} maxWidth={100} maxHeight={60} />
-                  </span>
-                  <span className="theme-style-name">{DASH_STYLE_LABELS[dashStyle]}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {activeStyle === 'flat' && (
-            <div className="designer-group">
               <h3 className="designer-group-title">Frames</h3>
               <div className="field">
                 <span>Corners</span>
@@ -92,13 +66,9 @@ export function ThemeSection({
                 <span>Edges</span>
                 <Segmented full label="Edges" value={chrome.border} options={BORDER_OPTIONS} onChange={(border) => apply((current) => setDashChrome(current, { border }))} />
               </div>
-              <div className="field">
-                <span>Labels</span>
-                <Segmented full label="Labels" value={chrome.label} options={LABEL_OPTIONS} onChange={(label) => apply((current) => setDashChrome(current, { label }))} />
-              </div>
-              <p className="field-hint">Each widget and group can change its own edge and label.</p>
+              <SelectField label="Labels" value={chrome.label} options={LABEL_OPTIONS} onChange={(label) => apply((current) => setDashChrome(current, { label }))} />
+              <p className="field-hint">For every widget. A widget can only move its own label; a group can wear its own frame.</p>
             </div>
-          )}
 
           <div className="designer-group">
             <h3 className="designer-group-title">Colours</h3>
@@ -127,7 +97,7 @@ export function ThemeSection({
             </div>
           </div>
         </div>
-        <p className="field-hint designer-sidebar-foot">Graphite keeps the racing colours: green faster, purple best.</p>
+        <p className="field-hint designer-sidebar-foot">Colours follow what they mean: each knob its own, purple best, amber when fuel runs low.</p>
       </aside>
 
       <div ref={setFitElement} className="designer-fit">

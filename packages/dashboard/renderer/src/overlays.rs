@@ -375,7 +375,7 @@ fn review_cell(field: LapReviewField, summary: &LapSummary, palette: &DashPalett
                 _ => (2, "SECTOR 3 Δ"),
             };
             match summary.sectors[index].and_then(|sector| sector.delta) {
-                Some(delta) => ReviewCell::new(title, format_delta(delta), String::new(), (delta < 0.0).then_some(palette.timing_personal_best)),
+                Some(delta) => ReviewCell::new(title, format_delta(delta, 3), String::new(), (delta < 0.0).then_some(palette.timing_personal_best)),
                 None => ReviewCell::missing(title, palette),
             }
         }
@@ -388,7 +388,7 @@ fn review_cell(field: LapReviewField, summary: &LapSummary, palette: &DashPalett
         F::Target => match summary.target_delta {
             Some(delta) => {
                 let met = summary.valid && delta <= 0.0;
-                ReviewCell::new("TARGET Δ", format_delta(delta), String::new(), met.then_some(palette.good_on_target))
+                ReviewCell::new("TARGET Δ", format_delta(delta, 3), String::new(), met.then_some(palette.good_on_target))
             }
             None => ReviewCell::missing("TARGET Δ", palette),
         },
@@ -478,15 +478,8 @@ fn lap_review_screen(
 ) {
     b.rect(PixelRect::new(0.0, 0.0, width, height), Radii::ZERO, palette.background);
     let top_height = height * REVIEW_TOP_SHARE;
-    let frame = |rect: PixelRect, title: Option<&'static str>, fill: Option<Rgba>| WidgetFrame {
-        ctx: chrome,
-        rect,
-        title,
-        accent: None,
-        fill,
-        title_color: None,
-        palette: *palette,
-    };
+    let frame =
+        |rect: PixelRect, title: Option<&'static str>, fill: Option<Rgba>| WidgetFrame { ctx: chrome, rect, title, accent: None, fill, palette: *palette };
 
     widget_frame(b, frame(PixelRect::new(0.0, 0.0, width, top_height), None, None), |b, w, h, p| {
         let time = format_lap(summary.lap_time);
@@ -506,8 +499,8 @@ fn lap_review_screen(
         text_line(b, line);
         let (value, unit, color) = match summary.lap_delta {
             _ if !summary.valid => ("INVALID".to_owned(), "", p.muted),
-            Some(delta) if delta < 0.0 => (format_delta(delta), "NEW BEST", p.timing_personal_best),
-            Some(delta) => (format_delta(delta), "VS BEST", p.foreground),
+            Some(delta) if delta < 0.0 => (format_delta(delta, 3), "NEW BEST", p.timing_personal_best),
+            Some(delta) => (format_delta(delta, 3), "VS BEST", p.foreground),
             None => ("--".to_owned(), "VS BEST", p.muted),
         };
         value_with_unit(
@@ -682,9 +675,8 @@ mod tests {
         assert_eq!(value, REVIEW_TOP_SHARE);
     }
 
-    fn scene(layout_id: &str, style: &str) -> Scene {
-        let layout =
-            json!({ "id": layout_id, "name": "L", "gridCols": 20, "gridRows": 12, "dashStyle": style, "pages": [{ "id": "p", "name": "P", "widgets": [] }] });
+    fn scene(layout_id: &str) -> Scene {
+        let layout = json!({ "id": layout_id, "name": "L", "gridCols": 20, "gridRows": 12, "pages": [{ "id": "p", "name": "P", "widgets": [] }] });
         parse_scene(json!({ "layout": layout, "width": 800, "height": 480 }).to_string().as_bytes()).expect("scene")
     }
 
@@ -694,8 +686,8 @@ mod tests {
         ops
     }
 
-    fn banner_ops(banner: serde_json::Value, style: &str) -> Vec<DrawOp> {
-        banner_ops_at(banner, style, 800.0, 480.0)
+    fn banner_ops(banner: serde_json::Value) -> Vec<DrawOp> {
+        banner_ops_at(banner, 800.0, 480.0)
     }
 
     /// What a still draws: `banner`, and the flag bar of the flag out (`alerts::flag_bar`).
@@ -704,9 +696,9 @@ mod tests {
         draw(scene, frame, Overlays { banner, flag_bar, ..Overlays::default() })
     }
 
-    fn banner_ops_at(banner: serde_json::Value, style: &str, width: f64, height: f64) -> Vec<DrawOp> {
+    fn banner_ops_at(banner: serde_json::Value, width: f64, height: f64) -> Vec<DrawOp> {
         let banner = parse_banner(banner.to_string().as_bytes()).expect("banner");
-        let mut scene = scene("l", style);
+        let mut scene = scene("l");
         (scene.width, scene.height) = (width, height);
         draw(&scene, &TelemetryFrame::default(), Overlays { banner: Some(&banner), ..Overlays::default() })
     }
@@ -741,7 +733,7 @@ mod tests {
 
     #[test]
     fn a_strip_is_a_band_a_third_of_the_dash_across_its_middle_set_off_by_background_rules() {
-        let ops = banner_ops(alert("strip", false), "panels");
+        let ops = banner_ops(alert("strip", false));
         // 480 / 3 = 160 tall at 160; a 4.8 -> 4px rule each side in the background colour.
         assert_eq!(ops[1], DrawOp::Rect { rect: PixelRect::new(0.0, 156.0, 800.0, 168.0), radii: Radii::ZERO, color: P.background });
         assert_eq!(ops[2], DrawOp::Rect { rect: PixelRect::new(0.0, 160.0, 800.0, 160.0), radii: Radii::ZERO, color: dash_setting_colors::TC });
@@ -756,7 +748,7 @@ mod tests {
 
     #[test]
     fn an_inverted_strip_is_dark_between_two_rules_in_the_alerts_colour() {
-        let ops = banner_ops(alert("strip", true), "panels");
+        let ops = banner_ops(alert("strip", true));
         assert_eq!(ops[1], DrawOp::Rect { rect: PixelRect::new(0.0, 160.0, 800.0, 160.0), radii: Radii::ZERO, color: P.background });
         assert_eq!(ops[2], DrawOp::Rect { rect: PixelRect::new(0.0, 160.0, 800.0, 4.0), radii: Radii::ZERO, color: dash_setting_colors::TC });
         assert_eq!(ops[3], DrawOp::Rect { rect: PixelRect::new(0.0, 316.0, 800.0, 4.0), radii: Radii::ZERO, color: dash_setting_colors::TC });
@@ -766,10 +758,10 @@ mod tests {
     #[test]
     fn a_strip_too_short_to_read_is_drawn_full_screen() {
         // 300 px tall makes a 100 px band, the least that reads; 299 px does not.
-        let fits = banner_ops_at(alert("strip", false), "panels", 480.0, 300.0);
+        let fits = banner_ops_at(alert("strip", false), 480.0, 300.0);
         assert_eq!(fits[2], DrawOp::Rect { rect: PixelRect::new(0.0, 100.0, 480.0, 100.0), radii: Radii::ZERO, color: dash_setting_colors::TC });
-        let small = banner_ops_at(alert("strip", false), "panels", 480.0, 272.0);
-        assert_eq!(small, banner_ops_at(alert("full", false), "panels", 480.0, 272.0));
+        let small = banner_ops_at(alert("strip", false), 480.0, 272.0);
+        assert_eq!(small, banner_ops_at(alert("full", false), 480.0, 272.0));
         assert_eq!(small[1], DrawOp::Rect { rect: PixelRect::new(0.0, 0.0, 480.0, 272.0), radii: Radii::ZERO, color: dash_setting_colors::TC });
     }
 
@@ -777,7 +769,7 @@ mod tests {
     fn a_popup_without_a_detail_centres_its_title() {
         let mut limiter = alert("full", false);
         (limiter["title"], limiter["value"], limiter["detail"]) = (json!("PIT LIMITER"), json!("ON"), json!(null));
-        let ops = banner_ops(limiter, "panels");
+        let ops = banner_ops(limiter);
         let title = run(&ops, "PIT LIMITER");
         let line_top = 240.0 - title.size / 2.0;
         assert!(title.baseline > line_top && title.baseline < line_top + title.size, "on the dash's centre line");
@@ -788,7 +780,7 @@ mod tests {
     fn a_long_word_value_keeps_the_title_smaller_and_clear_of_it() {
         let mut engine = alert("full", false);
         (engine["title"], engine["value"]) = (json!("ENGINE"), json!("OVERHEAT"));
-        let ops = banner_ops(engine, "panels");
+        let ops = banner_ops(engine);
         let (title, value) = (run(&ops, "ENGINE"), run(&ops, "OVERHEAT"));
         assert!(title.size < value.size, "{} vs {}", title.size, value.size);
         assert!(title.x + title.width(&Fonts::new()) + 20.0 < value.x, "a gap between them");
@@ -802,24 +794,24 @@ mod tests {
         (flag["alertType"], flag["title"], flag["value"], flag["detail"], flag["color"]) =
             (json!("flag"), json!("FLAG"), json!("YELLOW"), json!(null), json!("#E0A30C"));
         let flag = parse_banner(flag.to_string().as_bytes()).expect("flag");
-        let ops = draw_still(&scene("l", "panels"), &frame, Some(&flag));
+        let ops = draw_still(&scene("l"), &frame, Some(&flag));
         let bar = DrawOp::Rect { rect: PixelRect::new(0.0, 0.0, 800.0, 8.0), radii: Radii::ZERO, color: P.race_control_yellow };
         assert!(!ops.contains(&bar), "no second account of the flag");
         run(&ops, "YELLOW");
         let tc = parse_banner(alert("strip", false).to_string().as_bytes()).expect("tc");
-        assert_eq!(draw_still(&scene("l", "panels"), &frame, Some(&tc)).last(), Some(&bar), "over another popup");
+        assert_eq!(draw_still(&scene("l"), &frame, Some(&tc)).last(), Some(&bar), "over another popup");
     }
 
     #[test]
     fn a_dial_strip_is_lettered_in_the_positions_colour_unless_inverted() {
         let mut strip = dial(false);
         strip["displayMode"] = json!("strip");
-        let ops = banner_ops(strip.clone(), "panels");
+        let ops = banner_ops(strip.clone());
         let colour = Rgba::hex("#E0A30C");
         assert_eq!(ops[1], DrawOp::Rect { rect: PixelRect::new(0.0, 160.0, 800.0, 160.0), radii: Radii::ZERO, color: P.background });
         assert_eq!((run(&ops, "MULTI").color, run(&ops, "TC2").color), (colour, colour));
         strip["inverted"] = json!(true);
-        let inverted = banner_ops(strip, "panels");
+        let inverted = banner_ops(strip);
         assert_eq!(inverted[2], DrawOp::Rect { rect: PixelRect::new(0.0, 160.0, 800.0, 160.0), radii: Radii::ZERO, color: colour });
         assert_eq!(run(&inverted, "TC2").color, P.background);
     }
@@ -829,19 +821,19 @@ mod tests {
         let mut frame = TelemetryFrame::default();
         (frame.flags.yellow, frame.flags.safety_car) = (true, true);
         let band = |color: Rgba, width: f64, height: f64| DrawOp::Rect { rect: PixelRect::new(0.0, 0.0, width, height), radii: Radii::ZERO, color };
-        assert_eq!(draw_still(&scene("l", "panels"), &frame, None)[1..], [band(P.race_control_yellow, 800.0, 8.0)], "nothing else: no tint, no lettering");
+        assert_eq!(draw_still(&scene("l"), &frame, None)[1..], [band(P.race_control_yellow, 800.0, 8.0)], "nothing else: no tint, no lettering");
 
         frame.flags.red = true;
-        let mut big = scene("l", "panels");
+        let mut big = scene("l");
         (big.width, big.height) = (1600.0, 960.0);
         assert_eq!(draw_still(&big, &frame, None)[1..], [band(P.critical, 1600.0, 16.0)], "it scales with the screen");
-        assert_eq!(draw_still(&scene("purpose-lap-times", "panels"), &frame, None).len(), 1, "never on the focused lap timer screen");
-        assert_eq!(draw_still(&scene("l", "panels"), &TelemetryFrame::default(), None).len(), 1, "no flag, no bar");
+        assert_eq!(draw_still(&scene("purpose-lap-times"), &frame, None).len(), 1, "never on the focused lap timer screen");
+        assert_eq!(draw_still(&scene("l"), &TelemetryFrame::default(), None).len(), 1, "no flag, no bar");
     }
 
     #[test]
     fn a_full_screen_setting_fills_the_canvas_in_its_color_with_ink_text() {
-        let ops = banner_ops(setting(true, false), "panels");
+        let ops = banner_ops(setting(true, false));
         assert_eq!(ops[1], DrawOp::Rect { rect: PixelRect::new(0.0, 0.0, 800.0, 480.0), radii: Radii::ZERO, color: dash_setting_colors::TC });
         let (title, was, value) = (run(&ops, "TC"), run(&ops, "WAS 4"), run(&ops, "5"));
         assert!([title.color, was.color, value.color].iter().all(|c| *c == P.background));
@@ -853,7 +845,7 @@ mod tests {
 
     #[test]
     fn an_inverted_full_screen_setting_turns_dark_with_a_snapped_edge_that_moves_its_children_in() {
-        let ops = banner_ops(setting(true, true), "panels");
+        let ops = banner_ops(setting(true, true));
         assert_eq!(ops[1], DrawOp::Rect { rect: PixelRect::new(0.0, 0.0, 800.0, 480.0), radii: Radii::ZERO, color: P.background });
         // max(2, 4.8) paints as a 4px border, and the children sit inside it.
         assert!(matches!(ops[2], DrawOp::Border { width: 4.0, radius: 0.0, color, .. } if color == dash_setting_colors::TC));
@@ -864,7 +856,7 @@ mod tests {
 
     #[test]
     fn a_centered_setting_sits_in_its_alert_rect_on_a_near_black_panel_edged_in_its_color() {
-        let ops = banner_ops(setting(false, false), "panels");
+        let ops = banner_ops(setting(false, false));
         // Grid edges 240..560 x 120..360, inset 2px; the 1.888px border paints as 1px.
         let panel = PixelRect::new(242.0, 122.0, 316.0, 236.0);
         assert!(matches!(ops[1], DrawOp::Rect { rect, color, .. } if rect == panel && color == POPUP_FILL));
@@ -873,13 +865,13 @@ mod tests {
         assert_eq!((title.color, value.color), (dash_setting_colors::TC, P.foreground));
         assert!((value.x + value.width(&Fonts::new()) / 2.0 - (243.0 + 158.0)).abs() < 1e-6, "centered on the panel's width, inside its border");
 
-        let inverted = banner_ops(setting(false, true), "panels");
+        let inverted = banner_ops(setting(false, true));
         assert!(matches!(inverted[1], DrawOp::Rect { color, .. } if color == dash_setting_colors::TC));
         assert_eq!((run(&inverted, "TC").color, run(&inverted, "5").color), (P.background, P.background));
 
         let mut tiny = setting(false, false);
         (tiny["colSpan"], tiny["rowSpan"]) = (json!(0), json!(0));
-        assert_eq!(banner_ops(tiny, "panels").len(), 1, "a panel under 4px draws nothing");
+        assert_eq!(banner_ops(tiny).len(), 1, "a panel under 4px draws nothing");
     }
 
     fn dial(inverted: bool) -> serde_json::Value {
@@ -888,7 +880,7 @@ mod tests {
 
     #[test]
     fn the_multi_dial_popup_names_the_position_big_under_its_caption_in_the_positions_colour() {
-        let ops = banner_ops(dial(false), "panels");
+        let ops = banner_ops(dial(false));
         let colour = Rgba::hex("#E0A30C");
         assert_eq!(ops[1], DrawOp::Rect { rect: PixelRect::new(0.0, 0.0, 800.0, 480.0), radii: Radii::ZERO, color: P.background });
         let (caption, label) = (run(&ops, "MULTI"), run(&ops, "TC2"));
@@ -900,7 +892,7 @@ mod tests {
         }
         assert_eq!(ops.len(), 4, "nothing else: the popup covers the dash");
 
-        let inverted = banner_ops(dial(true), "grid");
+        let inverted = banner_ops(dial(true));
         assert!(inverted.contains(&DrawOp::Rect { rect: PixelRect::new(0.0, 0.0, 800.0, 480.0), radii: Radii::ZERO, color: colour }));
         assert_eq!((run(&inverted, "MULTI").color, run(&inverted, "TC2").color), (P.background, P.background));
     }
@@ -909,7 +901,7 @@ mod tests {
     fn a_long_position_name_is_squeezed_to_fit_the_width() {
         let mut long = dial(false);
         long["label"] = json!("WWWWWWWW");
-        let ops = banner_ops(long, "panels");
+        let ops = banner_ops(long);
         let label = run(&ops, "WWWWWWWW");
         assert!(label.scale_x < 1.0 && (label.width(&Fonts::new()) - 800.0 * 0.92).abs() < 1e-6);
     }
@@ -933,11 +925,10 @@ mod tests {
         summary
     }
 
-    /// The lap review of `banner` at 800x480 in the panels style, with the layout's `lapReview` cells.
+    /// The lap review of `banner` at 800x480, with the layout's `lapReview` cells.
     fn review_ops(banner: serde_json::Value, cells: Option<serde_json::Value>) -> Vec<DrawOp> {
         let banner = parse_banner(banner.to_string().as_bytes()).expect("banner");
-        let mut layout =
-            json!({ "id": "l", "name": "L", "gridCols": 20, "gridRows": 12, "dashStyle": "panels", "pages": [{ "id": "p", "name": "P", "widgets": [] }] });
+        let mut layout = json!({ "id": "l", "name": "L", "gridCols": 20, "gridRows": 12, "pages": [{ "id": "p", "name": "P", "widgets": [] }] });
         if let Some(cells) = cells {
             layout["lapReview"] = json!({ "cells": cells });
         }
@@ -948,7 +939,8 @@ mod tests {
     fn rounded_fills(ops: &[DrawOp]) -> Vec<Rgba> {
         ops.iter()
             .filter_map(|op| match op {
-                DrawOp::Rect { color, radii, .. } if !radii.is_zero() => Some(*color),
+                // Not the dark pills a label sits on over a lit cell.
+                DrawOp::Rect { color, radii, .. } if !radii.is_zero() && *color != P.background => Some(*color),
                 _ => None,
             })
             .collect()
@@ -1087,7 +1079,7 @@ mod tests {
         let mut frame = TelemetryFrame::default();
         (frame.lap.current_lap, frame.lap.best_lap_time, frame.car.speed_ms) = (14.0, 208.44, 78.4);
         let v = view(true, -0.41);
-        let ops = draw(&scene("purpose-lap-times", "panels"), &frame, Overlays { lap_timer: Some(&v), ..Overlays::default() });
+        let ops = draw(&scene("purpose-lap-times"), &frame, Overlays { lap_timer: Some(&v), ..Overlays::default() });
         // Bounds 0,140 800x200; inset 7 -> content 786x186 at (7, 147).
         let (cw, ch) = (786.0, 186.0);
         let primary = run(&ops, "-0.41");
@@ -1103,7 +1095,7 @@ mod tests {
         }
 
         let no_bar = view(false, 0.0);
-        let ops = draw(&scene("purpose-lap-times", "panels"), &frame, Overlays { lap_timer: Some(&no_bar), ..Overlays::default() });
+        let ops = draw(&scene("purpose-lap-times"), &frame, Overlays { lap_timer: Some(&no_bar), ..Overlays::default() });
         assert!(!ops.iter().any(|op| matches!(op, DrawOp::Oval { .. })));
     }
 
@@ -1113,12 +1105,10 @@ mod tests {
         frame.flags.red = true;
         let banner = parse_banner(setting(true, false).to_string().as_bytes()).expect("banner");
         let v = view(false, 0.0);
-        let s = scene("l", "grid");
+        let s = scene("l");
         let ops = draw(&s, &frame, Overlays { banner: Some(&banner), lap_timer: Some(&v), flag_bar: crate::alerts::flag_bar(&s.layout, &frame, &P) });
         let at = |text: &str| ops.iter().position(|op| matches!(op, DrawOp::Text(r) if r.text == text)).expect(text);
         assert!(at("PREDICTIVE") < at("WAS 4"));
         assert!(matches!(ops.last(), Some(DrawOp::Rect { color, .. }) if *color == P.critical), "the flag bar last");
-        let cut = ops.iter().position(|op| matches!(op, DrawOp::CornerCut { .. })).expect("grid corners");
-        assert!(cut < at("PREDICTIVE"), "the overlays are not clipped by the grid's rounded canvas");
     }
 }

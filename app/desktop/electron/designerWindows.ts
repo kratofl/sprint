@@ -1,4 +1,4 @@
-import type { BrowserWindow } from 'electron'
+import type { BrowserWindow, WebContents } from 'electron'
 
 /** How long a closing designer may take to save its last edit before it is closed anyway. */
 const CLOSE_TIMEOUT_MS = 3000
@@ -32,9 +32,32 @@ export class DashDesigners {
     }
     const window = this.create(dashId)
     this.windows.set(dashId, window)
+    // Looked up by window, not by id: the window may have moved on to another dash (`switchTo`).
     window.once('closed', () => {
-      if (this.windows.get(dashId) === window) this.windows.delete(dashId)
+      for (const [id, candidate] of this.windows) {
+        if (candidate === window) this.windows.delete(id)
+      }
     })
+  }
+
+  /**
+   * A designer moves on to another dash (its scope strip picked one): when that dash has a window
+   * of its own, that one comes forward and this one stays ('focused'); otherwise this window is
+   * that dash's from now on ('switched'), so opening it from the Dashes page finds it.
+   */
+  switchTo(sender: WebContents, dashId: string): 'switched' | 'focused' | 'unknown' {
+    const entry = [...this.windows].find(([, window]) => !window.isDestroyed() && window.webContents === sender)
+    if (!entry) return 'unknown'
+    const [current, window] = entry
+    if (current === dashId) return 'switched'
+    const other = this.windows.get(dashId)
+    if (other && !other.isDestroyed()) {
+      this.open(dashId)
+      return 'focused'
+    }
+    this.windows.delete(current)
+    this.windows.set(dashId, window)
+    return 'switched'
   }
 
   /** Destroys the window of every dash the host no longer has. `dashIds` null (a bad poll) closes nothing. */

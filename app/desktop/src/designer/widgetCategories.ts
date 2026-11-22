@@ -10,6 +10,7 @@ export const WIDGET_CATEGORY: Readonly<Record<DashWidgetType, WidgetCategory>> =
   bar: 'Bars',
   rpm_bar: 'Bars',
   input_trace: 'Bars',
+  gear: 'Driving',
   gear_speed: 'Driving',
   speed: 'Driving',
   tc: 'Car settings',

@@ -1,19 +1,19 @@
 import { useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Bell, Trash2 } from 'lucide-react'
-import { DashCanvas, pitLimiterCovers, pitLimiterStyle, previewFrame } from '@sprint/dashboard'
+import { DashCanvas, pageGear, pitLimiterStyle, previewFrame } from '@sprint/dashboard'
 import type { DashLayout, DashPitLimiterStyle } from '@sprint/dashboard'
 import { LayoutSection } from './LayoutSection'
 import type { ModeActions } from './PageInspector'
 import { WidgetLibrary } from './WidgetLibrary'
 import type { DragState } from './DesignerCanvas'
-import { PIT_LIMITER_PAGE_ID, clearPitLimiterWidgets, hasPitLimiterWidgets, onPitLimiter, pitLimiterView, setPitLimiterStyle } from './pitLimiterOps'
+import { PIT_LIMITER_PAGE_ID, clearPitLimiterWidgets, coveredSpots, hasPitLimiterWidgets, onPitLimiter, pitLimiterView, setPitLimiterStyle } from './pitLimiterOps'
 import { BEZEL, useStageCanvas } from './useStageCanvas'
 import type { DesignerDocApi } from './useDesignerDoc'
 
 const STYLES: ReadonlyArray<{ value: DashPitLimiterStyle; label: string; text: string }> = [
   { value: 'gear', label: 'Gear', text: 'Only the gear turns yellow, PIT LIMITER under it. You add widgets.' },
-  { value: 'box', label: 'Box', text: 'A yellow frame over the bars, PIT LIMITER across the top. You add widgets.' },
+  { value: 'box', label: 'Box', text: 'A yellow frame round the sides and the top, PIT LIMITER across it. You add widgets.' },
   { value: 'full', label: 'Full screen', text: 'All yellow: gear, speed and PIT LIMITER. Nothing to add.' },
 ]
 
@@ -44,12 +44,12 @@ export function PitLimiterSection({
   // Never over the idle page: the overlay shows while driving.
   const under = layout.pages.find((page) => page.id === pageId) ?? layout.pages[0]
   const underId = under?.id ?? ''
-  const pageBars = under?.bars
-  const view = useMemo(() => pitLimiterView(layout, pageBars), [layout, pageBars])
-  const viewDoc: DesignerDocApi = { ...doc, layout: view, apply: (mutate, group) => apply(onPitLimiter(mutate, pageBars), group) }
+  const gear = under ? pageGear(under) : null
+  const view = useMemo(() => pitLimiterView(layout, gear), [layout, gear])
+  const viewDoc: DesignerDocApi = { ...doc, layout: view, apply: (mutate, group) => apply(onPitLimiter(mutate, gear), group) }
 
   const backdrop = (width: number, height: number) => <PitBackdrop layout={layout} pageId={underId} width={width} height={height} />
-  const choices = <StyleChoices style={style} zoned={layout.zoned === true} onStyle={(next) => apply((current) => setPitLimiterStyle(current, next))} />
+  const choices = <StyleChoices style={style} tracked={layout.colSizes !== undefined} onStyle={(next) => apply((current) => setPitLimiterStyle(current, next))} />
   const panel = <PitPanel layout={layout} onClear={() => apply(clearPitLimiterWidgets)} onOpenDashSettings={onOpenDashSettings} />
 
   if (style === 'full') return <FullScreenStage layout={layout} backdrop={backdrop} aboveStage={choices} panel={panel} />
@@ -63,7 +63,7 @@ export function PitLimiterSection({
       view="preview"
       previewState="pit"
       showGrid={false}
-      overlay={{ backdrop, aboveStage: choices, panel, covered: pitLimiterCovers(style) }}
+      overlay={{ backdrop, aboveStage: choices, panel, covered: coveredSpots(layout, gear) }}
     />
   )
 }
@@ -98,7 +98,7 @@ function FullScreenStage({ layout, backdrop, aboveStage, panel }: { layout: Dash
         setDragState={setDragState}
         onAdd={() => undefined}
         onDrop={() => undefined}
-        off={layout.zoned ? 'The full screen shows the gear and the speed; there is nothing to add.' : 'This dash has an even grid, so it shows the full screen; there is nothing to add.'}
+        off={layout.colSizes ? 'The full screen shows the gear and the speed; there is nothing to add.' : 'This dash has an even grid, so it shows the full screen; there is nothing to add.'}
       />
       <div className="designer-fit is-stacked">
         {aboveStage}
@@ -117,8 +117,8 @@ function FullScreenStage({ layout, backdrop, aboveStage, panel }: { layout: Dash
   )
 }
 
-/** The three looks, each a tiny wheel with its name and what it does. An even-grid dash has no gear or bar spots, so only the full screen. */
-function StyleChoices({ style, zoned, onStyle }: { style: DashPitLimiterStyle; zoned: boolean; onStyle: (style: DashPitLimiterStyle) => void }) {
+/** The three looks, each a tiny wheel with its name and what it does. An even-grid dash (an older one) shows only the full screen. */
+function StyleChoices({ style, tracked, onStyle }: { style: DashPitLimiterStyle; tracked: boolean; onStyle: (style: DashPitLimiterStyle) => void }) {
   return (
     <div className="designer-pit-styles" role="radiogroup" aria-label="How the pit limiter looks">
       {STYLES.map((option) => (
@@ -127,7 +127,7 @@ function StyleChoices({ style, zoned, onStyle }: { style: DashPitLimiterStyle; z
           type="button"
           role="radio"
           aria-checked={option.value === style}
-          disabled={!zoned && option.value !== 'full'}
+          disabled={!tracked && option.value !== 'full'}
           className="designer-choice is-row"
           onClick={() => onStyle(option.value)}
         >
@@ -142,7 +142,7 @@ function StyleChoices({ style, zoned, onStyle }: { style: DashPitLimiterStyle; z
   )
 }
 
-/** A look as a tiny wheel: the dash's zones, the part the look turns yellow filled in. */
+/** A look as a tiny wheel: the dash in outline, the part the look turns yellow filled in. */
 function StyleThumb({ style }: { style: DashPitLimiterStyle }) {
   const zone = (x: number, y: number, w: number, h: number) => <rect x={x} y={y} width={w} height={h} rx={1} className="designer-thumb-zone" />
   return (

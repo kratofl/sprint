@@ -1,12 +1,12 @@
 import { useState } from 'react'
 import { Flag, LogOut, Pencil, Plus, Trash2 } from 'lucide-react'
-import type { DashLayout, DashPage, DashPageBars, DashPageJump } from '@sprint/dashboard'
+import type { DashLayout, DashPage, DashPageJump } from '@sprint/dashboard'
 import type { DashMode } from '../bridge'
 import { ConfirmDialog } from '../shell/ContentDialog'
 import { MenuLayer, type MenuAnchor } from '../shell/Menu'
 import { Switch } from '../shell/Switch'
 import { SESSIONS, setEverySession, setPageJump, showsEverywhere, toggleShowIn } from './pageModes'
-import { setPageBars } from './layoutOps'
+import { evenTracks } from './layoutOps'
 import type { Mutate } from './useDesignerDoc'
 
 type Apply = (mutate: Mutate, group?: string) => boolean
@@ -25,18 +25,12 @@ const JUMPS: readonly { id: DashPageJump | null; label: string; hint: string }[]
   { id: 'flyingLap', label: 'Flying lap', hint: 'As you cross the line at the end of your out lap, and again at the start of every lap after it.' },
 ]
 
-const BARS: readonly { id: DashPageBars; label: string; hint: string }[] = [
-  { id: 'both', label: 'Both', hint: 'Bars down both sides and across the top.' },
-  { id: 'top', label: 'Top', hint: 'Only the top bar; the side grids grow to the edges.' },
-  { id: 'sides', label: 'Sides', hint: 'Only the side bars; the widgets move up to the top edge.' },
-  { id: 'none', label: 'None', hint: 'No bars; the widgets use the whole screen.' },
-]
-
 /**
  * The page's own panel, on the right of the Layout section while nothing is selected: where the
  * wheel cycles it — every session (what every page starts as), or only the picked sessions and
  * the driver's own modes — and when the wheel jumps to it by itself. The idle page has neither.
- * On a zoned dash, every page (the idle one too) also picks the bar spots it keeps.
+ * Below, on a dash with its own track sizes, the grid every page shares: even columns or rows (the
+ * grips on the bezel size them one by one).
  */
 export function PageInspector({ layout, page, isIdlePage, apply, modes }: { layout: DashLayout; page: DashPage; isIdlePage: boolean; apply: Apply; modes: ModeActions }) {
   const index = layout.pages.findIndex((candidate) => candidate.id === page.id)
@@ -54,7 +48,7 @@ export function PageInspector({ layout, page, isIdlePage, apply, modes }: { layo
       {isIdlePage ? (
         <>
           <p className="field-hint">Shown while you are in the menus or the garage.</p>
-          {layout.zoned && <BarsGroup page={page} apply={apply} />}
+          <GridGroup layout={layout} apply={apply} />
         </>
       ) : (
         <>
@@ -83,8 +77,6 @@ export function PageInspector({ layout, page, isIdlePage, apply, modes }: { layo
             )}
           </div>
 
-          {layout.zoned && <BarsGroup page={page} apply={apply} />}
-
           <div className="designer-group">
             <h3 id="page-jump" className="designer-group-title">
               Jump to this page
@@ -107,57 +99,29 @@ export function PageInspector({ layout, page, isIdlePage, apply, modes }: { layo
             </div>
             <p className="field-hint designer-jump-hint">{jump.hint}</p>
           </div>
+          <GridGroup layout={layout} apply={apply} />
         </>
       )}
     </aside>
   )
 }
 
-/** The bar spots the page keeps, as four tiny wheels; a dropped spot folds away and the grids grow into it. */
-function BarsGroup({ page, apply }: { page: DashPage; apply: Apply }) {
-  const bars = BARS.find((candidate) => candidate.id === (page.bars ?? 'both')) ?? BARS[0]
+/** The grid every page of the dash shares: the bezel's grips size each column and row; these even them all out. None on an older, even-grid dash. */
+function GridGroup({ layout, apply }: { layout: DashLayout; apply: Apply }) {
+  if (!layout.colSizes || !layout.rowSizes) return null
   return (
     <div className="designer-group">
-      <h3 id="page-bars" className="designer-group-title">
-        Bars
-      </h3>
-      <div className="designer-choices" role="radiogroup" aria-labelledby="page-bars">
-        {BARS.map((candidate) => (
-          <button
-            key={candidate.id}
-            type="button"
-            role="radio"
-            className="designer-choice"
-            aria-checked={candidate.id === bars.id}
-            onClick={() => apply((current) => setPageBars(current, page.id, candidate.id))}
-          >
-            <BarsThumb bars={candidate.id} />
-            <span className="designer-choice-name">{candidate.label}</span>
-          </button>
-        ))}
+      <h3 className="designer-group-title">Grid</h3>
+      <p className="field-hint">{`${layout.gridCols} × ${layout.gridRows} on every page. Drag the grips on the frame to size a column or row.`}</p>
+      <div className="designer-button-row">
+        <button type="button" className="button subtle small" disabled={evenTracks(layout, 'cols') === null} onClick={() => apply((current) => evenTracks(current, 'cols'))}>
+          Even columns
+        </button>
+        <button type="button" className="button subtle small" disabled={evenTracks(layout, 'rows') === null} onClick={() => apply((current) => evenTracks(current, 'rows'))}>
+          Even rows
+        </button>
       </div>
-      <p className="field-hint designer-jump-hint">{bars.hint}</p>
     </div>
-  )
-}
-
-/** A tiny wheel for one bars choice: the kept bars in the brand colour, the side grids and centre grown into the rest. */
-function BarsThumb({ bars }: { bars: DashPageBars }) {
-  const sides = bars === 'both' || bars === 'sides'
-  const top = bars === 'both' || bars === 'top'
-  const gx = sides ? 7 : 3
-  const gy = top ? 8 : 3
-  const gw = (64 - gx * 2 - 12) / 2
-  return (
-    <svg className="designer-thumb" viewBox="0 0 64 40" aria-hidden="true">
-      <rect x={0.5} y={0.5} width={63} height={39} rx={5} className="designer-thumb-face" />
-      {sides && <rect x={2} y={3} width={3} height={34} rx={1} className="designer-thumb-bar" />}
-      {sides && <rect x={59} y={3} width={3} height={34} rx={1} className="designer-thumb-bar" />}
-      {top && <rect x={gx} y={3} width={64 - gx * 2} height={3} rx={1} className="designer-thumb-bar" />}
-      <rect x={gx} y={gy} width={gw} height={37 - gy} rx={1} className="designer-thumb-zone" />
-      <rect x={gx + gw + 2} y={gy} width={8} height={37 - gy} rx={1} className="designer-thumb-zone" />
-      <rect x={gx + gw + 12} y={gy} width={gw} height={37 - gy} rx={1} className="designer-thumb-zone" />
-    </svg>
   )
 }
 

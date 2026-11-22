@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
-import { pageTree, resolvePreviewFrame, type DashGroupNode, type DashLayout, type DashNode, type DashPreviewState, type DashWidgetType, type DashZone } from '@sprint/dashboard'
+import { pageTree, resolvePreviewFrame, type DashGroupNode, type DashLayout, type DashNode, type DashPreviewState, type DashWidgetType, type GridSpan } from '@sprint/dashboard'
 import type { TelemetryFrame } from '@sprint/types'
 import { addWidget, addWidgetAt } from '../views/DashesDomain'
 import { DesignerCanvas, dropCell, type DragState, type PointerPos } from './DesignerCanvas'
@@ -24,9 +24,9 @@ const ARROWS: Record<string, [number, number]> = { ArrowLeft: [-1, 0], ArrowRigh
 /**
  * What the section shows round the widgets when it edits an overlay's instead of a page's (the
  * Pit limiter section): the picture under them, what sits above the stage, the panel while nothing
- * is selected (in place of the page's), and the zones the overlay covers. There is no page dock.
+ * is selected (in place of the page's), and the spots the overlay covers. There is no page dock.
  */
-export type OverlayStage = { backdrop: (width: number, height: number) => ReactNode; aboveStage: ReactNode; panel: ReactNode; covered: readonly DashZone[] }
+export type OverlayStage = { backdrop: (width: number, height: number) => ReactNode; aboveStage: ReactNode; panel: ReactNode; covered: readonly GridSpan[] }
 
 /**
  * The Layout section: the dash in a device-style bezel in the middle of the stage — its outline, or
@@ -233,7 +233,7 @@ export function LayoutSection({
   const addAndSelect = (type: DashWidgetType, cell: { col: number; row: number } | null): void => {
     const result = cell ? addWidgetAt(layout, pageId, type, cell.col, cell.row, target.group) : addWidget(layout, pageId, type, target)
     if (!result || !apply(() => result.layout)) {
-      flashValidation(cell ? (layout.zoned ? "It can't go there — drop it on a lit-up free spot." : 'That cell is occupied — drop onto free space.') : 'There is no free space on this page for another widget.')
+      flashValidation(cell ? 'That cell is occupied — drop onto free space.' : 'There is no free space on this page for another widget.')
       return
     }
     setSelection([result.widget.id])
@@ -241,7 +241,7 @@ export function LayoutSection({
 
   const onDrop = (type: DashWidgetType, pointer: PointerPos): void => {
     if (!canvas || !page) return
-    addAndSelect(type, dropCell(layout, page.bars, pointer, canvas.width, canvas.height))
+    addAndSelect(type, dropCell(layout, pointer, canvas.width, canvas.height))
   }
 
   // The designer's keys, from anywhere in the window but a text field.
@@ -324,6 +324,7 @@ export function LayoutSection({
           commit={commit}
           backdrop={overlay?.backdrop}
           covered={overlay?.covered}
+          resizeTracks={!overlay}
         />
       </div>
     ) : (
@@ -366,7 +367,6 @@ export function LayoutSection({
           key={only.id}
           pageId={pageId}
           node={only}
-          flat={layout.dashStyle === 'flat'}
           apply={apply}
           onSelect={setSelection}
           onUngroup={ungroupSelection}

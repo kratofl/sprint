@@ -22,7 +22,6 @@ public static class HostJson
     public static JsonSerializerOptions Create()
     {
         JsonSerializerOptions json = new(JsonSerializerDefaults.Web);
-        json.Converters.Add(new DashStyleJsonConverter());
         json.Converters.Add(new DashColorSystemJsonConverter());
         json.Converters.Add(new DashGroupModeJsonConverter());
         json.Converters.Add(new JsonStringEnumConverter());

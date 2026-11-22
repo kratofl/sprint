@@ -101,6 +101,7 @@ public static class DashWidgetCatalog
         {
             ["text"] = Definition("text", "Text", idleCapable: true, config: TextConfig, "profile.driverName", "profile.driverNumber"),
             ["rpm_bar"] = Definition("rpm_bar", "RPM Bar", idleCapable: false, "car.rpm", "car.maxRpm"),
+            ["gear"] = Definition("gear", "Gear", idleCapable: true, "car.gear", "car.rpm", "car.maxRpm"),
             ["gear_speed"] = Definition("gear_speed", "Gear + Speed", idleCapable: true, AlignConfig, "car.gear", "car.speed"),
             ["input_trace"] = Definition("input_trace", "Input Trace", idleCapable: false, "inputs.throttle", "inputs.brake", "inputs.clutch", "inputs.steering"),
             // One lap time each. A current or last lap that does not count shows "-:--.---".

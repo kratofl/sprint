@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import type { DashLayout } from '@sprint/dashboard'
-import { emptyCells, movePage, resetLapReview, setLapReviewCell, setPageBars } from './layoutOps'
+import { emptyCells, evenTracks, lineShare, moveGridLine, movePage, resetLapReview, setLapReviewCell, trackPercent } from './layoutOps'
 
 const layout: DashLayout = {
   id: 'dash',
@@ -34,24 +34,29 @@ test('pages move one place at a time and stop at the ends', () => {
   assert.equal(movePage(layout, 'idle', 1), null)
 })
 
-test('the free places of a zoned page are its empty side bar spots whole and its other empty cells one by one', () => {
-  const zoned: DashLayout = { ...layout, zoned: true, gridCols: 11, gridRows: 9 }
-  const page = { id: 'z', name: 'Z', widgets: [{ id: 'tc', type: 'tc', col: 1, row: 1, colSpan: 2, rowSpan: 1 }, { id: 'bar', type: 'bar', col: 0, row: 0, colSpan: 1, rowSpan: 9 }] }
-  const free = emptyCells(zoned, page)
-  // The right bar spot, then the top's 9, the side grids' 2 x 32 and the centre's 5, less TC's 2.
-  assert.equal(free.length, 1 + 9 + 64 + 5 - 2)
-  assert.deepEqual(free[0], { col: 10, row: 0, colSpan: 1, rowSpan: 9 })
-  assert.ok(!free.some((cell) => cell.col === 5 && cell.row >= 1 && cell.row <= 3), 'the gear is no free place')
-  assert.equal(emptyCells(layout, layout.pages[0]).length, 20 * 12 - 12, 'a free grid counts every cell')
-  assert.equal(emptyCells(zoned, { ...page, bars: 'none' }).length, 64 + 5 - 2, 'a dropped bar spot is no free place')
+const tracked: DashLayout = { ...layout, gridCols: 10, gridRows: 9, colSizes: [40, 90, 90, 90, 90, 90, 90, 90, 90, 40], rowSizes: [36, 55.5, 55.5, 55.5, 55.5, 55.5, 55.5, 55.5, 55.5] }
+
+test('the free cells are every cell no widget takes', () => {
+  assert.equal(emptyCells(layout, layout.pages[0]).length, 20 * 12 - 12)
+  assert.equal(emptyCells(tracked, { id: 'z', name: 'Z', widgets: [{ id: 'gear', type: 'gear', col: 4, row: 1, colSpan: 2, rowSpan: 3 }] }).length, 90 - 6)
 })
 
-test('a page keeps the bars it picks, the idle page too, and both is no field at all', () => {
-  const zoned: DashLayout = { ...layout, zoned: true, gridCols: 11, gridRows: 9, idlePage: { id: 'idle', name: 'Idle', widgets: [] } }
-  const top = setPageBars(zoned, 'b', 'top')
-  assert.equal(top?.pages[1]?.bars, 'top')
-  assert.equal(top && setPageBars(top, 'b', 'top'), null, 'unchanged: no undo step')
-  assert.equal(top && 'bars' in (setPageBars(top, 'b', 'both')?.pages[1] ?? {}), false)
-  assert.equal(setPageBars(zoned, 'idle', 'none')?.idlePage?.bars, 'none')
-  assert.equal(setPageBars(zoned, 'b', 'both'), null)
+test('a grid line moves only the two tracks either side and never squeezes one below its smallest share', () => {
+  const moved = moveGridLine(tracked, 'cols', 1, 0.1)
+  assert.deepEqual(moved?.colSizes?.slice(0, 3), [80, 50, 90], 'a tenth of 800 is the first column; the second gives it up')
+  assert.equal(moved?.colSizes?.reduce((sum, size) => sum + size, 0), 800)
+  assert.deepEqual(moved?.rowSizes, tracked.rowSizes)
+  assert.equal(moveGridLine(tracked, 'cols', 1, 0.05), null, 'already there: no undo step')
+  assert.deepEqual(moveGridLine(tracked, 'rows', 1, -1)?.rowSizes?.slice(0, 2), [9.6, 81.9], 'pulled past the edge: the smallest share, 2 % of 480')
+  assert.equal(moveGridLine(tracked, 'cols', 0, 0.5), null, 'the canvas edge is no line')
+  assert.equal(moveGridLine(layout, 'cols', 1, 0.5), null, 'an older, even-grid dash has no tracks to move')
+  assert.equal(lineShare(tracked, 'cols', 1), 0.05)
+  assert.equal(trackPercent(tracked, 'rows', 0), '8 %')
+})
+
+test('columns and rows even out on their own, once', () => {
+  const even = evenTracks(tracked, 'cols')
+  assert.deepEqual(even?.colSizes, Array.from({ length: 10 }, () => 80))
+  assert.equal(even && evenTracks(even, 'cols'), null)
+  assert.deepEqual(even?.rowSizes, tracked.rowSizes)
 })

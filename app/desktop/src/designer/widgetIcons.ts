@@ -85,6 +85,7 @@ import { isDashWidgetType, type DashWidgetType } from '@sprint/dashboard'
 const WIDGET_ICONS: Record<DashWidgetType, LucideIcon> = {
   text: Type,
   rpm_bar: Gauge,
+  gear: Cog,
   gear_speed: Cog,
   input_trace: Activity,
   current_lap: Timer,

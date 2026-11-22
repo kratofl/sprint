@@ -1,6 +1,6 @@
 import { nodeWidgets, pageTree, shownChild, type DashGroupNode, type DashNode } from '@sprint/dashboard'
 import type { DashGroupMode, DashGroupStyle, DashLayout, DashPage, DashWidget, DashWidgetGroup } from '@sprint/dashboard'
-import { findPage, isValidRect, keepsMovedInSight, nextId, nextName, pageFits, pageIdTaken, type GridRect, type WidgetTarget } from '../views/DashesDomain'
+import { findPage, isValidRect, nextId, nextName, pageFits, pageIdTaken, type GridRect, type WidgetTarget } from '../views/DashesDomain'
 
 /**
  * The designer's group edits: grouping, ungrouping, moving in the tree, stacks and their layers,
@@ -129,14 +129,11 @@ function replacePage(layout: DashLayout, pageId: string, page: DashPage): DashLa
   return { ...layout, pages: layout.pages.map((item) => (item.id === pageId ? page : item)) }
 }
 
-/**
- * Runs a page edit and keeps it only when the page still fits the grid and its overlap rule, and
- * nothing it moved went out of sight (into a bar spot the page drops).
- */
+/** Runs a page edit and keeps it only when the page still fits the grid and its overlap rule. */
 function editPage(layout: DashLayout, pageId: string, edit: (page: DashPage) => DashPage | null): DashLayout | null {
   const page = findPage(layout, pageId)
   const next = page ? edit(page) : null
-  if (!page || !next || !pageFits(next, layout) || !keepsMovedInSight(layout, page, next)) return null
+  if (!page || !next || !pageFits(next, layout)) return null
   return replacePage(layout, pageId, next)
 }
 
@@ -455,7 +452,7 @@ export function duplicateNodes(layout: DashLayout, pageId: string, ids: readonly
       const siblings = siblingsOf(tree, parent)
       siblings.splice(siblings.findIndex((node) => node.id === last.id) + 1, 0, ...copies)
       const next = writeTree(page, tree)
-      if (pageFits(next, layout) && keepsMovedInSight(layout, page, next)) return { layout: replacePage(layout, pageId, next), ids: copies.map((node) => node.id) }
+      if (pageFits(next, layout)) return { layout: replacePage(layout, pageId, next), ids: copies.map((node) => node.id) }
       // Not here: give the ids back for the next try.
       taken.clear()
       for (const id of fresh) taken.add(id)

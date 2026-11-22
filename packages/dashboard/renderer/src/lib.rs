@@ -19,6 +19,7 @@ pub mod dash;
 pub mod draw;
 pub mod ffi;
 pub mod format;
+pub mod forms;
 pub mod grid;
 pub mod groups;
 pub mod lap_summary;

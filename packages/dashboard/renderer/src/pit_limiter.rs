@@ -1,7 +1,8 @@
 // The pit limiter overlay: what a dash draws over its page while the pit limiter is on and the
 // app-wide `pit_limiter` alert is on (the host stamps it onto every dash it shows). Each layout
-// picks how it looks (its `pitLimiter`): the gear's box lit yellow (`Gear`), a yellow frame over
-// the bar spots (`Box`), or the whole screen yellow with the gear and the speed (`Full`). In the
+// picks how it looks (its `pitLimiter`): the page's gear widget lit yellow (`Gear`), a yellow
+// frame over the first and last columns and the top row (`Box`), or the whole screen yellow with
+// the gear and the speed (`Full`). In the
 // first two the driver also drops widgets of their own on an empty copy of the dash's grid; those
 // draw lit yellow with dark ink, and every spot left empty shows the page underneath. `dash.rs`
 // decides when it draws and draws the widgets; this module has the model and the yellow parts.
@@ -10,8 +11,8 @@
 
 use crate::draw::{Builder, Radii};
 use crate::format::{Units, format_gear, format_speed};
-use crate::grid::{GEAR_SPOT, GridSpan, PixelRect, zoned_rect};
-use crate::model::{CarState, DashLayout, DashPage, DashWidget, PageBars};
+use crate::grid::{GridSpan, PixelRect, track_rect};
+use crate::model::{CarState, DashLayout, DashPage, DashWidget, Tracks};
 use crate::palette::{Rgba, dash_color, with_alpha};
 use crate::primitives::{TextAlign, TextLine, TextSizing, text_line};
 use crate::text::TextWeight;
@@ -26,11 +27,12 @@ const LABEL: &str = "PIT LIMITER";
 /// How the overlay looks, by its wire id (`DashPitLimiterStyle` in pitLimiter.ts).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum PitLimiterStyle {
-    /// The gear's box lit, PIT LIMITER under the digit; the driver's widgets around it.
+    /// The page's gear widget lit, PIT LIMITER under the digit; the driver's widgets around it.
+    /// A page without a gear shows `Full` instead.
     #[default]
     Gear,
-    /// A frame over the left, right and top bar spots, PIT LIMITER across the top; the driver's
-    /// widgets inside it.
+    /// A frame over the first and last columns and the top row, PIT LIMITER across the top; the
+    /// driver's widgets inside it.
     Box,
     /// The whole screen: the gear, the speed and PIT LIMITER stacked in the centre. No widgets.
     Full,
@@ -55,39 +57,35 @@ pub struct PitLimiter {
 }
 
 impl PitLimiter {
-    /// The style `layout` draws in: the gear and the bar spots exist only on a zoned dash, so an
-    /// even-grid dash always shows the full screen.
+    /// The style `layout` draws in: the frame needs the dash's own tracks, so an even-grid dash
+    /// (an older one) always shows the full screen.
     pub fn style_on(layout: &DashLayout) -> PitLimiterStyle {
-        if layout.zoned { layout.pit_limiter.style } else { PitLimiterStyle::Full }
+        if layout.tracks.is_some() { layout.pit_limiter.style } else { PitLimiterStyle::Full }
     }
 
-    /// The bar spots the overlay's own grid keeps over a page that keeps `page_bars`: the box
-    /// always covers all three spots where they would be, so its widgets sit on the full grid;
-    /// the gear follows the page, so its box lands on the page's gear and its widgets on the
-    /// page's cells.
-    pub fn grid_bars(style: PitLimiterStyle, page_bars: PageBars) -> PageBars {
-        if style == PitLimiterStyle::Box { PageBars::Both } else { page_bars }
-    }
-
-    /// Whether one of the overlay's widgets draws in `style`: never over the gear, never in the
-    /// box's bar spots, and none at all on the full screen. The designer keeps them out; a stored
-    /// layout is not trusted to.
-    pub fn draws(style: PitLimiterStyle, widget: &DashWidget) -> bool {
+    /// Whether one of the overlay's widgets draws in `style`, on a grid of `tracks` over a page
+    /// whose gear sits at `gear`: never over the gear, never in the box's frame, and none at all
+    /// on the full screen. The designer keeps them out; a stored layout is not trusted to.
+    pub fn draws(style: PitLimiterStyle, widget: &DashWidget, tracks: &Tracks, gear: Option<GridSpan>) -> bool {
         let span = GridSpan::from(widget);
+        let on_gear = gear.is_some_and(|gear| overlaps(span, gear));
         match style {
             PitLimiterStyle::Full => false,
-            PitLimiterStyle::Gear => !overlaps(span, GEAR_SPOT),
-            PitLimiterStyle::Box => !overlaps(span, GEAR_SPOT) && !BAR_SPOTS.iter().any(|spot| overlaps(span, *spot)),
+            PitLimiterStyle::Gear => !on_gear,
+            PitLimiterStyle::Box => !on_gear && !box_spots(tracks).iter().any(|spot| overlaps(span, *spot)),
         }
     }
 }
 
-/// The zoned grid's bar spots: left, right, top (`DASH_ZONES` in zones.ts).
-const BAR_SPOTS: [GridSpan; 3] = [
-    GridSpan { col: 0.0, row: 0.0, col_span: 1.0, row_span: 9.0 },
-    GridSpan { col: 10.0, row: 0.0, col_span: 1.0, row_span: 9.0 },
-    GridSpan { col: 1.0, row: 0.0, col_span: 9.0, row_span: 1.0 },
-];
+/// The box's frame on a grid of `tracks`: the first column, the last, the top row between them.
+fn box_spots(tracks: &Tracks) -> [GridSpan; 3] {
+    let (cols, rows) = (tracks.cols.len() as f64, tracks.rows.len() as f64);
+    [
+        GridSpan { col: 0.0, row: 0.0, col_span: 1.0, row_span: rows },
+        GridSpan { col: cols - 1.0, row: 0.0, col_span: 1.0, row_span: rows },
+        GridSpan { col: 1.0, row: 0.0, col_span: (cols - 2.0).max(0.0), row_span: 1.0 },
+    ]
+}
 
 fn overlaps(a: GridSpan, b: GridSpan) -> bool {
     a.col < b.col + b.col_span && b.col < a.col + a.col_span && a.row < b.row + b.row_span && b.row < a.row + a.row_span
@@ -108,11 +106,11 @@ fn label(b: &mut Builder, left: f64, top: f64, size: f64, max_width: f64) {
     text_line(b, line);
 }
 
-/// `Gear`: the gear's box (`rect`, inset like a widget frame, `radius` its corners) lit yellow,
-/// the digit in ink where the dash draws it and PIT LIMITER under it.
+/// `Gear`: the gear widget's box (`rect`, inset like a widget frame, `radius` its corners) lit
+/// yellow, the digit in ink where the widget draws it in `spot` and PIT LIMITER under it.
 pub fn draw_gear_box(b: &mut Builder, car: &CarState, spot: PixelRect, rect: PixelRect, radius: f64, scale: f64) {
     b.rect(rect, Radii::all(radius), PIT_YELLOW);
-    // The digit as `zoned_gear` places it in the spot, so it does not jump when the limiter goes on.
+    // The digit as the gear widget places it, so it does not jump when the limiter goes on.
     let digit = TextLine {
         text: &format_gear(car.gear),
         left: spot.left + spot.width / 2.0,
@@ -128,13 +126,14 @@ pub fn draw_gear_box(b: &mut Builder, car: &CarState, spot: PixelRect, rect: Pix
     label(b, rect.left + rect.width / 2.0, rect.top + rect.height - 13.0 * scale, 20.0 * scale, (rect.width - 12.0 * scale).max(0.0));
 }
 
-/// `Box`: the left, right and top bar spots (where a page keeping both would have them) yellow,
-/// PIT LIMITER across the top. Never along the bottom.
-pub fn draw_box_frame(b: &mut Builder, width: f64, height: f64, scale: f64) {
-    for spot in BAR_SPOTS {
-        b.rect(zoned_rect(width, height, spot, PageBars::Both), Radii::ZERO, PIT_YELLOW);
+/// `Box`: the first and last columns and the top row of `tracks` yellow, PIT LIMITER across the
+/// top. Never along the bottom.
+pub fn draw_box_frame(b: &mut Builder, tracks: &Tracks, width: f64, height: f64, scale: f64) {
+    let spots = box_spots(tracks);
+    for spot in spots {
+        b.rect(track_rect(width, height, tracks, spot), Radii::ZERO, PIT_YELLOW);
     }
-    let top = zoned_rect(width, height, BAR_SPOTS[2], PageBars::Both);
+    let top = track_rect(width, height, tracks, spots[2]);
     label(b, width / 2.0, top.height / 2.0, (26.0 * scale).min(top.height * 0.8), top.width);
 }
 

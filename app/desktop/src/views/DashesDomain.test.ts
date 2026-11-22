@@ -6,6 +6,9 @@ import {
   SCREEN_PROFILES,
   addWidget,
   addWidgetAt,
+  growToSmallest,
+  holdsSmallestAt,
+  widgetFormAt,
   applyThemePreset,
   buildDashCreate,
   canPlaceNewWidget,
@@ -25,9 +28,8 @@ import {
   refitLossWarning,
   resolveDashesFilter,
   screenChoices,
-  setWidgetStyle,
+  setWidgetLabel,
   swapWidgets,
-  setDashStyle,
   type GridRect,
   type ResizeHandle,
   widgetName,
@@ -198,15 +200,6 @@ test('applyThemePreset resets to Graphite (empty theme, functional system)', () 
   assert.equal(graphite.colorSystem, 'functional')
 })
 
-// ── Dash style ───────────────────────────────────────────────────────────
-
-test('a stored dash style survives parsing; a missing or unknown one is left unset (panels)', () => {
-  const row = { id: 'd', gridCols: 20, gridRows: 12, pages: [], alerts: [] }
-  assert.equal(parseDashLayout({ ...row, dashStyle: 'bars' })?.dashStyle, 'bars')
-  assert.equal(parseDashLayout({ ...row, dashStyle: 'chrome' })?.dashStyle, undefined)
-  assert.equal(parseDashLayout(row)?.dashStyle, undefined)
-})
-
 test("a dash's lap review boxes survive parsing; a malformed one is left unset", () => {
   const row = { id: 'd', gridCols: 20, gridRows: 12, pages: [], alerts: [] }
   assert.deepEqual(parseDashLayout({ ...row, lapReview: { cells: ['lap', 7, 'none'] } })?.lapReview, { cells: ['lap', 'none'] })
@@ -241,14 +234,6 @@ test('buildDashCreate sends a blank start without a source, a copy with one, and
     category: null,
   })
   assert.deepEqual(buildDashCreate({ start: { kind: 'copy', dashId: 'd1' }, category: 'Race' }), { type: 'dash.create', sourceDashId: 'd1', category: 'Race' })
-})
-
-test('setDashStyle changes only the style, and is a no-op for the style already in effect', () => {
-  const dash = layout(pageWithWidgets(widget('a', 0, 0, 4, 2)))
-  const grid = setDashStyle(dash, 'grid')
-  assert.equal(grid?.dashStyle, 'grid')
-  assert.deepEqual(grid?.pages, dash.pages)
-  assert.equal(setDashStyle(dash, 'panels'), null, 'an unset style already means panels')
 })
 
 // ── fitScreenSize ────────────────────────────────────────────────────────
@@ -357,48 +342,59 @@ test('alert rows: absent look fields arrive as null from the host and are droppe
   assert.deepEqual(parsed?.alerts, [{ id: 'tc_change', type: 'tc_change', enabled: true, col: 6, row: 3, colSpan: 8, rowSpan: 6 }])
 })
 
-const zonedDash = (widgets: DashWidget[]): DashLayout => ({
-  id: 'zoned', name: 'Zoned', mode: 'basic', zoned: true, dashStyle: 'flat', gridCols: 11, gridRows: 9, alerts: [],
+const trackedDash = (widgets: DashWidget[]): DashLayout => ({
+  id: 'tracked', name: 'Tracked', mode: 'basic', gridCols: 10, gridRows: 9, colSizes: [40, 90, 90, 90, 90, 90, 90, 90, 90, 40], rowSizes: [36, 55.5, 55.5, 55.5, 55.5, 55.5, 55.5, 55.5, 55.5], alerts: [],
   pages: [{ id: 'page-1', name: 'Page 1', widgets }],
 })
 
-test('on a zoned dash a new widget lands where its zone puts it, never on the gear or in the wrong spot', () => {
-  const dash = zonedDash([])
-  assert.deepEqual(addWidgetAt(dash, 'page-1', 'bar', 0, 4)?.widget, { id: 'bar', type: 'bar', col: 0, row: 0, colSpan: 1, rowSpan: 9 })
-  assert.equal(addWidgetAt(dash, 'page-1', 'last_lap', 0, 4), null, 'a side bar spot takes only bars')
-  assert.equal(addWidgetAt(dash, 'page-1', 'last_lap', 5, 2), null, 'the gear')
-  assert.deepEqual(addWidget(dash, 'page-1', 'last_lap')?.widget, { id: 'last-lap', type: 'last_lap', col: 1, row: 1, colSpan: 2, rowSpan: 1 })
+test('on a dash with its own tracks a new widget is two cells by one, anywhere free', () => {
+  const dash = trackedDash([{ id: 'gear', type: 'gear', col: 4, row: 1, colSpan: 2, rowSpan: 3 }])
+  assert.deepEqual(addWidgetAt(dash, 'page-1', 'bar', 0, 4)?.widget, { id: 'bar', type: 'bar', col: 0, row: 4, colSpan: 2, rowSpan: 1 })
+  assert.deepEqual(addWidgetAt(dash, 'page-1', 'last_lap', 9, 8)?.widget, { id: 'last-lap', type: 'last_lap', col: 8, row: 8, colSpan: 2, rowSpan: 1 }, 'pulled back inside')
+  assert.equal(addWidgetAt(dash, 'page-1', 'last_lap', 4, 2), null, 'the gear')
+  assert.deepEqual(addWidget(dash, 'page-1', 'last_lap')?.widget, { id: 'last-lap', type: 'last_lap', col: 0, row: 1, colSpan: 2, rowSpan: 1 }, 'the first spot that holds a lap time: the top row is too short')
 })
 
-test('nothing new lands in a bar spot the page drops', () => {
-  const dash = zonedDash([])
-  const page = dash.pages[0]
-  if (page) page.bars = 'none'
-  assert.equal(addWidgetAt(dash, 'page-1', 'bar', 0, 4), null)
-  assert.equal(addWidgetAt(dash, 'page-1', 'position', 3, 0), null)
-  assert.deepEqual(addWidget(dash, 'page-1', 'bar')?.widget, { id: 'bar', type: 'bar', col: 1, row: 1, colSpan: 2, rowSpan: 1 })
+test('a widget never gets smaller than its smallest form, and grows toward the side it is dragged from', () => {
+  const dash = trackedDash([])
+  // A lap time needs 130 wide at 800x480: one 90 column is too narrow, so it takes a second.
+  assert.deepEqual(growToSmallest(dash, 'last_lap', { col: 3, row: 2, colSpan: 1, rowSpan: 1 }, { hx: 1, hy: 0 }), { col: 3, row: 2, colSpan: 2, rowSpan: 1 })
+  assert.deepEqual(growToSmallest(dash, 'last_lap', { col: 3, row: 2, colSpan: 1, rowSpan: 1 }, { hx: -1, hy: 0 }), { col: 2, row: 2, colSpan: 2, rowSpan: 1 })
+  assert.deepEqual(growToSmallest(dash, 'last_lap', { col: 3, row: 2, colSpan: 1, rowSpan: 1 }, { hx: 0, hy: 1 }), { col: 3, row: 2, colSpan: 1, rowSpan: 1 }, 'a side the drag leaves alone stays')
+  assert.equal(holdsSmallestAt(dash, 'tyre', { col: 1, row: 1, colSpan: 1, rowSpan: 1 }), false)
+  assert.deepEqual(widgetFormAt(dash, 'tyre', { col: 1, row: 1, colSpan: 1, rowSpan: 2 }).form.name, 'Small', '90 x 111')
+  assert.deepEqual(widgetFormAt(dash, 'tyre', { col: 1, row: 1, colSpan: 2, rowSpan: 2 }).form.name, 'Large', '180 x 111')
+  assert.deepEqual(widgetFormAt({ ...dash, rowSizes: [36, 80, 80, 80, 80, 31, 31, 31, 31] }, 'tyre', { col: 1, row: 1, colSpan: 2, rowSpan: 1 }).form.name, 'Compact', 'a row resized to 80: too short for Large')
+})
+
+test('a dash keeps its track sizes only when there is one per column and row', () => {
+  const row = { id: 'd', gridCols: 10, gridRows: 9, pages: [], alerts: [] }
+  assert.deepEqual(parseDashLayout({ ...row, colSizes: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1], rowSizes: [1, 1, 1, 1, 1, 1, 1, 1, 1] })?.colSizes?.length, 10)
+  assert.equal(parseDashLayout({ ...row, colSizes: [1, 1], rowSizes: [1, 1, 1, 1, 1, 1, 1, 1, 1] })?.colSizes, undefined)
+  assert.equal(parseDashLayout({ ...row, colSizes: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1] })?.colSizes, undefined, 'both or neither')
 })
 
 test('two widgets swap places when each fits the other\'s, and not otherwise', () => {
-  const dash = zonedDash([
+  const dash = trackedDash([
     { id: 'tc', type: 'tc', col: 1, row: 1, colSpan: 2, rowSpan: 2 },
     { id: 'last', type: 'last_lap', col: 5, row: 4, colSpan: 1, rowSpan: 1 },
-    { id: 'fuel', type: 'bar', col: 0, row: 0, colSpan: 1, rowSpan: 9 },
+    { id: 'fuel', type: 'bar', col: 9, row: 0, colSpan: 1, rowSpan: 9 },
+    { id: 'pos', type: 'position', col: 0, row: 8, colSpan: 1, rowSpan: 1 },
   ])
   const swapped = swapWidgets(dash, 'page-1', 'tc', 'last')
   assert.deepEqual(swapped?.pages[0]?.widgets.slice(0, 2).map(({ id, col, row, colSpan, rowSpan }) => ({ id, col, row, colSpan, rowSpan })), [
     { id: 'tc', col: 5, row: 4, colSpan: 1, rowSpan: 1 },
     { id: 'last', col: 1, row: 1, colSpan: 2, rowSpan: 2 },
   ])
-  assert.equal(swapWidgets(dash, 'page-1', 'tc', 'fuel'), null, 'a knob does not go in a bar spot')
+  assert.ok(swapWidgets(dash, 'page-1', 'tc', 'fuel'), 'any widget may go where a bar was')
 })
 
-test('a widget keeps its own frame settings beside its colours, and drops the style once nothing is set', () => {
-  const dash = zonedDash([{ id: 'tc', type: 'tc', col: 1, row: 1, colSpan: 2, rowSpan: 2 }])
-  const framed = setWidgetStyle(dash, 'page-1', 'tc', { border: 'thin', label: 'capsule' })
-  assert.deepEqual(framed?.pages[0]?.widgets[0]?.style, { border: 'thin', label: 'capsule' })
-  const plain = framed && setWidgetStyle(framed, 'page-1', 'tc', { border: undefined, label: undefined })
-  assert.equal(plain?.pages[0]?.widgets[0]?.style, undefined)
+test('a widget moves only its own label, and follows the dash again once it has none', () => {
+  const dash = trackedDash([{ id: 'tc', type: 'tc', col: 1, row: 1, colSpan: 2, rowSpan: 2 }])
+  const moved = setWidgetLabel(dash, 'page-1', 'tc', 'left')
+  assert.deepEqual(moved?.pages[0]?.widgets[0]?.style, { label: 'left' })
+  const back = moved && setWidgetLabel(moved, 'page-1', 'tc', undefined)
+  assert.equal(back?.pages[0]?.widgets[0]?.style, undefined)
 })
 
 test('a placed widget is named by what it shows when its type alone is ambiguous', () => {

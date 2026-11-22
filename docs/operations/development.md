@@ -124,7 +124,7 @@ Running the real app:
 From `packages/dashboard/renderer`:
 
 ```sh
-cargo run --release --example render -- --dash ../../../app/Sprint.Desktop.Host/presets/dash/default.json <out.png> [--page <id>] [--style panels|grid|bars] [--size 800x480]
+cargo run --release --example render -- --dash ../../../app/Sprint.Desktop.Host/presets/dash/default.json <out.png> [--page <id>] [--size 800x480]
 ```
 
 It draws one page of a layout (the first, unless `--page`) against a fixed mid-race frame; the

@@ -250,7 +250,7 @@
 /* ── Layout: sidebar, bezel, inspector, dock ──────────────────────────── */
 
 .designer-sidebar {
-  top: 60px;
+  top: 108px;
   bottom: 76px;
   left: 12px;
   display: flex;
@@ -402,7 +402,7 @@ svg.designer-node-stack {
 /* The box the bezel is fitted into: the stage between the floating layers. */
 .designer-fit {
   position: absolute;
-  top: 60px;
+  top: 108px;
   right: 304px;
   bottom: 76px;
   left: 274px;
@@ -440,13 +440,13 @@ svg.designer-node-stack {
 }
 
 .designer-inspector {
-  top: 60px;
+  top: 108px;
   right: 12px;
   display: flex;
   flex-direction: column;
   gap: 16px;
   width: 280px;
-  max-height: calc(100% - 136px);
+  max-height: calc(100% - 184px);
   padding: 14px;
   overflow-y: auto;
 }
@@ -562,10 +562,6 @@ svg.designer-node-stack {
 .designer-thumb-zone {
   fill: var(--label-tertiary);
   opacity: 0.45;
-}
-
-.designer-thumb-bar {
-  fill: var(--brand-500);
 }
 
 /* A choice as a row: its tiny wheel, then its name over a line on what it does (the pit limiter's looks). */
@@ -1032,25 +1028,6 @@ svg.designer-node-stack {
   transform: rotate(180deg);
 }
 
-/* The gear: always there, so hatched rather than a region to fill. */
-.designer-region.is-gear {
-  align-items: center;
-  justify-content: center;
-}
-
-.designer-region.is-gear::before {
-  border-style: dashed;
-  background: repeating-linear-gradient(135deg, transparent 0 6px, color-mix(in srgb, var(--label-tertiary) 14%, transparent) 6px 7px);
-}
-
-.designer-region.is-gear .designer-region-name {
-  color: var(--label-secondary);
-}
-
-.designer-region.is-gear .designer-region-size {
-  align-self: center;
-}
-
 .designer-region-group {
   border: 1px dashed var(--label-tertiary);
   border-radius: 8px;
@@ -1164,9 +1141,112 @@ svg.designer-node-stack {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background-image:
-    linear-gradient(to right, color-mix(in srgb, var(--brand-500) 40%, transparent) 1px, transparent 1px),
-    linear-gradient(to bottom, color-mix(in srgb, var(--brand-500) 40%, transparent) 1px, transparent 1px);
+}
+
+/* One grid line; the tracks are uneven, so each is drawn where it falls. */
+.designer-grid-overlay > span {
+  position: absolute;
+  background: color-mix(in srgb, var(--brand-500) 40%, transparent);
+}
+
+.designer-grid-overlay > .is-col {
+  top: 0;
+  bottom: 0;
+  width: 1px;
+}
+
+.designer-grid-overlay > .is-row {
+  right: 0;
+  left: 0;
+  height: 1px;
+}
+
+/* A grip on the bezel at a grid line: along the top for columns, down the left for rows. */
+.designer-grid-grip {
+  position: absolute;
+  z-index: 3;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--control-stroke);
+  border-radius: 4px;
+  background: var(--control);
+  color: var(--label-tertiary);
+  touch-action: none;
+}
+
+.designer-grid-grip.is-cols {
+  top: -17px;
+  width: 12px;
+  height: 14px;
+  margin-left: -6px;
+  cursor: ew-resize;
+}
+
+.designer-grid-grip.is-rows {
+  left: -17px;
+  width: 14px;
+  height: 12px;
+  margin-top: -6px;
+  cursor: ns-resize;
+}
+
+.designer-grid-grip.is-rows svg {
+  transform: rotate(90deg);
+}
+
+.designer-grid-grip:hover {
+  border-color: var(--brand-500);
+  color: var(--label);
+}
+
+.designer-grid-grip.is-active {
+  border-color: var(--brand-500);
+  background: var(--brand-500);
+  color: var(--on-brand);
+}
+
+/* The line being moved, through the dash. */
+.designer-grid-line {
+  position: absolute;
+  z-index: 2;
+  background: var(--brand-500);
+  pointer-events: none;
+}
+
+.designer-grid-line.is-cols {
+  top: -6px;
+  bottom: -6px;
+  width: 2px;
+}
+
+.designer-grid-line.is-rows {
+  right: -6px;
+  left: -6px;
+  height: 2px;
+}
+
+/* Each track's share either side of the line being moved, on the bezel below (columns) or right (rows). */
+.designer-grid-share {
+  position: absolute;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  color: var(--label);
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+
+.designer-grid-share.is-cols {
+  bottom: -18px;
+  height: 16px;
+}
+
+.designer-grid-share.is-rows {
+  right: -20px;
+  width: 18px;
+  writing-mode: vertical-rl;
 }
 
 .designer-widget-overlay {
@@ -1298,17 +1378,6 @@ svg.designer-node-stack {
 
 /* A zoned dash's zones: a quiet outline each; the ones a dragged widget may go into light up. */
 /* A zone lights up only while a drag can drop into it; the canvas views show free space themselves. */
-.designer-zone {
-  position: absolute;
-  pointer-events: none;
-}
-
-.designer-zone.is-target {
-  outline: 2px solid color-mix(in srgb, var(--brand-500) 70%, transparent);
-  outline-offset: -2px;
-  background-color: color-mix(in srgb, var(--brand-500) 10%, transparent);
-}
-
 /* A widget hidden on the wheel, where it sits: no picture, a dashed outline and a crossed-out eye. */
 .designer-hidden-widget {
   position: absolute;
@@ -1322,11 +1391,6 @@ svg.designer-node-stack {
 }
 
 /* The gear's spot: always the gear, never a drop. */
-.designer-gear-spot {
-  position: absolute;
-  pointer-events: none;
-}
-
 /* A widget the dragged one may swap with. */
 .designer-swap-target {
   position: absolute;
@@ -1380,4 +1444,142 @@ svg.designer-node-stack {
   margin: 0;
   padding: 8px 6px 0;
   border-top: 1px solid var(--divider);
+}
+
+/* The scope strip: Device › Game › Class › Car → Dash, under the toolbar. */
+.designer-scope {
+  position: absolute;
+  top: 54px;
+  left: 50%;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  max-width: calc(100% - 24px);
+  height: 40px;
+  padding: 0 6px;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+
+.designer-scope-pick {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  height: 28px;
+  border-radius: var(--radius-control);
+  color: var(--label);
+}
+
+.designer-scope-pick:hover {
+  background: var(--subtle-hover);
+}
+
+.designer-scope-pick > svg {
+  position: absolute;
+  color: var(--label-secondary);
+  pointer-events: none;
+}
+
+.designer-scope-pick > svg:first-child {
+  left: 10px;
+}
+
+.designer-scope-pick > svg:last-child {
+  right: 8px;
+}
+
+.designer-scope-pick select {
+  height: 28px;
+  padding: 0 28px 0 32px;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  appearance: none;
+  field-sizing: content;
+  cursor: pointer;
+}
+
+.designer-scope-pick.is-dash {
+  background: var(--subtle-selected);
+  font-weight: 600;
+}
+
+.designer-scope-pick.is-dash select {
+  padding-left: 10px;
+}
+
+.designer-scope-pick select option {
+  background: var(--layer);
+  color: var(--label);
+  font-weight: 400;
+}
+
+.designer-scope-sep,
+.designer-scope-uses {
+  flex: none;
+  color: var(--label-tertiary);
+}
+
+.designer-scope-uses {
+  margin: 0 4px;
+}
+
+.designer-scope-note {
+  padding: 0 6px;
+  font-size: 12px;
+}
+
+.designer-scope-rule {
+  flex: none;
+  width: 1px;
+  height: 20px;
+  margin: 0 8px;
+  background: var(--divider);
+}
+
+.designer-scope-used {
+  padding: 0 8px;
+  color: var(--label-secondary);
+  font-size: 12px;
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+  cursor: default;
+}
+
+.designer-scope .designer-pill-status,
+.designer-scope .designer-pill-retry {
+  padding: 0 8px 0 4px;
+  font-size: 12px;
+}
+
+/* Resizing a widget: its old size dashed, and a tag naming the form the new size draws. */
+.designer-resize-was {
+  position: absolute;
+  border: 1.5px dashed var(--label-tertiary);
+  border-radius: 2px;
+  pointer-events: none;
+}
+
+.designer-form-tag {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: -2px;
+  padding: 2px 8px;
+  border-radius: var(--radius-control-small);
+  background: var(--brand-500);
+  color: var(--on-brand);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 18px;
+  white-space: nowrap;
+}
+
+/* The form a selected widget's size draws, above its size fields. */
+.designer-form-now {
+  margin: 0 0 8px;
+  font-weight: 600;
 }

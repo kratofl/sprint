@@ -37,6 +37,8 @@ pub struct WidgetContext<'a> {
     /// The app-wide limits (`alerts::AlertLimits`): the fuel and energy warn from the fuel
     /// warning, oil and water from the engine limits, Lift & coast lights at the lift point.
     pub limits: AlertLimits,
+    /// The form the widget's box holds (`forms::form_index`): 0 is its largest, a higher one draws less.
+    pub form: usize,
 }
 
 impl WidgetContext<'_> {
@@ -49,11 +51,13 @@ impl WidgetContext<'_> {
 /// How a widget type is framed:
 /// - `Framed`: one frame with a title; `accent` is a knob's identity color and `fill` a
 ///   condition color covering the frame (values then draw in ink).
-/// - `Bare`: no frame or title (gear, text, RPM, flag), just the same margin.
+/// - `Edged`: a frame without a title in the flat style (the bars), bare in the others.
+/// - `Bare`: no frame or title (gear, text, flag), just the same margin.
 /// - `Split`: the widget fills its whole cell with several frames of its own (the four tyres).
 #[derive(Clone, Debug, PartialEq)]
 pub enum WidgetChrome {
     Framed { title: &'static str, accent: Option<Rgba>, fill: Option<Rgba> },
+    Edged,
     Bare,
     Split,
 }
@@ -170,6 +174,7 @@ pub fn widget_chrome(widget: &DashWidget, frame: &TelemetryFrame, palette: &Dash
         "penalty" => filled("PENALTY", (penalties_to_serve(frame) > 0.0).then_some(palette.critical)),
         "tyre_wear" => framed("WEAR"),
         "sector_time" => framed("SECTOR"),
+        "bar" | "rpm_bar" => WidgetChrome::Edged,
         _ => WidgetChrome::Bare,
     }
 }
@@ -266,23 +271,12 @@ fn rpm_bar(b: &mut Builder, w: &WidgetContext) {
         vertical_seg_bar(b, PixelRect::new(0.0, 0.0, w.width, w.height), pct, |phase| rpm_stage_color(phase, w.palette));
         return;
     }
-
-    if w.chrome.style.is_flat() {
-        return flat_rpm_strip(b, w, pct);
-    }
-    const SEGMENTS: usize = 24;
-    let gap = (w.width * 0.0025).max(1.0);
-    let segment_width = (w.width - gap * (SEGMENTS - 1) as f64) / SEGMENTS as f64;
-    let active = (pct * SEGMENTS as f64).ceil() as usize;
-    for i in 0..SEGMENTS {
-        let color = if i < active { rpm_stage_color(i as f64 / (SEGMENTS - 1) as f64, w.palette) } else { w.palette.surface };
-        b.rect(PixelRect::new(i as f64 * (segment_width + gap), 0.0, segment_width.max(0.0), w.height), Radii::all(2.0), color);
-    }
+    rpm_strip(b, w, pct);
 }
 
-/// The flat styles' RPM: a row of slim square segments, unlit ones a quiet track, with the shift
-/// stages' colors as before (mockup).
-fn flat_rpm_strip(b: &mut Builder, w: &WidgetContext, pct: f64) {
+/// The RPM across: a row of slim square segments, unlit ones a quiet track, in the shift stages'
+/// colors.
+fn rpm_strip(b: &mut Builder, w: &WidgetContext, pct: f64) {
     const SEGMENTS: usize = 36;
     let s = w.chrome.scale;
     let gap = 4.0 * s;
@@ -297,7 +291,7 @@ fn flat_rpm_strip(b: &mut Builder, w: &WidgetContext, pct: f64) {
 }
 
 /// The delta to the target lap: green while gaining, red while losing, white level; "NO TARGET"
-/// without one. The flat styles draw it a little larger (mockup).
+/// without one.
 fn delta(b: &mut Builder, w: &WidgetContext) {
     let lap = &w.frame.lap;
     let p = w.palette;
@@ -306,20 +300,19 @@ fn delta(b: &mut Builder, w: &WidgetContext) {
         text_line(b, fit(line("NO TARGET", (w.width / 2.0, w.height / 2.0), size, p.muted, TextAlign::Center, w.width * 0.9, TextWeight::Label)));
         return;
     }
-    let color = if lap.delta < -0.0005 {
+    let color = if lap.delta <= -0.005 {
         p.timing_personal_best
-    } else if lap.delta > 0.0005 {
+    } else if lap.delta >= 0.005 {
         p.danger
     } else {
         p.neutral
     };
-    let share = if w.chrome.style.is_flat() { 0.82 } else { VALUE_SHARE };
-    big_value(b, &format_delta(lap.delta), "-00.000", w.width, w.height, color, share);
+    big_value(b, &format_delta(lap.delta, 2), "-00.00", w.width, w.height, color, 0.82);
 }
 
-/// A zoned dash's gear, which every zoned page shows in the centre column's top: the digit
-/// alone, in the shift stage's color, in a `width` x `height` box at the builder's origin.
-pub fn zoned_gear(b: &mut Builder, car: &CarState, palette: &DashPaletteColors, width: f64, height: f64) {
+/// The gear: the digit alone, as big as its box allows, in the shift stage's color.
+fn gear(b: &mut Builder, w: &WidgetContext) {
+    let (car, palette, width, height) = (&w.frame.car, w.palette, w.width, w.height);
     let ratio = if car.max_rpm > 0.0 { car.rpm / car.max_rpm } else { 0.0 };
     let color = if ratio >= 0.96 {
         palette.rpm_shift
@@ -433,10 +426,10 @@ fn bar(b: &mut Builder, w: &WidgetContext) {
     let channel = w.widget.config_string("channel").unwrap_or("fuel");
     if channel == "rpm" {
         let pct = (f.car.rpm / f.car.max_rpm.max(1.0)).clamp(0.0, 1.0);
-        return flat_rpm_strip(b, w, pct);
+        return rpm_strip(b, w, pct);
     }
     let vertical = w.height > w.width;
-    let radius = w.chrome.flat.radius * s * 0.5;
+    let radius = w.chrome.look.radius * s * 0.5;
     let track =
         if vertical { PixelRect::new(w.width * 0.15, 0.0, w.width * 0.7, w.height) } else { PixelRect::new(0.0, w.height * 0.15, w.width, w.height * 0.7) };
     match channel {
@@ -721,7 +714,7 @@ fn tyre(b: &mut Builder, w: &WidgetContext) {
     let (width, height) = (w.width, w.height);
     let square_w = (height * 0.62).min(width * 0.36);
     let square_left = if left_side { 0.0 } else { width - square_w };
-    stripes(b, tire, PixelRect::new(square_left, 0.0, square_w, height), left_side, w.chrome.flat.radius * s, w);
+    stripes(b, tire, PixelRect::new(square_left, 0.0, square_w, height), left_side, w.chrome.look.radius * s, w);
 
     let pill_h = (height * 0.24).min(20.0 * s);
     let pill_w = square_w * 0.84;
@@ -745,12 +738,14 @@ fn tyre(b: &mut Builder, w: &WidgetContext) {
     let temp = tyre_temperature(tire);
     let temp_color = if temp > 0.0 { resolve_tyre_color(temp, tire.optimal_temp, p) } else { p.muted };
     let brake_color = brake_heat(tire.brake_temp, p).unwrap_or(p.secondary);
-    // (text, colour, icon); the pressure first, large, two lines tall.
-    let lines = [
+    // (text, colour, icon); the pressure first, large, two lines tall. Compact drops the brake
+    // temperature, Small the tread temperature too (`widgetForms.json`).
+    let all = [
         (format_pressure(tire.pressure_kpa, units), p.foreground, None),
         (tyre_degrees(temp, units), temp_color, Some(Icon::Thermometer)),
         (tyre_degrees(tire.brake_temp, units), brake_color, Some(Icon::Brake)),
     ];
+    let lines = &all[..3 - w.form.min(2)];
     let unit = height / (lines.len() as f64 + 1.0);
     let mut top = 0.0;
     for (k, (text, color, kind)) in lines.iter().enumerate() {
@@ -1094,6 +1089,10 @@ fn horizontal_anchor(widget: &DashWidget, width: f64) -> (f64, TextAlign) {
 }
 
 fn gear_speed(b: &mut Builder, w: &WidgetContext) {
+    // Its Small form (`widgetForms.json`) is the gear alone.
+    if w.form > 0 {
+        return gear(b, w);
+    }
     let car = &w.frame.car;
     let rpm_ratio = if car.max_rpm > 0.0 { car.rpm / car.max_rpm } else { 0.0 };
     let gear_color = if rpm_ratio >= 0.96 {
@@ -1414,7 +1413,7 @@ fn tyre_corners(b: &mut Builder, w: &WidgetContext, title: &str, corner: impl Fn
         };
         let title = format!("{label}{title}");
         let rect = PixelRect::new((i % 2) as f64 * cell_w, (i / 2) as f64 * cell_h, cell_w, cell_h);
-        let frame = WidgetFrame { ctx: w.chrome, rect, title: Some(&title), accent: None, fill, title_color: None, palette: *w.palette };
+        let frame = WidgetFrame { ctx: w.chrome, rect, title: Some(&title), accent: None, fill, palette: *w.palette };
         widget_frame(b, frame, |b, width, height, palette| big_value(b, &value, template, width, height, palette.foreground, VALUE_SHARE));
     }
 }
@@ -1888,6 +1887,7 @@ pub fn widget_content(b: &mut Builder, w: &WidgetContext) {
     match w.widget.widget_type.as_str() {
         "text" => text(b, w),
         "rpm_bar" => rpm_bar(b, w),
+        "gear" => gear(b, w),
         "gear_speed" => gear_speed(b, w),
         "input_trace" => input_trace(b, w),
         "current_lap" | "last_lap" | "best_lap" | "session_best" | "class_best" | "predictive_lap" | "optimal_lap" | "lap_avg_5" | "lap_avg_10"
@@ -1937,7 +1937,7 @@ mod tests {
     use crate::alerts::{EngineLimits, LIFT_POINT};
     use crate::chrome::ChromeContext;
     use crate::draw::{DrawOp, TextRun};
-    use crate::model::{Damage, DashStyle};
+    use crate::model::Damage;
     use crate::palette::DEFAULT_DASH_PALETTE;
     use crate::text::Fonts;
     use serde_json::json;
@@ -1975,8 +1975,9 @@ mod tests {
             height,
             targets,
             settings,
-            chrome: ChromeContext { style: DashStyle::Panels, scale: 1.0, flat: Default::default() },
+            chrome: ChromeContext { scale: 1.0, look: Default::default() },
             limits: AlertLimits::default(),
+            form: 0,
         };
         widget_content(&mut Builder::new(&fonts, &mut ops), &ctx);
         ops
@@ -2036,9 +2037,9 @@ mod tests {
             let run = texts(&draw(&widget("delta", json!({})), frame, 200.0, 80.0))[0].clone();
             (run.text, run.color)
         };
-        assert_eq!(shown(&frame), ("+0.350".to_owned(), P.danger));
+        assert_eq!(shown(&frame), ("+0.35".to_owned(), P.danger));
         frame.lap.delta = -0.2;
-        assert_eq!(shown(&frame), ("-0.200".to_owned(), P.timing_personal_best));
+        assert_eq!(shown(&frame), ("-0.20".to_owned(), P.timing_personal_best));
         frame.lap.delta = 0.0;
         assert_eq!(shown(&frame).1, P.neutral);
     }
@@ -2178,7 +2179,7 @@ mod tests {
         }
         let ops = draw(&widget("tyre_temp", json!({})), &frame, 300.0, 200.0);
         assert_eq!(text_of(&ops), ["FL", "60°", "FR", "85°", "RL", "105°", "RR", "--"]);
-        let fills: Vec<Rgba> = rects(&ops).iter().map(|r| r.1).collect();
+        let fills: Vec<Rgba> = fills(&ops);
         assert_eq!(fills, [P.cold_low, P.good_on_target, P.warning], "a corner without a reading has no fill");
         assert_eq!(texts(&ops)[1].color, P.background, "values on a fill draw in ink");
         assert_eq!(texts(&ops)[7].color, P.foreground);
@@ -2216,6 +2217,38 @@ mod tests {
         assert_eq!((shown("air_temp", &frame, None), shown("track_temp", &frame, None)), (vec!["72°".to_owned()], vec!["89°".to_owned()]));
         assert_eq!(shown("tyre_temp", &frame, None)[..2], ["FL", "185°"]);
         assert_eq!(shown("tyre_pressure", &frame, None)[..2], ["FL PSI", "24.9"]);
+    }
+
+    #[test]
+    fn a_smaller_form_draws_less() {
+        let mut frame = TelemetryFrame::default();
+        frame.tires[0].pressure_kpa = 170.0;
+        frame.tires[0].temp_surface = 85.0;
+        frame.tires[0].brake_temp = 400.0;
+        frame.car.gear = 4.0;
+        frame.car.speed_ms = 50.0;
+        let in_form = |widget_type: &str, form: usize| {
+            let fonts = Fonts::new();
+            let mut ops = Vec::new();
+            let tyre = widget(widget_type, json!({ "corner": "fl" }));
+            let ctx = WidgetContext {
+                widget: &tyre,
+                frame: &frame,
+                palette: &DEFAULT_DASH_PALETTE,
+                width: 200.0,
+                height: 120.0,
+                targets: None,
+                settings: None,
+                chrome: ChromeContext { scale: 1.0, look: Default::default() },
+                limits: AlertLimits::default(),
+                form,
+            };
+            widget_content(&mut Builder::new(&fonts, &mut ops), &ctx);
+            text_of(&ops).len()
+        };
+        // The wear pill, then pressure, tread and brake temperature.
+        assert_eq!([in_form("tyre", 0), in_form("tyre", 1), in_form("tyre", 2)], [4, 3, 2]);
+        assert_eq!([in_form("gear_speed", 0), in_form("gear_speed", 1)], [3, 1], "gear, speed and unit; then the gear alone");
     }
 
     #[test]
@@ -2289,9 +2322,9 @@ mod tests {
         assert_eq!(corners("tyre_wear_lap")[..2], ["FL WEAR/LAP", "0.50%"]);
         let brakes = draw(&widget("brake_temp", json!({})), &frame, 300.0, 200.0);
         assert_eq!(text_of(&brakes)[..4], ["FL BRAKE", "600°", "FR BRAKE", "700°"]);
-        assert_eq!(rects(&brakes).iter().map(|r| r.1).collect::<Vec<_>>(), [P.warning, P.warning, P.critical], "lit over 650°, red over 800°");
+        assert_eq!(fills(&brakes), [P.warning, P.warning, P.critical], "lit over 650°, red over 800°");
         let avg = draw(&widget("tyre_avg", json!({})), &frame, 300.0, 200.0);
-        assert_eq!(rects(&avg).iter().map(|r| r.1).collect::<Vec<_>>(), [P.good_on_target, P.good_on_target, P.warning, P.warning]);
+        assert_eq!(fills(&avg), [P.good_on_target, P.good_on_target, P.warning, P.warning]);
         // Laps left: the rear right lasts 60 / 1.25 = 48 laps, the fewest.
         assert_eq!(text_of(&draw(&widget("tyre_laps_left", json!({})), &frame, 160.0, 60.0)), ["48.0"]);
         frame.tires.iter_mut().for_each(|t| t.wear_last_lap = None);
@@ -2309,8 +2342,9 @@ mod tests {
             height: 60.0,
             targets: None,
             settings: None,
-            chrome: ChromeContext { style: DashStyle::Panels, scale: 1.0, flat: Default::default() },
+            chrome: ChromeContext { scale: 1.0, look: Default::default() },
             limits: AlertLimits { engine: limits, ..AlertLimits::default() },
+            form: 0,
         };
         widget_content(&mut Builder::new(&fonts, &mut ops), &ctx);
         ops
@@ -2489,6 +2523,11 @@ mod tests {
             .collect()
     }
 
+    /// The colours boxes are lit in: every rect but the dark pills a label sits on over a lit box.
+    fn fills(ops: &[DrawOp]) -> Vec<Rgba> {
+        rects(ops).into_iter().map(|r| r.1).filter(|color| *color != DEFAULT_DASH_PALETTE.background).collect()
+    }
+
     fn rects(ops: &[DrawOp]) -> Vec<(PixelRect, Rgba)> {
         ops.iter()
             .filter_map(|op| match op {
@@ -2586,16 +2625,15 @@ mod tests {
         frame.car.max_rpm = 10000.0;
         let ops = draw(&widget("rpm_bar", json!({})), &frame, 760.0, 40.0);
         let segments = rects(&ops);
-        assert_eq!(segments.len(), 24);
+        assert_eq!(segments.len(), 36);
         let p = DEFAULT_DASH_PALETTE;
-        // ceil(0.95 * 24) = 23 lit; phase i/23: green below 0.78, red below 0.93, blue after.
+        // ceil(0.95 * 36) = 35 lit; phase i/35: green below 0.78, red below 0.93, blue after.
         assert_eq!(segments[0].1, p.rpm_normal);
-        assert_eq!(segments[18].1, p.rpm_near_limit);
-        assert_eq!(segments[22].1, p.rpm_shift);
-        assert_eq!(segments[23].1, p.surface);
-        let gap = 760.0 * 0.0025;
-        // Box numbers are in layout units (1/64 px), so allow one unit per term.
-        assert!((segments[1].0.left - (segments[0].0.width + gap)).abs() < 2.0 / 64.0);
+        assert_eq!(segments[30].1, p.rpm_near_limit);
+        assert_eq!(segments[34].1, p.rpm_shift);
+        assert_eq!(segments[35].1, p.surface);
+        // 4px gaps at 800x480; box numbers are in layout units (1/64 px), so allow one unit per term.
+        assert!((segments[1].0.left - (segments[0].0.width + 4.0)).abs() < 2.0 / 64.0);
     }
 
     #[test]
@@ -2747,6 +2785,22 @@ mod tests {
         let mut drawn = quoted_between(include_str!("widgets.rs"), '"', "pub fn widget_content(", "_ => placeholder(b, w)");
         assert!(drawn.remove("flag") && drawn.remove("racelogic_lap_timer"), "the flag display's and the lap timer's (DevicePurposeLayouts.cs)");
         assert_eq!(offered, drawn);
+    }
+
+    /// The designer offers a label spot only for a widget with a label: `unlabelled` in
+    /// `widgetForms.json` lists exactly the offered widgets this renderer frames without a title.
+    #[test]
+    fn the_designer_knows_which_widgets_draw_no_label() {
+        let offered = quoted_between(include_str!("../../src/widgetTypes.ts"), '\'', "export const dashboardWidgetTypes = [", "] as const");
+        let listed = quoted_between(include_str!("../../src/widgetForms.json"), '"', "\"unlabelled\": [", "]");
+        let frame = TelemetryFrame::default();
+        let untitled: std::collections::BTreeSet<&str> = offered
+            .into_iter()
+            .filter(|kind| {
+                !matches!(widget_chrome(&widget(kind, json!({})), &frame, &DEFAULT_DASH_PALETTE, Units::Metric, LIFT_POINT), WidgetChrome::Framed { .. })
+            })
+            .collect();
+        assert_eq!(listed, untitled);
     }
 
     #[test]

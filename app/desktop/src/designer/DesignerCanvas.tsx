@@ -1,11 +1,27 @@
-import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode, RefObject } from 'react'
+import { useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from 'react'
 import { EyeOff, Group, Plus } from 'lucide-react'
-import { DASH_ZONES, DashCanvas, GEAR_SPOT, cellAt, drawnWidgets, layoutRect, pageTree, zoneKept, zoneOf, zoneTakes } from '@sprint/dashboard'
-import type { DashGroupNode, DashLayout, DashNode, DashPage, DashPageBars, DashWidget, DashWidgetType, DashZone, LayoutGrid, PixelRect } from '@sprint/dashboard'
+import { DashCanvas, cellAt, drawnWidgets, gridLines, hasLabel, layoutRect, pageTree } from '@sprint/dashboard'
+import type { DashGroupNode, DashLayout, DashNode, DashPage, DashWidget, DashWidgetType, GridSpan, LayoutGrid, PixelRect } from '@sprint/dashboard'
 import type { TelemetryFrame } from '@sprint/types'
-import { canPlaceNewWidget, newWidgetRect, outOfSight, previewMoveRect, previewResizeRect, swapWidgets, widgetName, type GridRect, type ResizeHandle } from '../views/DashesDomain'
+import {
+  canPlaceNewWidget,
+  growToSmallest,
+  newWidgetRect,
+  previewMoveRect,
+  previewResizeRect,
+  rectsIntersect,
+  setWidgetLabel,
+  swapWidgets,
+  widgetFormAt,
+  widgetName,
+  type GridRect,
+  type ResizeHandle,
+} from '../views/DashesDomain'
 import { boundsOf, clickTarget, findNode, hiddenWidgets, nodeRect, parentGroup, selectionWidgets, setNodeRect, translateNodes } from './groupOps'
 import { DashLabels, DashOutline, type CanvasView } from './CanvasViews'
+import { GridGrips, type LineDrag } from './GridGrips'
+import { LabelBar } from './LabelBar'
+import { moveGridLine } from './layoutOps'
 import { nodeName } from './NodeLabel'
 import type { MenuAnchor } from '../shell/Menu'
 import type { Mutate } from './useDesignerDoc'
@@ -25,6 +41,17 @@ export type DragState =
   | { kind: 'moving'; ids: readonly string[]; start: GridRect; pointerStart: PointerPos; pointer: PointerPos; alt: boolean }
   | { kind: 'resizing'; id: string; handle: ResizeHandle; start: GridRect; pointerStart: PointerPos; pointer: PointerPos }
 
+/**
+ * What the tag on a widget being resized says: the form it lands in and what that form leaves
+ * out ("Compact · brake temperature hidden"); for a widget with one form, only that it stopped at
+ * its smallest size (`stopped`). Null when there is nothing to say.
+ */
+function formTag(layout: DashLayout, type: string, rect: GridRect, stopped: boolean): string | null {
+  const { form, several } = widgetFormAt(layout, type, rect)
+  if (several) return [form.name, form.hides && `${form.hides} hidden`].filter(Boolean).join(' · ')
+  return stopped ? 'Smallest size' : null
+}
+
 const RESIZE_HANDLES: readonly ResizeHandle[] = [
   { hx: -1, hy: -1 }, { hx: 0, hy: -1 }, { hx: 1, hy: -1 },
   { hx: -1, hy: 0 }, { hx: 1, hy: 0 },
@@ -37,21 +64,10 @@ export function relativePointerPos(event: ReactPointerEvent, element: HTMLElemen
   return { x: event.clientX - rect.left, y: event.clientY - rect.top }
 }
 
-/** The cell under `pointer` on a `width` x `height` canvas of `grid`, on a page keeping `bars`, where a dropped widget goes from. */
-export function dropCell(grid: LayoutGrid, bars: DashPageBars | undefined, pointer: PointerPos, width: number, height: number): { col: number; row: number } {
-  return cellAt(grid, width, height, pointer.x, pointer.y, bars)
+/** The cell under `pointer` on a `width` x `height` canvas of `grid`, where a dropped widget goes from. */
+export function dropCell(grid: LayoutGrid, pointer: PointerPos, width: number, height: number): { col: number; row: number } {
+  return cellAt(grid, width, height, pointer.x, pointer.y)
 }
-
-/** A zone's cells drawn as lines: the side grids 4 x 8, the centre 1 x 5, the top 9 x 1; none in a side bar spot. */
-const ZONE_CELLS: Readonly<Record<DashZone, { cols: number; rows: number } | null>> = {
-  barLeft: null,
-  barRight: null,
-  top: { cols: 9, rows: 1 },
-  left: { cols: 4, rows: 8 },
-  centre: { cols: 1, rows: 5 },
-  right: { cols: 4, rows: 8 },
-}
-const ZONE_NAMES = Object.keys(DASH_ZONES).filter((zone): zone is DashZone => zone in ZONE_CELLS)
 
 function handleCursor(handle: ResizeHandle): string {
   if (handle.hx === 0) return 'ns-resize'
@@ -83,14 +99,14 @@ const box = (rect: PixelRect): CSSProperties => ({ left: rect.left, top: rect.to
  * The dash as `view` shows it — its outline, or the live dash faded back or tagged
  * (`CanvasViews.tsx`) — with an interactive overlay placed with the same `gridRect` math the
  * renderer places widgets with, so it never drifts from what is drawn. A widget hidden
- * on the wheel keeps a crossed-out eye where it sits; one in a bar spot the page drops has no
- * overlay at all (`outOfSight`). A click on a widget selects its outermost group (a
+ * on the wheel keeps a crossed-out eye where it sits. A click on a widget selects its outermost group (a
  * double-click the widget itself; Ctrl/Cmd/Shift-click adds to the selection); a drag moves the
  * selection as one, and a single selected item resizes from its handles — a group scales its
  * widgets. Over a stack being worked on, tabs pick the layer to arrange (designer only; the wheel
  * shows its first layer). `shownPage` is the page as drawn here, with those layers showing.
  * `backdrop` draws instead of the dash (the pit limiter's stage), and nothing shows or goes in the
- * `covered` zones (the spots its yellow covers).
+ * `covered` spans (the spots its yellow covers). With `resizeTracks`, grips on the bezel resize the
+ * dash's columns and rows (`GridGrips`).
  */
 export function DesignerCanvas({
   canvasRef,
@@ -120,6 +136,7 @@ export function DesignerCanvas({
   commit,
   backdrop,
   covered = [],
+  resizeTracks = false,
 }: {
   canvasRef: RefObject<HTMLDivElement | null>
   layout: DashLayout
@@ -154,23 +171,24 @@ export function DesignerCanvas({
   commit: (mutate: Mutate, failureMessage: string) => void
   /** Draws in place of the dash, at the canvas size, under the labels (not in the outline view). */
   backdrop?: (width: number, height: number) => ReactNode
-  /** Zones nothing is shown, hit-tested or dropped in. */
-  covered?: readonly DashZone[]
+  /** Spans nothing is shown, hit-tested or dropped in. */
+  covered?: readonly GridSpan[]
+  /** Whether grips on the bezel resize the dash's columns and rows (a dash with its own track sizes). */
+  resizeTracks?: boolean
 }) {
+  // A grid line being dragged moves on the canvas at once; the layout changes on release.
+  const [lineDrag, setLineDrag] = useState<LineDrag | null>(null)
+  const drawn = (lineDrag && moveGridLine(layout, lineDrag.axis, lineDrag.line, lineDrag.at)) || layout
   // Same fallback as the renderer's own cols/rows resolution: the overlay's grid must match what is drawn.
   const cols = layout.gridCols > 0 ? layout.gridCols : 20
   const rows = layout.gridRows > 0 ? layout.gridRows : 12
-  const pixels = (rect: GridRect): PixelRect => layoutRect(layout, width, height, rect, page.bars)
-  const cellOf = (pointer: PointerPos): { col: number; row: number } => cellAt(layout, width, height, pointer.x, pointer.y, page.bars)
-  // What the canvas shows and hit-tests: never a widget in a bar spot the page drops or a covered zone.
-  const isCovered = (rect: GridRect): boolean => {
-    const zone = zoneOf(rect)
-    return zone !== null && covered.includes(zone)
-  }
-  const inSight = (widget: DashWidget): boolean => !outOfSight(layout, page, widget) && !isCovered(widget)
+  const pixels = (rect: GridRect): PixelRect => layoutRect(drawn, width, height, rect)
+  const cellOf = (pointer: PointerPos): { col: number; row: number } => cellAt(drawn, width, height, pointer.x, pointer.y)
+  // What the canvas shows and hit-tests: never a widget in a covered span.
+  const inSight = (widget: DashWidget): boolean => !covered.some((span) => rectsIntersect(span, widget))
   const shownWidgets = drawnWidgets(shownPage).filter(inSight)
-  const zones = ZONE_NAMES.filter((zone) => zoneKept(zone, page.bars) && !covered.includes(zone))
-  const shownLayout: DashLayout = layout.idlePage?.id === page.id ? { ...layout, idlePage: shownPage } : { ...layout, pages: layout.pages.map((item) => (item.id === page.id ? shownPage : item)) }
+  const shownLayout: DashLayout = layout.idlePage?.id === page.id ? { ...drawn, idlePage: shownPage } : { ...drawn, pages: drawn.pages.map((item) => (item.id === page.id ? shownPage : item)) }
+  const lines = gridLines(drawn, width, height)
 
   const selectedNodes = selection.map((id) => findNode(tree, id)).filter((node): node is DashNode => node !== null)
   const single = selectedNodes.length === 1 ? selectedNodes[0] : undefined
@@ -209,12 +227,23 @@ export function DesignerCanvas({
     else if (dragState.kind === 'resizing') setDragState({ ...dragState, pointer: relativePointerPos(event, canvasRef.current) })
   }
 
+  /** The widget being resized, or null for anything else (a group resizes freely). */
+  const resizedWidget = (state: DragState): DashWidget | null => {
+    if (state.kind !== 'resizing') return null
+    const node = findNode(tree, state.id)
+    return node?.kind === 'widget' ? node.widget : null
+  }
+
+  /** Where the pointer puts the dragged item; a resized widget is held at its smallest form. */
   const dragRect = (state: Extract<DragState, { kind: 'moving' | 'resizing' }>): GridRect => {
     const from = cellOf(state.pointerStart)
     const to = cellOf(state.pointer)
     const deltaCol = to.col - from.col
     const deltaRow = to.row - from.row
-    return state.kind === 'moving' ? previewMoveRect(state.start, deltaCol, deltaRow, cols, rows) : previewResizeRect(state.start, state.handle, deltaCol, deltaRow, cols, rows)
+    if (state.kind === 'moving') return previewMoveRect(state.start, deltaCol, deltaRow, cols, rows)
+    const rect = previewResizeRect(state.start, state.handle, deltaCol, deltaRow, cols, rows)
+    const widget = resizedWidget(state)
+    return widget ? growToSmallest(layout, widget.type, rect, state.handle) : rect
   }
 
   /** The single widget being dragged, or null for anything else (a group, several, a resize). */
@@ -257,25 +286,31 @@ export function DesignerCanvas({
     if (dragState.kind !== 'idle') setDragState({ kind: 'idle' })
   }
 
-  let ghost: { rect: GridRect; valid: boolean; label?: 'Stack here' | 'Swap' } | null = null
+  let ghost: { rect: GridRect; valid: boolean; label?: 'Stack here' | 'Swap'; tag?: string | null; was?: GridRect } | null = null
   const moving = movingWidget(dragState)
   const onto = dropTarget(dragState)
   if (onto && moving && dragState.kind === 'moving') {
     ghost = dragState.alt ? { rect: onto, valid: true, label: 'Stack here' } : { rect: onto, valid: swapWidgets(layout, page.id, moving.id, onto.id) !== null, label: 'Swap' }
   } else if (dragState.kind === 'moving' || dragState.kind === 'resizing') {
     const edit = dragEdit(dragState)
-    ghost = { rect: dragRect(dragState), valid: edit === null || edit(layout) !== null }
+    const rect = dragRect(dragState)
+    ghost = { rect, valid: edit === null || edit(layout) !== null }
+    const resized = resizedWidget(dragState)
+    if (resized && dragState.kind === 'resizing') {
+      const from = cellOf(dragState.pointerStart)
+      const to = cellOf(dragState.pointer)
+      const raw = previewResizeRect(dragState.start, dragState.handle, to.col - from.col, to.row - from.row, cols, rows)
+      const stopped = raw.colSpan !== rect.colSpan || raw.rowSpan !== rect.rowSpan
+      ghost = { ...ghost, tag: formTag(layout, resized.type, rect, stopped), was: dragState.start }
+    }
   } else if (dragState.kind === 'placing' && dragState.pointer) {
     const cell = cellOf(dragState.pointer)
-    const rect = newWidgetRect(layout, dragState.widgetType, cell.col, cell.row, page.bars)
-    ghost = rect ? { rect, valid: canPlaceNewWidget(layout, page.id, dragState.widgetType, rect, placeGroup) } : { rect: { ...cell, colSpan: 1, rowSpan: 1 }, valid: false }
+    const rect = newWidgetRect(layout, dragState.widgetType, cell.col, cell.row)
+    ghost = { rect, valid: !covered.some((span) => rectsIntersect(span, rect)) && canPlaceNewWidget(layout, page.id, dragState.widgetType, rect, placeGroup) }
   }
   const dragging = dragState.kind === 'moving' || dragState.kind === 'resizing'
 
-  // Where the dragged widget may go: on a zoned dash the zones that take its type, and anywhere the
-  // widgets it could swap with (none for a new one from the library).
-  const draggedType = dragState.kind === 'placing' ? dragState.widgetType : moving?.type ?? null
-  const targetZones = layout.zoned && draggedType !== null ? zones.filter((zone) => zoneTakes(zone, draggedType)) : []
+  // The widgets a dragged one could swap with (none for a new one from the library).
   const swapTargets = moving ? shownWidgets.filter((item) => item.id !== moving.id && swapWidgets(layout, page.id, moving.id, item.id) !== null) : []
 
   return (
@@ -295,32 +330,24 @@ export function DesignerCanvas({
       }}
     >
       {view === 'outline' ? (
-        <DashOutline layout={layout} page={shownPage} width={width} height={height} />
+        <DashOutline layout={drawn} page={shownPage} width={width} height={height} />
       ) : (
         <>
           {backdrop ? backdrop(width, height) : <DashCanvas layout={shownLayout} frame={frame} width={width} height={height} pageId={page.id} idle={isIdlePage} />}
-          <DashLabels view={view} layout={layout} page={shownPage} width={width} height={height} />
+          <DashLabels view={view} layout={drawn} page={shownPage} width={width} height={height} />
         </>
       )}
-      {layout.zoned ? (
-        <>
-          {zones.map((zone) => {
-            const rect = pixels(DASH_ZONES[zone])
-            const cells = ZONE_CELLS[zone]
-            const lined = showGrid && view !== 'outline' && cells !== null
-            return (
-              <div
-                key={zone}
-                className={`designer-zone${lined ? ' designer-grid-overlay' : ''}${targetZones.includes(zone) ? ' is-target' : ''}`}
-                style={{ ...box(rect), ...(lined && cells ? { backgroundSize: `${rect.width / cells.cols}px ${rect.height / cells.rows}px` } : {}) }}
-              />
-            )
-          })}
-          <div className="designer-gear-spot" style={box(pixels(GEAR_SPOT))} title="The gear: always here" />
-        </>
-      ) : (
-        showGrid && view !== 'outline' && <div className="designer-grid-overlay" style={{ backgroundSize: `${width / cols}px ${height / rows}px` }} />
+      {showGrid && view !== 'outline' && (
+        <div className="designer-grid-overlay" aria-hidden="true">
+          {lines.cols.slice(1, -1).map((x) => (
+            <span key={`c${x}`} className="is-col" style={{ left: x }} />
+          ))}
+          {lines.rows.slice(1, -1).map((y) => (
+            <span key={`r${y}`} className="is-row" style={{ top: y }} />
+          ))}
+        </div>
       )}
+      {resizeTracks && layout.colSizes && layout.rowSizes && <GridGrips layout={drawn} width={width} height={height} drag={lineDrag} onDrag={setLineDrag} commit={commit} />}
       {swapTargets.map((item) => (
         <div key={item.id} className="designer-swap-target" style={box(pixels(item))} />
       ))}
@@ -366,9 +393,11 @@ export function DesignerCanvas({
           const layer = parentGroup(tree, node.id)?.group.mode === 'oneAtATime'
           const stack = layer || (node.kind === 'group' && node.group.mode === 'oneAtATime')
           const hidden = node.kind === 'group' ? node.group.hidden === true : node.widget.hidden === true
+          // A widget with a label gets the label bar above it, in place of its name.
+          const labelBar = single !== undefined && node.kind === 'widget' && hasLabel(node.widget.type)
           return (
             <div key={node.id} className={`designer-selection${stack ? ' is-stack' : ''}${hidden ? ' is-hidden' : ''}`} style={box(pixels(rect))}>
-              {single && !stack && <span className="designer-widget-tag">{nodeName(node)}</span>}
+              {single && !stack && !labelBar && <span className="designer-widget-tag">{nodeName(node)}</span>}
               {single &&
                 RESIZE_HANDLES.map((handle) => (
                   <span key={`${handle.hx}:${handle.hy}`} className="designer-resize-handle" style={handleStyle(handle)} onPointerDown={(event) => onHandleDown(node, rect, handle, event)} />
@@ -396,6 +425,16 @@ export function DesignerCanvas({
           )
         })}
 
+      {!dragging && single?.kind === 'widget' && hasLabel(single.widget.type) && (
+        <LabelBar
+          layout={layout}
+          widget={single.widget}
+          left={pixels(single.widget).left}
+          top={pixels(single.widget).top}
+          onPick={(label) => commit((current) => setWidgetLabel(current, page.id, single.widget.id, label), "The label couldn't be moved.")}
+        />
+      )}
+
       {!dragging && selectedNodes.length > 1 && selectionBounds && (
         <div className="designer-glass designer-selection-bar" style={{ left: pixels(selectionBounds).left, top: pixels(selectionBounds).top }}>
           <span className="muted">{selectedNodes.every((node) => node.kind === 'widget') ? `${selectedNodes.length} widgets` : `${selectedNodes.length} items`}</span>
@@ -407,9 +446,11 @@ export function DesignerCanvas({
         </div>
       )}
 
+      {ghost?.was && <div className="designer-resize-was" style={box(pixels(ghost.was))} aria-hidden="true" />}
       {ghost && (
         <div className={`designer-ghost${ghost.label === 'Stack here' ? ' is-stack' : ghost.label === 'Swap' && ghost.valid ? ' is-swap' : ''}${ghost.valid ? '' : ' is-invalid'}`} style={box(pixels(ghost.rect))}>
           {ghost.label && ghost.valid && <span className="designer-ghost-label">{ghost.label}</span>}
+          {ghost.tag && <span className="designer-form-tag">{ghost.tag}</span>}
         </div>
       )}
     </div>

@@ -21,48 +21,6 @@ public sealed class DashColorSystemJsonConverter : JsonConverter<DashColorSystem
         writer.WriteStringValue(value == DashColorSystem.Styled ? "styled" : "functional");
 }
 
-/// <summary>
-/// How every widget on a dash is framed and titled: separate rounded panels, one ruled
-/// grid, or panels with a title bar. Independent of layout: switching it never moves or
-/// resizes a widget. Drawn by <c>chrome.tsx</c> in <c>packages/dashboard</c>.
-/// </summary>
-[JsonConverter(typeof(DashStyleJsonConverter))]
-public enum DashStyle
-{
-    Panels,
-    Grid,
-    Bars,
-
-    /// <summary>
-    /// The flat look: corner radius, edge and label from the layout's <c>chrome</c> (and a
-    /// widget's own <c>style.border</c>/<c>style.label</c>), groups framed by their <c>style</c>.
-    /// The renderer reads those straight from the JSON; the host passes them through.
-    /// </summary>
-    Flat,
-}
-
-/// <summary>Reads leniently: a missing, unknown or future style name falls back to panels instead of rejecting the layout.</summary>
-public sealed class DashStyleJsonConverter : JsonConverter<DashStyle>
-{
-    public override DashStyle Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
-        reader.GetString()?.ToLowerInvariant() switch
-        {
-            "grid" => DashStyle.Grid,
-            "bars" => DashStyle.Bars,
-            "flat" => DashStyle.Flat,
-            _ => DashStyle.Panels,
-        };
-
-    public override void Write(Utf8JsonWriter writer, DashStyle value, JsonSerializerOptions options) =>
-        writer.WriteStringValue(value switch
-        {
-            DashStyle.Grid => "grid",
-            DashStyle.Bars => "bars",
-            DashStyle.Flat => "flat",
-            _ => "panels",
-        });
-}
-
 public sealed class DashLayout
 {
     [JsonPropertyName("id")]
@@ -85,9 +43,6 @@ public sealed class DashLayout
     [JsonPropertyName("colorSystem")]
     public DashColorSystem? ColorSystem { get; set; }
 
-    [JsonPropertyName("dashStyle")]
-    public DashStyle DashStyle { get; set; } = DashStyle.Panels;
-
     [JsonIgnore]
     public DashColorSystem EffectiveColorSystem => this.ColorSystem ??
         (this.Theme is { IsEmpty: false } ? DashColorSystem.Styled : DashColorSystem.Functional);
@@ -108,13 +63,29 @@ public sealed class DashLayout
     public int GridRows { get; set; } = 12;
 
     /// <summary>
-    /// The zones of <see cref="DashZones"/> (bar spots, side grids, the gear's centre) instead of an
-    /// even grid: the grid is then <see cref="DashZones.Cols"/> x <see cref="DashZones.Rows"/> at
-    /// any screen size, and a screen profile never refits it.
+    /// The column widths, as shares (<see cref="DashTracks"/>): one per <see cref="GridCols"/>,
+    /// with <see cref="RowSizes"/>. Null on older dashes, whose grid is even and refits to its screen.
+    /// </summary>
+    [JsonPropertyName("colSizes")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<double>? ColSizes { get; set; }
+
+    /// <summary>The row heights, as shares: one per <see cref="GridRows"/>, with <see cref="ColSizes"/>.</summary>
+    [JsonPropertyName("rowSizes")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<double>? RowSizes { get; set; }
+
+    /// <summary>Whether the dash has track sizes of its own: then it fits every screen and is never refitted.</summary>
+    [JsonIgnore]
+    public bool HasTracks => this.ColSizes is not null && this.RowSizes is not null;
+
+    /// <summary>
+    /// Whether the dash was saved on the zoned grid, before dashes had track sizes. Read only so
+    /// <see cref="DashTracks.MigrateZoned"/> can move it onto its own; never written.
     /// </summary>
     [JsonPropertyName("zoned")]
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
-    public bool Zoned { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public bool? LegacyZoned { get; set; }
 
     [JsonPropertyName("idlePage")]
     public DashPage? IdlePage { get; set; }
@@ -370,13 +341,12 @@ public sealed class DashPage
     public DashPageJump? Jump { get; set; }
 
     /// <summary>
-    /// The bar spots a zoned page keeps (<see cref="DashZones"/>); a dropped one folds away and the
-    /// grids grow into it. Written only when not <see cref="DashPageBars.Both"/>.
+    /// The bar spots a zoned page kept, before dashes had track sizes. Read only so
+    /// <see cref="DashTracks.MigrateZoned"/> can drop what the page did not draw; never written.
     /// </summary>
     [JsonPropertyName("bars")]
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
-    [JsonConverter(typeof(DashPageBarsJsonConverter))]
-    public DashPageBars Bars { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? LegacyBars { get; set; }
 
     [JsonExtensionData]
     public Dictionary<string, JsonElement>? ExtensionData { get; set; }
@@ -393,49 +363,6 @@ public enum DashPageJump
 
     /// <summary>The car crosses the line on track: the out lap (or the lap before) ends and a flying lap starts.</summary>
     FlyingLap,
-}
-
-/// <summary>
-/// Which bar spots a zoned page keeps (<see cref="DashPage.Bars"/>). A widget in a spot the page
-/// drops stays on the page and stays valid, but the wheel does not draw it.
-/// </summary>
-public enum DashPageBars
-{
-    /// <summary>The side bars and the top bar.</summary>
-    Both,
-
-    /// <summary>Only the top bar: the side grids grow to the edges.</summary>
-    Top,
-
-    /// <summary>Only the side bars: the rows and the gear move up to the top edge.</summary>
-    Sides,
-
-    /// <summary>No bars: the widgets use the whole screen.</summary>
-    None,
-}
-
-/// <summary>Writes "both"/"top"/"sides"/"none"; reads leniently, an unknown name meaning both.</summary>
-public sealed class DashPageBarsJsonConverter : JsonConverter<DashPageBars>
-{
-    public override DashPageBars Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
-        reader.TokenType == JsonTokenType.String
-            ? reader.GetString()?.ToLowerInvariant() switch
-            {
-                "top" => DashPageBars.Top,
-                "sides" => DashPageBars.Sides,
-                "none" => DashPageBars.None,
-                _ => DashPageBars.Both,
-            }
-            : DashPageBars.Both;
-
-    public override void Write(Utf8JsonWriter writer, DashPageBars value, JsonSerializerOptions options) =>
-        writer.WriteStringValue(value switch
-        {
-            DashPageBars.Top => "top",
-            DashPageBars.Sides => "sides",
-            DashPageBars.None => "none",
-            _ => "both",
-        });
 }
 
 /// <summary>Writes "outLap"/"flyingLap"; reads leniently, an unknown name meaning no jump.</summary>
@@ -603,25 +530,15 @@ public sealed class DashWidget
 }
 
 /// <summary>
-/// Per-widget appearance overrides applied on top of the layout theme by the
-/// painter (WS6 per-widget style inspector). Colours are dash style-color token
-/// names (see <c>resolveStyleColor</c> in <c>packages/dashboard/src/palette.ts</c>)
-/// rather than raw hex so widgets stay on-brand. A widget's frame is not a
-/// per-widget choice: the layout's <see cref="DashLayout.DashStyle"/> draws it.
+/// What one widget changes of its dash's look: only where its label sits
+/// (<see cref="DashLooks.WidgetLabels"/>). Colours follow meaning and frames are the dash's, so a
+/// saved colour or edge is not read (<see cref="DashLooks"/>).
 /// </summary>
 public sealed class DashWidgetStyle
 {
-    [JsonPropertyName("textColor")]
-    public string? TextColor { get; set; }
-
-    [JsonPropertyName("labelColor")]
-    public string? LabelColor { get; set; }
-
-    [JsonIgnore]
-    public bool IsEmpty => string.IsNullOrEmpty(this.TextColor) && string.IsNullOrEmpty(this.LabelColor);
-
-    [JsonExtensionData]
-    public Dictionary<string, JsonElement>? ExtensionData { get; set; }
+    [JsonPropertyName("label")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Label { get; set; }
 }
 
 public sealed class DashAlert

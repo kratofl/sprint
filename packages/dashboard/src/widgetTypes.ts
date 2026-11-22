@@ -7,6 +7,7 @@
 export const dashboardWidgetTypes = [
   'text',
   'rpm_bar',
+  'gear',
   'gear_speed',
   'input_trace',
   'current_lap',

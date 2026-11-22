@@ -298,24 +298,6 @@ pub fn resolve_dash_palette(theme: Option<&DashTheme>, color_system: ColorSystem
     }
 }
 
-/// The style-color token names offered by the widget style inspector, in swatch order.
-pub const STYLE_COLOR_TOKENS: [&str; 7] = ["ember", "blue", "green", "yellow", "red", "white", "muted"];
-
-/// Resolves a per-widget style color token to a palette color, or `None` when the token is
-/// empty/unrecognized (inherit).
-pub fn resolve_style_color(token: Option<&str>, palette: &DashPaletteColors) -> Option<Rgba> {
-    match token?.trim().to_ascii_lowercase().as_str() {
-        "ember" | "primary" => Some(palette.primary),
-        "blue" | "info" => Some(palette.accent),
-        "green" | "success" => Some(palette.success),
-        "yellow" | "warning" => Some(palette.warning),
-        "red" | "danger" => Some(palette.danger),
-        "white" | "text" => Some(palette.foreground),
-        "muted" | "label" => Some(palette.muted),
-        _ => None,
-    }
-}
-
 /// A tyre temperature's colour (°C), against the compound's ideal (`optimal`, 0 when unknown):
 /// blue more than 10° under it, green within 10°, amber up to 20° over, red beyond. Without an
 /// ideal, fixed marks: blue to 70°, green to 100°, amber to 110°, red above. Every tyre widget
@@ -516,17 +498,6 @@ mod tests {
         assert_eq!(parse_css_hex("#f008").map(|c| (c.r, c.a, c.form)), Some((0xFF, 0x88, CssForm::Hex4)));
         assert_eq!(parse_css_hex("#12345"), None);
         assert_eq!(parse_css_hex("red"), None);
-    }
-
-    #[test]
-    fn resolve_style_color_maps_known_tokens_and_treats_anything_else_as_inherit() {
-        let p = DEFAULT_DASH_PALETTE;
-        assert_eq!(resolve_style_color(Some("ember"), &p), Some(p.primary));
-        assert_eq!(resolve_style_color(Some("Info"), &p), Some(p.accent));
-        assert_eq!(resolve_style_color(Some("danger"), &p), Some(p.danger));
-        assert_eq!(resolve_style_color(Some(""), &p), None);
-        assert_eq!(resolve_style_color(None, &p), None);
-        assert_eq!(resolve_style_color(Some("not-a-token"), &p), None);
     }
 
     #[test]

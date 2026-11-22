@@ -319,6 +319,9 @@ ipcMain.handle('sprint:open-dash-designer', (_event: IpcMainInvokeEvent, dashId:
   designers.open(readDesignerDashId(dashId))
 })
 
+/** A designer's scope strip moves it on to another dash: 'switched' when it now edits that dash, 'focused' when that dash's own window came forward instead. */
+ipcMain.handle('sprint:switch-dash-designer', (event: IpcMainInvokeEvent, dashId: unknown) => designers.switchTo(event.sender, readDesignerDashId(dashId)))
+
 /** A designer's "Alerts and Ack": the main window comes forward (never in a hidden agent run) on Dashes > Settings. */
 ipcMain.handle('sprint:open-dash-settings', () => {
   if (!mainWindow || mainWindow.isDestroyed()) return

@@ -47,38 +47,44 @@ Conditions are modeled separately from the colors that render them:
 - Fuel and energy running low colour the value instead (fuel, fuel and VE laps, range): amber
   within twice the app-wide fuel warning's laps (the `fuel_low` alert's `lapsLeft`, which the
   host stamps on every dash it shows), red at or under them.
-- Bar widgets carry no label and no value (the driver's call, 2026-11): twenty segments, and
+- Bar widgets carry no label and no value (the driver's call, 2026-11), but wear the dash's
+  edge like any box (the dash's edge "None" drops it): twenty segments, and
   an energy bar's segments each wear their zone's color (red below a fifth, amber below half,
   green above), lit or as a dim tint, so the scale reads at a glance even when full. The fuel
   bar measures against the tank's size when the game reports it.
-- A flat frame's edge is the text color, white by default (the driver's call, 2026-11, after a
+- A frame's edge is the text color, white by default (the driver's call, 2026-11, after a
   works team's wheel): a white outline separates values on a washed-out panel where a grey one
-  disappears. A label on an edged box is cut into its top edge, so the value keeps the box's
-  height; only an edgeless box puts its label above the value. The corner radius is the dash's.
+  disappears. The label goes where the dash (or the widget) says: cut into the top edge at the
+  left (so the value keeps the box's height; an edgeless box puts it small above the value),
+  centred above the value inside the box, beside the value at the left or right (for short boxes,
+  such as one in a top strip, where a label above would shrink the value), in a band, or off. A
+  label cut into a lit box's edge sits on a round dark pill, never a square notch. The corner
+  radius is the dash's.
 
 ## Setting identity colors
 
 The one exception to "color means a condition". Each driver-adjustable setting has an identity
 color (`dashSettingColors` in `palette.ts`): TC, TC 2 and TC slip blue, ABS and brake bias yellow,
-engine map green, migration red, the anti-roll bars orange. A knob widget carries it in its chrome
-only (border, grid tab, title bar or flat label), never on its value at rest, and its change popup
-fills the screen with it, so the driver knows which knob moved before reading the number. The one
+engine map green, migration red, the anti-roll bars orange. A knob widget wears it on its label,
+its edge and its value alike (the driver's call, 2026-11: a colored label beside a white edge and
+value looked unfinished), and its change popup fills the screen with it, so the driver knows which
+knob moved before reading the number. The one
 lit state: while TC or ABS is working, its whole frame fills with the color and the value turns to
 ink. A theme may override each color (`settingTc`, `settingAbs`, `settingBrakeBias`,
 `settingEngineMap`, `settingMigration`, `settingArb`), the widget and its popup alike. They share
-hues with conditions (TC blue with AssistActive, ABS yellow with race-control yellow) but identity
-lives in a knob's chrome, conditions on values and fills.
+hues with conditions (TC blue with AssistActive, ABS yellow with race-control yellow), so a knob
+never also takes a condition color: its value only ever wears its identity, or ink on its fill.
 
-## Dash style
+## One look
 
-A layout's `dashStyle` decides how every widget is framed and titled: `panels` (separate
-rounded boxes, the default), `grid` (one ruled frame, cells share their lines) or `bars`
-(boxes with a title bar). It is chrome only. Positions, sizes, values and colors are the
-same in each, so switching it never breaks a layout. Frames are therefore not a per-widget
-choice: a widget's type says whether it is framed, bare (gear, text, RPM, flag) or
-split into several frames of its own (the four tyres), and `chrome.rs` draws the style.
-Widgets render only their values; the title belongs to the chrome so every style can place
-it (inside the frame, or in the bar).
+A dash has one look (the driver's call, 2026-11-22: four frame styles, six label spots, edges and
+free colours per widget made too many combinations that looked bad on the wheel). Its `chrome`
+sets the corner radius, the edge and where labels sit; a widget may move only its own label
+(never into the band, which is the dash's), and colours follow meaning, never the widget. Older
+dashes' `dashStyle` (panels, grid, label bars) and widget colours and edges are dropped on load
+(`DashLooks.Flatten`); the renderer has no other style to draw. A widget's type says whether it
+is framed, bare (gear, text, RPM) or split into several frames of its own (the four tyres), and
+`chrome.rs` draws the frame and the label, so widgets render only their values.
 
 ## Functional and Styled
 
@@ -177,9 +183,22 @@ are not.
 - **The pit limiter is an overlay, not an alert.** The `pit_limiter` alert type raises no popup;
   its setting only says whether the layout's `pitLimiter` overlay (`pit_limiter.rs`) draws while
   the limiter is on. It draws over the page's widgets and under the lap timer, alert popups and
-  flag bar, never on the idle page. The gear look follows the page's bars; the box look always
-  lays out on the full grid (both bars), so its yellow covers the screen edges even on a page that
-  dropped them. An even-grid dash has no gear or bar spots and always gets the full screen.
+  flag bar, never on the idle page. The gear look lights the page's `gear` widget (a page without
+  one gets the full screen); the box look frames the first and last columns and the top row. An
+  even-grid dash (no track sizes) always gets the full screen.
+- **A dash's grid is its own.** `colSizes`/`rowSizes` are its column widths and row heights as
+  shares, so one dash fits every screen and a screen profile never refits it; the chrome is
+  sized as at 800x480. The gear is an ordinary widget. Dashes saved on the old zoned grid move onto
+  the zones' own 11 x 9 tracks with the gear the renderer used to draw (`DashTracks.MigrateZoned`),
+  so nothing moves a pixel; new dashes start on 10 x 9. Older even-grid dashes keep `gridCols` x
+  `gridRows` and still refit to their screen.
+- **Widgets know their sizes.** `packages/dashboard/src/widgetForms.json` lists each widget's forms,
+  largest first, by the smallest box (at 800x480) each is drawn in. The renderer draws less in a
+  smaller form (`forms.rs`); the designer reads the same file to name the form while resizing and
+  to never size a widget below its smallest form. An older dash's box below it still draws the
+  smallest form. Its `unlabelled` list must match the widgets `widget_chrome` frames without a
+  title (a test checks). Titles shorten on a narrow box (`chrome.rs` `short_title`); they are
+  never typed by the driver.
 - **A panic is an error, not a crash.** Every C ABI entry point catches panics, which needs
   `panic = "unwind"` in the release profile; in WebAssembly a panic traps and
   `src/dashWasm.js` starts a fresh instance.
@@ -193,7 +212,7 @@ are not.
 ## Checking a change
 
 `cargo run --release --example render -- --dash <layout.json> <out.png>` in the crate draws one page
-of a layout at 800x480 against a fixed mid-race frame (`--page`, `--style panels|grid|bars` and
+of a layout at 800x480 against a fixed mid-race frame (`--page` and
 `--size` override; `--banner <banner.json>` draws an alert popup over it, `--alert penalty:full:invert`
 the app's preview of an alert type, `--level 35` puts fuel, virtual energy and charge at 35% for the
 bars' colors). Render the presets in

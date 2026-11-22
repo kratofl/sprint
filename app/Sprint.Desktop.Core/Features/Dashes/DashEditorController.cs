@@ -291,31 +291,6 @@ public sealed class DashEditorController
         return true;
     }
 
-    /// <summary>The selected widget's style (never null once accessed for display; empty = all defaults).</summary>
-    public DashWidgetStyle SelectedStyle => this.SelectedWidget?.Style ?? new DashWidgetStyle();
-
-    /// <summary>Override the selected widget's main value colour (style-color token, or null to inherit).</summary>
-    public bool SetSelectedTextColor(string? token) => this.PatchStyle(style => style.TextColor = Blank(token));
-
-    /// <summary>Override the selected widget's label/caption colour (style-color token, or null to inherit).</summary>
-    public bool SetSelectedLabelColor(string? token) => this.PatchStyle(style => style.LabelColor = Blank(token));
-
-    private bool PatchStyle(Action<DashWidgetStyle> patch)
-    {
-        if (this.SelectedWidget is not { } widget)
-        {
-            return false;
-        }
-
-        DashWidgetStyle style = widget.Style ?? new DashWidgetStyle();
-        patch(style);
-        widget.Style = style.IsEmpty ? null : style;
-        this.Persist();
-        return true;
-    }
-
-    private static string? Blank(string? token) => string.IsNullOrWhiteSpace(token) ? null : token;
-
     public bool DeleteSelected()
     {
         if (this.SelectedWidgetId is not { } id || !DashLayoutEditor.TryDeleteWidget(this.Layout, this.ActivePageId, id))
@@ -562,21 +537,6 @@ public sealed class DashEditorController
         this.Layout.Theme = preset.IsEmpty ? null : preset.Clone();
         this.Layout.ColorSystem = preset.IsEmpty ? DashColorSystem.Functional : DashColorSystem.Styled;
         this.Persist();
-    }
-
-    // ── Dash style (layout-level widget chrome) ───────────────────────────────
-
-    /// <summary>Sets how every widget is framed; the layout itself does not change. False when the style is already in effect.</summary>
-    public bool SetDashStyle(DashStyle style)
-    {
-        if (this.Layout.DashStyle == style)
-        {
-            return false;
-        }
-
-        this.Layout.DashStyle = style;
-        this.Persist();
-        return true;
     }
 
     public bool DeletePage(string pageId)

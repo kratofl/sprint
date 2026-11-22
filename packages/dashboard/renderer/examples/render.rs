@@ -1,6 +1,6 @@
 // Renders dashes and parity cases with the Rust renderer, to check a rendering change by eye.
 //
-//   cargo run --release --example render -- --dash <layout.json> <out.png> [--page <id>] [--style panels|grid|bars] [--size 800x480]
+//   cargo run --release --example render -- --dash <layout.json> <out.png> [--page <id>] [--size 800x480]
 //                                           [--banner <banner.json> | --alert <type>[:full|strip|center][:invert]]
 //                                           [--level <percent>] [--radius <px>] [--units metric|imperial]
 //                                           [--pit gear|box|full] [--flag <ms>[:ack]]
@@ -10,8 +10,7 @@
 //   cargo run --release --example render -- --ops <case.json>   (prints the display list)
 //
 // --dash draws one page of a dash layout (a preset such as app/Sprint.Desktop.Host/presets/dash/
-// default.json) against the fixed race frame below; --style overrides the layout's own style, so
-// one layout can be checked in every style; --banner draws an alert banner over it (the JSON
+// default.json) against the fixed race frame below; --banner draws an alert banner over it (the JSON
 // `render_still` takes, e.g. `{ "kind": "lapSummary", ... }`), so a popup can be checked too;
 // --level puts the fuel (of a 90 L tank), virtual energy and charge all at that percentage, for the
 // bars' level colours; --radius overrides the dash's corner radius; --units prints the values in
@@ -143,9 +142,6 @@ fn render_dash(layout_path: &Path, out: &Path, options: &[&str]) -> Result<(), S
     for pair in options.chunks(2) {
         match pair {
             ["--page", id] => page_id = Some(*id),
-            ["--style", style @ ("panels" | "grid" | "bars" | "flat")] => {
-                layout.as_object_mut().ok_or("the layout is not a JSON object")?.insert("dashStyle".to_owned(), json!(style));
-            }
             ["--size", size] => {
                 let parsed = size.split_once('x').and_then(|(w, h)| Some((w.parse().ok()?, h.parse().ok()?)));
                 (width, height) = parsed.ok_or_else(|| format!("not a size: {size} (expected e.g. 800x480)"))?;
@@ -316,7 +312,7 @@ fn main() {
         ["--bench", case] => bench(Path::new(case), 3000),
         ["--bench", case, n] => n.parse().map_err(|_| format!("not a count: {n}")).and_then(|n| bench(Path::new(case), n)),
         [case, out] if !case.starts_with("--") => render_one(Path::new(case), Path::new(out)),
-        _ => Err("usage: render --dash <layout.json> <out.png> [--page <id>] [--style panels|grid|bars] [--size WxH] \
+        _ => Err("usage: render --dash <layout.json> <out.png> [--page <id>] [--size WxH] \
                   [--banner <banner.json> | --alert <type>[:full|strip|center][:invert]] [--level <percent>] [--radius <px>] [--pit gear|box|full] [--flag <ms>[:ack]] \
                   | <case.json> <out.png> \
                   | --all <cases-dir> <out-dir> [filter] | --bench <case.json> [iterations] | --ops <case.json>"

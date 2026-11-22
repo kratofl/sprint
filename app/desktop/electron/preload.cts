@@ -46,6 +46,7 @@ contextBridge.exposeInMainWorld('sprint', {
   syncDown: (): Promise<unknown> => ipcRenderer.invoke('sprint:cloud-pull'),
   /** Opens a dash in its own designer window, or brings that window forward (electron/designerWindows.ts). */
   openDashDesigner: (dashId: string): Promise<unknown> => ipcRenderer.invoke('sprint:open-dash-designer', dashId),
+  switchDashDesigner: (dashId: string): Promise<unknown> => ipcRenderer.invoke('sprint:switch-dash-designer', dashId),
   /** A designer's "Alerts and Ack": brings the main window forward on Dashes > Settings. */
   openDashSettings: (): Promise<unknown> => ipcRenderer.invoke('sprint:open-dash-settings'),
   /** The main window hears that request here. */

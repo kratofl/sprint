@@ -1,7 +1,7 @@
 import { Eye, EyeOff, Group, Plus, Star, Trash2, Ungroup, X } from 'lucide-react'
 import { nodeWidgets, shownChild, type DashGroupNode, type DashNode } from '@sprint/dashboard'
 import type { DashGroupMode, DashGroupStyle } from '@sprint/dashboard'
-import { BORDER_OPTIONS, GeometryFields, LABEL_OPTIONS, Segmented, blurOnEnter } from './controls'
+import { BORDER_OPTIONS, GROUP_LABEL_OPTIONS, GeometryFields, Segmented, blurOnEnter } from './controls'
 import { addLayer, deleteNodes, nodeRect, renameGroup, setGroupMode, setGroupStyle, setHidden, setNodeRect, setShownFirst, takeOutOfGroup } from './groupOps'
 import { NodeIcon, nodeName } from './NodeLabel'
 import type { Mutate } from './useDesignerDoc'
@@ -26,14 +26,13 @@ const count = (n: number, one: string, many: string): string => `${n} ${n === 1 
 /**
  * The inspector for a selected group: its place and size (resizing scales its widgets), whether it
  * shows all its children or one at a time, and for one at a time (a widget stack) its layers with
- * the one the wheel shows first, else the widgets in it, each of which can be taken out. On a flat
- * dash, its own frame round its widgets: an edge and its name as a label. Below: its name, ungroup,
+ * the one the wheel shows first, else the widgets in it, each of which can be taken out. Its own
+ * frame round its widgets: an edge and its name as a label. Below: its name, ungroup,
  * hide and delete, all as one.
  */
 export function GroupInspector({
   pageId,
   node,
-  flat,
   apply,
   onSelect,
   onUngroup,
@@ -41,8 +40,6 @@ export function GroupInspector({
 }: {
   pageId: string
   node: DashGroupNode
-  /** The dash is in the flat style, where a group can wear its own frame. */
-  flat: boolean
   apply: Apply
   onSelect: (ids: string[]) => void
   onUngroup: () => void
@@ -104,25 +101,23 @@ export function GroupInspector({
         </div>
       </div>
 
-      {flat && (
-        <div className="designer-group">
-          <h3 className="designer-group-title">Frame</h3>
-          <div className="field">
-            <span>Edge</span>
-            <Segmented full label="Edge" value={frame.border} options={BORDER_OPTIONS} onChange={(border) => setFrame({ border })} />
-          </div>
-          <div className="field">
-            <span>Name</span>
-            <Segmented full label="Name" value={frame.label} options={LABEL_OPTIONS} onChange={(label) => setFrame({ label })} />
-          </div>
-          {frame.label !== 'off' && (
-            <div className="field">
-              <span>Name at</span>
-              <Segmented full label="Name at" value={frame.align ?? 'start'} options={ALIGN_OPTIONS} onChange={(align) => setFrame({ align })} />
-            </div>
-          )}
+      <div className="designer-group">
+        <h3 className="designer-group-title">Frame</h3>
+        <div className="field">
+          <span>Edge</span>
+          <Segmented full label="Edge" value={frame.border} options={BORDER_OPTIONS} onChange={(border) => setFrame({ border })} />
         </div>
-      )}
+        <div className="field">
+          <span>Name</span>
+          <Segmented full label="Name" value={frame.label} options={GROUP_LABEL_OPTIONS} onChange={(label) => setFrame({ label })} />
+        </div>
+        {frame.label !== 'off' && (
+          <div className="field">
+            <span>Name at</span>
+            <Segmented full label="Name at" value={frame.align ?? 'start'} options={ALIGN_OPTIONS} onChange={(align) => setFrame({ align })} />
+          </div>
+        )}
+      </div>
 
       {!stack && (
         <div className="designer-group">

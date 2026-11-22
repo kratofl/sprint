@@ -9,12 +9,12 @@ public static class DashLayoutValidator
             return false;
         }
 
-        if (layout.Zoned && (layout.GridCols != DashZones.Cols || layout.GridRows != DashZones.Rows))
+        if (!DashTracks.AreValid(layout))
         {
             return false;
         }
 
-        return Pages(layout).All(page => PageIsValid(page, layout.GridCols, layout.GridRows, layout.Zoned));
+        return Pages(layout).All(page => PageIsValid(page, layout.GridCols, layout.GridRows));
     }
 
     private static IEnumerable<DashPage> Pages(DashLayout layout)
@@ -31,11 +31,10 @@ public static class DashLayoutValidator
     }
 
     /// <summary>
-    /// Every widget is a known type inside the grid (on a zoned dash, in a zone that takes it:
-    /// <see cref="DashZones.Fits"/>), the groups form a tree, and no two widgets share a cell unless
-    /// they sit in different layers of one stack (<see cref="DashWidgetGroups"/>).
+    /// Every widget is a known type inside the grid, the groups form a tree, and no two widgets
+    /// share a cell unless they sit in different layers of one stack (<see cref="DashWidgetGroups"/>).
     /// </summary>
-    private static bool PageIsValid(DashPage page, int cols, int rows, bool zoned)
+    private static bool PageIsValid(DashPage page, int cols, int rows)
     {
         foreach (DashWidget widget in page.Widgets)
         {
@@ -47,8 +46,7 @@ public static class DashLayoutValidator
                 widget.ColSpan <= 0 ||
                 widget.RowSpan <= 0 ||
                 widget.Col + widget.ColSpan > cols ||
-                widget.Row + widget.RowSpan > rows ||
-                (zoned && !DashZones.Fits(widget.Type, widget.Col, widget.Row, widget.ColSpan, widget.RowSpan)))
+                widget.Row + widget.RowSpan > rows)
             {
                 return false;
             }

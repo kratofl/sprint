@@ -1,7 +1,7 @@
 import type { DashCategoryLists, DashRefitLosses, SprintCommand } from '../bridge'
-import { dashboardWidgetTypes, groupParents, isDashStyle, isDashPitLimiterStyle, parseDashChrome, fitsZone, dropRect, inFoldedSpot, isDashWidgetGroup, isDashWidgetType, mayOverlap, stackLayers, styleColorTokens } from '@sprint/dashboard'
-import { DEFAULT_DASH_CHROME, DEFAULT_PIT_LIMITER_STYLE, ZONED_COLS, ZONED_ROWS } from '@sprint/dashboard'
-import type { DashAlert, DashChrome, DashColorSystem, DashLayout, DashPitLimiter, DashStyle, DashPage, DashPageBars, DashTheme, DashWidget, DashWidgetStyle, DashWidgetType, LayoutGrid } from '@sprint/dashboard'
+import { dashboardWidgetTypes, groupParents, isDashPitLimiterStyle, parseDashChrome, isDashWidgetGroup, isDashWidgetType, mayOverlap, stackLayers } from '@sprint/dashboard'
+import { DEFAULT_DASH_CHROME, DEFAULT_PIT_LIMITER_STYLE, formIndex, holdsSmallest, layoutRect, referenceSize, widgetForms, type WidgetForm } from '@sprint/dashboard'
+import type { DashAlert, DashChrome, DashColorSystem, DashLayout, DashPitLimiter, DashPage, DashTheme, DashWidget, DashWidgetLabel, DashWidgetType, LayoutGrid } from '@sprint/dashboard'
 import type { TelemetryFrame } from '@sprint/types'
 
 /**
@@ -77,6 +77,10 @@ function parseDashAlert(value: unknown): DashAlert | null {
   return alert
 }
 
+/** A host row's track sizes (`colSizes`/`rowSizes`): one positive number per track, else undefined. */
+const trackSizes = (value: unknown, count: number): number[] | undefined =>
+  Array.isArray(value) && value.length === count && value.every((size) => typeof size === 'number' && Number.isFinite(size) && size > 0) ? value : undefined
+
 /** Parses one raw `dashLayouts[]` row. Returns `null` for a row with no id — never a fabricated dash. */
 export function parseDashLayout(row: Record<string, unknown>): DashLayout | null {
   if (typeof row.id !== 'string' || row.id.length === 0) {
@@ -97,8 +101,12 @@ export function parseDashLayout(row: Record<string, unknown>): DashLayout | null
   if (typeof row.screenProfile === 'string') layout.screenProfile = row.screenProfile
   if (typeof row.category === 'string' && row.category.length > 0) layout.category = row.category
   if (row.colorSystem === 'functional' || row.colorSystem === 'styled') layout.colorSystem = row.colorSystem
-  if (isDashStyle(row.dashStyle)) layout.dashStyle = row.dashStyle
-  if (row.zoned === true) layout.zoned = true
+  const colSizes = trackSizes(row.colSizes, layout.gridCols)
+  const rowSizes = trackSizes(row.rowSizes, layout.gridRows)
+  if (colSizes && rowSizes) {
+    layout.colSizes = colSizes
+    layout.rowSizes = rowSizes
+  }
   const chrome = parseDashChrome(row.chrome)
   if (chrome) layout.chrome = chrome
   if (isRecord(row.theme)) {
@@ -153,9 +161,9 @@ const matchScreenProfileToGrid = (gridCols: number, gridRows: number): ScreenPro
   return [...SCREEN_PROFILES].sort((a, b) => Math.abs(a.width / a.height - aspect) - Math.abs(b.width / b.height - aspect))[0]
 }
 
-// A zoned dash's grid says nothing about its screen: without a profile it is the default one.
+// A dash with its own track sizes says nothing about its screen: without a profile it is the default one.
 export const layoutScreenProfile = (layout: DashLayout): ScreenProfile =>
-  layout.screenProfile ? resolveScreenProfile(layout.screenProfile) : layout.zoned ? SCREEN_PROFILES[0] : matchScreenProfileToGrid(layout.gridCols, layout.gridRows)
+  layout.screenProfile ? resolveScreenProfile(layout.screenProfile) : layout.colSizes ? SCREEN_PROFILES[0] : matchScreenProfileToGrid(layout.gridCols, layout.gridRows)
 
 /**
  * Scales a screen size down (or up) to fit inside a box, keeping its aspect ratio. Every dash
@@ -270,6 +278,7 @@ const TYRE_CONFIG: readonly DashConfigField[] = [
 const WIDGET_CATALOG: Readonly<Record<DashWidgetType, DashWidgetDefinition>> = {
   text: { type: 'text', name: 'Text', idleCapable: true, config: TEXT_CONFIG },
   rpm_bar: { type: 'rpm_bar', name: 'RPM Bar', idleCapable: false, config: NO_CONFIG },
+  gear: { type: 'gear', name: 'Gear', idleCapable: true, config: NO_CONFIG },
   gear_speed: { type: 'gear_speed', name: 'Gear + Speed', idleCapable: true, config: ALIGN_CONFIG },
   input_trace: { type: 'input_trace', name: 'Input Trace', idleCapable: false, config: NO_CONFIG },
   current_lap: { type: 'current_lap', name: 'Current Lap', idleCapable: false, config: NO_CONFIG },
@@ -402,14 +411,6 @@ export function widgetName(widget: DashWidget): string {
   }
 }
 
-/**
- * Selectable widget colour tokens. `styleColorTokens` is the authoritative list,
- * exported by `@sprint/dashboard` (ported from the retired DashPalette); only the
- * human labels are this app's concern, so the values can never drift out of step.
- */
-export const WIDGET_STYLE_COLOR_TOKENS: readonly { value: string; label: string }[] =
-  styleColorTokens.map((value) => ({ value, label: value.charAt(0).toUpperCase() + value.slice(1) }))
-
 // ── Geometry helpers (DashLayoutEditor.cs Intersects/WouldOverlap) ──────────
 
 export type GridRect = { col: number; row: number; colSpan: number; rowSpan: number }
@@ -432,30 +433,12 @@ export function pageOverlaps(page: DashPage, candidate: GridRect, id: string, gr
   )
 }
 
-/** Whether a widget of `type` may sit at `rect`: inside the grid, and on a zoned dash in a zone that takes it (`fitsZone`). */
-export const fitsLayout = (layout: LayoutGrid, type: string, rect: GridRect): boolean =>
-  isValidRect(rect, layout.gridCols, layout.gridRows) && (!layout.zoned || fitsZone(type, rect))
-
-/**
- * Whether `rect` is out of sight on `page`: in a bar spot a zoned page drops (`inFoldedSpot`). A
- * widget there stays on the page, but the wheel does not draw it and the designer neither shows
- * nor hit-tests it.
- */
-export const outOfSight = (layout: LayoutGrid, page: DashPage, rect: GridRect): boolean => layout.zoned === true && inFoldedSpot(rect, page.bars)
-
-/** Whether an edit from `before` to `next` leaves every widget it moved or added in sight; one already out of sight may stay there. */
-export function keepsMovedInSight(layout: LayoutGrid, before: DashPage, next: DashPage): boolean {
-  const was = new Map(before.widgets.map((widget) => [widget.id, widget]))
-  return next.widgets.every((widget) => {
-    const old = was.get(widget.id)
-    const unmoved = old !== undefined && old.col === widget.col && old.row === widget.row && old.colSpan === widget.colSpan && old.rowSpan === widget.rowSpan
-    return unmoved || !outOfSight(layout, next, widget)
-  })
-}
+/** Whether a widget may sit at `rect`: inside the grid. */
+export const fitsLayout = (layout: LayoutGrid, rect: GridRect): boolean => isValidRect(rect, layout.gridCols, layout.gridRows)
 
 /** Whether every widget on the page sits where `fitsLayout` allows and shares cells only as `pageOverlaps` allows. */
 export function pageFits(page: DashPage, layout: LayoutGrid): boolean {
-  return page.widgets.every((widget) => fitsLayout(layout, widget.type, widget) && !pageOverlaps(page, widget, widget.id, widget.group ?? null))
+  return page.widgets.every((widget) => fitsLayout(layout, widget) && !pageOverlaps(page, widget, widget.id, widget.group ?? null))
 }
 
 function firstFit(cols: number, rows: number, colSpan: number, rowSpan: number, occupied: (rect: GridRect) => boolean, within?: GridRect): GridRect | null {
@@ -477,6 +460,12 @@ function firstFit(cols: number, rows: number, colSpan: number, rowSpan: number, 
 
 export const DEFAULT_WIDGET_COL_SPAN = 4
 export const DEFAULT_WIDGET_ROW_SPAN = 2
+
+/** A new widget's size: two cells by one on a dash with its own tracks (its cells are big), else the even grid's default. */
+const newWidgetSpan = (layout: LayoutGrid): { colSpan: number; rowSpan: number } =>
+  layout.colSizes
+    ? { colSpan: Math.min(2, layout.gridCols), rowSpan: 1 }
+    : { colSpan: Math.min(DEFAULT_WIDGET_COL_SPAN, layout.gridCols), rowSpan: Math.min(DEFAULT_WIDGET_ROW_SPAN, layout.gridRows) }
 
 function slugify(value: string): string {
   const slug = value
@@ -581,20 +570,12 @@ export function applyThemePreset(layout: DashLayout, theme: DashTheme, colorSyst
   return next
 }
 
-/** Sets how every widget is framed — mirrors `DashEditorController.SetDashStyle`. The layout itself does not change. */
-/** Changes the flat style's dash-wide look (corners, edge, label); null when nothing changes. */
+/** Changes the dash's look (corners, edge, label); null when nothing changes. */
 export function setDashChrome(layout: DashLayout, patch: Partial<DashChrome>): DashLayout | null {
   const current = layout.chrome ?? DEFAULT_DASH_CHROME
   const chrome: DashChrome = { ...current, ...patch }
   if (chrome.radius === current.radius && chrome.border === current.border && chrome.label === current.label) return null
   return { ...cloneLayout(layout), chrome }
-}
-
-export function setDashStyle(layout: DashLayout, dashStyle: DashStyle): DashLayout | null {
-  if ((layout.dashStyle ?? 'panels') === dashStyle) return null
-  const next = cloneLayout(layout)
-  next.dashStyle = dashStyle
-  return next
 }
 
 // ── Page widgets ─────────────────────────────────────────────────────────
@@ -614,17 +595,18 @@ function newWidget(page: DashPage, type: DashWidgetType, rect: GridRect, group: 
   return widget
 }
 
-/** Adds a widget at the first free grid cell — mirrors `DashLayoutEditor.TryAddWidget`. On a zoned dash, the first free place its zones take it (`dropRect`). */
+/** Adds a widget at the first free grid cell — mirrors `DashLayoutEditor.TryAddWidget`. */
 export function addWidget(layout: DashLayout, pageId: string, type: DashWidgetType, target: WidgetTarget = ON_PAGE): { layout: DashLayout; widget: DashWidget } | null {
   const next = cloneLayout(layout)
   const page = findPage(next, pageId)
   if (!page) return null
 
-  const occupied = (candidate: GridRect): boolean => pageOverlaps(page, candidate, '', target.group)
-  const rect = next.zoned
-    ? firstZonedFit(type, page.bars, occupied, target.within)
-    : (target.within && firstFit(next.gridCols, next.gridRows, DEFAULT_WIDGET_COL_SPAN, DEFAULT_WIDGET_ROW_SPAN, occupied, target.within)) ||
-      firstFit(next.gridCols, next.gridRows, DEFAULT_WIDGET_COL_SPAN, DEFAULT_WIDGET_ROW_SPAN, occupied)
+  // The first free spot that holds the widget's smallest form, at the size it needs inside the dash.
+  const occupied = (candidate: GridRect): boolean => pageOverlaps(page, candidate, '', target.group) || !holdsSmallestAt(next, type, candidate)
+  const inside = { col: Math.min(1, next.gridCols - 1), row: Math.min(1, next.gridRows - 1), ...newWidgetSpan(next) }
+  const { colSpan, rowSpan } = growToSmallest(next, type, inside, { hx: 1, hy: 1 })
+  const rect =
+    (target.within && firstFit(next.gridCols, next.gridRows, colSpan, rowSpan, occupied, target.within)) || firstFit(next.gridCols, next.gridRows, colSpan, rowSpan, occupied)
   if (!rect) return null
 
   const widget = newWidget(page, type, rect, target.group)
@@ -632,37 +614,58 @@ export function addWidget(layout: DashLayout, pageId: string, type: DashWidgetTy
   return { layout: next, widget }
 }
 
-/** The first free place on a zoned page keeping `bars` a widget of `type` drops into, preferring `within` (a stack's region). */
-function firstZonedFit(type: string, bars: DashPageBars | undefined, occupied: (rect: GridRect) => boolean, within?: GridRect): GridRect | null {
-  const candidates: GridRect[] = []
-  for (let row = 0; row < ZONED_ROWS; row++) {
-    for (let col = 0; col < ZONED_COLS; col++) {
-      const rect = dropRect(type, col, row, bars)
-      if (rect && !occupied(rect)) candidates.push(rect)
-    }
-  }
-  const inWithin = within ? candidates.find((rect) => rectsIntersect(rect, within)) : undefined
-  return inWithin ?? candidates[0] ?? null
-}
-
 /** Non-mutating placement check for a not-yet-created widget of `type` (palette drag ghost) — mirrors `DashLayoutEditor.CanPlaceNewWidget`. */
 export function canPlaceNewWidget(layout: DashLayout, pageId: string, type: string, rect: GridRect, group: string | null = null): boolean {
   const page = findPage(layout, pageId)
-  if (!page || !fitsLayout(layout, type, rect)) return false
+  if (!page || !fitsLayout(layout, rect)) return false
   return !pageOverlaps(page, rect, '', group)
 }
 
-/**
- * Where a new widget of `type` dropped on cell (`col`, `row`) goes: the default size from that
- * cell, pulled back inside the grid; on a zoned dash, where its zone puts it (`dropRect`), or null
- * when that zone does not take it or the page (keeping `bars`) drops it.
- */
-export function newWidgetRect(layout: LayoutGrid, type: string, col: number, row: number, bars: DashPageBars | undefined): GridRect | null {
-  if (layout.zoned) return dropRect(type, col, row, bars)
-  const colSpan = Math.min(DEFAULT_WIDGET_COL_SPAN, layout.gridCols)
-  const rowSpan = Math.min(DEFAULT_WIDGET_ROW_SPAN, layout.gridRows)
-  return { col: Math.max(0, Math.min(col, layout.gridCols - colSpan)), row: Math.max(0, Math.min(row, layout.gridRows - rowSpan)), colSpan, rowSpan }
+/** Where a new widget of `type` dropped on cell (`col`, `row`) goes: the default size from that cell, pulled back inside the grid and grown to hold its smallest form. */
+export function newWidgetRect(layout: DashLayout, type: string, col: number, row: number): GridRect {
+  const { colSpan, rowSpan } = newWidgetSpan(layout)
+  const rect = { col: Math.max(0, Math.min(col, layout.gridCols - colSpan)), row: Math.max(0, Math.min(row, layout.gridRows - rowSpan)), colSpan, rowSpan }
+  return growToSmallest(layout, type, rect, { hx: 1, hy: 1 })
 }
+
+/** A rect's box at 800x480, measured on the dash's own screen the way the renderer picks a widget's form. */
+export function widgetBox(layout: DashLayout, rect: GridRect): { width: number; height: number } {
+  const screen = layoutScreenProfile(layout)
+  return referenceSize(screen.width, screen.height, layoutRect(layout, screen.width, screen.height, rect))
+}
+
+/** The form a widget of `type` draws at `rect`, and whether it is the smallest of several. */
+export function widgetFormAt(layout: DashLayout, type: string, rect: GridRect): { form: WidgetForm; smallest: boolean; several: boolean } {
+  const forms = widgetForms(type)
+  const box = widgetBox(layout, rect)
+  const index = formIndex(type, box.width, box.height)
+  return { form: forms[index] ?? { width: 0, height: 0 }, smallest: index === forms.length - 1, several: forms.length > 1 }
+}
+
+/**
+ * `rect` grown cell by cell until it holds the smallest form of a widget of `type`. Only the axes
+ * `toward` moves grow (`hx`/`hy` 0 leaves that axis as it is): toward its side, or the other way
+ * at the grid's edge. A rect the whole grid cannot make big enough ends at the grid's size.
+ */
+export function growToSmallest(layout: DashLayout, type: string, rect: GridRect, toward: ResizeHandle): GridRect {
+  const forms = widgetForms(type)
+  const smallest = forms[forms.length - 1]
+  if (!smallest) return rect
+  let next = rect
+  const box = (): { width: number; height: number } => widgetBox(layout, next)
+  while (toward.hx !== 0 && box().width < smallest.width - 0.5 && next.colSpan < layout.gridCols) {
+    const left = toward.hx < 0 ? next.col > 0 : next.col + next.colSpan >= layout.gridCols
+    next = left ? { ...next, col: next.col - 1, colSpan: next.colSpan + 1 } : { ...next, colSpan: next.colSpan + 1 }
+  }
+  while (toward.hy !== 0 && box().height < smallest.height - 0.5 && next.rowSpan < layout.gridRows) {
+    const up = toward.hy < 0 ? next.row > 0 : next.row + next.rowSpan >= layout.gridRows
+    next = up ? { ...next, row: next.row - 1, rowSpan: next.rowSpan + 1 } : { ...next, rowSpan: next.rowSpan + 1 }
+  }
+  return next
+}
+
+/** Whether `rect` holds the smallest form of a widget of `type`. */
+export const holdsSmallestAt = (layout: DashLayout, type: string, rect: GridRect): boolean => holdsSmallest(type, widgetBox(layout, rect))
 
 /** Adds a widget at an explicit grid cell (drag-drop placement) — mirrors `DashLayoutEditor.TryAddWidgetAt`. The requested cell is clamped in-bounds; placement is rejected (no fallback) if it would overlap, so a drop onto an occupied cell fails rather than silently jumping. */
 export function addWidgetAt(layout: DashLayout, pageId: string, type: DashWidgetType, col: number, row: number, group: string | null = null): { layout: DashLayout; widget: DashWidget } | null {
@@ -670,8 +673,8 @@ export function addWidgetAt(layout: DashLayout, pageId: string, type: DashWidget
   const page = findPage(next, pageId)
   if (!page) return null
 
-  const rect = newWidgetRect(next, type, col, row, page.bars)
-  if (!rect || pageOverlaps(page, rect, '', group)) return null
+  const rect = newWidgetRect(next, type, col, row)
+  if (pageOverlaps(page, rect, '', group)) return null
 
   const widget = newWidget(page, type, rect, group)
   page.widgets.push(widget)
@@ -710,7 +713,7 @@ export function setWidgetGeometry(layout: DashLayout, pageId: string, widgetId: 
   const next = cloneLayout(layout)
   const page = findPage(next, pageId)
   const widget = page?.widgets.find((item) => item.id === widgetId)
-  if (!page || !widget || !fitsLayout(next, widget.type, rect) || pageOverlaps(page, rect, widget.id, widget.group ?? null)) return null
+  if (!page || !widget || !fitsLayout(next, rect) || pageOverlaps(page, rect, widget.id, widget.group ?? null)) return null
   Object.assign(widget, rect)
   return next
 }
@@ -760,10 +763,10 @@ export function setWidgetConfig(layout: DashLayout, pageId: string, widgetId: st
   })
 }
 
-export function setWidgetStyle(layout: DashLayout, pageId: string, widgetId: string, patch: Partial<DashWidgetStyle>): DashLayout | null {
+/** Moves one widget's label to `label`, or back to the dash's spot (`undefined`). The only look a widget has of its own. */
+export function setWidgetLabel(layout: DashLayout, pageId: string, widgetId: string, label: DashWidgetLabel | undefined): DashLayout | null {
   return withWidget(layout, pageId, widgetId, (widget) => {
-    const style: DashWidgetStyle = Object.fromEntries(Object.entries({ ...(widget.style ?? {}), ...patch }).filter((entry) => entry[1] !== undefined && entry[1] !== ''))
-    widget.style = Object.keys(style).length > 0 ? style : undefined
+    widget.style = label ? { label } : undefined
   })
 }
 

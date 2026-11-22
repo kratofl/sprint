@@ -1,5 +1,5 @@
-import { DASH_ZONES, lapReviewCells, type DashLapReviewField, type DashLayout, type DashPage, type DashPageBars, type GridSpan } from '@sprint/dashboard'
-import { findPage, outOfSight } from '../views/DashesDomain'
+import { lapReviewCells, type DashLapReviewField, type DashLayout, type DashPage, type GridSpan } from '@sprint/dashboard'
+import { findPage } from '../views/DashesDomain'
 
 /**
  * Page edits the designer needs on top of the `DashesDomain` mutators (group edits are in
@@ -17,18 +17,40 @@ export function movePage(layout: DashLayout, pageId: string, offset: -1 | 1): Da
   return { ...layout, pages }
 }
 
+/** A dash's columns or its rows. */
+export type TrackAxis = 'cols' | 'rows'
+
+/** The smallest share of the screen a column or row may have. */
+export const MIN_TRACK_SHARE = 0.02
+
+const round = (size: number): number => Math.round(size * 100) / 100
+
 /**
- * Sets which bar spots a page keeps (the idle page too); `both` drops the field. Widgets in a spot
- * it drops stay on the page, out of sight, and come back when the spot does. Null when unchanged.
+ * Moves grid line `line` (1 to the track count - 1: between track `line - 1` and track `line`) to
+ * `at`, its place as a share of the side (0–1). Only the two tracks either side change, so every
+ * other line stays put, and neither gets below `MIN_TRACK_SHARE`. Null when the dash has no track
+ * sizes of its own, the line does not exist or nothing changes.
  */
-export function setPageBars(layout: DashLayout, pageId: string, bars: DashPageBars): DashLayout | null {
-  const page = findPage(layout, pageId)
-  if (!page || (page.bars ?? 'both') === bars) return null
-  const next: DashPage = { ...page }
-  if (bars === 'both') delete next.bars
-  else next.bars = bars
-  if (layout.idlePage?.id === pageId) return { ...layout, idlePage: next }
-  return { ...layout, pages: layout.pages.map((candidate) => (candidate.id === pageId ? next : candidate)) }
+export function moveGridLine(layout: DashLayout, axis: TrackAxis, line: number, at: number): DashLayout | null {
+  const sizes = axis === 'cols' ? layout.colSizes : layout.rowSizes
+  if (!sizes || !layout.colSizes || !layout.rowSizes || line < 1 || line >= sizes.length) return null
+  const total = sizes.reduce((sum, size) => sum + size, 0)
+  const start = sizes.slice(0, line - 1).reduce((sum, size) => sum + size, 0)
+  const pair = sizes[line - 1] + sizes[line]
+  const min = Math.min(MIN_TRACK_SHARE * total, pair / 2)
+  const before = round(Math.min(Math.max(at * total - start, min), pair - min))
+  if (before === sizes[line - 1]) return null
+  const next = sizes.map((size, index) => (index === line - 1 ? before : index === line ? round(pair - before) : size))
+  return axis === 'cols' ? { ...layout, colSizes: next } : { ...layout, rowSizes: next }
+}
+
+/** Gives every column (or row) the same share; null when the dash has no track sizes or they already are. */
+export function evenTracks(layout: DashLayout, axis: TrackAxis): DashLayout | null {
+  const sizes = axis === 'cols' ? layout.colSizes : layout.rowSizes
+  if (!sizes || !layout.colSizes || !layout.rowSizes || sizes.every((size) => size === sizes[0])) return null
+  const share = round(sizes.reduce((sum, size) => sum + size, 0) / sizes.length)
+  const next = sizes.map(() => share)
+  return axis === 'cols' ? { ...layout, colSizes: next } : { ...layout, rowSizes: next }
 }
 
 /** Puts `field` in the lap review's box `index` (0–5, rows 2 and 3 left to right); null when it is already there. */
@@ -56,14 +78,20 @@ const cellsOf = (span: GridSpan): GridSpan[] =>
 
 const overlaps = (a: GridSpan, b: GridSpan): boolean => a.col < b.col + b.colSpan && b.col < a.col + a.colSpan && a.row < b.row + b.rowSpan && b.row < a.row + a.rowSpan
 
-/**
- * The places on `page` no widget takes (a hidden one or a stack's other layer still does), for the
- * outline view: on a zoned dash each side bar spot whole and every other free cell alone, none in a
- * bar spot the page drops; on a free grid every free cell.
- */
+/** The cells on `page` no widget takes (a hidden one or a stack's other layer still does), for the outline view. */
 export function emptyCells(layout: DashLayout, page: DashPage): GridSpan[] {
-  const places = layout.zoned
-    ? [DASH_ZONES.barLeft, DASH_ZONES.barRight, ...cellsOf(DASH_ZONES.top), ...cellsOf(DASH_ZONES.left), ...cellsOf(DASH_ZONES.centre), ...cellsOf(DASH_ZONES.right)]
-    : cellsOf({ col: 0, row: 0, colSpan: layout.gridCols > 0 ? layout.gridCols : 20, rowSpan: layout.gridRows > 0 ? layout.gridRows : 12 })
-  return places.filter((place) => !outOfSight(layout, page, place) && !page.widgets.some((widget) => overlaps(place, widget)))
+  const places = cellsOf({ col: 0, row: 0, colSpan: layout.gridCols > 0 ? layout.gridCols : 20, rowSpan: layout.gridRows > 0 ? layout.gridRows : 12 })
+  return places.filter((place) => !page.widgets.some((widget) => overlaps(place, widget)))
+}
+
+/** Where grid line `line` sits, as a share of the side (0–1); 0 when the dash has no track sizes. */
+export function lineShare(layout: DashLayout, axis: TrackAxis, line: number): number {
+  const sizes = (axis === 'cols' ? layout.colSizes : layout.rowSizes) ?? []
+  const total = sizes.reduce((sum, size) => sum + size, 0)
+  return total > 0 ? sizes.slice(0, line).reduce((sum, size) => sum + size, 0) / total : 0
+}
+
+/** A track's share of the side, as the designer prints it ("11 %"). */
+export function trackPercent(layout: DashLayout, axis: TrackAxis, index: number): string {
+  return `${Math.round((lineShare(layout, axis, index + 1) - lineShare(layout, axis, index)) * 100)} %`
 }

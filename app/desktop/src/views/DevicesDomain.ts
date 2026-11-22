@@ -248,7 +248,7 @@ export const parseDevice = (row: Record<string, unknown>): Device | null => {
     offsetY: num(row, 'offsetY'),
     margin: num(row, 'margin'),
     dashId: str(row, 'dashId'),
-    dashRules: Array.isArray(rules) ? rules.flatMap(parseDashRule) : [],
+    dashRules: parseDashRules(rules),
     purpose: isDevicePurposeId(purposeId) ? purposeId : 'dash',
     refreshHz: num(row, 'refreshHz', 30),
     disabled: bool(row, 'disabled'),
@@ -268,6 +268,9 @@ const parseDashRule = (value: unknown): DeviceDashRule[] =>
   isRecord(value) && isDashRuleKind(value.kind) && typeof value.value === 'string' && typeof value.dashId === 'string'
     ? [{ kind: value.kind, value: value.value, dashId: value.dashId }]
     : []
+
+/** A rule list as the host writes it (a device's `dashRules`, or the settings' rules for every device); bad rows dropped. */
+export const parseDashRules = (value: unknown): DeviceDashRule[] => (Array.isArray(value) ? value.flatMap(parseDashRule) : [])
 
 export const parseDevices = (rows: ReadonlyArray<Record<string, unknown>>): Device[] =>
   rows.map(parseDevice).filter((device): device is Device => device !== null)

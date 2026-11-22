@@ -180,34 +180,6 @@ export function resolveDashPalette(
   }
 }
 
-/** The style-color token names offered by the widget style inspector, in swatch order. */
-export const styleColorTokens = ['ember', 'blue', 'green', 'yellow', 'red', 'white', 'muted'] as const
-
-/**
- * Resolves a per-widget style color token to a palette color, or `undefined` when the token
- * is empty/unrecognized (inherit). Tokens are on-brand names so widget styling can't invent
- * off-palette colors.
- */
-export function resolveStyleColor(token: string | undefined, palette: DashPaletteColors): string | undefined {
-  switch (token?.trim().toLowerCase()) {
-    case 'ember':
-    case 'primary': return palette.primary
-    case 'blue':
-    case 'info': return palette.accent
-    case 'green':
-    case 'success': return palette.success
-    case 'yellow':
-    case 'warning': return palette.warning
-    case 'red':
-    case 'danger': return palette.danger
-    case 'white':
-    case 'text': return palette.foreground
-    case 'muted':
-    case 'label': return palette.muted
-    default: return undefined
-  }
-}
-
 /**
  * Named layout themes offered by the editor's theme manager. Each preset is a set of hex
  * overrides drawn from the dash colors above. "Graphite" is the empty (default) theme;

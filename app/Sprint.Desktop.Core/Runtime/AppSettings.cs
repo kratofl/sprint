@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Sprint.Desktop.Features.Dashes;
+using Sprint.Desktop.Features.Devices;
 using Sprint.Desktop.Features.SessionPlanning;
 
 namespace Sprint.Desktop.Runtime;
@@ -95,6 +96,13 @@ public sealed class AppSettings
     /// </summary>
     [JsonPropertyName("dashModes")]
     public List<DashMode> DashModes { get; set; } = [];
+
+    /// <summary>
+    /// The dashes for a game, class or car on every device ("All devices" in the designer's scope
+    /// strip), beside each device's own <c>SavedDevice.DashRules</c>. Replaced, never changed in place.
+    /// </summary>
+    [JsonPropertyName("dashRules")]
+    public List<DeviceDashRule> DashRules { get; set; } = [];
 
     /// <summary>
     /// Which dash alerts show, how big, inverted or not and for how long: app-wide, the same on

@@ -125,6 +125,7 @@ public sealed class RuntimeCoordinator
             case "devices.addCustom": return this.AddCustomDevice(command, out error);
             case "devices.update": return this.UpdateDevice(command, out error);
             case "devices.dashRules": return this.UpdateDeviceDashRules(command, out error);
+            case "dash.allDevicesRules": return this.UpdateAllDevicesDashRules(command, out error);
             case "devices.purpose": return this.UpdateDevicePurpose(command, out error);
             case "devices.captureRegion": return this.UpdateDeviceCaptureRegion(command, out error);
             case "devices.refreshHz": return this.UpdateDeviceRefreshHz(command, out error);
@@ -777,7 +778,7 @@ public sealed class RuntimeCoordinator
     }
 
     /// <summary>The car the driver is in, or was last in: what device dash rules match.</summary>
-    private DriverCar CurrentCar => DriverCar.Of(this._runtime.Settings.LastSeenContext);
+    private DriverCar CurrentCar => DriverCar.Of(this._runtime.Settings);
 
     /// <summary>
     /// A device's dashes for a game, class or car: <c>{ deviceId, rules: [{ kind, value, dashId }] }</c>,
@@ -788,43 +789,23 @@ public sealed class RuntimeCoordinator
     {
         error = "";
         if (!this.FindDevice(command, out SavedDevice device, out error)) return false;
-        if (!command.TryGetProperty("rules", out JsonElement rulesElement) || rulesElement.ValueKind != JsonValueKind.Array)
-        {
-            error = "rules must be an array";
-            return false;
-        }
-
-        if (rulesElement.GetArrayLength() > DeviceDashRules.MaxRules)
-        {
-            error = $"a device keeps at most {DeviceDashRules.MaxRules} rules";
-            return false;
-        }
-
-        List<DeviceDashRule> rules = [];
-        HashSet<string> seen = new(StringComparer.OrdinalIgnoreCase);
-        foreach (JsonElement element in rulesElement.EnumerateArray())
-        {
-            if (element.ValueKind != JsonValueKind.Object ||
-                !TryString(element, "kind", out string kind) ||
-                !TryString(element, "value", out string value) ||
-                !TryString(element, "dashId", out string dashId))
-            {
-                error = "each rule needs a kind, a value and a dashId";
-                return false;
-            }
-
-            value = value.Trim();
-            if (!DeviceDashRules.IsKind(kind)) { error = $"unknown rule kind '{kind}'"; return false; }
-            if (value.Length == 0 || value.Length > DeviceDashRules.MaxValueLength) { error = $"a rule's value must be 1 to {DeviceDashRules.MaxValueLength} characters"; return false; }
-            if (!this._runtime.DashLayouts.Any(layout => string.Equals(layout.Id, dashId, StringComparison.OrdinalIgnoreCase))) { error = $"no dash '{dashId}'"; return false; }
-            if (!seen.Add($"{kind}:{value}")) { error = $"'{value}' has two rules"; return false; }
-
-            rules.Add(new DeviceDashRule { Kind = kind, Value = value, DashId = dashId });
-        }
-
+        if (!DeviceDashRules.TryParse(command, this.DashExists, out List<DeviceDashRule> rules, out error)) return false;
         this._runtime.UpdateDeviceDashRules(device, rules);
         return true;
     }
+
+    /// <summary>
+    /// The dashes for a game, class or car on every device ("All devices"): <c>{ rules: [{ kind, value, dashId }] }</c>,
+    /// replacing the list, checked like a device's. A device's own rule at the same level wins (<see cref="DeviceDashRules.Pick"/>).
+    /// </summary>
+    private bool UpdateAllDevicesDashRules(JsonElement command, out string error)
+    {
+        if (!DeviceDashRules.TryParse(command, this.DashExists, out List<DeviceDashRule> rules, out error)) return false;
+        this._runtime.UpdateAllDevicesDashRules(rules);
+        return true;
+    }
+
+    private bool DashExists(string dashId) => this._runtime.DashLayouts.Any(layout => string.Equals(layout.Id, dashId, StringComparison.OrdinalIgnoreCase));
 
     private bool UpdateDevicePurpose(JsonElement command, out string error)
     {

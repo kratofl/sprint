@@ -612,6 +612,34 @@ public sealed class RuntimeCoordinatorTests
     }
 
     [Fact]
+    public void DashAllDevicesRules_AreCheckedLikeADevicesKeptAndGoWithTheirDash()
+    {
+        RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
+        try
+        {
+            string dashId = runtime.DashLayouts.First().Id;
+
+            Assert.True(coordinator.Execute(
+                Command($$"""{"type":"dash.allDevicesRules","rules":[{"kind":"car","value":"Hypercar BMW","dashId":"{{dashId}}"}]}"""),
+                out string error), error);
+            Assert.False(coordinator.Execute(
+                Command("""{"type":"dash.allDevicesRules","rules":[{"kind":"class","value":"LMP2","dashId":"missing"}]}"""),
+                out string missing));
+            Assert.Equal("no dash 'missing'", missing);
+
+            DeviceDashRule rule = Assert.Single(new DesktopRuntime(dataRoot, PresetRoot).Settings.DashRules);
+            Assert.Equal(("car", "Hypercar BMW", dashId), (rule.Kind, rule.Value, rule.DashId));
+
+            runtime.DeleteDashLayout(runtime.DashLayouts.First(layout => layout.Id == dashId));
+            Assert.Empty(runtime.Settings.DashRules);
+        }
+        finally
+        {
+            Cleanup(dataRoot);
+        }
+    }
+
+    [Fact]
     public void DevicesMultiDial_RenamesAPositionAndPersists()
     {
         RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
@@ -987,12 +1015,12 @@ public sealed class RuntimeCoordinatorTests
 
             Assert.True(ok, error);
             DashLayout created = runtime.DashLayouts.Single(layout => layout.Name == "Quali");
-            // Zoned: the profile names the screen; the grid stays the zones' own.
+            // The profile names the screen; the grid keeps its own tracks.
             Assert.Equal("portrait-480x800", created.ScreenProfileId);
-            Assert.True(created.Zoned);
-            Assert.Equal((DashZones.Cols, DashZones.Rows), (created.GridCols, created.GridRows));
+            Assert.True(created.HasTracks);
+            Assert.Equal((DashTracks.Cols, DashTracks.Rows), (created.GridCols, created.GridRows));
             DashPage page = Assert.Single(created.Pages);
-            Assert.Empty(page.Widgets);
+            Assert.Equal("gear", Assert.Single(page.Widgets).Type);
             Assert.Equal("Qualifying", created.Category);
         }
         finally

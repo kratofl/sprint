@@ -177,7 +177,7 @@ short, current, and tool-agnostic. Deeper material lives in `docs/` (index:
 - The dash renderer crate, from `packages/dashboard/renderer`: `cargo test`,
   `cargo clippy --all-targets -- -D warnings`, `cargo fmt --check`; render a dash
   to a PNG with `cargo run --release --example render -- --dash <layout.json> <out.png>`
-  (`--page <id>`, `--style panels|grid|bars`, `--size 800x480`)
+  (`--page <id>`, `--size 800x480`)
 - Native host tests: `dotnet test app/Sprint.Desktop.Host/Tests/Sprint.Desktop.Host.Tests.csproj`
 - Lint everything (API, desktop, `pnpm lint`): `make lint`
 - Format: `make fmt`

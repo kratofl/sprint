@@ -9,7 +9,6 @@ import {
   matchThemeName,
   presetSwatchColor,
   resolveDashPalette,
-  resolveStyleColor,
 } from './palette'
 import type { DashTheme } from './index'
 
@@ -58,16 +57,6 @@ test('resolveDashPalette pins danger/critical/fault/rpmNearLimit regardless of t
 test('resolveDashPalette falls back neutral to foreground, then to the default', () => {
   assert.equal(resolveDashPalette({ foreground: '#AABBCC' }, 'styled').neutral, '#AABBCC')
   assert.equal(resolveDashPalette({ primary: '#112233' }, 'styled').neutral, defaultDashPalette.neutral)
-})
-
-test('resolveStyleColor maps known tokens and treats anything else as inherit', () => {
-  const palette = defaultDashPalette
-  assert.equal(resolveStyleColor('ember', palette), palette.primary)
-  assert.equal(resolveStyleColor('Info', palette), palette.accent)
-  assert.equal(resolveStyleColor('danger', palette), palette.danger)
-  assert.equal(resolveStyleColor('', palette), undefined)
-  assert.equal(resolveStyleColor(undefined, palette), undefined)
-  assert.equal(resolveStyleColor('not-a-token', palette), undefined)
 })
 
 test('canonicalAlertColorToken maps shorthand tokens to their preset name', () => {

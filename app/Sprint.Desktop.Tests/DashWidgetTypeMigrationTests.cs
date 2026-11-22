@@ -77,9 +77,9 @@ public class DashWidgetTypeMigrationTests
         DashLayout layout = new DashLayout
         {
             Id = "zoned",
-            Zoned = true,
-            GridCols = DashZones.Cols,
-            GridRows = DashZones.Rows,
+            LegacyZoned = true,
+            GridCols = 11,
+            GridRows = 9,
             Pages =
             [
                 new DashPage

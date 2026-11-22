@@ -120,7 +120,7 @@ export function WidgetLibrary({
           </section>
         ))}
       </div>
-      <p className="field-hint designer-sidebar-foot">{off ?? (isIdlePage ? 'The idle page takes widgets that work without a session.' : 'Drag onto a lit-up spot, or click to add.')}</p>
+      <p className="field-hint designer-sidebar-foot">{off ?? (isIdlePage ? 'The idle page takes widgets that work without a session.' : 'Drag onto free space, or click to add.')}</p>
     </aside>
   )
 }

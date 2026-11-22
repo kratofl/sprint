@@ -318,6 +318,18 @@ public sealed class DesktopRuntime : IDesktopRuntime
         }
     }
 
+    /// <summary>Replaces the dashes for a game, class or car on every device (<see cref="AppSettings.DashRules"/>).</summary>
+    public void UpdateAllDevicesDashRules(IReadOnlyList<DeviceDashRule> rules)
+    {
+        lock (this.SettingsGate)
+        {
+            this.Settings.DashRules = [.. rules];
+            SaveJson(this._settingsPath, this.Settings);
+        }
+
+        this._log.Info($"Dash rules for every device changed: rules={rules.Count}.");
+    }
+
     public void UpdateDeviceDashRules(SavedDevice device, IReadOnlyList<DeviceDashRule> rules)
     {
         lock (this.DevicesGate)
@@ -395,7 +407,7 @@ public sealed class DesktopRuntime : IDesktopRuntime
     }
 
     /// <summary>
-    /// Creates a blank dash for <paramref name="profile"/>: zoned and flat (<see cref="DashZones"/>),
+    /// Creates a blank dash for <paramref name="profile"/>: flat, on the default tracks (<see cref="DashTracks"/>),
     /// one page with nothing but the gear, the functional colour system, no idle page. The preset's alerts and alert settings come along so
     /// alerts work out of the box. A blank <paramref name="name"/> becomes "New dash".
     /// </summary>
@@ -410,11 +422,11 @@ public sealed class DesktopRuntime : IDesktopRuntime
             Category = category,
             Mode = NormalizeDashMode(this.Settings.NewDashDefaults.Mode),
             ColorSystem = DashColorSystem.Functional,
-            DashStyle = DashStyle.Flat,
-            Zoned = true,
-            GridCols = DashZones.Cols,
-            GridRows = DashZones.Rows,
-            Pages = [new DashPage { Id = "page-1", Name = "Page 1" }],
+            GridCols = DashTracks.Cols,
+            GridRows = DashTracks.Rows,
+            ColSizes = DashTracks.DefaultCols(),
+            RowSizes = DashTracks.DefaultRows(),
+            Pages = [new DashPage { Id = "page-1", Name = "Page 1", Widgets = [DashTracks.DefaultGear()] }],
             Alerts = Clone(preset.Alerts),
             AlertConfig = Clone(preset.AlertConfig),
         };
@@ -465,8 +477,8 @@ public sealed class DesktopRuntime : IDesktopRuntime
     /// <summary>
     /// Ensures a layout has a valid target screen profile. Legacy layouts without a
     /// stored profile keep their grid and are tagged with the best-fit catalog profile
-    /// (matched by grid, then aspect), so nothing about their placement changes. A zoned
-    /// layout's grid says nothing about its screen (the zones fit any), so it takes the default.
+    /// (matched by grid, then aspect), so nothing about their placement changes. A layout with
+    /// its own track sizes says nothing about its screen (it fits any), so it takes the default.
     /// </summary>
     private static void NormalizeLayoutProfile(DashLayout layout)
     {
@@ -475,7 +487,7 @@ public sealed class DesktopRuntime : IDesktopRuntime
             return;
         }
 
-        layout.ScreenProfileId = layout.Zoned
+        layout.ScreenProfileId = layout.HasTracks
             ? ScreenProfileCatalog.DefaultId
             : ScreenProfileCatalog.MatchGrid(layout.GridCols, layout.GridRows).Id;
     }
@@ -502,6 +514,15 @@ public sealed class DesktopRuntime : IDesktopRuntime
             if (changed)
             {
                 this.SaveDevices();
+            }
+        }
+
+        lock (this.SettingsGate)
+        {
+            if (this.Settings.DashRules.Any(rule => string.Equals(rule.DashId, layout.Id, StringComparison.OrdinalIgnoreCase)))
+            {
+                this.Settings.DashRules = this.Settings.DashRules.Where(rule => !string.Equals(rule.DashId, layout.Id, StringComparison.OrdinalIgnoreCase)).ToList();
+                SaveJson(this._settingsPath, this.Settings);
             }
         }
 
@@ -778,6 +799,7 @@ public sealed class DesktopRuntime : IDesktopRuntime
         // Fold legacy three-channel values (beta/alpha) into the two-channel model.
         settings.UpdateChannel = AppSettings.NormalizeChannel(settings.UpdateChannel);
         settings.CustomDashCategories = NormalizeCustomDashCategories(settings.CustomDashCategories);
+        settings.DashRules = DeviceDashRules.Clean(settings.DashRules);
         // A hand-edited reserve outside what planner.settings accepts would make every plan seeded
         // from it (Quick plan sends it as is) fail plan.create's check.
         settings.SessionPlanner.FuelReserveLaps = Math.Clamp(settings.SessionPlanner.FuelReserveLaps, 0, SessionPlannerSettings.MaxFuelReserveLaps);
@@ -845,9 +867,7 @@ public sealed class DesktopRuntime : IDesktopRuntime
             device.Purpose = DevicePurposes.Normalize(device.Purpose);
             device.RefreshHz = DeviceRefreshRates.Normalize(device.RefreshHz);
             // A hand-edited file may hold a null list or a rule missing a field; matching assumes neither.
-            device.DashRules = (device.DashRules ?? [])
-                .Where(rule => rule is not null && DeviceDashRules.IsKind(rule.Kind ?? "") && !string.IsNullOrWhiteSpace(rule.Value) && !string.IsNullOrWhiteSpace(rule.DashId))
-                .ToList();
+            device.DashRules = DeviceDashRules.Clean(device.DashRules);
         }
 
         return devices;
@@ -910,9 +930,10 @@ public sealed class DesktopRuntime : IDesktopRuntime
                     continue;
                 }
 
-                // Turn old widget stacks into groups and rewrite renamed widget types before
-                // validation, which would otherwise reject the whole layout.
-                bool contentMigrated = DashWidgetStackMigration.Apply(layout) | DashWidgetTypeMigration.Apply(layout);
+                // Turn old widget stacks into groups, rewrite renamed widget types and move zoned
+                // dashes onto track sizes before validation, which would otherwise reject the layout;
+                // every dash wears the one flat look.
+                bool contentMigrated = DashWidgetStackMigration.Apply(layout) | DashWidgetTypeMigration.Apply(layout) | DashTracks.MigrateZoned(layout) | DashLooks.Flatten(layout);
                 if (DashLayoutValidator.IsValid(layout))
                 {
                     bool migrated = contentMigrated;
@@ -1064,6 +1085,8 @@ public sealed class DesktopRuntime : IDesktopRuntime
 
             DashWidgetStackMigration.Apply(layout);
             DashWidgetTypeMigration.Apply(layout);
+            DashTracks.MigrateZoned(layout);
+            DashLooks.Flatten(layout);
             if (!DashLayoutValidator.IsValid(layout))
             {
                 continue;
@@ -1092,6 +1115,7 @@ public sealed class DesktopRuntime : IDesktopRuntime
 
         NormalizeLayoutColorSystem(layout);
         layout.Theme?.NormalizeProtectedColors();
+        DashLooks.Flatten(layout);
         SaveJson(Path.Combine(this._layoutsPath, $"{layout.Id}.json"), layout);
         this._log.Debug($"Dash saved: id={layout.Id} pages={layout.Pages.Count}.");
     }
@@ -1111,10 +1135,10 @@ public sealed class DesktopRuntime : IDesktopRuntime
 
         layout.GridCols = preset.GridCols;
         layout.GridRows = preset.GridRows;
-        layout.Zoned = preset.Zoned;
+        layout.ColSizes = preset.ColSizes is null ? null : [.. preset.ColSizes];
+        layout.RowSizes = preset.RowSizes is null ? null : [.. preset.RowSizes];
         layout.Mode = preset.Mode;
         layout.ColorSystem = preset.EffectiveColorSystem;
-        layout.DashStyle = preset.DashStyle;
         layout.IdlePage = Clone(preset.IdlePage);
         layout.Pages = Clone(preset.Pages);
         layout.Alerts = Clone(preset.Alerts);

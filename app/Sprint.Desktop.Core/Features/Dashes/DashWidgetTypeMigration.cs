@@ -18,12 +18,12 @@ public static class DashWidgetTypeMigration
         bool changed = false;
         if (layout.IdlePage is not null)
         {
-            changed |= ApplyToWidgets(layout.IdlePage.Widgets, layout.Zoned);
+            changed |= ApplyToWidgets(layout.IdlePage.Widgets, layout.LegacyZoned == true);
         }
 
         foreach (DashPage page in layout.Pages)
         {
-            changed |= ApplyToWidgets(page.Widgets, layout.Zoned);
+            changed |= ApplyToWidgets(page.Widgets, layout.LegacyZoned == true);
         }
 
         changed |= ApplyToPitLimiter(layout);
@@ -50,7 +50,7 @@ public static class DashWidgetTypeMigration
         string.Equals(widget.Type, "header", StringComparison.OrdinalIgnoreCase) ||
         (zoned &&
             string.Equals(widget.Type, "flag", StringComparison.OrdinalIgnoreCase) &&
-            !DashZones.Fits(widget.Type, widget.Col, widget.Row, widget.ColSpan, widget.RowSpan));
+            DashTracks.InZonedBarSpot(widget));
 
     private static bool ApplyToWidget(DashWidget widget)
     {
@@ -127,7 +127,7 @@ public static class DashWidgetTypeMigration
             return false;
         }
 
-        if (pitLimiter?.Widgets is not { } widgets || !ApplyToWidgets(widgets, layout.Zoned))
+        if (pitLimiter?.Widgets is not { } widgets || !ApplyToWidgets(widgets, layout.LegacyZoned == true))
         {
             return false;
         }

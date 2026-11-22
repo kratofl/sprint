@@ -90,16 +90,19 @@ pub fn format_lap(seconds: f64) -> String {
     format!("{}:{:02}.{:03}", js_number_string(minutes), secs as i64, millis as i64)
 }
 
-/// Signed lap delta in seconds -> `+0.000` / `-0.000` / `0.000` (3dp, dead-band rounded).
-pub fn format_delta(seconds: f64) -> String {
+/// Signed lap delta in seconds at `decimals` places -> `+0.00` / `-0.00` / `0.00`, rounded away
+/// from zero; anything that rounds to zero prints unsigned. The live Delta widget uses 2 places,
+/// a finished lap's review 3.
+pub fn format_delta(seconds: f64, decimals: usize) -> String {
+    let zero = to_fixed(0.0, decimals);
     if !seconds.is_finite() {
-        return "0.000".to_owned();
+        return zero;
     }
-    let rounded = round_away_from_zero(seconds, 3);
-    if rounded.abs() < 0.001 {
-        return "0.000".to_owned();
+    let rounded = round_away_from_zero(seconds, decimals as i32);
+    if rounded == 0.0 {
+        return zero;
     }
-    if rounded > 0.0 { format!("+{}", to_fixed(rounded, 3)) } else { to_fixed(rounded, 3) }
+    if rounded > 0.0 { format!("+{}", to_fixed(rounded, decimals)) } else { to_fixed(rounded, decimals) }
 }
 
 /// The driver's measurement system (`AppSettings.Units` on the host, sent by name in the scene's
@@ -337,17 +340,20 @@ mod tests {
 
     #[test]
     fn format_delta_is_zero_for_non_finite_input_and_applies_a_dead_band_around_zero() {
-        assert_eq!(format_delta(f64::NAN), "0.000");
-        assert_eq!(format_delta(0.0001), "0.000");
-        assert_eq!(format_delta(-0.0001), "0.000");
+        assert_eq!(format_delta(f64::NAN, 3), "0.000");
+        assert_eq!(format_delta(0.0001, 3), "0.000");
+        assert_eq!(format_delta(-0.0001, 3), "0.000");
+        assert_eq!(format_delta(-0.004, 2), "0.00");
     }
 
     #[test]
-    fn format_delta_signs_positive_deltas_and_rounds_away_from_zero_at_3dp() {
-        assert_eq!(format_delta(0.5), "+0.500");
-        assert_eq!(format_delta(-0.5), "-0.500");
-        assert_eq!(format_delta(1.2346), "+1.235");
-        assert_eq!(format_delta(-1.2346), "-1.235");
+    fn format_delta_signs_positive_deltas_and_rounds_away_from_zero() {
+        assert_eq!(format_delta(0.5, 3), "+0.500");
+        assert_eq!(format_delta(-0.5, 3), "-0.500");
+        assert_eq!(format_delta(1.2346, 3), "+1.235");
+        assert_eq!(format_delta(-1.2346, 3), "-1.235");
+        assert_eq!(format_delta(1.235, 2), "+1.24");
+        assert_eq!(format_delta(-0.184, 2), "-0.18");
     }
 
     #[test]

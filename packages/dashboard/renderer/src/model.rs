@@ -17,23 +17,6 @@ use crate::format::Units;
 use crate::lap_summary::{LapReview, LapReviewField};
 use crate::pit_limiter::{PitLimiter, PitLimiterStyle};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
-pub enum DashStyle {
-    #[default]
-    Panels,
-    Grid,
-    Bars,
-    /// The flat chrome (mockup v2): edge, radius and labels come from the layout's `DashChrome`
-    /// and each widget's style.
-    Flat,
-}
-
-impl DashStyle {
-    pub fn is_flat(self) -> bool {
-        self == DashStyle::Flat
-    }
-}
-
 /// A frame's edge weight (mockup v2), in pixels at 800x480.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum BorderWeight {
@@ -65,13 +48,18 @@ impl BorderWeight {
     }
 }
 
-/// How a frame shows its label (mockup v2): not at all, small above the value, or in a band
-/// across the frame's top.
+/// Where a widget's frame shows its label: not at all; `On`: top left, cut into the edge (small
+/// above the value when there is no edge); `Top`: centred above the value inside the box; `Left` /
+/// `Right`: beside the value, which then keeps the box's full height (a short box in a top strip);
+/// or in a band across the frame's top.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum LabelMode {
     Off,
     #[default]
     On,
+    Top,
+    Left,
+    Right,
     Capsule,
 }
 
@@ -80,7 +68,30 @@ impl LabelMode {
         match value?.as_str()? {
             "off" => Some(LabelMode::Off),
             "on" => Some(LabelMode::On),
+            "top" => Some(LabelMode::Top),
+            "left" => Some(LabelMode::Left),
+            "right" => Some(LabelMode::Right),
             "capsule" => Some(LabelMode::Capsule),
+            _ => None,
+        }
+    }
+}
+
+/// How a group's frame shows its name: not at all, set into the top edge, or in a pill.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum GroupLabel {
+    #[default]
+    Off,
+    On,
+    Capsule,
+}
+
+impl GroupLabel {
+    fn parse(value: Option<&Value>) -> Option<GroupLabel> {
+        match value?.as_str()? {
+            "off" => Some(GroupLabel::Off),
+            "on" => Some(GroupLabel::On),
+            "capsule" => Some(GroupLabel::Capsule),
             _ => None,
         }
     }
@@ -106,7 +117,7 @@ impl Default for DashChrome {
 #[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub struct GroupStyle {
     pub border: BorderWeight,
-    pub label: LabelMode,
+    pub label: GroupLabel,
     /// The name sits at the frame's centre instead of its left.
     pub centered: bool,
 }
@@ -126,16 +137,8 @@ pub enum GroupMode {
 /// A layout's theme overrides: theme key -> CSS color string (only string entries survive).
 pub type DashTheme = BTreeMap<String, String>;
 
-#[derive(Clone, Debug, Default, PartialEq)]
-pub struct DashWidgetStyle {
-    pub text_color: Option<String>,
-    pub label_color: Option<String>,
-    pub border: Option<BorderWeight>,
-    pub label: Option<LabelMode>,
-}
-
-/// One widget, in page grid coordinates. `group` is the group it sits in; `hidden` keeps it off
-/// the wheel (it still holds its cells).
+/// One widget, in page grid coordinates. `label` is where it moves its own label to (else the
+/// dash's); `group` is the group it sits in; `hidden` keeps it off the wheel (it still holds its cells).
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct DashWidget {
     pub id: String,
@@ -145,7 +148,7 @@ pub struct DashWidget {
     pub col_span: f64,
     pub row_span: f64,
     pub config: Map<String, Value>,
-    pub style: Option<DashWidgetStyle>,
+    pub label: Option<LabelMode>,
     pub group: Option<String>,
     pub hidden: bool,
 }
@@ -174,37 +177,14 @@ pub struct DashPage {
     pub name: String,
     pub widgets: Vec<DashWidget>,
     pub groups: Vec<DashWidgetGroup>,
-    pub bars: PageBars,
 }
 
-/// Which bar spots a zoned page keeps (the page's `bars`; absent or unknown: both). A spot it
-/// drops folds away, and the side grids and rows grow into the space (`grid::zoned_rect`).
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum PageBars {
-    #[default]
-    Both,
-    Top,
-    Sides,
-    None,
-}
-
-impl PageBars {
-    pub const fn keeps_top(self) -> bool {
-        matches!(self, PageBars::Both | PageBars::Top)
-    }
-
-    pub const fn keeps_sides(self) -> bool {
-        matches!(self, PageBars::Both | PageBars::Sides)
-    }
-
-    fn parse(value: Option<&Value>) -> PageBars {
-        match value.and_then(Value::as_str) {
-            Some("top") => PageBars::Top,
-            Some("sides") => PageBars::Sides,
-            Some("none") => PageBars::None,
-            _ => PageBars::Both,
-        }
-    }
+/// A dash's own column widths and row heights (its `colSizes`/`rowSizes`): shares in any unit,
+/// only their ratios count, so the dash fits every screen. `grid::track_rect` places widgets on them.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Tracks {
+    pub cols: Vec<f64>,
+    pub rows: Vec<f64>,
 }
 
 /// One alert as the layout carries it. Only `id`/`type` are validated (as in the TypeScript);
@@ -223,7 +203,6 @@ pub struct DashLayout {
     pub category: Option<String>,
     pub mode: String,
     pub color_system: Option<ColorSystem>,
-    pub dash_style: Option<DashStyle>,
     pub screen_profile: Option<String>,
     pub grid_cols: f64,
     pub grid_rows: f64,
@@ -237,8 +216,8 @@ pub struct DashLayout {
     /// What the dash shows over its page while the pit limiter is on (`pit_limiter.rs`).
     pub pit_limiter: PitLimiter,
     pub chrome: DashChrome,
-    /// The zones (bar spots, side grids, gear centre) instead of an even grid: see `grid::zoned_rect`.
-    pub zoned: bool,
+    /// The dash's own track sizes; `None` is an even `grid_cols` x `grid_rows` grid (older dashes).
+    pub tracks: Option<Tracks>,
 }
 
 /// The settings a dash reads (`narrowSettings` in the retired React renderer).
@@ -367,13 +346,6 @@ fn parse_layout(raw: &Map<String, Value>) -> Result<DashLayout, String> {
             Some("styled") => Some(ColorSystem::Styled),
             _ => None,
         },
-        dash_style: match raw.get("dashStyle").and_then(Value::as_str) {
-            Some("panels") => Some(DashStyle::Panels),
-            Some("grid") => Some(DashStyle::Grid),
-            Some("bars") => Some(DashStyle::Bars),
-            Some("flat") => Some(DashStyle::Flat),
-            _ => None,
-        },
         screen_profile: string_field(raw, "screenProfile"),
         grid_cols,
         grid_rows,
@@ -396,8 +368,17 @@ fn parse_layout(raw: &Map<String, Value>) -> Result<DashLayout, String> {
                 label: LabelMode::parse(chrome.get("label")).unwrap_or(DashChrome::default().label),
             })
             .unwrap_or_default(),
-        zoned: raw.get("zoned") == Some(&Value::Bool(true)),
+        tracks: parse_tracks(raw),
     })
+}
+
+/// A layout's `colSizes` and `rowSizes`, both present and every size a positive number; else `None`.
+fn parse_tracks(raw: &Map<String, Value>) -> Option<Tracks> {
+    let sizes = |key: &str| -> Option<Vec<f64>> {
+        let sizes = raw.get(key)?.as_array()?.iter().map(|size| size.as_f64().filter(|s| s.is_finite() && *s > 0.0)).collect::<Option<Vec<_>>>()?;
+        (!sizes.is_empty()).then_some(sizes)
+    };
+    Some(Tracks { cols: sizes("colSizes")?, rows: sizes("rowSizes")? })
 }
 
 fn parse_page(value: &Value) -> Option<DashPage> {
@@ -407,13 +388,7 @@ fn parse_page(value: &Value) -> Option<DashPage> {
         None => Vec::new(),
         Some(groups) => groups.as_array()?.iter().map(parse_group).collect::<Option<Vec<_>>>()?,
     };
-    Some(DashPage {
-        id: raw.get("id")?.as_str()?.to_owned(),
-        name: raw.get("name")?.as_str()?.to_owned(),
-        widgets,
-        groups,
-        bars: PageBars::parse(raw.get("bars")),
-    })
+    Some(DashPage { id: raw.get("id")?.as_str()?.to_owned(), name: raw.get("name")?.as_str()?.to_owned(), widgets, groups })
 }
 
 fn parse_widget(value: &Value) -> Option<DashWidget> {
@@ -430,14 +405,8 @@ fn parse_widget(value: &Value) -> Option<DashWidget> {
         col_span: number("colSpan")?,
         row_span: number("rowSpan")?,
         config: raw.get("config").and_then(Value::as_object).cloned().unwrap_or_default(),
-        // The TypeScript passes `style` through unchecked; a non-string token there would
-        // throw in `resolveStyleColor`. Here a non-string token is simply absent.
-        style: raw.get("style").and_then(Value::as_object).map(|style| DashWidgetStyle {
-            text_color: string_field(style, "textColor"),
-            label_color: string_field(style, "labelColor"),
-            border: BorderWeight::parse(style.get("border")),
-            label: LabelMode::parse(style.get("label")),
-        }),
+        // A widget moves its label to one of the spots beside its value; a band (`capsule`) is the dash's alone.
+        label: raw.get("style").and_then(Value::as_object).and_then(|style| LabelMode::parse(style.get("label"))).filter(|label| *label != LabelMode::Capsule),
         group: string_field(raw, "group"),
         hidden: raw.get("hidden") == Some(&Value::Bool(true)),
     })
@@ -462,7 +431,7 @@ fn parse_group(value: &Value) -> Option<DashWidgetGroup> {
         hidden: raw.get("hidden") == Some(&Value::Bool(true)),
         style: raw.get("style").and_then(Value::as_object).map(|style| GroupStyle {
             border: BorderWeight::parse(style.get("border")).unwrap_or(BorderWeight::None),
-            label: LabelMode::parse(style.get("label")).unwrap_or(LabelMode::Off),
+            label: GroupLabel::parse(style.get("label")).unwrap_or(GroupLabel::Off),
             centered: style.get("align").and_then(Value::as_str) == Some("center"),
         }),
     })
@@ -497,7 +466,6 @@ fn parse_pit_limiter(value: Option<&Value>) -> PitLimiter {
             name: "Pit limiter".to_owned(),
             widgets: list("widgets").iter().filter_map(parse_widget).collect(),
             groups: list("groups").iter().filter_map(parse_group).collect(),
-            bars: PageBars::Both,
         },
     }
 }
@@ -1355,15 +1323,14 @@ mod tests {
 
     #[test]
     fn a_scene_narrows_like_parse_dash_render_input() {
-        let s = scene(r#","dashStyle":"x","pageId":"p1","idle":true,"targets":{"fuelPerLapLiters":2.5,"lapTimeSeconds":"x"}"#).unwrap();
+        let s = scene(r#","pageId":"p1","idle":true,"targets":{"fuelPerLapLiters":2.5,"lapTimeSeconds":"x"}"#).unwrap();
         assert_eq!(s.layout.mode, "basic");
-        assert_eq!(s.layout.dash_style, None);
         assert_eq!(s.scale, 1.0);
         assert!(s.idle);
         assert_eq!(s.targets, Some(DashTargets { lap_time_seconds: None, fuel_per_lap_liters: Some(2.5) }));
         let widget = &s.layout.pages[0].widgets[0];
         assert_eq!(widget.config_string("align"), Some("left"));
-        assert_eq!(widget.style.as_ref().and_then(|st| st.text_color.clone()), None);
+        assert_eq!(widget.label, None);
     }
 
     #[test]
