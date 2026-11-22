@@ -17,7 +17,8 @@ namespace Sprint.Desktop.Host;
 /// comment called deliberate: the plan and the corpus must consume a lap's last frame before the
 /// target latch fires for the lap that is starting. Last, when given, the live uplink
 /// (<see cref="LiveUplink"/>) and the live link to an engineer (<see cref="PeerLink"/>) sample
-/// the frame for streaming.
+/// the frame for streaming, and the dash's all-time best is looked up in lap history
+/// (<see cref="StoredBestLapDelivery"/>) when the context changes.
 /// <para>
 /// <b>Exactly-once ingestion.</b> The host's publish loop polls <c>TelemetryEngine.Snapshot</c>
 /// on a fixed timer, independently of how often the engine's reader thread actually reads a new
@@ -53,6 +54,7 @@ public sealed class TelemetryIngestionPipeline
     private readonly LiveUplink? _liveUplink;
     private readonly PeerLink? _peerLink;
     private readonly DashPageAutomation? _dashPages;
+    private readonly StoredBestLapDelivery? _storedBests;
     private TelemetryFrame? _lastPolled;
 
     public TelemetryIngestionPipeline(
@@ -64,7 +66,8 @@ public sealed class TelemetryIngestionPipeline
         ILog? log = null,
         LiveUplink? liveUplink = null,
         PeerLink? peerLink = null,
-        DashPageAutomation? dashPages = null)
+        DashPageAutomation? dashPages = null,
+        StoredBestLapDelivery? storedBests = null)
     {
         this._runtime = runtime ?? throw new ArgumentNullException(nameof(runtime));
         this._planner = planner ?? throw new ArgumentNullException(nameof(planner));
@@ -75,6 +78,7 @@ public sealed class TelemetryIngestionPipeline
         this._liveUplink = liveUplink;
         this._peerLink = peerLink;
         this._dashPages = dashPages;
+        this._storedBests = storedBests;
     }
 
     /// <summary>How many times <see cref="Ingest"/> actually ran. A test seam for the
@@ -129,6 +133,11 @@ public sealed class TelemetryIngestionPipeline
         if (this._dashPages is { } pages)
         {
             this.SafeRun("dash pages", () => pages.Observe(frame));
+        }
+
+        if (this._storedBests is { } storedBests)
+        {
+            this.SafeRun("stored best lap", () => storedBests.Observe(frame));
         }
     }
 

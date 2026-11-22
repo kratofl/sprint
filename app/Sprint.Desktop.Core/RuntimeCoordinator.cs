@@ -125,6 +125,7 @@ public sealed class RuntimeCoordinator
             case "devices.addCustom": return this.AddCustomDevice(command, out error);
             case "devices.update": return this.UpdateDevice(command, out error);
             case "devices.dashRules": return this.UpdateDeviceDashRules(command, out error);
+            case "dash.allDevicesRules": return this.UpdateAllDevicesDashRules(command, out error);
             case "devices.purpose": return this.UpdateDevicePurpose(command, out error);
             case "devices.captureRegion": return this.UpdateDeviceCaptureRegion(command, out error);
             case "devices.refreshHz": return this.UpdateDeviceRefreshHz(command, out error);
@@ -481,6 +482,19 @@ public sealed class RuntimeCoordinator
                 applied = true;
             }
 
+            if (TryStringField(command, "units", out string unitsText))
+            {
+                // By name only: Enum.TryParse would also take "1".
+                if (!Enum.TryParse(unitsText, ignoreCase: false, out UnitSystem units) || Enum.GetName(units) != unitsText)
+                {
+                    error = $"unknown units: {unitsText} (Metric or Imperial)";
+                    return false;
+                }
+
+                this._runtime.Settings.Units = units;
+                applied = true;
+            }
+
             if (TryStringField(command, "devicesUiViewMode", out string devicesUiViewMode) && !string.IsNullOrWhiteSpace(devicesUiViewMode))
             {
                 if (!OverviewViewModes.Contains(devicesUiViewMode.Trim(), StringComparer.OrdinalIgnoreCase))
@@ -771,7 +785,7 @@ public sealed class RuntimeCoordinator
     }
 
     /// <summary>The car the driver is in, or was last in: what device dash rules match.</summary>
-    private DriverCar CurrentCar => DriverCar.Of(this._runtime.Settings.LastSeenContext);
+    private DriverCar CurrentCar => DriverCar.Of(this._runtime.Settings);
 
     /// <summary>
     /// A device's dashes for a game, class or car: <c>{ deviceId, rules: [{ kind, value, dashId }] }</c>,
@@ -782,43 +796,23 @@ public sealed class RuntimeCoordinator
     {
         error = "";
         if (!this.FindDevice(command, out SavedDevice device, out error)) return false;
-        if (!command.TryGetProperty("rules", out JsonElement rulesElement) || rulesElement.ValueKind != JsonValueKind.Array)
-        {
-            error = "rules must be an array";
-            return false;
-        }
-
-        if (rulesElement.GetArrayLength() > DeviceDashRules.MaxRules)
-        {
-            error = $"a device keeps at most {DeviceDashRules.MaxRules} rules";
-            return false;
-        }
-
-        List<DeviceDashRule> rules = [];
-        HashSet<string> seen = new(StringComparer.OrdinalIgnoreCase);
-        foreach (JsonElement element in rulesElement.EnumerateArray())
-        {
-            if (element.ValueKind != JsonValueKind.Object ||
-                !TryString(element, "kind", out string kind) ||
-                !TryString(element, "value", out string value) ||
-                !TryString(element, "dashId", out string dashId))
-            {
-                error = "each rule needs a kind, a value and a dashId";
-                return false;
-            }
-
-            value = value.Trim();
-            if (!DeviceDashRules.IsKind(kind)) { error = $"unknown rule kind '{kind}'"; return false; }
-            if (value.Length == 0 || value.Length > DeviceDashRules.MaxValueLength) { error = $"a rule's value must be 1 to {DeviceDashRules.MaxValueLength} characters"; return false; }
-            if (!this._runtime.DashLayouts.Any(layout => string.Equals(layout.Id, dashId, StringComparison.OrdinalIgnoreCase))) { error = $"no dash '{dashId}'"; return false; }
-            if (!seen.Add($"{kind}:{value}")) { error = $"'{value}' has two rules"; return false; }
-
-            rules.Add(new DeviceDashRule { Kind = kind, Value = value, DashId = dashId });
-        }
-
+        if (!DeviceDashRules.TryParse(command, this.DashExists, out List<DeviceDashRule> rules, out error)) return false;
         this._runtime.UpdateDeviceDashRules(device, rules);
         return true;
     }
+
+    /// <summary>
+    /// The dashes for a game, class or car on every device ("All devices"): <c>{ rules: [{ kind, value, dashId }] }</c>,
+    /// replacing the list, checked like a device's. A device's own rule at the same level wins (<see cref="DeviceDashRules.Pick"/>).
+    /// </summary>
+    private bool UpdateAllDevicesDashRules(JsonElement command, out string error)
+    {
+        if (!DeviceDashRules.TryParse(command, this.DashExists, out List<DeviceDashRule> rules, out error)) return false;
+        this._runtime.UpdateAllDevicesDashRules(rules);
+        return true;
+    }
+
+    private bool DashExists(string dashId) => this._runtime.DashLayouts.Any(layout => string.Equals(layout.Id, dashId, StringComparison.OrdinalIgnoreCase));
 
     private bool UpdateDevicePurpose(JsonElement command, out string error)
     {
@@ -963,9 +957,11 @@ public sealed class RuntimeCoordinator
     /// <summary>
     /// Patches one alert type's settings: <c>alertType</c> (not <c>type</c>, which names the command)
     /// and any of <c>enabled</c>, <c>size</c> ("strip" or "full"), <c>invertColors</c>,
-    /// <c>durationSeconds</c> (1 to 30, 15 for <c>lap_summary</c>), <c>untilAck</c> and, on
-    /// <c>fuel_low</c> only, <c>lapsLeft</c> (1 to 9). Everything is checked before anything is
-    /// written. The screens take the change on their next reconcile tick.
+    /// <c>durationSeconds</c> (1 to 30, 15 for <c>lap_summary</c>), <c>untilAck</c>, and the type's
+    /// own whole numbers (<see cref="DashAlertTypes.Numbers"/>: <c>fuel_low</c>'s laps-left levels,
+    /// <c>engine_warning</c>'s limits, <c>launch</c>'s window, <c>lift_now</c>'s point), each within
+    /// its range and an <see cref="DashAlertTypes.Ordered"/> pair never out of order. Everything is
+    /// checked before anything is written. The screens take the change on their next reconcile tick.
     /// </summary>
     private bool UpdateDashAlert(JsonElement command, out string error)
     {
@@ -1014,20 +1010,25 @@ public sealed class RuntimeCoordinator
             untilAck = value;
         }
 
-        int? lapsLeft = null;
-        if (command.TryGetProperty("lapsLeft", out _))
+        List<(DashAlertNumber Number, int Value)> numbers = [];
+        foreach (DashAlertNumber number in DashAlertTypes.Numbers)
         {
-            if (type != DashAlertTypes.FuelLow) { error = "lapsLeft is only for fuel_low"; return false; }
-            if (!TryInt(command, "lapsLeft", out int value) || value < DashAlertTypes.MinLapsLeft || value > DashAlertTypes.MaxLapsLeft)
+            if (!command.TryGetProperty(number.Name, out _))
             {
-                error = $"lapsLeft must be a whole number from {DashAlertTypes.MinLapsLeft} to {DashAlertTypes.MaxLapsLeft}";
+                continue;
+            }
+
+            if (number.Type != type) { error = $"{number.Name} is only for {number.Type}"; return false; }
+            if (!TryInt(command, number.Name, out int value) || value < number.Min || value > number.Max)
+            {
+                error = $"{number.Name} must be a whole number from {number.Min} to {number.Max}";
                 return false;
             }
 
-            lapsLeft = value;
+            numbers.Add((number, value));
         }
 
-        if (enabled is null && size is null && invert is null && duration is null && untilAck is null && lapsLeft is null)
+        if (enabled is null && size is null && invert is null && duration is null && untilAck is null && numbers.Count == 0)
         {
             error = "no alert settings were provided";
             return false;
@@ -1044,8 +1045,30 @@ public sealed class RuntimeCoordinator
                 InvertColors = invert ?? before.InvertColors,
                 DurationSeconds = duration ?? before.DurationSeconds,
                 UntilAck = untilAck ?? before.UntilAck,
-                LapsLeft = lapsLeft ?? before.LapsLeft,
             };
+            foreach ((DashAlertNumber number, int value) in numbers)
+            {
+                after = number.With(after, value);
+            }
+
+            // Like DashAlertSettings.Clamped, a pair's ends never cross: the end the command did not
+            // set moves along to the one it did. Both set the wrong way round is a contradiction.
+            foreach ((DashAlertNumber low, DashAlertNumber high) in DashAlertTypes.Ordered)
+            {
+                if (low.Get(after) is int lowValue && high.Get(after) is int highValue && highValue < lowValue)
+                {
+                    bool setLow = numbers.Any(entry => entry.Number.Name == low.Name);
+                    bool setHigh = numbers.Any(entry => entry.Number.Name == high.Name);
+                    if (setLow && setHigh)
+                    {
+                        error = $"{high.Name} must not be under {low.Name}";
+                        return false;
+                    }
+
+                    after = setHigh ? low.With(after, highValue) : high.With(after, lowValue);
+                }
+            }
+
             if (after == before)
             {
                 return true;

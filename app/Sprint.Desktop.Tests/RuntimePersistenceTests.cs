@@ -23,7 +23,7 @@ public sealed class RuntimePersistenceTests
         File.WriteAllText(Path.Combine(layoutsPath, "free.json"), """
             {"id":"free","name":"Free","gridCols":20,"gridRows":12,"pages":[{"id":"main","name":"Main","widgets":[
               {"id":"gear","type":"gear_speed","col":6,"row":3,"colSpan":8,"rowSpan":6},
-              {"id":"last","type":"lap_time","col":0,"row":0,"colSpan":6,"rowSpan":3},
+              {"id":"last","type":"last_lap","col":0,"row":0,"colSpan":6,"rowSpan":3},
               {"id":"tc","type":"tc","col":14,"row":3,"colSpan":3,"rowSpan":3}]}]}
             """);
         return "free";
@@ -99,22 +99,33 @@ public sealed class RuntimePersistenceTests
     }
 
     [Fact]
-    public void DashStyleSurvivesSaveAndReloadAsALowercaseName()
+    public void AnOldDashMovesToTheFlatLookAndEachWidgetKeepsOnlyItsLabelSpot()
     {
         string dataRoot = TestEnv.NewTempDataRoot();
 
         try
         {
+            string file = Path.Combine(dataRoot, "dash-layouts", "old.json");
+            Directory.CreateDirectory(Path.GetDirectoryName(file)!);
+            File.WriteAllText(file, """
+                {"id":"old","name":"Old","dashStyle":"bars","gridCols":20,"gridRows":12,"pages":[{"id":"main","name":"Main","widgets":[
+                  {"id":"tc","type":"tc","col":0,"row":0,"colSpan":4,"rowSpan":2,"style":{"textColor":"red","labelColor":"muted","border":"thick","label":"left"}},
+                  {"id":"abs","type":"abs","col":4,"row":0,"colSpan":4,"rowSpan":2,"style":{"label":"capsule"}},
+                  {"id":"map","type":"engine_map","col":8,"row":0,"colSpan":4,"rowSpan":2,"style":{"textColor":"ember"}}]}]}
+                """);
             DesktopRuntime runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
-            DashLayout layout = runtime.DashLayouts.Single(candidate => candidate.Id == "default");
-            Assert.Equal(DashStyle.Flat, layout.DashStyle);
 
-            layout.DashStyle = DashStyle.Bars;
-            runtime.SaveDashLayout(layout);
-            Assert.Contains("\"dashStyle\":\"bars\"", JsonSerializer.Serialize(layout));
+            DashLayout layout = runtime.DashLayouts.Single(item => item.Id == "old");
+            Assert.False(layout.ExtensionData?.ContainsKey("dashStyle") == true);
+            Assert.Equal("left", layout.Pages[0].Widgets[0].Style?.Label);
+            Assert.Null(layout.Pages[0].Widgets[1].Style);
+            Assert.Null(layout.Pages[0].Widgets[2].Style);
 
-            DesktopRuntime reloaded = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
-            Assert.Equal(DashStyle.Bars, reloaded.DashLayouts.Single(candidate => candidate.Id == "default").DashStyle);
+            // The file is rewritten without them, so the renderer never sees an old look again.
+            string saved = File.ReadAllText(file);
+            Assert.DoesNotContain("dashStyle", saved);
+            Assert.DoesNotContain("textColor", saved);
+            Assert.DoesNotContain("thick", saved);
         }
         finally
         {
@@ -135,11 +146,11 @@ public sealed class RuntimePersistenceTests
 
             runtime.ResetDashLayout(layout);
 
-            // The preset is zoned: its zones fit the portrait screen as they are.
+            // The preset has its own track sizes: they fit the portrait screen as they are.
             Assert.Equal(portrait.Id, layout.ScreenProfileId);
-            Assert.True(layout.Zoned);
-            Assert.Equal(DashZones.Cols, layout.GridCols);
-            Assert.Equal(DashZones.Rows, layout.GridRows);
+            Assert.True(layout.HasTracks);
+            Assert.Equal(11, layout.GridCols);
+            Assert.Equal(9, layout.GridRows);
             Assert.NotEmpty(layout.Pages[0].Widgets);
             Assert.True(DashLayoutValidator.IsValid(layout));
         }
@@ -164,7 +175,7 @@ public sealed class RuntimePersistenceTests
             Assert.Equal(5, layout.Alerts.Count);
 
             DashWidget idleName = layout.IdlePage.Widgets.Single(widget => widget.Id == "idle-name");
-            Assert.True(layout.Zoned);
+            Assert.True(layout.HasTracks);
             Assert.NotNull(idleName.Config);
             Assert.Equal("profile.driverName", idleName.Config["binding"].GetString());
 
@@ -803,10 +814,8 @@ public sealed class RuntimePersistenceTests
             Assert.Equal(2.5, layout.AlertConfig.DurationSeconds);
             Assert.True(layout.AlertConfig.InvertColors);
             Assert.Equal("blue", layout.AlertConfig.ColorToken);
-            // "style" is now a first-class property: it deserializes into Style (not ExtensionData).
-            // The retired per-widget "border" flag is ignored; the layout's dash style draws frames now.
-            Assert.Equal("red", layout.Pages[0].Widgets[0].Style!.TextColor);
-            Assert.Equal(DashStyle.Panels, layout.DashStyle);
+            // A widget's colours are gone: colour follows meaning, and the dash wears the flat look.
+            Assert.Null(layout.Pages[0].Widgets[0].Style);
             // Genuinely-unknown widget fields still round-trip through the extension-data catch-all.
             Assert.NotNull(layout.Pages[0].Widgets[0].ExtensionData);
             Assert.True(layout.Pages[0].Widgets[0].ExtensionData!.ContainsKey("legacyWidgetField"));
@@ -882,9 +891,7 @@ public sealed class RuntimePersistenceTests
                   "driverNumber": "77",
                   "newDashDefaults": {
                     "mode": "advanced",
-                    "display": "vocore",
-                    "speedUnit": "mph",
-                    "tempUnit": "f"
+                    "display": "vocore"
                   },
                   "dashEditorUI": {
                     "palette": { "open": false, "pinned": true },
@@ -902,8 +909,6 @@ public sealed class RuntimePersistenceTests
             Assert.Equal("77", runtime.Settings.DriverNumber);
             Assert.Equal("advanced", runtime.Settings.NewDashDefaults.Mode);
             Assert.Equal("vocore", runtime.Settings.NewDashDefaults.Display);
-            Assert.Equal("mph", runtime.Settings.NewDashDefaults.SpeedUnit);
-            Assert.Equal("f", runtime.Settings.NewDashDefaults.TempUnit);
             Assert.False(runtime.Settings.DashEditorUI.Palette.Open);
             Assert.False(runtime.Settings.DashEditorUI.Inspector.Pinned);
 
@@ -934,7 +939,7 @@ public sealed class RuntimePersistenceTests
         {
             string freeId = SeedFreeGridDash(dataRoot);
             File.WriteAllText(Path.Combine(dataRoot, "dash-layouts", "zoned.json"), """
-                {"id":"zoned","name":"Zoned","zoned":true,"dashStyle":"flat","gridCols":11,"gridRows":9,"pages":[{"id":"main","name":"Main","widgets":[]}]}
+                {"id":"zoned","name":"Zoned","zoned":true,"gridCols":11,"gridRows":9,"pages":[{"id":"main","name":"Main","widgets":[]}]}
                 """);
             DesktopRuntime runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
 
@@ -949,10 +954,11 @@ public sealed class RuntimePersistenceTests
             Assert.Equal(12, layout.GridRows);
             Assert.True(DashLayoutValidator.IsValid(layout));
 
-            // A zoned dash's grid says nothing about its screen: it takes the default.
+            // A zoned dash moves onto its own track sizes, which say nothing about its screen: it takes the default.
             DashLayout zoned = runtime.DashLayouts.Single(item => item.Id == "zoned");
             Assert.Equal(ScreenProfileCatalog.DefaultId, zoned.ScreenProfileId);
-            Assert.Equal(DashZones.Cols, zoned.GridCols);
+            Assert.True(zoned.HasTracks);
+            Assert.Equal(11, zoned.GridCols);
         }
         finally
         {
@@ -992,7 +998,7 @@ public sealed class RuntimePersistenceTests
     }
 
     [Fact]
-    public void AZonedDashKeepsItsZonesOnAnyScreen()
+    public void ADashWithItsOwnTracksKeepsThemOnAnyScreen()
     {
         string dataRoot = TestEnv.NewTempDataRoot();
 
@@ -1007,8 +1013,8 @@ public sealed class RuntimePersistenceTests
             runtime.SetDashScreenProfile(layout, portrait);
 
             Assert.Equal("portrait-480x854", layout.ScreenProfileId);
-            Assert.Equal(DashZones.Cols, layout.GridCols);
-            Assert.Equal(DashZones.Rows, layout.GridRows);
+            Assert.Equal(11, layout.GridCols);
+            Assert.Equal(9, layout.GridRows);
             Assert.Equal(widgets, layout.Pages.Sum(page => page.Widgets.Count));
             Assert.True(DashLayoutValidator.IsValid(layout));
         }
@@ -1071,12 +1077,11 @@ public sealed class RuntimePersistenceTests
 
             DashLayout created = runtime.CreateBlankDashLayout(wide, "Wide", "Race");
 
-            // A zoned dash keeps its zones at any size: the profile names the screen, never the grid.
+            // A new dash keeps its tracks at any size: the profile names the screen, never the grid.
             Assert.Equal("landscape-1024x600", created.ScreenProfileId);
-            Assert.True(created.Zoned);
-            Assert.Equal((DashZones.Cols, DashZones.Rows), (created.GridCols, created.GridRows));
-            Assert.Equal(DashStyle.Flat, created.DashStyle);
-            Assert.Empty(Assert.Single(created.Pages).Widgets);
+            Assert.Equal(DashTracks.DefaultCols(), created.ColSizes);
+            Assert.Equal((DashTracks.Cols, DashTracks.Rows), (created.GridCols, created.GridRows));
+            Assert.Equal("gear", Assert.Single(Assert.Single(created.Pages).Widgets).Type);
             Assert.Equal(("Wide", "Race"), (created.Name, created.Category));
             Assert.True(DashLayoutValidator.IsValid(created));
         }

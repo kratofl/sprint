@@ -1,20 +1,25 @@
-import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { Eye, EyeOff, Trash2, X } from 'lucide-react'
-import { resolveDashPalette, resolveStyleColor } from '@sprint/dashboard'
+import { widgetForms } from '@sprint/dashboard'
 import type { DashLayout, DashWidget } from '@sprint/dashboard'
-import { WIDGET_STYLE_COLOR_TOKENS, setWidgetConfig, setWidgetStyle, widgetDefinition, widgetName } from '../views/DashesDomain'
-import { BORDER_OPTIONS, GeometryFields, LABEL_OPTIONS, Segmented, TextConfigField } from './controls'
+import { holdsSmallestAt, setWidgetConfig, widgetDefinition, widgetFormAt, widgetName } from '../views/DashesDomain'
+import { GeometryFields, TextConfigField } from './controls'
 import { deleteNodes, setHidden, setNodeRect } from './groupOps'
 import type { Mutate } from './useDesignerDoc'
 
 type Apply = (mutate: Mutate, group?: string) => boolean
 
-/** The frame controls' first choice: what the dash sets (Theme > Frames). */
-const DASH_DEFAULT = { value: 'dash', label: 'Dash' } as const
+/** "Large, then Compact (no brake temperature), then Small (…)": a widget's forms, for its Size hint. */
+function formsHint(type: string): string | null {
+  const forms = widgetForms(type)
+  if (forms.length < 2) return null
+  const names = forms.map((form) => (form.hides ? `${form.name} (no ${form.hides})` : form.name))
+  return `Smaller boxes show less: ${names.join(', then ')}. It never gets smaller.`
+}
 
 /**
- * The floating inspector beside the dash for the selected widget: its position and size, its
- * properties, its value and label colours, Hide and Delete. Every field edits through the same
+ * The floating inspector beside the dash for the selected widget: its position and size (and the
+ * form that size draws), what it shows, Hide and Delete. Its label spot is on the canvas
+ * (`LabelBar`); its frame and colours are the dash's (Theme). Every field edits through the same
  * mutators the canvas uses.
  */
 export function WidgetInspector({
@@ -32,7 +37,11 @@ export function WidgetInspector({
 }) {
   const definition = widgetDefinition(widget.type)
   const config = widget.config ?? {}
-  const palette = resolveDashPalette(layout.theme, layout.colorSystem)
+  const { form, several } = widgetFormAt(layout, widget.type, widget)
+  const hint = formsHint(widget.type)
+  // A side shrinks only while the widget still holds its smallest form.
+  const minColSpan = widget.colSpan > 1 && holdsSmallestAt(layout, widget.type, { ...widget, colSpan: widget.colSpan - 1 }) ? 1 : widget.colSpan
+  const minRowSpan = widget.rowSpan > 1 && holdsSmallestAt(layout, widget.type, { ...widget, rowSpan: widget.rowSpan - 1 }) ? 1 : widget.rowSpan
 
   return (
     <aside className="designer-glass designer-inspector" aria-label={`${widgetName(widget)} properties`}>
@@ -45,7 +54,14 @@ export function WidgetInspector({
 
       <div className="designer-group">
         <h3 className="designer-group-title">Position &amp; size</h3>
-        <GeometryFields rect={widget} onChange={(rect, field) => apply((current) => setNodeRect(current, pageId, widget.id, rect), `geometry:${widget.id}:${field}`)} />
+        {several && form.name && <p className="designer-form-now">{form.name}</p>}
+        <GeometryFields
+          rect={widget}
+          minColSpan={minColSpan}
+          minRowSpan={minRowSpan}
+          onChange={(rect, field) => apply((current) => setNodeRect(current, pageId, widget.id, rect), `geometry:${widget.id}:${field}`)}
+        />
+        {hint && <p className="field-hint">{hint}</p>}
       </div>
 
       {definition && definition.config.length > 0 && (
@@ -73,26 +89,6 @@ export function WidgetInspector({
         </div>
       )}
 
-      {layout.dashStyle === 'flat' && (
-        <div className="designer-group">
-          <h3 className="designer-group-title">Frame</h3>
-          <div className="field">
-            <span>Edge</span>
-            <Segmented full label="Edge" value={widget.style?.border ?? 'dash'} options={[DASH_DEFAULT, ...BORDER_OPTIONS]} onChange={(border) => apply((current) => setWidgetStyle(current, pageId, widget.id, { border: border === 'dash' ? undefined : border }))} />
-          </div>
-          <div className="field">
-            <span>Label</span>
-            <Segmented full label="Label" value={widget.style?.label ?? 'dash'} options={[DASH_DEFAULT, ...LABEL_OPTIONS]} onChange={(label) => apply((current) => setWidgetStyle(current, pageId, widget.id, { label: label === 'dash' ? undefined : label }))} />
-          </div>
-        </div>
-      )}
-
-      <div className="designer-group">
-        <h3 className="designer-group-title">Colours</h3>
-        <ColourSwatches label="Value" value={widget.style?.textColor} colorOf={(token) => resolveStyleColor(token, palette)} onChange={(textColor) => apply((current) => setWidgetStyle(current, pageId, widget.id, { textColor }))} />
-        <ColourSwatches label="Label" value={widget.style?.labelColor} colorOf={(token) => resolveStyleColor(token, palette)} onChange={(labelColor) => apply((current) => setWidgetStyle(current, pageId, widget.id, { labelColor }))} />
-      </div>
-
       <div className="designer-button-row designer-inspector-delete">
         <button type="button" className="button subtle" onClick={() => apply((current) => setHidden(current, pageId, [widget.id], widget.hidden !== true))}>
           {widget.hidden ? <Eye /> : <EyeOff />} {widget.hidden ? 'Show on the wheel' : 'Hide on the wheel'}
@@ -109,62 +105,5 @@ export function WidgetInspector({
         </button>
       </div>
     </aside>
-  )
-}
-
-/**
- * One colour choice as a row of swatches: "Inherit" (the dash's own colour, drawn struck
- * through) and every widget style colour, in the dash's palette. A radio group: arrow keys move
- * the choice.
- */
-function ColourSwatches({
-  label,
-  value,
-  colorOf,
-  onChange,
-}: {
-  label: string
-  value: string | undefined
-  colorOf: (token: string) => string | undefined
-  onChange: (token: string | undefined) => void
-}) {
-  const options: { token: string | undefined; name: string }[] = [{ token: undefined, name: 'Inherit' }, ...WIDGET_STYLE_COLOR_TOKENS.map((token) => ({ token: token.value, name: token.label }))]
-  const current = options.findIndex((option) => option.token === (value || undefined))
-  const selectedIndex = current < 0 ? 0 : current
-
-  const onKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>): void => {
-    const step = event.key === 'ArrowRight' || event.key === 'ArrowDown' ? 1 : event.key === 'ArrowLeft' || event.key === 'ArrowUp' ? -1 : 0
-    if (step === 0) return
-    event.preventDefault()
-    const next = options[(selectedIndex + step + options.length) % options.length]
-    onChange(next.token)
-    const buttons = event.currentTarget.querySelectorAll<HTMLButtonElement>('button')
-    buttons[(selectedIndex + step + options.length) % options.length]?.focus()
-  }
-
-  return (
-    <div className="designer-swatch-row">
-      <span className="designer-swatch-label">{label}</span>
-      <div className="designer-swatches" role="radiogroup" aria-label={`${label} colour`} onKeyDown={onKeyDown}>
-        {options.map((option, index) => {
-          const checked = index === selectedIndex
-          const color = option.token ? colorOf(option.token) : undefined
-          return (
-            <button
-              key={option.name}
-              type="button"
-              role="radio"
-              aria-checked={checked}
-              aria-label={option.name}
-              title={option.name}
-              tabIndex={checked ? 0 : -1}
-              className={option.token ? 'designer-swatch' : 'designer-swatch inherit'}
-              style={color ? { background: color } : undefined}
-              onClick={() => onChange(option.token)}
-            />
-          )
-        })}
-      </div>
-    </div>
   )
 }

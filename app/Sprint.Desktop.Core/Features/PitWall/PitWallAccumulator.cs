@@ -35,11 +35,6 @@ public sealed class PitWallAccumulator
     /// <summary>How far ahead of our car (a lap fraction) a car shown blue is taken to be shown it for us.</summary>
     private const double BlueForUs = 0.03;
 
-    // A stop longer than this went to the garage; a lane loss outside these bounds was not a plain stop.
-    private const double MaxStanding = 300;
-    private const double MinLaneLoss = 2;
-    private const double MaxLaneLoss = 120;
-
     /// <summary>The furthest a car may move between two boards (a lap fraction) for its sector change to place the line.</summary>
     private const double MaxCrossing = 0.1;
 
@@ -55,10 +50,7 @@ public sealed class PitWallAccumulator
     private readonly List<PitWallEvent> _events = [];
     private readonly Dictionary<int, Still> _still = [];
     private readonly HashSet<int> _stopped = [];
-    private readonly Dictionary<int, bool> _inPit = [];
-    private readonly Dictionary<int, PitVisit> _visits = [];
-    private readonly List<double> _laneLosses = [];
-    private readonly List<StopTime> _standings = [];
+    private readonly PitLossMeter _pitLoss = new();
 
     private PitWallBoard? _board;
     private long _receivedAt;
@@ -93,7 +85,7 @@ public sealed class PitWallAccumulator
                 this.KeepBestSectors(car);
                 this.KeepOutline(car);
                 this.FollowStill(car, now, racing, board.Session.TrackLengthMeters);
-                this.FollowPit(car, now);
+                this._pitLoss.Follow(car.Id, car.CarClass, car.InPit, car.PitState, car.LapFraction, car.BestLap ?? car.LastLap, now);
             }
 
             if (board.Field.FirstOrDefault(car => car.IsPlayer) is { } own)
@@ -206,10 +198,7 @@ public sealed class PitWallAccumulator
         this._events.Clear();
         this._still.Clear();
         this._stopped.Clear();
-        this._inPit.Clear();
-        this._visits.Clear();
-        this._laneLosses.Clear();
-        this._standings.Clear();
+        this._pitLoss.Clear();
         if (trackChanged)
         {
             this._outline = new PitWallPoint?[OutlinePoints];
@@ -315,49 +304,6 @@ public sealed class PitWallAccumulator
         this._stopped.Remove(car.Id);
     }
 
-    /// <summary>
-    /// Times each stop from pit entry to pit exit and how long the car stood in its box. The lane
-    /// loss is the time in the lane, less the standing, less what the same stretch takes at the
-    /// car's best lap; only stops seen from their entry count.
-    /// </summary>
-    private void FollowPit(PitWallCar car, double now)
-    {
-        bool seenOut = this._inPit.TryGetValue(car.Id, out bool wasInPit) && !wasInPit;
-        this._inPit[car.Id] = car.InPit;
-        if (car.InPit)
-        {
-            if (!this._visits.TryGetValue(car.Id, out PitVisit? visit))
-            {
-                if (!seenOut)
-                    return;
-                visit = new PitVisit(now, car.LapFraction, 0, null);
-            }
-
-            this._visits[car.Id] = car.PitState == PitState.Stopped
-                ? visit with { StoppedSince = visit.StoppedSince ?? now }
-                : visit with { Standing = visit.Standing + (visit.StoppedSince is { } since ? now - since : 0), StoppedSince = null };
-            return;
-        }
-
-        if (!this._visits.Remove(car.Id, out PitVisit? done))
-            return;
-
-        double standing = done.Standing + (done.StoppedSince is { } stoodSince ? now - stoodSince : 0);
-        if (standing > MaxStanding || now <= done.EntryTime)
-            return;
-
-        if (standing > 1)
-            this._standings.Add(new StopTime(car.Id, car.CarClass, standing));
-
-        if ((car.BestLap ?? car.LastLap) is > 0 and { } lap)
-        {
-            double forward = car.LapFraction - done.EntryFraction;
-            double lane = now - done.EntryTime - standing - ((forward < 0 ? forward + 1 : forward) * lap);
-            if (lane is >= MinLaneLoss and <= MaxLaneLoss)
-                this._laneLosses.Add(lane);
-        }
-    }
-
     /// <summary>Adds to race control's feed what changed since <paramref name="previous"/>.</summary>
     private void Note(PitWallBoard previous, PitWallBoard board, HashSet<int> stoppedBefore)
     {
@@ -422,35 +368,12 @@ public sealed class PitWallAccumulator
             this._events.RemoveAt(0);
     }
 
-    /// <summary>
-    /// The median lane loss of every stop seen; the standing time from our own stops (their mean),
-    /// else the median of our class's.
-    /// </summary>
+    /// <summary>What a stop costs, as <see cref="PitLossMeter.Loss"/> works it out for our car.</summary>
     private PitWallPitLoss PitLoss(PitWallBoard board)
     {
         PitWallCar? own = board.Field.FirstOrDefault(car => car.IsPlayer);
-        List<double> ours = [.. this._standings.Where(stop => own is not null && stop.CarId == own.Id).Select(stop => stop.Seconds)];
-        List<double> theirs = [.. this._standings.Where(stop => own is not null && stop.CarClass == own.CarClass).Select(stop => stop.Seconds)];
-        double? standing = ours.Count > 0 ? ours.Average() : Median(theirs);
-        return new PitWallPitLoss(
-            Round(Median(this._laneLosses)),
-            this._laneLosses.Count,
-            Round(standing),
-            ours.Count > 0 ? ours.Count : theirs.Count,
-            ours.Count > 0);
+        return this._pitLoss.Loss(own?.Id, own?.CarClass);
     }
-
-    private static double? Median(List<double> values)
-    {
-        if (values.Count == 0)
-            return null;
-
-        List<double> sorted = [.. values.Order()];
-        int middle = sorted.Count / 2;
-        return sorted.Count % 2 == 1 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
-    }
-
-    private static double? Round(double? value) => value is { } known ? Math.Round(known, 1) : null;
 
     /// <summary>How far apart two lap fractions are, either way round the lap.</summary>
     private static double Apart(double a, double b)
@@ -475,9 +398,4 @@ public sealed class PitWallAccumulator
     }
 
     private sealed record Still(double Fraction, double Since);
-
-    /// <summary>A stop under way: when and where the car entered the lane, the time it stood so far, and since when it stands now.</summary>
-    private sealed record PitVisit(double EntryTime, double EntryFraction, double Standing, double? StoppedSince);
-
-    private sealed record StopTime(int CarId, string CarClass, double Seconds);
 }

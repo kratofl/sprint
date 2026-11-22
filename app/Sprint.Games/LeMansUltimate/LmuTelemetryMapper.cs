@@ -28,6 +28,12 @@ internal sealed class LmuTelemetryMapper
     private int? _energyLap;
     private float? _energyAtLapStart;
 
+    // The lap last seen, whether it counted at that frame, and what that said about the lap
+    // finished before it (LastLapValid).
+    private int? _validityLap;
+    private bool _validityLapValid = true;
+    private bool _lastLapValid = true;
+
     // The model and championship last read in the cockpit. Only the telemetry block carries
     // them, and it is empty outside the car, so a garage-screen frame for the same entry borrows
     // them: without that the car's identity would flip every time the driver steps out of it.
@@ -58,6 +64,9 @@ internal sealed class LmuTelemetryMapper
         this._energyLap = null;
         this._energyAtLapStart = null;
         this._completedLapEnergyDeltas.Clear();
+        this._validityLap = null;
+        this._validityLapValid = true;
+        this._lastLapValid = true;
         this._lastCar = null;
         this._fieldScoring = [];
         this._fieldCompounds = new Dictionary<int, string>();
@@ -85,6 +94,8 @@ internal sealed class LmuTelemetryMapper
             parsed.ScoringInfo);
         float fuel = ToF32(telemetry.FuelLiters);
         float virtualEnergy = Sanitize(telemetry.VirtualEnergy);
+        // Countable by scoring and not invalidated by the game (track limits and the like).
+        bool lapValid = scoring.CountLapFlag == 2 && !telemetry.LapInvalidated;
         LmuCarIdentity car = new(
             telemetry.VehicleName,
             telemetry.VehicleModel,
@@ -122,8 +133,8 @@ internal sealed class LmuTelemetryMapper
                 Gear = telemetry.Gear,
                 Rpm = ToF32(telemetry.EngineRpm),
                 MaxRpm = ToF32(telemetry.EngineMaxRpm),
-                WaterTempCelsius = EngineTemperature(telemetry.EngineWaterTemp),
-                OilTempCelsius = EngineTemperature(telemetry.EngineOilTemp),
+                WaterTempCelsius = FluidTemperature(telemetry.EngineWaterTemp),
+                OilTempCelsius = FluidTemperature(telemetry.EngineOilTemp),
                 Throttle = ToF32(telemetry.UnfilteredThrottle),
                 Brake = ToF32(telemetry.UnfilteredBrake),
                 Clutch = ToF32(telemetry.UnfilteredClutch),
@@ -143,7 +154,13 @@ internal sealed class LmuTelemetryMapper
                 InPitLane = scoring.InPits,
                 PitState = MapPitState(scoring.PitState),
                 PitLimiter = telemetry.SpeedLimiter,
-                Pose = MapPose(telemetry)
+                Pose = MapPose(telemetry),
+                EngineTorqueNewtonMeters = double.IsFinite(telemetry.EngineTorque) ? (float)telemetry.EngineTorque : null,
+                TurboBoostPressure = double.IsFinite(telemetry.TurboBoostPressure) && telemetry.TurboBoostPressure != 0
+                    ? (float)telemetry.TurboBoostPressure
+                    : null,
+                Headlights = telemetry.Headlights,
+                WiperState = telemetry.WiperState
             },
             Tires = MapTires(telemetry.Wheels, frontCompound, rearCompound),
             Lap = new LapState
@@ -155,8 +172,11 @@ internal sealed class LmuTelemetryMapper
                 Sector = (telemetry.CurrentSectorRaw & 0x7FFFFFFF) + 1,
                 LastLapSectorsSeconds = SectorDurations(scoring),
                 CurrentLapSectorsSeconds = CurrentSectorDurations(scoring),
-                IsValid = scoring.CountLapFlag == 2,
-                TrackPosition = TrackPosition(scoring.LapDistance, parsed.ScoringInfo.LapDistance)
+                IsValid = lapValid,
+                LastLapValid = this.LastLapValid(telemetry.LapNumber, lapValid),
+                TrackPosition = TrackPosition(
+                    ProjectedLapDistance(scoring.LapDistance, telemetry.ElapsedTime - parsed.ScoringInfo.CurrentElapsedTime, Speed(telemetry.LocalVelocity)),
+                    parsed.ScoringInfo.LapDistance)
             },
             Flags = new RaceFlags
             {
@@ -171,6 +191,7 @@ internal sealed class LmuTelemetryMapper
             Electronics = new ElectronicsState
             {
                 TractionControlActive = telemetry.TractionControlActive,
+                AbsActive = telemetry.AbsActive,
                 TractionControl = telemetry.TractionControl,
                 TractionControlMax = telemetry.TractionControlMax,
                 TractionControlSlip = telemetry.TractionControlSlip,
@@ -200,14 +221,21 @@ internal sealed class LmuTelemetryMapper
             {
                 VirtualEnergy = virtualEnergy,
                 VirtualEnergyPerLap = this.VirtualEnergyPerLap(telemetry.LapNumber, virtualEnergy),
-                StateOfCharge = Sanitize(telemetry.StateOfCharge),
-                RegenPower = Sanitize(telemetry.RegenPower)
+                StateOfCharge = ChargeFraction(telemetry.StateOfCharge),
+                RegenPower = RegenPower(telemetry),
+                DeployPower = DeployPower(telemetry),
+                MotorState = MapMotorState(telemetry.ElectricMotorState),
+                MotorTempCelsius = FluidTemperature(telemetry.ElectricMotorTemperature),
+                MotorWaterTempCelsius = FluidTemperature(telemetry.ElectricMotorWaterTemperature),
+                LiftAndCoastProgress = telemetry.LiftAndCoastProgress
             },
             Penalties = new PenaltiesState
             {
                 Incidents = scoring.Penalties,
                 TrackLimitSteps = telemetry.TrackLimitSteps,
-                PitStops = scoring.PitStops
+                TrackLimitStepsPerPenalty = parsed.ScoringInfo.TrackLimitsStepsPerPenalty,
+                PitStops = scoring.PitStops,
+                ScheduledPitStops = telemetry.ScheduledStops
             },
             Conditions = MapConditions(parsed.ScoringInfo),
             Damage = MapDamage(telemetry),
@@ -390,9 +418,64 @@ internal sealed class LmuTelemetryMapper
     private static float? Applied(double value) =>
         double.IsFinite(value) ? (float)Math.Clamp(value, 0, 1) : null;
 
-    /// <summary>An engine fluid temperature, °C; null when the game left it at zero (no engine model) or it is not a number.</summary>
-    private static float? EngineTemperature(double celsius) =>
+    /// <summary>
+    /// An engine or hybrid-motor temperature, °C; null when the game left it at zero (no such part
+    /// or no model of it) or it is not a number.
+    /// </summary>
+    private static float? FluidTemperature(double celsius) =>
         double.IsFinite(celsius) && celsius != 0 ? (float)celsius : null;
+
+    /// <summary>
+    /// The power the hybrid motor delivers, kW: its torque times its angular speed while it propels
+    /// the car, 0 otherwise. LMU publishes the motor's torque (Nm) and rpm, not its power.
+    /// </summary>
+    private static float DeployPower(LmuVehicleTelemetry telemetry) =>
+        telemetry.ElectricMotorState == 2
+            ? ToF32(Math.Max(0, MotorPowerKw(telemetry)))
+            : 0;
+
+    /// <summary>
+    /// What the hybrid motor recovers, kW: its torque (negative while regenerating) times its
+    /// speed, like <see cref="DeployPower"/>. The game's own mRegen stayed empty on the wheel, so
+    /// it is not read.
+    /// </summary>
+    private static float RegenPower(LmuVehicleTelemetry telemetry) =>
+        telemetry.ElectricMotorState == 3
+            ? ToF32(Math.Max(0, -MotorPowerKw(telemetry)))
+            : 0;
+
+    private static double MotorPowerKw(LmuVehicleTelemetry telemetry) =>
+        telemetry.ElectricMotorTorque * telemetry.ElectricMotorRpm * 2 * Math.PI / 60 / 1000;
+
+    /// <summary>mSoC is a percentage (0–100); the frame carries the battery's charge as a 0–1 fraction.</summary>
+    private static float ChargeFraction(float percent) => Math.Clamp(Sanitize(percent) / 100f, 0, 1);
+
+    /// <summary>mElectricBoostMotorState: 0 unavailable, 1 inactive, 2 propulsion, 3 regeneration.</summary>
+    private static ElectricMotorState MapMotorState(byte state) => state switch
+    {
+        1 => ElectricMotorState.Inactive,
+        2 => ElectricMotorState.Propulsion,
+        3 => ElectricMotorState.Regeneration,
+        _ => ElectricMotorState.Unavailable
+    };
+
+    /// <summary>
+    /// Whether the lap finished before <paramref name="lapNumber"/> counted. The crossing frame
+    /// already describes the new lap, so the finished one keeps the validity last seen before the
+    /// lap number went up by one (as LapHistoryRecorder judges it). Any other change of lap number
+    /// (a new session, laps missed out of the car) leaves nothing known, which reads as valid.
+    /// </summary>
+    private bool LastLapValid(int lapNumber, bool lapValid)
+    {
+        if (this._validityLap is int seen && lapNumber != seen)
+        {
+            this._lastLapValid = lapNumber != seen + 1 || this._validityLapValid;
+        }
+
+        this._validityLap = lapNumber;
+        this._validityLapValid = lapValid;
+        return this._lastLapValid;
+    }
 
     /// <summary>The class byte in scoring's own spelling, the one history already stores; empty for the pace car or an unknown class.</summary>
     private static string ClassName(LmuVehicleClass vehicleClass) => vehicleClass switch
@@ -636,9 +719,12 @@ internal sealed class LmuTelemetryMapper
 
     private static TireState MapTire(TirePosition position, LmuWheel wheel, string compound)
     {
-        float inner = TemperatureCelsius(wheel.TempInnerKelvin);
-        float middle = TemperatureCelsius(wheel.TempMiddleKelvin);
-        float outer = TemperatureCelsius(wheel.TempOuterKelvin);
+        // mTemperature runs left to right across the tyre, so the inner shoulder (the car's side)
+        // is the right reading on a left wheel and the left reading on a right wheel.
+        bool leftWheel = position is TirePosition.FrontLeft or TirePosition.RearLeft;
+        float inner = TemperatureCelsius(leftWheel ? wheel.TempRightKelvin : wheel.TempLeftKelvin);
+        float middle = TemperatureCelsius(wheel.TempCentreKelvin);
+        float outer = TemperatureCelsius(leftWheel ? wheel.TempLeftKelvin : wheel.TempRightKelvin);
 
         return new TireState
         {
@@ -666,6 +752,7 @@ internal sealed class LmuTelemetryMapper
             CamberRadians = ToF32(wheel.CamberRadians),
             RadiusMeters = wheel.RadiusCentimeters / 100f,
             BrakeTempCelsius = ToF32(wheel.BrakeTempCelsius),
+            OptimalTempCelsius = OptimalTemperature(wheel.OptimalTempKelvin),
             SuspensionDeflectionMeters = ToF32(wheel.SuspensionDeflectionMeters),
             RideHeightMeters = ToF32(wheel.RideHeightMeters),
             Surface = SurfaceOf(wheel.SurfaceType),
@@ -693,6 +780,18 @@ internal sealed class LmuTelemetryMapper
     /// </summary>
     private static float TemperatureCelsius(double kelvin) =>
         kelvin <= 0 || !double.IsFinite(kelvin) ? 0 : KelvinToCelsius(kelvin);
+
+    /// <summary>
+    /// The compound's ideal temperature, °C, or 0 when unknown. The header gives mOptimalTemp no
+    /// unit; it is read as Kelvin like the struct's other tyre temperatures, and anything that does
+    /// not come out as a plausible tyre temperature (should the game send °C after all) reads as
+    /// unknown rather than as a wrong target.
+    /// </summary>
+    private static float OptimalTemperature(float kelvin)
+    {
+        float celsius = TemperatureCelsius(kelvin);
+        return celsius is > 0 and < 200 ? celsius : 0;
+    }
 
     private static float SurfaceAverage(float inner, float middle, float outer)
     {
@@ -861,6 +960,28 @@ internal sealed class LmuTelemetryMapper
         z /= length;
         w /= length;
         return true;
+    }
+
+    /// <summary>
+    /// The longest a scoring update is carried forward. Scoring arrives about every 0.2 s; a gap
+    /// beyond this means a pause or a clock that disagrees, and the reported distance is kept.
+    /// </summary>
+    private const double MaxProjectionSeconds = 0.5;
+
+    /// <summary>
+    /// The lap distance now, not at the last scoring update. Scoring reports it about five times a
+    /// second while telemetry runs at the physics rate, so between updates the distance is carried
+    /// forward at the car's speed for the time telemetry is ahead of scoring. Without this the
+    /// lap delta saws up to 0.2 s between updates.
+    /// </summary>
+    private static double ProjectedLapDistance(double lapDistance, double secondsSinceScoring, double speed)
+    {
+        if (!double.IsFinite(secondsSinceScoring) || secondsSinceScoring <= 0 || secondsSinceScoring > MaxProjectionSeconds || !double.IsFinite(speed))
+        {
+            return lapDistance;
+        }
+
+        return lapDistance + (Math.Max(0, speed) * secondsSinceScoring);
     }
 
     private static float TrackPosition(double lapDistance, double trackLapDistance)

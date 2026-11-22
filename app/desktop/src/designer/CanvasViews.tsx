@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'react'
-import { GEAR_SPOT, drawnWidgets, layoutRect, pageTree, type DashLayout, type DashPage, type GridSpan } from '@sprint/dashboard'
+import { drawnWidgets, layoutRect, pageTree, type DashLayout, type DashPage, type GridSpan } from '@sprint/dashboard'
 import { widgetName } from '../views/DashesDomain'
 import { flattenTree, nodeRect } from './groupOps'
 import { emptyCells } from './layoutOps'
@@ -20,17 +20,20 @@ export const CANVAS_VIEWS: ReadonlyArray<{ value: CanvasView; label: string }> =
 
 type LayerProps = { layout: DashLayout; page: DashPage; width: number; height: number }
 
-const boxOf = (layout: DashLayout, width: number, height: number) => (span: GridSpan): CSSProperties => {
+const boxOf = (layout: DashLayout, page: DashPage, width: number, height: number) => (span: GridSpan): CSSProperties => {
   const rect = layoutRect(layout, width, height, span)
   return { left: rect.left, top: rect.top, width: rect.width, height: rect.height }
 }
 
-/** A side bar spot: too narrow for a name across it. */
-const isUpright = (layout: DashLayout, width: number, height: number, span: GridSpan): boolean => layoutRect(layout, width, height, span).width < 50
+/** A narrow column (a bar down the side): too narrow for a name across it. */
+const isUpright = (layout: DashLayout, page: DashPage, width: number, height: number, span: GridSpan): boolean => layoutRect(layout, width, height, span).width < 50
+
+
+
 
 /** Free cells as a dot at their centre, in every view, so free space shows. */
 function FreeCells({ layout, page, width, height }: LayerProps) {
-  const box = boxOf(layout, width, height)
+  const box = boxOf(layout, page, width, height)
   return (
     <>
       {emptyCells(layout, page).map((cell) => (
@@ -42,11 +45,11 @@ function FreeCells({ layout, page, width, height }: LayerProps) {
 
 /**
  * The outline, in place of the dash: every widget a hairline region with its icon, name and size
- * in cells, the gear's spot hatched (it is always there), groups dashed round their widgets, free
+ * in cells, groups dashed round their widgets, free
  * cells dotted. The app's own look, so nobody takes it for the dash's design.
  */
 export function DashOutline({ layout, page, width, height }: LayerProps) {
-  const box = boxOf(layout, width, height)
+  const box = boxOf(layout, page, width, height)
   const groups = flattenTree(pageTree(page)).flatMap((node) => {
     if (node.kind !== 'group' || node.group.mode !== 'together') return []
     const rect = nodeRect(node)
@@ -55,16 +58,10 @@ export function DashOutline({ layout, page, width, height }: LayerProps) {
   return (
     <div className="designer-canvas-layer designer-outline" style={{ width, height }} aria-hidden="true">
       <FreeCells layout={layout} page={page} width={width} height={height} />
-      {layout.zoned && (
-        <span className="designer-region is-gear" style={box(GEAR_SPOT)}>
-          <span className="designer-region-name">Gear</span>
-          <span className="designer-region-size">fixed</span>
-        </span>
-      )}
       {drawnWidgets(page).map((widget) => {
         const Icon = widgetIcon(widget.type)
-        const upright = isUpright(layout, width, height, widget)
-        // A region one short row high (the top bar spot) has no room for its size.
+        const upright = isUpright(layout, page, width, height, widget)
+        // A region one short row high (the top row) has no room for its size.
         const low = layoutRect(layout, width, height, widget).height < 44
         return (
           <span key={widget.id} className={upright ? 'designer-region is-upright' : 'designer-region'} style={box(widget)}>
@@ -91,18 +88,13 @@ export function DashOutline({ layout, page, width, height }: LayerProps) {
  * name tag in its corner. Free cells are dotted in both.
  */
 export function DashLabels({ view, layout, page, width, height }: LayerProps & { view: 'labels' | 'preview' }) {
-  const box = boxOf(layout, width, height)
+  const box = boxOf(layout, page, width, height)
   return (
     <div className={`designer-canvas-layer designer-labels is-${view}`} style={{ width, height }} aria-hidden="true">
       <FreeCells layout={layout} page={page} width={width} height={height} />
-      {view === 'labels' && layout.zoned && (
-        <span className="designer-label-cell" style={box(GEAR_SPOT)}>
-          <span className="designer-chip is-quiet">Gear</span>
-        </span>
-      )}
       {drawnWidgets(page).map((widget) => {
         const Icon = widgetIcon(widget.type)
-        const upright = isUpright(layout, width, height, widget)
+        const upright = isUpright(layout, page, width, height, widget)
         return (
           <span key={widget.id} className="designer-label-cell" style={box(widget)}>
             {view === 'labels' ? (

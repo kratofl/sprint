@@ -2,9 +2,9 @@
 // Every dash picture in the desktop app is one of these. It only ever draws stills (an exact
 // banner or none, no alert history): live alert tracking is the wheel's business, in the host.
 
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { TelemetryFrame } from '@sprint/types'
-import type { DashLayout } from './index'
+import type { DashLayout, DashUnits } from './index'
 import type { DashAlertBanner } from './alerts'
 import { loadDashWasm, type DashWasm } from './dashWasm.js'
 import { toHostFrame } from './hostFrame'
@@ -51,6 +51,12 @@ function useDashWasm(): WasmState {
   return state
 }
 
+/**
+ * The driver's units every `DashCanvas` below prints in. The app provides the Units setting once
+ * at each window's root; without a provider a dash prints metric.
+ */
+export const DashUnitsContext = createContext<DashUnits>('Metric')
+
 /** `window.devicePixelRatio`, followed when the window moves to another display or zooms. */
 function useDevicePixelRatio(): number {
   const [ratio, setRatio] = useState(() => window.devicePixelRatio || 1)
@@ -95,6 +101,11 @@ export interface DashCanvasProps {
   idle?: boolean
   /** Exactly this popup over the dash (the designer plays an alert with it), or none. */
   alertBanner?: DashAlertBanner | null
+  /**
+   * Only the layout's pit limiter overlay, on a clear canvas, whatever the frame and the alerts
+   * say: the designer lays it over the page drawn faded.
+   */
+  pitLimiterOnly?: boolean
   className?: string
 }
 
@@ -104,14 +115,15 @@ export interface DashCanvasProps {
  * an undrawable layout is obvious. It draws again only when what it draws changes: the inputs
  * are compared as JSON, so a parent handing over equal objects again redraws nothing.
  */
-export function DashCanvas({ layout, frame, width, height, pageId, idle, alertBanner, className }: DashCanvasProps) {
+export function DashCanvas({ layout, frame, width, height, pageId, idle, alertBanner, pitLimiterOnly, className }: DashCanvasProps) {
   const state = useDashWasm()
   const ratio = useDevicePixelRatio()
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const units = useContext(DashUnitsContext)
   // The clock widget shows the frame's moment in the viewer's time zone.
-  const settings = { utcOffsetMinutes: -new Date().getTimezoneOffset() }
-  const scene = JSON.stringify({ layout, width, height, scale: ratio, pageId, idle: idle ?? false, settings })
+  const settings = { utcOffsetMinutes: -new Date().getTimezoneOffset(), units }
+  const scene = JSON.stringify({ layout, width, height, scale: ratio, pageId, idle: idle ?? false, settings, pitLimiterOnly: pitLimiterOnly ?? false })
   // The renderer reads the host's telemetry JSON; the app hands over the @sprint/types mirror.
   const frameJson = frame ? JSON.stringify(toHostFrame(frame)) : ''
   const bannerJson = alertBanner ? JSON.stringify(alertBanner) : ''

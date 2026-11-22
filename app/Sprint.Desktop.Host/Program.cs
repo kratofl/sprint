@@ -25,6 +25,16 @@ using Sprint.Desktop.Runtime;
 using Sprint.Games;
 using Sprint.Games.Recording;
 
+#if DEBUG
+// `make dev-data`: files the laps of telemetry recordings into the dev data root and exits,
+// without starting the server (RecordingImport).
+if (args is ["import-recordings", .. string[] recordings])
+{
+    Environment.ExitCode = RecordingImport.Run(recordings, Environment.GetEnvironmentVariable("SPRINT_DESKTOP_DATA_ROOT"), Console.Out);
+    return;
+}
+#endif
+
 const string token = "SPRINT_DESKTOP_TOKEN";
 string bearer = Environment.GetEnvironmentVariable(token) ?? Convert.ToHexString(RandomNumberGenerator.GetBytes(24));
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
@@ -247,7 +257,8 @@ TelemetryIngestionPipeline ingestion = new(
     log,
     liveUplink,
     peerLink,
-    new DashPageAutomation(runtime, dashPageCycle, multiDials));
+    new DashPageAutomation(runtime, dashPageCycle, multiDials),
+    new StoredBestLapDelivery(lapHistoryStore, telemetryEngine.RequestStoredBest));
 
 // Names history filed before cars were named by class and make (CarNames): a one-time rewrite,
 // which looks a stored livery up in the game's results archive only if one still needs naming.
@@ -393,7 +404,7 @@ Task screenReconcileLoop = Task.Run(async () =>
                 }
 
                 // Each dash screen's scene (its dash with the app-wide alerts stamped on, the
-                // driver's name and number, the plan's targets) is serialized here once a tick and
+                // driver's name, number and units, the plan's targets) is serialized here once a tick and
                 // only taken by a screen when it changed, so a dash or alert settings edit reaches
                 // the wheel within a second. The page and the
                 // live/idle switch do not wait for this loop: the screens read those per frame.
@@ -402,7 +413,7 @@ Task screenReconcileLoop = Task.Run(async () =>
                 DashSceneInputs? scenes = null;
                 try
                 {
-                    scenes = new DashSceneInputs([.. runtime.DashLayouts], DriverCar.Of(runtime.Settings.LastSeenContext), runtime.Settings.DriverName, runtime.Settings.DriverNumber, planTargets.Targets,
+                    scenes = new DashSceneInputs([.. runtime.DashLayouts], DriverCar.Of(runtime.Settings), runtime.Settings.DriverName, runtime.Settings.DriverNumber, runtime.Settings.Units, planTargets.Targets,
                         devices.Any(device => device.Bindings.Any(binding => binding.Command == SprintCommands.Acknowledge)) ? runtime.Settings.DashAlerts : runtime.Settings.DashAlerts.WithoutUntilAck());
                 }
                 catch (InvalidOperationException)
@@ -624,7 +635,7 @@ app.MapGet("/api/state", () =>
             traceLaps = traceUsage.Laps,
             traceExpiryDays = runtime.Settings.SessionPlanner.TraceExpiryDays,
         },
-        screens = ScreenOutputs.Describe(runtime.Devices, runtime.DashLayouts, DriverCar.Of(runtime.Settings.LastSeenContext), state.Telemetry.Status.IsLive, screenOutputs.HardwareFor, dashPageCycle)
+        screens = ScreenOutputs.Describe(runtime.Devices, runtime.DashLayouts, DriverCar.Of(runtime.Settings), state.Telemetry.Status.IsLive, screenOutputs.HardwareFor, dashPageCycle)
     }, json);
     debugTimings.StateAssembled(Stopwatch.GetElapsedTime(started));
     return result;
@@ -1086,8 +1097,8 @@ PlanContext LastSeenContext()
 }
 
 // The game's live source. Debug builds also honour two dev switches: SPRINT_TELEMETRY_REPLAY
-// plays a recording instead of the game (make replay-app), SPRINT_TELEMETRY_RECORD records
-// every frame of the game into a folder (make record-app). Release builds ignore both.
+// plays a recording instead of the game (make dev-app REPLAY=), SPRINT_TELEMETRY_RECORD records
+// every frame of the game into a folder (make dev-app RECORD=1). Release builds ignore both.
 static ITelemetrySource CreateTelemetrySource(ILog log)
 {
 #if DEBUG

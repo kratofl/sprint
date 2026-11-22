@@ -6,13 +6,15 @@ using Sprint.Desktop.Features.Dashes;
 using Sprint.Desktop.Features.Devices;
 using Sprint.Desktop.Features.Hardware;
 using Sprint.Desktop.Features.Input;
+using Sprint.Desktop.Runtime;
 
 namespace Sprint.Desktop.Host;
 
 /// <summary>
 /// The slow-changing part of what one wheel screen shows, already serialized with
 /// <see cref="HostJson"/>: the dash layout, the settings the renderer reads (driver name and
-/// number, and the local clock's offset from UTC for the clock widget) and the plan's targets. Built by <see cref="ScreenOutputService"/> on the reconcile
+/// number, the units it prints in, and the local clock's offset from UTC for the clock widget)
+/// and the plan's targets. Built by <see cref="ScreenOutputService"/> on the reconcile
 /// loop (under the devices gate, see Program.cs), never on the render thread, and immutable once
 /// built: the render thread only ever sees whole instances.
 /// </summary>
@@ -22,11 +24,12 @@ public sealed record DashSceneContent(byte[] Layout, byte[] Settings, byte[] Tar
         DashLayout layout,
         string driverName,
         string driverNumber,
+        UnitSystem units,
         DashTargets targets,
         JsonSerializerOptions json) =>
         new(
             JsonSerializer.SerializeToUtf8Bytes(layout, json),
-            JsonSerializer.SerializeToUtf8Bytes(new { driverName, driverNumber, utcOffsetMinutes = LocalUtcOffsetMinutes() }, json),
+            JsonSerializer.SerializeToUtf8Bytes(new { driverName, driverNumber, units, utcOffsetMinutes = LocalUtcOffsetMinutes() }, json),
             JsonSerializer.SerializeToUtf8Bytes(targets, json));
 
     // Read on every build, so the reconcile loop's next scene picks up a daylight-saving change.

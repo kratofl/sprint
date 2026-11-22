@@ -10,13 +10,12 @@ public sealed class DashWidgetCatalogTests
     {
         string[] expected = new[]
         {
-            "header",
             "text",
             "rpm_bar",
             "gear_speed",
             "input_trace",
-            "sector",
-            "lap_time",
+            "current_lap",
+            "last_lap",
             "delta",
             "fuel",
             "tyre_temp",
@@ -39,14 +38,14 @@ public sealed class DashWidgetCatalogTests
     public void CatalogIncludesExpandedRealDashboardWidgets()
     {
         // US30: race context + hybrid readouts real dashboards expose.
-        foreach (string? type in new[] { "position", "gaps", "predictive_lap", "tyre_pressure", "virtual_energy" })
+        foreach (string? type in new[] { "position", "gap_ahead", "predictive_lap", "tyre_pressure", "ve_percent" })
         {
             Assert.True(DashWidgetCatalog.IsKnown(type), $"Expected expanded catalog to include '{type}'.");
         }
 
-        Assert.Contains("race.gapAhead", DashWidgetCatalog.Get("gaps").Bindings);
-        Assert.Contains("race.gapBehind", DashWidgetCatalog.Get("gaps").Bindings);
-        Assert.Equal("Virtual Energy", DashWidgetCatalog.Get("virtual_energy").Name);
+        Assert.Contains("race.gapAhead", DashWidgetCatalog.Get("gap_ahead").Bindings);
+        Assert.Contains("race.gapBehind", DashWidgetCatalog.Get("gap_behind").Bindings);
+        Assert.Equal("Virtual Energy", DashWidgetCatalog.Get("ve_percent").Name);
     }
 
     [Fact]
@@ -58,6 +57,15 @@ public sealed class DashWidgetCatalogTests
 
         Assert.Contains("target.fuelPerLapLiters", fuelTarget.Bindings);
         Assert.DoesNotContain("car.fuelPerLapLiters", fuelTarget.Bindings);
+    }
+
+    [Fact]
+    public void RetiredAndSplitWidgetTypesAreGone()
+    {
+        foreach (string type in new[] { "header", "sector", "lap_time", "slip", "cut", "arb" })
+        {
+            Assert.False(DashWidgetCatalog.IsKnown(type), $"'{type}' was retired or split.");
+        }
     }
 
     [Fact]

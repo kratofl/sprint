@@ -1,20 +1,25 @@
 // Renders dashes and parity cases with the Rust renderer, to check a rendering change by eye.
 //
-//   cargo run --release --example render -- --dash <layout.json> <out.png> [--page <id>] [--style panels|grid|bars] [--size 800x480]
+//   cargo run --release --example render -- --dash <layout.json> <out.png> [--page <id>] [--size 800x480]
 //                                           [--banner <banner.json> | --alert <type>[:full|strip|center][:invert]]
-//                                           [--level <percent>] [--radius <px>]
+//                                           [--level <percent>] [--radius <px>] [--units metric|imperial]
+//                                           [--pit gear|box|full] [--flag <ms>[:ack]]
 //   cargo run --release --example render -- <case.json> <out.png>
 //   cargo run --release --example render -- --all <cases-dir> <out-dir> [name-filter]
 //   cargo run --release --example render -- --bench <case.json> [iterations]
 //   cargo run --release --example render -- --ops <case.json>   (prints the display list)
 //
 // --dash draws one page of a dash layout (a preset such as app/Sprint.Desktop.Host/presets/dash/
-// default.json) against the fixed race frame below; --style overrides the layout's own style, so
-// one layout can be checked in every style; --banner draws an alert banner over it (the JSON
+// default.json) against the fixed race frame below; --banner draws an alert banner over it (the JSON
 // `render_still` takes, e.g. `{ "kind": "lapSummary", ... }`), so a popup can be checked too;
 // --level puts the fuel (of a 90 L tank), virtual energy and charge all at that percentage, for the
-// bars' level colours; --radius overrides the dash's corner radius.
+// bars' level colours; --radius overrides the dash's corner radius; --units prints the values in
+// that system (the app-wide Units setting; metric by default); --pit drives the car down the pit
+// lane with the limiter on (2nd gear, 16 m/s) and the pit limiter alert on, showing the layout's
+// pit limiter overlay in that style (its own widgets as the layout file has them).
 // --alert draws the designer's preview of an alert type (`tc_change:strip`, `penalty:full:invert`).
+// --flag plays a yellow flag live, as the wheel would: no flag at 0 ms, the yellow out from 100 ms
+// (its popup up for 3 s, then the bar across the top), drawn at <ms>; `:ack` presses Ack then and draws it again.
 //
 // A case is `{ name, width, height, layout, pageId?, idle?, settings?, targets?, frame, banner?,
 // nowMs }`: its scene fields go to `set_scene` as they are (the scene parser ignores the rest),
@@ -85,7 +90,8 @@ fn render_one(case_path: &Path, out: &Path) -> Result<(), String> {
 fn sample_frame() -> Value {
     let tire = |position: &str, t: f64, p: f64| {
         json!({ "position": position, "tempInnerCelsius": t + 6.0, "tempMiddleCelsius": t, "tempOuterCelsius": t - 4.0, "tempSurfaceCelsius": t,
-                "tempCoreCelsius": t - 2.0, "pressureKPa": p, "wearPercent": 100.0 - t / 10.0, "brakeTempCelsius": t * 4.6, "compound": "M" })
+                "tempCoreCelsius": t - 2.0, "pressureKPa": p, "wearPercent": 100.0 - t / 10.0, "brakeTempCelsius": t * 4.6, "compound": "M",
+                "optimalTempCelsius": 90.0, "wearLastLapPercent": t / 80.0, "averageTempLastLapCelsius": t - 1.0 })
     };
     json!({
         "timestamp": "2026-06-14T15:02:00+00:00",
@@ -104,21 +110,23 @@ fn sample_frame() -> Value {
         "electronics": { "tractionControlActive": true, "tractionControl": 4, "tractionControlMax": 9, "tractionControlSlip": 2, "tractionControlSlipMax": 9,
                          "tractionControlCut": 3, "tractionControlCutMax": 9, "abs": 3, "absMax": 9, "motorMap": 5, "motorMapMax": 9, "migration": 2,
                          "migrationMax": 5, "frontAntiRollBar": 3, "frontAntiRollBarMax": 6, "rearAntiRollBar": 4, "rearAntiRollBarMax": 6, "drsActive": false },
-        "race": { "position": 4, "totalPositions": 38, "gapAhead": 0.81, "gapBehind": 1.42, "carLeftMeters": null, "carRightMeters": -1.6 },
-        "energy": { "virtualEnergy": 61.2, "virtualEnergyPerLap": 4.4, "stateOfCharge": 0.58, "regenPower": 120, "deployPower": 340 },
+        "race": { "position": 4, "totalPositions": 38, "gapAhead": 0.81, "gapBehind": 1.42, "classGapAhead": 3.25, "classGapBehind": 1.42,
+                  "carLeftMeters": null, "carRightMeters": -1.6 },
+        "energy": { "virtualEnergy": 61.2, "virtualEnergyPerLap": 4.4, "stateOfCharge": 0.58, "regenPower": 120, "deployPower": 340, "motorState": "Propulsion",
+                    "motorTempCelsius": 64.2, "motorWaterTempCelsius": 51.0 },
         "penalties": { "incidents": 1, "trackLimitSteps": 0, "pitStops": 2 },
         "conditions": { "pathWetness": null, "trackGripLevel": null, "fuelMultiplier": null, "tireMultiplier": null, "fixedSetup": null,
                         "airTemperatureCelsius": 22.4, "trackTemperatureCelsius": 31.8, "raining": 0 },
         "damage": { "dents": [0, 1, 0, 0, 0, 0, 0, 2], "lastImpactSessionTime": 3650.2, "lastImpactMagnitude": 820, "overheating": false, "detachedParts": false },
         // Made-up cars round ours (P4, 6 km into lap 14): three ahead, three behind, the last a lap down.
         "field": [
-            { "id": 1, "driver": "R. Okafor", "isPlayer": false, "place": 2, "lapsCompleted": 13, "lapDistanceMeters": 6480 },
-            { "id": 2, "driver": "L. Brandt", "isPlayer": false, "place": 3, "lapsCompleted": 13, "lapDistanceMeters": 6310 },
-            { "id": 3, "driver": "T. Varga", "isPlayer": false, "place": 11, "lapsCompleted": 13, "lapDistanceMeters": 6150 },
-            { "id": 4, "driver": "You", "isPlayer": true, "place": 4, "lapsCompleted": 13, "lapDistanceMeters": 6000, "penalties": 1 },
-            { "id": 5, "driver": "K. Ito", "isPlayer": false, "place": 5, "lapsCompleted": 13, "lapDistanceMeters": 5930 },
-            { "id": 6, "driver": "S. Novak", "isPlayer": false, "place": 9, "lapsCompleted": 13, "lapDistanceMeters": 5720 },
-            { "id": 7, "driver": "M. Duarte", "isPlayer": false, "place": 31, "lapsCompleted": 12, "lapDistanceMeters": 5600 },
+            { "id": 1, "driver": "R. Okafor", "carClass": "Hyper", "isPlayer": false, "place": 2, "lapsCompleted": 13, "lapDistanceMeters": 6480 },
+            { "id": 2, "driver": "L. Brandt", "carClass": "LMP2", "isPlayer": false, "place": 3, "lapsCompleted": 13, "lapDistanceMeters": 6310 },
+            { "id": 3, "driver": "T. Varga", "carClass": "GT3", "isPlayer": false, "place": 11, "lapsCompleted": 13, "lapDistanceMeters": 6150 },
+            { "id": 4, "driver": "You", "carClass": "Hyper", "isPlayer": true, "place": 4, "lapsCompleted": 13, "lapDistanceMeters": 6000, "penalties": 1 },
+            { "id": 5, "driver": "K. Ito", "carClass": "Hyper", "isPlayer": false, "place": 5, "lapsCompleted": 13, "lapDistanceMeters": 5930 },
+            { "id": 6, "driver": "S. Novak", "carClass": "LMGT3", "isPlayer": false, "place": 9, "lapsCompleted": 13, "lapDistanceMeters": 5720 },
+            { "id": 7, "driver": "M. Duarte", "carClass": "LMP3", "isPlayer": false, "place": 31, "lapsCompleted": 12, "lapDistanceMeters": 5600 },
         ],
     })
 }
@@ -128,13 +136,12 @@ fn sample_frame() -> Value {
 fn render_dash(layout_path: &Path, out: &Path, options: &[&str]) -> Result<(), String> {
     let text = fs::read(layout_path).map_err(|e| format!("{}: {e}", layout_path.display()))?;
     let mut layout: Value = serde_json::from_slice(&text).map_err(|e| format!("{}: {e}", layout_path.display()))?;
-    let (mut page_id, mut width, mut height, mut banner, mut alert, mut level) = (None, 800.0, 480.0, None, None, None);
+    let (mut page_id, mut width, mut height, mut banner, mut alert, mut level, mut units) = (None, 800.0, 480.0, None, None, None, "Metric");
+    let mut pit = false;
+    let mut flag: Option<(f64, bool)> = None;
     for pair in options.chunks(2) {
         match pair {
             ["--page", id] => page_id = Some(*id),
-            ["--style", style @ ("panels" | "grid" | "bars" | "flat")] => {
-                layout.as_object_mut().ok_or("the layout is not a JSON object")?.insert("dashStyle".to_owned(), json!(style));
-            }
             ["--size", size] => {
                 let parsed = size.split_once('x').and_then(|(w, h)| Some((w.parse().ok()?, h.parse().ok()?)));
                 (width, height) = parsed.ok_or_else(|| format!("not a size: {size} (expected e.g. 800x480)"))?;
@@ -142,6 +149,23 @@ fn render_dash(layout_path: &Path, out: &Path, options: &[&str]) -> Result<(), S
             ["--banner", path] => banner = Some(fs::read(path).map_err(|e| format!("{path}: {e}"))?),
             ["--alert", spec] => alert = Some(*spec),
             ["--level", pct] => level = Some(pct.parse::<f64>().map_err(|_| format!("not a percentage: {pct}"))?),
+            ["--pit", style @ ("gear" | "box" | "full")] => {
+                pit = true;
+                let raw = layout.as_object_mut().ok_or("the layout is not a JSON object")?;
+                raw.entry("pitLimiter").or_insert(json!({ "widgets": [] }))["style"] = json!(style);
+                raw.entry("alerts").or_insert(json!([])).as_array_mut().ok_or("the layout's alerts are not a list")?.push(json!({
+                    "id": "pit_limiter", "type": "pit_limiter", "enabled": true, "col": 0, "row": 0, "colSpan": 1, "rowSpan": 1
+                }));
+            }
+            ["--flag", spec] => {
+                let (ms, ack) = spec.strip_suffix(":ack").map_or((*spec, false), |ms| (ms, true));
+                flag = Some((ms.parse().map_err(|_| format!("not a time: {spec} (expected e.g. 4000 or 4000:ack)"))?, ack));
+                layout.as_object_mut().ok_or("the layout is not a JSON object")?.entry("alerts").or_insert(json!([])).as_array_mut()
+                    .ok_or("the layout's alerts are not a list")?
+                    .push(json!({ "id": "flag", "type": "flag", "enabled": true, "col": 0, "row": 0, "colSpan": 1, "rowSpan": 1, "displayMode": "strip", "durationSeconds": 3 }));
+            }
+            ["--units", "metric"] => units = "Metric",
+            ["--units", "imperial"] => units = "Imperial",
             ["--radius", px] => {
                 let px: f64 = px.parse().map_err(|_| format!("not a radius: {px}"))?;
                 let chrome = layout.as_object_mut().ok_or("the layout is not a JSON object")?.entry("chrome").or_insert(json!({}));
@@ -150,9 +174,16 @@ fn render_dash(layout_path: &Path, out: &Path, options: &[&str]) -> Result<(), S
             _ => return Err(format!("unknown option: {}", pair.join(" "))),
         }
     }
-    let scene = json!({ "layout": layout, "width": width, "height": height, "pageId": page_id, "settings": { "utcOffsetMinutes": 60 },
+    let scene = json!({ "layout": layout, "width": width, "height": height, "pageId": page_id, "settings": { "utcOffsetMinutes": 60, "units": units },
                 "targets": { "lapTimeSeconds": 209, "fuelPerLapLiters": 4.42 } });
     let mut frame = sample_frame();
+    if pit {
+        for (key, value) in
+            [("pitLimiter", json!(true)), ("inPitLane", json!(true)), ("speedMetersPerSecond", json!(16.2)), ("gear", json!(2)), ("rpm", json!(4200))]
+        {
+            frame["car"][key] = value;
+        }
+    }
     if let Some(pct) = level {
         frame["car"]["fuelCapacityLiters"] = json!(90.0);
         frame["car"]["fuelLiters"] = json!(90.0 * pct / 100.0);
@@ -161,6 +192,20 @@ fn render_dash(layout_path: &Path, out: &Path, options: &[&str]) -> Result<(), S
     }
     let case = Case { scene: scene.to_string().into_bytes(), frame: frame.to_string().into_bytes(), banner, now_ms: 0.0 };
     let mut renderer = Renderer::new();
+    if let Some((ms, ack)) = flag {
+        renderer.set_scene(&case.scene).map_err(|e| e.to_string())?;
+        renderer.render_live(&case.frame, 0.0).map_err(|e| e.to_string())?;
+        let mut yellow = frame.clone();
+        yellow["flags"]["yellow"] = json!(true);
+        let yellow = yellow.to_string().into_bytes();
+        renderer.render_live(&yellow, 100.0).map_err(|e| e.to_string())?;
+        renderer.render_live(&yellow, ms).map_err(|e| e.to_string())?;
+        if ack {
+            renderer.acknowledge();
+            renderer.render_live(&yellow, ms).map_err(|e| e.to_string())?;
+        }
+        return write_png(&renderer, out);
+    }
     match alert {
         None => render(&mut renderer, &case)?,
         Some(spec) => {
@@ -188,7 +233,7 @@ fn alert_preview(scene_json: &[u8], spec: &str) -> Result<sprint_dash::alerts::D
     }
     let fields = fields.as_object().cloned().unwrap_or_default();
     let alert = sprint_dash::model::DashAlert { id: "preview".to_owned(), alert_type: alert_type.to_owned(), fields };
-    sprint_dash::alerts::preview_alert_banner(&scene.layout, &alert, &sprint_dash::dash::scene_palette(&scene))
+    sprint_dash::alerts::preview_alert_banner(&scene.layout, &alert, &sprint_dash::dash::scene_palette(&scene), scene.units())
         .ok_or_else(|| format!("not an alert type: {alert_type}"))
 }
 
@@ -267,8 +312,8 @@ fn main() {
         ["--bench", case] => bench(Path::new(case), 3000),
         ["--bench", case, n] => n.parse().map_err(|_| format!("not a count: {n}")).and_then(|n| bench(Path::new(case), n)),
         [case, out] if !case.starts_with("--") => render_one(Path::new(case), Path::new(out)),
-        _ => Err("usage: render --dash <layout.json> <out.png> [--page <id>] [--style panels|grid|bars] [--size WxH] \
-                  [--banner <banner.json> | --alert <type>[:full|strip|center][:invert]] [--level <percent>] [--radius <px>] \
+        _ => Err("usage: render --dash <layout.json> <out.png> [--page <id>] [--size WxH] \
+                  [--banner <banner.json> | --alert <type>[:full|strip|center][:invert]] [--level <percent>] [--radius <px>] [--pit gear|box|full] [--flag <ms>[:ack]] \
                   | <case.json> <out.png> \
                   | --all <cases-dir> <out-dir> [filter] | --bench <case.json> [iterations] | --ops <case.json>"
             .to_owned()),

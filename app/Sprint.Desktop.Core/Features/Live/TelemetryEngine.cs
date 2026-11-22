@@ -40,8 +40,10 @@ public sealed record EngineOptions
 /// owns a background reader thread that drives Connect/TryRead, a 5s probe/reconnect
 /// loop that idles on a dropped link, a <see cref="RateMeter"/> measuring the real
 /// frame cadence, and a <see cref="DeltaTracker"/> that augments each frame with
-/// lap delta (then <see cref="SectorBestsTracker"/> the session bests and <see cref="Spotter"/>
-/// the cars alongside) — then publishes the latest value into a buffer the UI drains at ~30Hz
+/// lap delta (then <see cref="SectorBestsTracker"/> the session bests, <see cref="Spotter"/>
+/// the cars alongside, <see cref="GapTracker"/> the time gaps, <see cref="LapUsageTracker"/> what
+/// each lap uses, <see cref="LapPaceTracker"/> the lap averages and all-time best and
+/// <see cref="PitLossTracker"/> what a stop costs) — then publishes the latest value into a buffer the UI drains at ~30Hz
 /// (a decoupled latest-value handoff, not a per-frame UI callback). Avalonia-free, so
 /// it is unit- and headless-testable; the synchronous <see cref="Step"/> exposes one
 /// loop iteration for deterministic tests.
@@ -60,6 +62,10 @@ public sealed class TelemetryEngine : IDisposable
     private readonly RateMeter _rate;
     private readonly DeltaTracker _delta = new();
     private readonly SectorBestsTracker _sectorBests = new();
+    private readonly GapTracker _gaps = new();
+    private readonly LapUsageTracker _usage = new();
+    private readonly LapPaceTracker _pace = new();
+    private readonly PitLossTracker _pitLoss = new();
     private readonly CancellationTokenSource _cts = new();
 
     private Thread? _thread;
@@ -70,6 +76,9 @@ public sealed class TelemetryEngine : IDisposable
     // A box rather than the reference itself, because null is a meaningful request here
     // ("go back to the session best") and has to be distinguishable from "nothing asked".
     private StrongBox<DeltaReference?>? _planReferenceRequest;
+
+    // Boxed for the same reason: null ("history has no best here") is a request too.
+    private StrongBox<StoredBestLap?>? _storedBestRequest;
     private EngineSnapshot _snapshot;
     private TelemetryConnectionState _prevState = TelemetryConnectionState.Disconnected;
 
@@ -114,6 +123,14 @@ public sealed class TelemetryEngine : IDisposable
     /// </summary>
     public void RequestPlanReference(DeltaReference? reference) =>
         Interlocked.Exchange(ref this._planReferenceRequest, new StrongBox<DeltaReference?>(reference));
+
+    /// <summary>
+    /// Hands the reader thread the stored all-time best for the context being driven (looked up
+    /// outside the telemetry loop, from Sprint's lap history), or null when history has none.
+    /// Safe to call from any thread; the tracker stays single-owner.
+    /// </summary>
+    public void RequestStoredBest(StoredBestLap? best) =>
+        Interlocked.Exchange(ref this._storedBestRequest, new StrongBox<StoredBestLap?>(best));
 
     /// <summary>
     /// Connect synchronously (so the first paint reflects the real link state) and
@@ -240,6 +257,11 @@ public sealed class TelemetryEngine : IDisposable
             this._delta.SetPlanReference(request.Value);
         }
 
+        if (Interlocked.Exchange(ref this._storedBestRequest, null) is { } storedBest)
+        {
+            this._pace.SetStoredBest(storedBest.Value);
+        }
+
         TelemetryStatus status = this._source.Status;
         TelemetryConnectionState state = status.State;
 
@@ -249,7 +271,7 @@ public sealed class TelemetryEngine : IDisposable
             if (this._source.TryRead(out TelemetryFrame? frame))
             {
                 this._rate.Sample(now);
-                this._lastAugmented = Spotter.Augment(this._sectorBests.Augment(this._delta.Augment(frame)));
+                this._lastAugmented = this.Augment(frame);
                 this.Publish(this._lastAugmented, this._source.Status, this._rate.Hz);
                 return StepOutcome.ReadFrame;
             }
@@ -294,6 +316,16 @@ public sealed class TelemetryEngine : IDisposable
 
         this.Publish(this._lastAugmented, after, 0);
         return StepOutcome.Reconnecting;
+    }
+
+    // Every enricher in turn; each returns a with-copy and never touches the source's frame.
+    private TelemetryFrame Augment(TelemetryFrame frame)
+    {
+        TelemetryFrame augmented = Spotter.Augment(this._sectorBests.Augment(this._delta.Augment(frame)));
+        augmented = this._gaps.Augment(augmented);
+        augmented = this._usage.Augment(augmented);
+        augmented = this._pace.Augment(augmented);
+        return this._pitLoss.Augment(augmented);
     }
 
     private void SafeConnect()

@@ -4,7 +4,7 @@
 use serde::Deserialize;
 
 use crate::groups::drawn_widgets;
-use crate::model::{DashLayout, DashPage, DashWidget};
+use crate::model::{DashLayout, DashPage, DashWidget, Tracks};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct PixelRect {
@@ -68,29 +68,36 @@ pub fn grid_rect(width: f64, height: f64, cols: f64, rows: f64, span: GridSpan) 
     PixelRect { left, top, width: right - left, height: bottom - top }
 }
 
-/// A zoned layout's fixed tracks, in pixels at 800x480: the bar spots, the left grid's four
-/// columns, the centre column and the right grid's four; the top bar spot, then eight rows. Every
-/// zoned dash keeps these proportions at any size (`packages/dashboard/src/grid.ts` has the same).
-pub const ZONE_COLS: [f64; 11] = [40.0, 68.0, 68.0, 68.0, 68.0, 176.0, 68.0, 68.0, 68.0, 68.0, 40.0];
-pub const ZONE_ROWS: [f64; 9] = [36.0, 55.5, 55.5, 55.5, 55.5, 55.5, 55.5, 55.5, 55.5];
-
-/// The gear's spot on a zoned layout: the centre column's top three rows, drawn on every page.
-pub const GEAR_SPOT: GridSpan = GridSpan { col: 5.0, row: 1.0, col_span: 1.0, row_span: 3.0 };
-
 /// Where grid line `edge` of `tracks` falls on a `total`-pixel side.
 fn track_edge(total: f64, tracks: &[f64], edge: f64) -> f64 {
     let sum: f64 = tracks.iter().sum();
+    if sum <= 0.0 {
+        return 0.0;
+    }
     let lines = edge.clamp(0.0, tracks.len() as f64) as usize;
     js_round(tracks[..lines].iter().sum::<f64>() * total / sum)
 }
 
-/// A widget's rectangle in pixels on a zoned layout (the 11x9 track grid above).
-pub fn zoned_rect(width: f64, height: f64, span: GridSpan) -> PixelRect {
-    let left = track_edge(width, &ZONE_COLS, span.col);
-    let right = track_edge(width, &ZONE_COLS, span.col + span.col_span);
-    let top = track_edge(height, &ZONE_ROWS, span.row);
-    let bottom = track_edge(height, &ZONE_ROWS, span.row + span.row_span);
+/// A widget's rectangle in pixels on a dash with its own track sizes: each column and row keeps
+/// its share of the canvas at any size (`trackRect` in grid.ts has the same).
+pub fn track_rect(width: f64, height: f64, tracks: &Tracks, span: GridSpan) -> PixelRect {
+    let left = track_edge(width, &tracks.cols, span.col);
+    let right = track_edge(width, &tracks.cols, span.col + span.col_span);
+    let top = track_edge(height, &tracks.rows, span.row);
+    let bottom = track_edge(height, &tracks.rows, span.row + span.row_span);
     PixelRect { left, top, width: (right - left).max(0.0), height: (bottom - top).max(0.0) }
+}
+
+/// A widget's rectangle in pixels on `layout`'s grid: its own track sizes, else the even grid.
+pub fn layout_rect(layout: &DashLayout, width: f64, height: f64, span: GridSpan) -> PixelRect {
+    match &layout.tracks {
+        Some(tracks) => track_rect(width, height, tracks, span),
+        None => {
+            let cols = if layout.grid_cols > 0.0 { layout.grid_cols } else { 20.0 };
+            let rows = if layout.grid_rows > 0.0 { layout.grid_rows } else { 12.0 };
+            grid_rect(width, height, cols, rows, span)
+        }
+    }
 }
 
 /// An alert's span on its layout grid (`alertPanelRect`'s argument), as a centered popup's JSON
@@ -178,13 +185,28 @@ mod tests {
         assert!(rect.left + rect.width <= 800.0 && rect.top + rect.height <= 480.0);
     }
 
+    /// The default look's tracks at 800x480: narrow first and last columns, a short top row.
+    fn tracks() -> Tracks {
+        let mut cols = vec![90.0; 10];
+        cols[0] = 40.0;
+        cols[9] = 40.0;
+        let mut rows = vec![55.5; 9];
+        rows[0] = 36.0;
+        Tracks { cols, rows }
+    }
+
     #[test]
-    fn a_zoned_layout_keeps_its_track_proportions_at_any_size() {
-        // The centre column (col 5) and the centre cells under the gear (rows 4..8).
-        assert_eq!(zoned_rect(800.0, 480.0, span(5.0, 4.0, 1.0, 5.0)), PixelRect::new(312.0, 203.0, 176.0, 277.0));
-        assert_eq!(zoned_rect(800.0, 480.0, span(0.0, 0.0, 11.0, 9.0)), PixelRect::new(0.0, 0.0, 800.0, 480.0));
+    fn a_dash_keeps_its_track_shares_at_any_size() {
+        // Mirrored in packages/dashboard/src/grid.test.ts.
+        assert_eq!(track_rect(800.0, 480.0, &tracks(), span(4.0, 1.0, 2.0, 3.0)), PixelRect::new(310.0, 36.0, 180.0, 167.0));
+        assert_eq!(track_rect(800.0, 480.0, &tracks(), span(0.0, 0.0, 10.0, 9.0)), PixelRect::new(0.0, 0.0, 800.0, 480.0));
         // Twice the panel, twice every track.
-        assert_eq!(zoned_rect(1600.0, 960.0, span(1.0, 1.0, 4.0, 8.0)), PixelRect::new(80.0, 72.0, 544.0, 888.0));
+        assert_eq!(track_rect(1600.0, 960.0, &tracks(), span(1.0, 1.0, 3.0, 8.0)), PixelRect::new(80.0, 72.0, 540.0, 888.0));
+    }
+
+    #[test]
+    fn a_span_past_the_last_track_ends_at_the_canvas_edge() {
+        assert_eq!(track_rect(800.0, 480.0, &tracks(), span(9.0, 8.0, 3.0, 3.0)), PixelRect::new(760.0, 425.0, 40.0, 55.0));
     }
 
     #[test]

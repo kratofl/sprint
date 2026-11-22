@@ -38,6 +38,13 @@ export interface DashPaletteColors {
   fault: string
   timingFastestOverall: string
   timingPersonalBest: string
+  /** Each driver-adjustable setting's identity colour (`dashSettingColors` unless the theme overrides it). */
+  settingTc: string
+  settingAbs: string
+  settingBrakeBias: string
+  settingEngineMap: string
+  settingMigration: string
+  settingArb: string
 }
 
 /** The raw on-wheel colors every palette slot and theme preset is built from. */
@@ -63,16 +70,18 @@ export const dashColor = {
 } as const
 
 /**
- * Each driver-adjustable setting's identity color. A knob widget carries it in its frame and
- * its change popup fills the screen with it, so the driver knows which knob they turned
- * before reading the value. Identity, not a condition: it never colors a value at rest, and
- * it stays fixed across themes so a popup reads the same on every dash.
+ * Each driver-adjustable setting's default identity color. A knob widget carries it in its
+ * frame and its change popup fills the screen with it, so the driver knows which knob they
+ * turned before reading the value. Identity, not a condition: it never colors a value at rest.
+ * A theme may override each (`settingTc`, ...). `tc` is TC, TC 2 and TC slip; `arb` both bars.
  */
 export const dashSettingColors = {
   tc: dashColor.blue,
-  abs: dashColor.purple,
-  brakeBias: dashColor.text,
+  abs: dashColor.yellow,
+  brakeBias: dashColor.yellow,
   engineMap: dashColor.green,
+  migration: dashColor.red,
+  arb: dashColor.orange,
 } as const
 
 export const defaultDashPalette: DashPaletteColors = {
@@ -99,12 +108,19 @@ export const defaultDashPalette: DashPaletteColors = {
   fault: dashColor.red,
   timingFastestOverall: dashColor.purple,
   timingPersonalBest: dashColor.green,
+  settingTc: dashSettingColors.tc,
+  settingAbs: dashSettingColors.abs,
+  settingBrakeBias: dashSettingColors.brakeBias,
+  settingEngineMap: dashSettingColors.engineMap,
+  settingMigration: dashSettingColors.migration,
+  settingArb: dashSettingColors.arb,
 }
 
 const THEME_KEYS = [
   'neutral', 'goodOnTarget', 'coldLow', 'assistActive', 'critical', 'fault',
   'timingFastestOverall', 'timingPersonalBest', 'primary', 'accent', 'foreground',
   'surface', 'border', 'success', 'warning', 'danger',
+  'settingTc', 'settingAbs', 'settingBrakeBias', 'settingEngineMap', 'settingMigration', 'settingArb',
 ] as const
 
 function isThemeEmpty(theme: DashTheme | undefined): boolean {
@@ -155,34 +171,12 @@ export function resolveDashPalette(
     fault: defaultDashPalette.fault,
     timingFastestOverall: hex(t.timingFastestOverall) ?? defaultDashPalette.timingFastestOverall,
     timingPersonalBest: hex(t.timingPersonalBest) ?? hex(t.success) ?? defaultDashPalette.timingPersonalBest,
-  }
-}
-
-/** The style-color token names offered by the widget style inspector, in swatch order. */
-export const styleColorTokens = ['ember', 'blue', 'green', 'yellow', 'red', 'white', 'muted'] as const
-
-/**
- * Resolves a per-widget style color token to a palette color, or `undefined` when the token
- * is empty/unrecognized (inherit). Tokens are on-brand names so widget styling can't invent
- * off-palette colors.
- */
-export function resolveStyleColor(token: string | undefined, palette: DashPaletteColors): string | undefined {
-  switch (token?.trim().toLowerCase()) {
-    case 'ember':
-    case 'primary': return palette.primary
-    case 'blue':
-    case 'info': return palette.accent
-    case 'green':
-    case 'success': return palette.success
-    case 'yellow':
-    case 'warning': return palette.warning
-    case 'red':
-    case 'danger': return palette.danger
-    case 'white':
-    case 'text': return palette.foreground
-    case 'muted':
-    case 'label': return palette.muted
-    default: return undefined
+    settingTc: hex(t.settingTc) ?? defaultDashPalette.settingTc,
+    settingAbs: hex(t.settingAbs) ?? defaultDashPalette.settingAbs,
+    settingBrakeBias: hex(t.settingBrakeBias) ?? defaultDashPalette.settingBrakeBias,
+    settingEngineMap: hex(t.settingEngineMap) ?? defaultDashPalette.settingEngineMap,
+    settingMigration: hex(t.settingMigration) ?? defaultDashPalette.settingMigration,
+    settingArb: hex(t.settingArb) ?? defaultDashPalette.settingArb,
   }
 }
 

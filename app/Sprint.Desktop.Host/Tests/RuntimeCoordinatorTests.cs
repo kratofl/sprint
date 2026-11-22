@@ -102,6 +102,33 @@ public sealed class RuntimeCoordinatorTests
     }
 
     [Fact]
+    public void SettingsUpdate_Units_AreMetricUntilChangedAndOnlyTakeTheirNames()
+    {
+        RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
+        try
+        {
+            Assert.Equal(UnitSystem.Metric, runtime.Settings.Units);
+
+            Assert.True(coordinator.Execute(Command("""{"type":"settings.update","units":"Imperial"}"""), out string error), error);
+            Assert.Equal(UnitSystem.Imperial, new DesktopRuntime(dataRoot, PresetRoot).Settings.Units);
+
+            foreach (string unknown in new[] { "imperial", "1", "Kelvin" })
+            {
+                Assert.False(coordinator.Execute(Command($$"""{"type":"settings.update","units":"{{unknown}}"}"""), out string rejected));
+                Assert.Contains("unknown units", rejected);
+            }
+
+            Assert.Equal(UnitSystem.Imperial, runtime.Settings.Units);
+            Assert.True(coordinator.Execute(Command("""{"type":"settings.reset"}"""), out error), error);
+            Assert.Equal(UnitSystem.Metric, new DesktopRuntime(dataRoot, PresetRoot).Settings.Units);
+        }
+        finally
+        {
+            Cleanup(dataRoot);
+        }
+    }
+
+    [Fact]
     public void SettingsUpdate_SwitchingChannel_ResetsAutomaticInstallsToThatChannelsDefault()
     {
         RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
@@ -609,6 +636,34 @@ public sealed class RuntimeCoordinatorTests
     }
 
     [Fact]
+    public void DashAllDevicesRules_AreCheckedLikeADevicesKeptAndGoWithTheirDash()
+    {
+        RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
+        try
+        {
+            string dashId = runtime.DashLayouts.First().Id;
+
+            Assert.True(coordinator.Execute(
+                Command($$"""{"type":"dash.allDevicesRules","rules":[{"kind":"car","value":"Hypercar BMW","dashId":"{{dashId}}"}]}"""),
+                out string error), error);
+            Assert.False(coordinator.Execute(
+                Command("""{"type":"dash.allDevicesRules","rules":[{"kind":"class","value":"LMP2","dashId":"missing"}]}"""),
+                out string missing));
+            Assert.Equal("no dash 'missing'", missing);
+
+            DeviceDashRule rule = Assert.Single(new DesktopRuntime(dataRoot, PresetRoot).Settings.DashRules);
+            Assert.Equal(("car", "Hypercar BMW", dashId), (rule.Kind, rule.Value, rule.DashId));
+
+            runtime.DeleteDashLayout(runtime.DashLayouts.First(layout => layout.Id == dashId));
+            Assert.Empty(runtime.Settings.DashRules);
+        }
+        finally
+        {
+            Cleanup(dataRoot);
+        }
+    }
+
+    [Fact]
     public void DevicesMultiDial_RenamesAPositionAndPersists()
     {
         RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
@@ -711,6 +766,13 @@ public sealed class RuntimeCoordinatorTests
     [InlineData("""{"type":"dashAlerts.update","alertType":"tc_change","lapsLeft":3}""", "lapsLeft is only for fuel_low")]
     [InlineData("""{"type":"dashAlerts.update","alertType":"fuel_low","lapsLeft":10}""", "lapsLeft must be a whole number from 1 to 9")]
     [InlineData("""{"type":"dashAlerts.update","alertType":"fuel_low","lapsLeft":2.5}""", "lapsLeft must be a whole number from 1 to 9")]
+    [InlineData("""{"type":"dashAlerts.update","alertType":"fuel_low","oilLimitCelsius":120}""", "oilLimitCelsius is only for engine_warning")]
+    [InlineData("""{"type":"dashAlerts.update","alertType":"engine_warning","enabled":false,"waterLimitCelsius":200}""", "waterLimitCelsius must be a whole number from 60 to 160")]
+    [InlineData("""{"type":"dashAlerts.update","alertType":"fuel_low","lapsLeft":5,"warningLapsLeft":3}""", "warningLapsLeft must not be under lapsLeft")]
+    [InlineData("""{"type":"dashAlerts.update","alertType":"launch","enabled":false,"rpmFrom":7000,"rpmTo":6500}""", "rpmTo must not be under rpmFrom")]
+    [InlineData("""{"type":"dashAlerts.update","alertType":"launch","speedKmh":0}""", "speedKmh must be a whole number from 1 to 50")]
+    [InlineData("""{"type":"dashAlerts.update","alertType":"flag","liftPoint":200}""", "liftPoint is only for lift_now")]
+    [InlineData("""{"type":"dashAlerts.update","alertType":"lift_now","liftPoint":256}""", "liftPoint must be a whole number from 0 to 255")]
     public void DashAlertsUpdate_RejectsBadInputAndChangesNothing(string json, string expected)
     {
         RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
@@ -720,6 +782,28 @@ public sealed class RuntimeCoordinatorTests
             Assert.False(coordinator.Execute(Command(json), out string error));
             Assert.Equal(expected, error);
             Assert.Equal(DashAlertTypes.Defaults, runtime.Settings.DashAlerts.Alerts);
+        }
+        finally
+        {
+            Cleanup(dataRoot);
+        }
+    }
+
+    [Fact]
+    public void DashAlertsUpdate_MovesThePairsOtherEndAlongInsteadOfCrossingIt()
+    {
+        RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
+        try
+        {
+            // LOW FUEL (2) above the first level (4) takes the first level with it; the first level
+            // below LOW FUEL takes LOW FUEL down.
+            Assert.True(coordinator.Execute(Command("""{"type":"dashAlerts.update","alertType":"fuel_low","lapsLeft":6}"""), out string error), error);
+            Assert.Equal((6, 6), (runtime.Settings.DashAlerts.Of("fuel_low").LapsLeft, runtime.Settings.DashAlerts.Of("fuel_low").WarningLapsLeft));
+            Assert.True(coordinator.Execute(Command("""{"type":"dashAlerts.update","alertType":"fuel_low","warningLapsLeft":3}"""), out error), error);
+            Assert.Equal((3, 3), (runtime.Settings.DashAlerts.Of("fuel_low").LapsLeft, runtime.Settings.DashAlerts.Of("fuel_low").WarningLapsLeft));
+
+            Assert.True(coordinator.Execute(Command("""{"type":"dashAlerts.update","alertType":"launch","rpmFrom":7000}"""), out error), error);
+            Assert.Equal((7000, 7000), (runtime.Settings.DashAlerts.Of("launch").RpmFrom, runtime.Settings.DashAlerts.Of("launch").RpmTo));
         }
         finally
         {
@@ -739,13 +823,54 @@ public sealed class RuntimeCoordinatorTests
             Assert.True(coordinator.Execute(update, out error), error);
             Assert.True(coordinator.Execute(Command("""{"type":"dashAlerts.update","alertType":"arb_change","enabled":true,"invertColors":true}"""), out error), error);
 
-            DashAlertSettings fuel = new("fuel_low", true, DashAlertSize.Full, false, 4, false, 3);
+            DashAlertSettings fuel = new("fuel_low", true, DashAlertSize.Full, false, 4, false, 3, 4);
             DashAlertSettings arb = new("arb_change", true, DashAlertSize.Strip, true, 2, false);
             Assert.Equal(fuel, runtime.Settings.DashAlerts.Of("fuel_low"));
             Assert.Equal(arb, runtime.Settings.DashAlerts.Of("arb_change"));
 
             AppDashAlerts reloaded = new DesktopRuntime(dataRoot, PresetRoot).Settings.DashAlerts;
             Assert.Equal(AppDashAlerts.Default.With(fuel).With(arb).Alerts, reloaded.Alerts);
+        }
+        finally
+        {
+            Cleanup(dataRoot);
+        }
+    }
+
+    [Fact]
+    public void DashAlertsUpdate_SetsTheEngineLimitsTheDashesWarnFromAndPersistsThem()
+    {
+        RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
+        try
+        {
+            Assert.True(coordinator.Execute(Command("""{"type":"dashAlerts.update","alertType":"engine_warning","waterLimitCelsius":105}"""), out string error), error);
+
+            DashAlertSettings engine = runtime.Settings.DashAlerts.Of("engine_warning");
+            Assert.Equal((105, 130), (engine.WaterLimitCelsius, engine.OilLimitCelsius));
+            DashAlert stamped = engine.ToLayoutAlert();
+            Assert.Equal((105, 130), (stamped.WaterLimitCelsius, stamped.OilLimitCelsius));
+            Assert.Equal(engine, new DesktopRuntime(dataRoot, PresetRoot).Settings.DashAlerts.Of("engine_warning"));
+        }
+        finally
+        {
+            Cleanup(dataRoot);
+        }
+    }
+
+    [Fact]
+    public void DashAlertsUpdate_SetsTheLaunchWindowAndTheLiftPointAndPersistsThem()
+    {
+        RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
+        try
+        {
+            Assert.True(coordinator.Execute(Command("""{"type":"dashAlerts.update","alertType":"launch","rpmFrom":4500,"rpmTo":5200,"speedKmh":16}"""), out string error), error);
+            Assert.True(coordinator.Execute(Command("""{"type":"dashAlerts.update","alertType":"lift_now","liftPoint":200}"""), out error), error);
+
+            DashAlertSettings launch = runtime.Settings.DashAlerts.Of("launch");
+            Assert.Equal((4500, 5200, 16, 50), (launch.RpmFrom, launch.RpmTo, launch.SpeedKmh, launch.ClutchPercent));
+            Assert.Equal(200, runtime.Settings.DashAlerts.Of("lift_now").ToLayoutAlert().LiftPoint);
+            AppDashAlerts reloaded = new DesktopRuntime(dataRoot, PresetRoot).Settings.DashAlerts;
+            Assert.Equal((launch, 200), (reloaded.Of("launch"), reloaded.Of("lift_now").LiftPoint));
         }
         finally
         {
@@ -914,12 +1039,12 @@ public sealed class RuntimeCoordinatorTests
 
             Assert.True(ok, error);
             DashLayout created = runtime.DashLayouts.Single(layout => layout.Name == "Quali");
-            // Zoned: the profile names the screen; the grid stays the zones' own.
+            // The profile names the screen; the grid keeps its own tracks.
             Assert.Equal("portrait-480x800", created.ScreenProfileId);
-            Assert.True(created.Zoned);
-            Assert.Equal((DashZones.Cols, DashZones.Rows), (created.GridCols, created.GridRows));
+            Assert.True(created.HasTracks);
+            Assert.Equal((DashTracks.Cols, DashTracks.Rows), (created.GridCols, created.GridRows));
             DashPage page = Assert.Single(created.Pages);
-            Assert.Empty(page.Widgets);
+            Assert.Equal("gear", Assert.Single(page.Widgets).Type);
             Assert.Equal("Qualifying", created.Category);
         }
         finally

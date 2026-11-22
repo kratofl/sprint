@@ -44,6 +44,8 @@ public interface IDesktopRuntime
 
     /// <summary>Replaces the device's dash rules; they are already validated.</summary>
     void UpdateDeviceDashRules(SavedDevice device, IReadOnlyList<DeviceDashRule> rules);
+
+    void UpdateAllDevicesDashRules(IReadOnlyList<DeviceDashRule> rules);
     void UpdateDeviceCaptureRegion(SavedDevice device, ScreenCaptureRegion region);
     void UpdateDeviceRefreshHz(SavedDevice device, int refreshHz);
     void BindDeviceButton(SavedDevice device, string command, string input);

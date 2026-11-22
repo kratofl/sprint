@@ -137,6 +137,9 @@ internal static class LmuParser
             TrackTemperature = LmuBinary.ReadDouble(bytes, 236),
             IsFixedSetup = LmuBinary.ReadBool(bytes, 348),
             TrackGripLevel = LmuBinary.ReadByte(bytes, 349),
+            // After mCloudCoverage@350; mTrackLimitsStepsPerPoint@352, then mExpansion[187] to the
+            // mVehicle pointer at 540, which ends the struct at 548.
+            TrackLimitsStepsPerPenalty = LmuBinary.ReadByte(bytes, 351),
             // mInRealtime sits at 115, after mStartLight@113 and mNumRedLights@114.
             InRealtime = LmuBinary.ReadBool(bytes, 115)
         };
@@ -171,11 +174,14 @@ internal static class LmuParser
                 Detached = LmuBinary.ReadBool(wheel, 178),
                 RadiusCentimeters = LmuBinary.ReadByte(wheel, 179),
                 PressureKPa = LmuBinary.ReadDouble(wheel, 120),
-                TempInnerKelvin = LmuBinary.ReadDouble(wheel, 128),
-                TempMiddleKelvin = LmuBinary.ReadDouble(wheel, 136),
-                TempOuterKelvin = LmuBinary.ReadDouble(wheel, 144),
+                TempLeftKelvin = LmuBinary.ReadDouble(wheel, 128),
+                TempCentreKelvin = LmuBinary.ReadDouble(wheel, 136),
+                TempRightKelvin = LmuBinary.ReadDouble(wheel, 144),
                 WearFraction = LmuBinary.ReadDouble(wheel, 152),
-                CarcassTempKelvin = LmuBinary.ReadDouble(wheel, 204)
+                CarcassTempKelvin = LmuBinary.ReadDouble(wheel, 204),
+                // After mTireInnerLayerTemperature[3]@212; mCompoundIndex@240, mCompoundType@241 and
+                // mExpansion[18] then end the wheel at 260.
+                OptimalTempKelvin = LmuBinary.ReadSingle(wheel, 236)
             });
         }
 
@@ -207,12 +213,15 @@ internal static class LmuParser
             FilteredClutch = LmuBinary.ReadDouble(bytes, 444),
             FuelLiters = LmuBinary.ReadDouble(bytes, 524),
             EngineMaxRpm = LmuBinary.ReadDouble(bytes, 532),
-            // State/damage: mScheduledStops@540, then these; mLastImpactPos@568 runs to mEngineTorque@592.
+            // State/damage; mLastImpactPos@568 runs to mEngineTorque@592.
+            ScheduledStops = LmuBinary.ReadByte(bytes, 540),
             Overheating = LmuBinary.ReadBool(bytes, 541),
             DetachedParts = LmuBinary.ReadBool(bytes, 542),
+            Headlights = LmuBinary.ReadBool(bytes, 543),
             DentSeverity = LmuBinary.Slice(bytes, 544, 8).ToArray(),
             LastImpactElapsedTime = LmuBinary.ReadDouble(bytes, 552),
             LastImpactMagnitude = LmuBinary.ReadDouble(bytes, 560),
+            EngineTorque = LmuBinary.ReadDouble(bytes, 592),
             // After the four bytes mSpeedLimiter@604 .. mRearTireCompoundIndex@607.
             FuelCapacityLiters = LmuBinary.ReadDouble(bytes, 608),
             CurrentSectorRaw = LmuBinary.ReadInt32(bytes, 600),
@@ -220,8 +229,19 @@ internal static class LmuParser
             FrontCompoundName = LmuBinary.ReadNullTerminatedString(LmuBinary.Slice(bytes, 620, 18)),
             RearCompoundName = LmuBinary.ReadNullTerminatedString(LmuBinary.Slice(bytes, 638, 18)),
             RearBrakeBias = LmuBinary.ReadDouble(bytes, 664),
+            TurboBoostPressure = LmuBinary.ReadDouble(bytes, 672),
+            // After mPhysicsToGraphicsOffset[3]@680, mPhysicalSteeringWheelRange@692, mDeltaBest@696
+            // and mBatteryChargeFraction@704: the electric boost motor.
+            ElectricMotorTorque = LmuBinary.ReadDouble(bytes, 712),
+            ElectricMotorRpm = LmuBinary.ReadDouble(bytes, 720),
+            ElectricMotorTemperature = LmuBinary.ReadDouble(bytes, 728),
+            ElectricMotorWaterTemperature = LmuBinary.ReadDouble(bytes, 736),
+            ElectricMotorState = LmuBinary.ReadByte(bytes, 744),
+            LapInvalidated = LmuBinary.ReadBool(bytes, 745),
             AbsActive = LmuBinary.ReadBool(bytes, 746),
             TractionControlActive = LmuBinary.ReadBool(bytes, 747),
+            // mSpeedLimiterActive@748 sits between.
+            WiperState = LmuBinary.ReadByte(bytes, 749),
             TractionControl = LmuBinary.ReadByte(bytes, 750),
             TractionControlMax = LmuBinary.ReadByte(bytes, 751),
             TractionControlSlip = LmuBinary.ReadByte(bytes, 752),
@@ -238,6 +258,7 @@ internal static class LmuParser
             FrontAntiSwayMax = LmuBinary.ReadByte(bytes, 763),
             RearAntiSway = LmuBinary.ReadByte(bytes, 764),
             RearAntiSwayMax = LmuBinary.ReadByte(bytes, 765),
+            LiftAndCoastProgress = LmuBinary.ReadByte(bytes, 766),
             TrackLimitSteps = LmuBinary.ReadByte(bytes, 767),
             RegenPower = LmuBinary.ReadSingle(bytes, 768),
             StateOfCharge = LmuBinary.ReadSingle(bytes, 772),

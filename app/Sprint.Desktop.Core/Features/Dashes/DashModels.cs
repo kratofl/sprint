@@ -21,48 +21,6 @@ public sealed class DashColorSystemJsonConverter : JsonConverter<DashColorSystem
         writer.WriteStringValue(value == DashColorSystem.Styled ? "styled" : "functional");
 }
 
-/// <summary>
-/// How every widget on a dash is framed and titled: separate rounded panels, one ruled
-/// grid, or panels with a title bar. Independent of layout: switching it never moves or
-/// resizes a widget. Drawn by <c>chrome.tsx</c> in <c>packages/dashboard</c>.
-/// </summary>
-[JsonConverter(typeof(DashStyleJsonConverter))]
-public enum DashStyle
-{
-    Panels,
-    Grid,
-    Bars,
-
-    /// <summary>
-    /// The flat look: corner radius, edge and label from the layout's <c>chrome</c> (and a
-    /// widget's own <c>style.border</c>/<c>style.label</c>), groups framed by their <c>style</c>.
-    /// The renderer reads those straight from the JSON; the host passes them through.
-    /// </summary>
-    Flat,
-}
-
-/// <summary>Reads leniently: a missing, unknown or future style name falls back to panels instead of rejecting the layout.</summary>
-public sealed class DashStyleJsonConverter : JsonConverter<DashStyle>
-{
-    public override DashStyle Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
-        reader.GetString()?.ToLowerInvariant() switch
-        {
-            "grid" => DashStyle.Grid,
-            "bars" => DashStyle.Bars,
-            "flat" => DashStyle.Flat,
-            _ => DashStyle.Panels,
-        };
-
-    public override void Write(Utf8JsonWriter writer, DashStyle value, JsonSerializerOptions options) =>
-        writer.WriteStringValue(value switch
-        {
-            DashStyle.Grid => "grid",
-            DashStyle.Bars => "bars",
-            DashStyle.Flat => "flat",
-            _ => "panels",
-        });
-}
-
 public sealed class DashLayout
 {
     [JsonPropertyName("id")]
@@ -85,9 +43,6 @@ public sealed class DashLayout
     [JsonPropertyName("colorSystem")]
     public DashColorSystem? ColorSystem { get; set; }
 
-    [JsonPropertyName("dashStyle")]
-    public DashStyle DashStyle { get; set; } = DashStyle.Panels;
-
     [JsonIgnore]
     public DashColorSystem EffectiveColorSystem => this.ColorSystem ??
         (this.Theme is { IsEmpty: false } ? DashColorSystem.Styled : DashColorSystem.Functional);
@@ -108,13 +63,29 @@ public sealed class DashLayout
     public int GridRows { get; set; } = 12;
 
     /// <summary>
-    /// The zones of <see cref="DashZones"/> (bar spots, side grids, the gear's centre) instead of an
-    /// even grid: the grid is then <see cref="DashZones.Cols"/> x <see cref="DashZones.Rows"/> at
-    /// any screen size, and a screen profile never refits it.
+    /// The column widths, as shares (<see cref="DashTracks"/>): one per <see cref="GridCols"/>,
+    /// with <see cref="RowSizes"/>. Null on older dashes, whose grid is even and refits to its screen.
+    /// </summary>
+    [JsonPropertyName("colSizes")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<double>? ColSizes { get; set; }
+
+    /// <summary>The row heights, as shares: one per <see cref="GridRows"/>, with <see cref="ColSizes"/>.</summary>
+    [JsonPropertyName("rowSizes")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<double>? RowSizes { get; set; }
+
+    /// <summary>Whether the dash has track sizes of its own: then it fits every screen and is never refitted.</summary>
+    [JsonIgnore]
+    public bool HasTracks => this.ColSizes is not null && this.RowSizes is not null;
+
+    /// <summary>
+    /// Whether the dash was saved on the zoned grid, before dashes had track sizes. Read only so
+    /// <see cref="DashTracks.MigrateZoned"/> can move it onto its own; never written.
     /// </summary>
     [JsonPropertyName("zoned")]
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
-    public bool Zoned { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public bool? LegacyZoned { get; set; }
 
     [JsonPropertyName("idlePage")]
     public DashPage? IdlePage { get; set; }
@@ -206,6 +177,26 @@ public sealed class DashTheme
     [JsonPropertyName("danger")]
     public string? Danger { get; set; }
 
+    // Each driver-adjustable setting's identity colour (its knob widget and change popup);
+    // null keeps the dash's own (dashSettingColors in packages/dashboard/src/palette.ts).
+    [JsonPropertyName("settingTc")]
+    public string? SettingTc { get; set; }
+
+    [JsonPropertyName("settingAbs")]
+    public string? SettingAbs { get; set; }
+
+    [JsonPropertyName("settingBrakeBias")]
+    public string? SettingBrakeBias { get; set; }
+
+    [JsonPropertyName("settingEngineMap")]
+    public string? SettingEngineMap { get; set; }
+
+    [JsonPropertyName("settingMigration")]
+    public string? SettingMigration { get; set; }
+
+    [JsonPropertyName("settingArb")]
+    public string? SettingArb { get; set; }
+
     [JsonIgnore]
     public bool IsEmpty =>
         string.IsNullOrEmpty(this.Neutral) && string.IsNullOrEmpty(this.GoodOnTarget) &&
@@ -215,7 +206,10 @@ public sealed class DashTheme
         string.IsNullOrEmpty(this.Primary) && string.IsNullOrEmpty(this.Accent) &&
         string.IsNullOrEmpty(this.Foreground) && string.IsNullOrEmpty(this.Surface) &&
         string.IsNullOrEmpty(this.Border) && string.IsNullOrEmpty(this.Success) &&
-        string.IsNullOrEmpty(this.Warning) && string.IsNullOrEmpty(this.Danger);
+        string.IsNullOrEmpty(this.Warning) && string.IsNullOrEmpty(this.Danger) &&
+        string.IsNullOrEmpty(this.SettingTc) && string.IsNullOrEmpty(this.SettingAbs) &&
+        string.IsNullOrEmpty(this.SettingBrakeBias) && string.IsNullOrEmpty(this.SettingEngineMap) &&
+        string.IsNullOrEmpty(this.SettingMigration) && string.IsNullOrEmpty(this.SettingArb);
 
     public DashTheme Clone() => new()
     {
@@ -235,6 +229,12 @@ public sealed class DashTheme
         Success = this.Success,
         Warning = this.Warning,
         Danger = this.Danger,
+        SettingTc = this.SettingTc,
+        SettingAbs = this.SettingAbs,
+        SettingBrakeBias = this.SettingBrakeBias,
+        SettingEngineMap = this.SettingEngineMap,
+        SettingMigration = this.SettingMigration,
+        SettingArb = this.SettingArb,
     };
 
     public bool NormalizeProtectedColors()
@@ -339,6 +339,14 @@ public sealed class DashPage
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     [JsonConverter(typeof(DashPageJumpJsonConverter))]
     public DashPageJump? Jump { get; set; }
+
+    /// <summary>
+    /// The bar spots a zoned page kept, before dashes had track sizes. Read only so
+    /// <see cref="DashTracks.MigrateZoned"/> can drop what the page did not draw; never written.
+    /// </summary>
+    [JsonPropertyName("bars")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? LegacyBars { get; set; }
 
     [JsonExtensionData]
     public Dictionary<string, JsonElement>? ExtensionData { get; set; }
@@ -522,25 +530,15 @@ public sealed class DashWidget
 }
 
 /// <summary>
-/// Per-widget appearance overrides applied on top of the layout theme by the
-/// painter (WS6 per-widget style inspector). Colours are dash style-color token
-/// names (see <c>resolveStyleColor</c> in <c>packages/dashboard/src/palette.ts</c>)
-/// rather than raw hex so widgets stay on-brand. A widget's frame is not a
-/// per-widget choice: the layout's <see cref="DashLayout.DashStyle"/> draws it.
+/// What one widget changes of its dash's look: only where its label sits
+/// (<see cref="DashLooks.WidgetLabels"/>). Colours follow meaning and frames are the dash's, so a
+/// saved colour or edge is not read (<see cref="DashLooks"/>).
 /// </summary>
 public sealed class DashWidgetStyle
 {
-    [JsonPropertyName("textColor")]
-    public string? TextColor { get; set; }
-
-    [JsonPropertyName("labelColor")]
-    public string? LabelColor { get; set; }
-
-    [JsonIgnore]
-    public bool IsEmpty => string.IsNullOrEmpty(this.TextColor) && string.IsNullOrEmpty(this.LabelColor);
-
-    [JsonExtensionData]
-    public Dictionary<string, JsonElement>? ExtensionData { get; set; }
+    [JsonPropertyName("label")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Label { get; set; }
 }
 
 public sealed class DashAlert
@@ -584,10 +582,53 @@ public sealed class DashAlert
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public bool UntilAck { get; set; }
 
-    /// <summary><c>fuel_low</c>'s threshold: it fires when the laps of fuel left drop to this or below. Null on every other type.</summary>
+    /// <summary><c>fuel_low</c>'s two levels, laps left: LOW FUEL (and red widgets) at <see cref="LapsLeft"/>, amber widgets at <see cref="WarningLapsLeft"/>. Null on every other type.</summary>
     [JsonPropertyName("lapsLeft")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public int? LapsLeft { get; set; }
+
+    [JsonPropertyName("warningLapsLeft")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? WarningLapsLeft { get; set; }
+
+    /// <summary><c>engine_warning</c>'s water and oil limits, °C, which the Water and Oil widgets warn from too. Null on every other type.</summary>
+    [JsonPropertyName("waterLimitCelsius")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? WaterLimitCelsius { get; set; }
+
+    [JsonPropertyName("oilLimitCelsius")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? OilLimitCelsius { get; set; }
+
+    /// <summary><c>launch</c>'s window: clutch %, speed (km/h), revs and throttle % from–to. Null on every other type.</summary>
+    [JsonPropertyName("clutchPercent")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? ClutchPercent { get; set; }
+
+    [JsonPropertyName("speedKmh")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? SpeedKmh { get; set; }
+
+    [JsonPropertyName("rpmFrom")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? RpmFrom { get; set; }
+
+    [JsonPropertyName("rpmTo")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? RpmTo { get; set; }
+
+    [JsonPropertyName("throttleFrom")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? ThrottleFrom { get; set; }
+
+    [JsonPropertyName("throttleTo")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? ThrottleTo { get; set; }
+
+    /// <summary><c>lift_now</c>'s point on the game's 0–255 lift-and-coast cue, where the Lift &amp; coast widget lights too. Null on every other type.</summary>
+    [JsonPropertyName("liftPoint")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? LiftPoint { get; set; }
 
     [JsonIgnore]
     public bool UsesGlobalSettings => this.DisplayMode is null && this.ColorToken is null && this.DurationSeconds is null && this.InvertColors is null;

@@ -12,16 +12,11 @@ namespace Sprint.Desktop.Features.Live;
 /// <remarks>Not thread-safe: <see cref="TelemetryEngine"/> calls it from its reader thread only.</remarks>
 public sealed class SectorBestsTracker
 {
-    // A session clock that steps back by more than this is a restart, not jitter.
-    private const double RestartSeconds = 1;
-
     private readonly double?[] _personal = new double?[3];
     private readonly double?[] _overall = new double?[3];
     private readonly Dictionary<string, double?[]> _byClass = new(StringComparer.Ordinal);
+    private readonly SessionWatch _session = new();
     private IReadOnlyList<FieldCar>? _lastField;
-    private string _track = "";
-    private SessionType _sessionType = SessionType.Unknown;
-    private double _sessionTime;
 
     /// <summary>Returns <paramref name="frame"/> with the session bests filled in. Never mutates the input.</summary>
     public TelemetryFrame Augment(TelemetryFrame frame)
@@ -63,18 +58,13 @@ public sealed class SectorBestsTracker
 
     private void StartOverOnNewSession(SessionInfo session)
     {
-        bool restarted = session.SessionTime + RestartSeconds < this._sessionTime;
-        if (restarted || !string.Equals(session.Track, this._track, StringComparison.Ordinal) || session.SessionType != this._sessionType)
+        if (this._session.StartedOver(session))
         {
             Array.Clear(this._personal);
             Array.Clear(this._overall);
             this._byClass.Clear();
             this._lastField = null;
-            this._track = session.Track;
-            this._sessionType = session.SessionType;
         }
-
-        this._sessionTime = session.SessionTime;
     }
 
     // Every sector time the car shows, from its last lap and the lap it is on.

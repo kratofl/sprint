@@ -121,6 +121,14 @@ pub struct DashPaletteColors {
     pub fault: Rgba,
     pub timing_fastest_overall: Rgba,
     pub timing_personal_best: Rgba,
+    /// Each driver-adjustable setting's identity color (`dash_setting_colors` unless the theme
+    /// overrides it): its knob widget's label and its change popup wear it.
+    pub setting_tc: Rgba,
+    pub setting_abs: Rgba,
+    pub setting_brake_bias: Rgba,
+    pub setting_engine_map: Rgba,
+    pub setting_migration: Rgba,
+    pub setting_arb: Rgba,
 }
 
 /// The raw on-wheel colors every palette slot and theme preset is built from (`dashColor`).
@@ -145,15 +153,37 @@ pub mod dash_color {
     pub const MONO_ACCENT: &str = "#7A7A7A";
 }
 
-/// Each driver-adjustable setting's identity color (`dashSettingColors`). A knob widget carries
-/// it in its frame and its change popup fills the screen with it. Identity, not a condition: it
-/// never colors a value at rest, and it stays fixed across themes.
+/// Each driver-adjustable setting's default identity color (`dashSettingColors`). A knob widget
+/// carries it in its frame and its change popup fills the screen with it. Identity, not a
+/// condition: it never colors a value at rest. A theme may override each (`settingTc`, ...).
 pub mod dash_setting_colors {
     use super::{Rgba, dash_color};
+    /// TC, TC 2 and TC slip.
     pub const TC: Rgba = Rgba::hex(dash_color::BLUE);
-    pub const ABS: Rgba = Rgba::hex(dash_color::PURPLE);
-    pub const BRAKE_BIAS: Rgba = Rgba::hex(dash_color::TEXT);
+    pub const ABS: Rgba = Rgba::hex(dash_color::YELLOW);
+    pub const BRAKE_BIAS: Rgba = Rgba::hex(dash_color::YELLOW);
     pub const ENGINE_MAP: Rgba = Rgba::hex(dash_color::GREEN);
+    pub const MIGRATION: Rgba = Rgba::hex(dash_color::RED);
+    /// Both anti-roll bars.
+    pub const ARB: Rgba = Rgba::hex(dash_color::ORANGE);
+}
+
+/// A racing class's colour on the dash, as the app's class tags wear it (`views/CarBadges.css`:
+/// Hypercar red, LMP2 blue, LMP3 purple, GT3 green, GTE orange), from the class in any spelling
+/// LMU uses (`CarNames.ClassOf` in Core); `None` for a class it does not know. The relative's
+/// stripe wears it.
+pub fn class_color(car_class: &str) -> Option<Rgba> {
+    let upper = car_class.to_ascii_uppercase();
+    let spelled = upper.split([' ', '-', '_']).filter(|part| !part.is_empty()).collect::<Vec<_>>().join("_");
+    let hex = match spelled.as_str() {
+        "HYPER" | "HYPERCAR" | "LMH" | "LMDH" | "GTP" => dash_color::RED,
+        "LMP2" | "LMP2_ELMS" => dash_color::BLUE,
+        "LMP3" => dash_color::PURPLE,
+        "GT3" | "LMGT3" => dash_color::GREEN,
+        "GTE" | "LMGTE" | "GTE_AM" | "GTE_PRO" => dash_color::ORANGE,
+        _ => return None,
+    };
+    Some(Rgba::hex(hex))
 }
 
 pub const DEFAULT_DASH_PALETTE: DashPaletteColors = {
@@ -182,10 +212,16 @@ pub const DEFAULT_DASH_PALETTE: DashPaletteColors = {
         fault: Rgba::hex(c::RED),
         timing_fastest_overall: Rgba::hex(c::PURPLE),
         timing_personal_best: Rgba::hex(c::GREEN),
+        setting_tc: dash_setting_colors::TC,
+        setting_abs: dash_setting_colors::ABS,
+        setting_brake_bias: dash_setting_colors::BRAKE_BIAS,
+        setting_engine_map: dash_setting_colors::ENGINE_MAP,
+        setting_migration: dash_setting_colors::MIGRATION,
+        setting_arb: dash_setting_colors::ARB,
     }
 };
 
-const THEME_KEYS: [&str; 16] = [
+const THEME_KEYS: [&str; 22] = [
     "neutral",
     "goodOnTarget",
     "coldLow",
@@ -202,6 +238,12 @@ const THEME_KEYS: [&str; 16] = [
     "success",
     "warning",
     "danger",
+    "settingTc",
+    "settingAbs",
+    "settingBrakeBias",
+    "settingEngineMap",
+    "settingMigration",
+    "settingArb",
 ];
 
 fn theme_value<'a>(theme: &'a DashTheme, key: &str) -> Option<&'a str> {
@@ -246,38 +288,31 @@ pub fn resolve_dash_palette(theme: Option<&DashTheme>, color_system: ColorSystem
         fault: d.fault,
         timing_fastest_overall: hex(t, "timingFastestOverall").unwrap_or(d.timing_fastest_overall),
         timing_personal_best: hex(t, "timingPersonalBest").or_else(|| hex(t, "success")).unwrap_or(d.timing_personal_best),
+        setting_tc: hex(t, "settingTc").unwrap_or(d.setting_tc),
+        setting_abs: hex(t, "settingAbs").unwrap_or(d.setting_abs),
+        setting_brake_bias: hex(t, "settingBrakeBias").unwrap_or(d.setting_brake_bias),
+        setting_engine_map: hex(t, "settingEngineMap").unwrap_or(d.setting_engine_map),
+        setting_migration: hex(t, "settingMigration").unwrap_or(d.setting_migration),
+        setting_arb: hex(t, "settingArb").unwrap_or(d.setting_arb),
         ..d
     }
 }
 
-/// The style-color token names offered by the widget style inspector, in swatch order.
-pub const STYLE_COLOR_TOKENS: [&str; 7] = ["ember", "blue", "green", "yellow", "red", "white", "muted"];
-
-/// Resolves a per-widget style color token to a palette color, or `None` when the token is
-/// empty/unrecognized (inherit).
-pub fn resolve_style_color(token: Option<&str>, palette: &DashPaletteColors) -> Option<Rgba> {
-    match token?.trim().to_ascii_lowercase().as_str() {
-        "ember" | "primary" => Some(palette.primary),
-        "blue" | "info" => Some(palette.accent),
-        "green" | "success" => Some(palette.success),
-        "yellow" | "warning" => Some(palette.warning),
-        "red" | "danger" => Some(palette.danger),
-        "white" | "text" => Some(palette.foreground),
-        "muted" | "label" => Some(palette.muted),
-        _ => None,
-    }
-}
-
-/// Temperature-coded color for a tyre readout (Celsius), matching the desktop painter thresholds.
-pub fn resolve_tyre_color(celsius: f64, palette: &DashPaletteColors) -> Rgba {
-    if celsius > 110.0 {
+/// A tyre temperature's colour (°C), against the compound's ideal (`optimal`, 0 when unknown):
+/// blue more than 10° under it, green within 10°, amber up to 20° over, red beyond. Without an
+/// ideal, fixed marks: blue to 70°, green to 100°, amber to 110°, red above. Every tyre widget
+/// colours its temperatures with this.
+pub fn resolve_tyre_color(celsius: f64, optimal: f64, palette: &DashPaletteColors) -> Rgba {
+    let cold = if optimal > 0.0 { celsius < optimal - 10.0 } else { celsius <= 70.0 };
+    let (hot, too_hot) = if optimal > 0.0 { (optimal + 10.0, optimal + 20.0) } else { (100.0, 110.0) };
+    if celsius > too_hot {
         palette.critical
-    } else if celsius > 100.0 {
+    } else if celsius > hot {
         palette.warning
-    } else if celsius > 70.0 {
-        palette.good_on_target
-    } else {
+    } else if cold {
         palette.cold_low
+    } else {
+        palette.good_on_target
     }
 }
 
@@ -433,6 +468,14 @@ mod tests {
     }
 
     #[test]
+    fn a_theme_may_override_each_settings_identity_color() {
+        let palette = resolve_dash_palette(Some(&theme(&[("settingAbs", "#123456")])), ColorSystem::Styled);
+        assert_eq!(palette.setting_abs, Rgba::hex("#123456"));
+        assert_eq!(palette.setting_tc, dash_setting_colors::TC, "the others keep their own");
+        assert_eq!(DEFAULT_DASH_PALETTE.setting_arb, Rgba::hex(dash_color::ORANGE));
+    }
+
+    #[test]
     fn resolve_dash_palette_pins_danger_critical_fault_and_rpm_near_limit_regardless_of_the_theme() {
         let t = theme(&[("danger", "#00FF00"), ("critical", "#00FF00"), ("fault", "#00FF00")]);
         let palette = resolve_dash_palette(Some(&t), ColorSystem::Styled);
@@ -458,23 +501,17 @@ mod tests {
     }
 
     #[test]
-    fn resolve_style_color_maps_known_tokens_and_treats_anything_else_as_inherit() {
+    fn a_tyre_temperature_is_coloured_against_the_compounds_ideal_or_fixed_marks_without_one() {
         let p = DEFAULT_DASH_PALETTE;
-        assert_eq!(resolve_style_color(Some("ember"), &p), Some(p.primary));
-        assert_eq!(resolve_style_color(Some("Info"), &p), Some(p.accent));
-        assert_eq!(resolve_style_color(Some("danger"), &p), Some(p.danger));
-        assert_eq!(resolve_style_color(Some(""), &p), None);
-        assert_eq!(resolve_style_color(None, &p), None);
-        assert_eq!(resolve_style_color(Some("not-a-token"), &p), None);
-    }
-
-    #[test]
-    fn resolve_tyre_color_buckets_by_the_desktop_painter_thresholds() {
-        let p = DEFAULT_DASH_PALETTE;
-        assert_eq!(resolve_tyre_color(120.0, &p), p.critical);
-        assert_eq!(resolve_tyre_color(105.0, &p), p.warning);
-        assert_eq!(resolve_tyre_color(85.0, &p), p.good_on_target);
-        assert_eq!(resolve_tyre_color(40.0, &p), p.cold_low);
+        let at = |celsius| resolve_tyre_color(celsius, 90.0, &p);
+        assert_eq!(
+            (at(79.0), at(80.0), at(100.0), at(101.0), at(110.0), at(111.0)),
+            (p.cold_low, p.good_on_target, p.good_on_target, p.warning, p.warning, p.critical)
+        );
+        assert_eq!(resolve_tyre_color(120.0, 0.0, &p), p.critical);
+        assert_eq!(resolve_tyre_color(105.0, 0.0, &p), p.warning);
+        assert_eq!(resolve_tyre_color(85.0, 0.0, &p), p.good_on_target);
+        assert_eq!(resolve_tyre_color(40.0, 0.0, &p), p.cold_low);
     }
 
     #[test]

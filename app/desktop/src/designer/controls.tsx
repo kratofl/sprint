@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { Minus, Plus } from 'lucide-react'
-import type { DashBorder, DashLabelMode } from '@sprint/dashboard'
+import type { DashBorder, DashGroupLabel, DashLabelMode } from '@sprint/dashboard'
 import type { GridRect } from '../views/DashesDomain'
 
 /** Small form controls the designer's panels share. */
@@ -44,13 +44,24 @@ export function NumberBox({
  * Column, row, width and height of a grid rectangle, one-based on screen. `onChange` gets the
  * field that changed, so a run of clicks on one field can be one undo step.
  */
-export function GeometryFields({ rect, onChange }: { rect: GridRect; onChange: (rect: GridRect, field: keyof GridRect) => void }) {
+export function GeometryFields({
+  rect,
+  minColSpan = 1,
+  minRowSpan = 1,
+  onChange,
+}: {
+  rect: GridRect
+  /** The narrowest and shortest the item may get (a widget's smallest form). */
+  minColSpan?: number
+  minRowSpan?: number
+  onChange: (rect: GridRect, field: keyof GridRect) => void
+}) {
   return (
     <div className="designer-geometry">
       <GeometryStepper label="Column" value={rect.col} offset={1} onChange={(col) => onChange({ ...rect, col }, 'col')} />
       <GeometryStepper label="Row" value={rect.row} offset={1} onChange={(row) => onChange({ ...rect, row }, 'row')} />
-      <GeometryStepper label="Width" value={rect.colSpan} min={1} onChange={(colSpan) => onChange({ ...rect, colSpan }, 'colSpan')} />
-      <GeometryStepper label="Height" value={rect.rowSpan} min={1} onChange={(rowSpan) => onChange({ ...rect, rowSpan }, 'rowSpan')} />
+      <GeometryStepper label="Width" value={rect.colSpan} min={minColSpan} onChange={(colSpan) => onChange({ ...rect, colSpan }, 'colSpan')} />
+      <GeometryStepper label="Height" value={rect.rowSpan} min={minRowSpan} onChange={(rowSpan) => onChange({ ...rect, rowSpan }, 'rowSpan')} />
     </div>
   )
 }
@@ -77,6 +88,28 @@ export function Segmented<T extends string>({ label, value, options, full = fals
   )
 }
 
+/** One choice of more than a segmented control holds, as a drop-down; picking the current one does nothing. */
+export function SelectField<T extends string>({ label, value, options, onChange }: { label: string; value: T; options: ReadonlyArray<{ value: T; label: string }>; onChange: (value: T) => void }) {
+  return (
+    <label className="field">
+      <span>{label}</span>
+      <select
+        value={value}
+        onChange={(event) => {
+          const picked = options.find((option) => option.value === event.target.value)
+          if (picked && picked.value !== value) onChange(picked.value)
+        }}
+      >
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </label>
+  )
+}
+
 /** The flat style's edges and labels, as the frame controls offer them. */
 export const BORDER_OPTIONS: ReadonlyArray<{ value: DashBorder; label: string }> = [
   { value: 'none', label: 'None' },
@@ -84,7 +117,17 @@ export const BORDER_OPTIONS: ReadonlyArray<{ value: DashBorder; label: string }>
   { value: 'normal', label: 'Normal' },
   { value: 'thick', label: 'Thick' },
 ]
+/** Where a dash puts its widgets' labels, named as on the canvas's label bar; a band is the dash's alone. */
 export const LABEL_OPTIONS: ReadonlyArray<{ value: DashLabelMode; label: string }> = [
+  { value: 'top', label: 'Center' },
+  { value: 'on', label: 'Top' },
+  { value: 'left', label: 'Left' },
+  { value: 'right', label: 'Right' },
+  { value: 'off', label: 'Off' },
+  { value: 'capsule', label: 'Band' },
+]
+/** How a group frame shows its name. */
+export const GROUP_LABEL_OPTIONS: ReadonlyArray<{ value: DashGroupLabel; label: string }> = [
   { value: 'off', label: 'Off' },
   { value: 'on', label: 'Small' },
   { value: 'capsule', label: 'Capsule' },

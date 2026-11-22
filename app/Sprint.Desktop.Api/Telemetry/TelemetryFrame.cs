@@ -98,6 +98,13 @@ public sealed record FieldCar
     /// <summary>World position in metres, in <see cref="CarPose"/>'s convention (right-handed, +Y up), seen from above.</summary>
     public float PositionX { get; init; }
     public float PositionZ { get; init; }
+
+    /// <summary>
+    /// Seconds between this car and the player's on the road (negative: ahead), timed from where
+    /// each car was when (GapTracker); null for the player's own car and while too little history
+    /// is known. The telemetry engine fills it; a game source leaves it null.
+    /// </summary>
+    public double? RelativeGapSeconds { get; init; }
 }
 
 /// <summary>Where a car is in a pit stop.</summary>
@@ -304,6 +311,21 @@ public sealed record CarState
 
     /// <summary>How much fuel the tank holds, litres. Null when the game does not say.</summary>
     public float? FuelCapacityLiters { get; init; }
+
+    // Fuel used per lap, measured from the tank by the telemetry engine (LapUsageTracker); a game
+    // source leaves them null. FuelPerLapLiters stays the game adapter's last-five-laps average.
+
+    /// <summary>Fuel the last completed lap used, litres; null until a whole lap was seen without a refuel.</summary>
+    public float? FuelLastLapLiters { get; init; }
+
+    /// <summary>Fuel used so far on the lap being driven, litres; null until the lap's start was seen.</summary>
+    public float? FuelThisLapLiters { get; init; }
+
+    /// <summary>
+    /// Fuel used per lap over this stint (since the last stop), counting only laps with no pit
+    /// lane and no yellow, safety car or full course yellow, litres; null until there is one.
+    /// </summary>
+    public float? FuelStintPerLapLiters { get; init; }
     /// <summary>World position in the game's own frame, for track maps. <see cref="Pose"/> is the frame-neutral one.</summary>
     public float PositionX { get; init; }
     public float PositionY { get; init; }
@@ -327,6 +349,24 @@ public sealed record CarState
 
     /// <summary>Where the car is and how it is moving. Null when the game does not say.</summary>
     public CarPose? Pose { get; init; }
+
+    /// <summary>Engine torque including any hybrid torque added to it, Nm (negative on the overrun). Null when the game does not say.</summary>
+    public float? EngineTorqueNewtonMeters { get; init; }
+
+    /// <summary>
+    /// Turbo boost pressure, as the game reports it: LMU states no unit, so this is its raw number.
+    /// Null when the car reports none (no turbo) or the game does not say.
+    /// </summary>
+    public float? TurboBoostPressure { get; init; }
+
+    /// <summary>Whether the headlights are on. Null when the game does not say.</summary>
+    public bool? Headlights { get; init; }
+
+    /// <summary>
+    /// The wiper setting as the game numbers it, 0 presumably off (LMU does not document the
+    /// values). Null when the game does not say.
+    /// </summary>
+    public byte? WiperState { get; init; }
 }
 
 /// <summary>
@@ -418,6 +458,18 @@ public sealed record TireState
 
     public float BrakeTempCelsius { get; init; }
 
+    /// <summary>The compound's ideal temperature, °C; 0 when the game does not say.</summary>
+    public float OptimalTempCelsius { get; init; }
+
+    // Measured over the last completed lap by the telemetry engine (LapUsageTracker); a game source
+    // leaves them null, and so does a lap not seen whole.
+
+    /// <summary>Wear the last lap took off the tyre, percentage points of <see cref="WearPercent"/>.</summary>
+    public float? WearLastLapPercent { get; init; }
+
+    /// <summary>The tread temperature (<see cref="TempSurfaceCelsius"/>) averaged over the last lap, °C.</summary>
+    public float? AverageTempLastLapCelsius { get; init; }
+
     public float SuspensionDeflectionMeters { get; init; }
 
     public float RideHeightMeters { get; init; }
@@ -484,8 +536,43 @@ public sealed record LapState
     /// <summary>The fastest lap this session among the player's class, seconds; null when none yet.</summary>
     public double? ClassBestLapTime { get; init; }
 
+    /// <summary>Whether the lap being driven still counts: false once the game has invalidated it.</summary>
     public bool IsValid { get; init; } = true;
+
+    /// <summary>
+    /// Whether the last completed lap counted: <see cref="IsValid"/> as it stood just before the
+    /// line. True until a lap has been completed.
+    /// </summary>
+    public bool LastLapValid { get; init; } = true;
     public float TrackPosition { get; init; }
+
+    // From the player's own laps, by the telemetry engine (LapPaceTracker, PitLossTracker); a game
+    // source leaves them null.
+
+    /// <summary>The average of the player's last five valid laps this session, seconds; null until five.</summary>
+    public double? LastFiveLapsAverage { get; init; }
+
+    /// <summary>The average of the player's last ten valid laps this session, seconds; null until ten.</summary>
+    public double? LastTenLapsAverage { get; init; }
+
+    /// <summary>
+    /// The player's fastest valid lap ever at this track in this car: Sprint's lap history and
+    /// this session's laps. Null when there is none.
+    /// </summary>
+    public double? AllTimeBestLapTime { get; init; }
+
+    /// <summary>
+    /// What a pit stop costs, seconds: the time lost driving through the lane plus the time stood
+    /// in the box, as the race engineer's pit wall measures it from the stops seen this session.
+    /// Null until both are known.
+    /// </summary>
+    public double? PitLossSeconds { get; init; }
+
+    /// <summary>
+    /// The fastest the car went on the last completed lap, metres per second, by the telemetry
+    /// engine (LapUsageTracker); null until a lap was seen from the line. A game source leaves it null.
+    /// </summary>
+    public float? LastLapTopSpeedMetersPerSecond { get; init; }
 }
 
 public sealed record RaceFlags
@@ -510,6 +597,9 @@ public sealed record RaceFlags
 public sealed record ElectronicsState
 {
     public bool TractionControlActive { get; init; }
+
+    /// <summary>Whether ABS is working right now.</summary>
+    public bool AbsActive { get; init; }
     public byte TractionControl { get; init; }
     public byte TractionControlMax { get; init; }
 
@@ -539,8 +629,34 @@ public sealed record RaceState
 {
     public byte Position { get; init; }
     public byte TotalPositions { get; init; }
+
+    // Gaps in seconds, all positive. The telemetry engine times them from where each car was when
+    // (GapTracker), so two cars that brake together keep their gap; until it has enough history it
+    // falls back to the game's figure.
+
+    /// <summary>To the nearest car ahead on the road, whatever its place; 0 when unknown.</summary>
     public float GapAhead { get; init; }
+
+    /// <summary>To the nearest car behind on the road, whatever its place; 0 when unknown.</summary>
     public float GapBehind { get; init; }
+
+    /// <summary>To the car one place ahead in the player's class; null when there is none or it is unknown.</summary>
+    public float? ClassGapAhead { get; init; }
+
+    /// <summary>To the car one place behind in the player's class; null when there is none or it is unknown.</summary>
+    public float? ClassGapBehind { get; init; }
+
+    /// <summary>To the car one place ahead overall; null when there is none or it is unknown.</summary>
+    public float? PositionGapAhead { get; init; }
+
+    /// <summary>To the car one place behind overall; null when there is none or it is unknown.</summary>
+    public float? PositionGapBehind { get; init; }
+
+    /// <summary>To the overall leader; null when the player leads or it is unknown.</summary>
+    public float? GapToLeader { get; init; }
+
+    /// <summary>To the leader of the player's class; null when the player leads it or it is unknown.</summary>
+    public float? GapToClassLeader { get; init; }
 
     // The spotter: the nearest car alongside on each side, as how far ahead of the player it is,
     // metres (negative: behind); null when nobody is alongside. The telemetry engine fills them
@@ -554,13 +670,56 @@ public sealed record EnergyState
     public float VirtualEnergy { get; init; }
     public float VirtualEnergyPerLap { get; init; }
     public float StateOfCharge { get; init; }
+
+    /// <summary>Power the hybrid motor recovers, kW.</summary>
     public float RegenPower { get; init; }
+
+    /// <summary>Power the hybrid motor delivers, kW; 0 unless it is propelling the car.</summary>
     public float DeployPower { get; init; }
+
+    /// <summary>What the hybrid motor is doing; <see cref="ElectricMotorState.Unavailable"/> for a car without one.</summary>
+    public ElectricMotorState MotorState { get; init; }
+
+    /// <summary>The hybrid motor's temperature, °C. Null when the car has none or the game does not say.</summary>
+    public float? MotorTempCelsius { get; init; }
+
+    /// <summary>The hybrid motor's cooling water, °C. Null when the car has no cooler or the game does not say.</summary>
+    public float? MotorWaterTempCelsius { get; init; }
+
+    /// <summary>
+    /// The game's lift-and-coast cue, 0–255: it counts up towards the point to lift. 0 when the
+    /// game gives no cue.
+    /// </summary>
+    public byte LiftAndCoastProgress { get; init; }
+
+    // Measured from the virtual energy reading by the telemetry engine (LapUsageTracker), in its
+    // unit; a game source leaves them null. VirtualEnergyPerLap stays the adapter's five-lap average.
+
+    /// <summary>Virtual energy the last completed lap used; null until a whole lap was seen without a refill.</summary>
+    public float? VirtualEnergyLastLap { get; init; }
+
+    /// <summary>Virtual energy used per lap over this stint, clean laps only (as <see cref="CarState.FuelStintPerLapLiters"/>).</summary>
+    public float? VirtualEnergyStintPerLap { get; init; }
+}
+
+/// <summary>What a car's hybrid motor is doing.</summary>
+public enum ElectricMotorState
+{
+    Unavailable,
+    Inactive,
+    Propulsion,
+    Regeneration
 }
 
 public sealed record PenaltiesState
 {
     public short Incidents { get; init; }
     public byte TrackLimitSteps { get; init; }
+
+    /// <summary>The track-limit steps that earn a penalty; 0 when unknown or the session gives none.</summary>
+    public byte TrackLimitStepsPerPenalty { get; init; }
     public short PitStops { get; init; }
+
+    /// <summary>The pit stops the game's own strategy plans for the race; 0 when none are planned or the game does not say.</summary>
+    public byte ScheduledPitStops { get; init; }
 }

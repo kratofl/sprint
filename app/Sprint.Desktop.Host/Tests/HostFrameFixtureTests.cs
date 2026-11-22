@@ -97,6 +97,9 @@ public sealed class HostFrameFixtureTests
             Steering = -0.375f,
             FuelLiters = 42.5f,
             FuelPerLapLiters = 2.75f,
+            FuelLastLapLiters = 2.875f,
+            FuelThisLapLiters = 1.125f,
+            FuelStintPerLapLiters = 2.625f,
             PositionX = 11.5f,
             PositionY = 12.5f,
             PositionZ = 13.5f,
@@ -105,6 +108,10 @@ public sealed class HostFrameFixtureTests
             InPitLane = true,
             PitState = PitState.Stopped,
             PitLimiter = true,
+            EngineTorqueNewtonMeters = 640.5f,
+            TurboBoostPressure = 1.375f,
+            Headlights = true,
+            WiperState = 2,
         },
         Tires = [Tire(TirePosition.RearRight, 3), Tire(TirePosition.FrontLeft, 0), Tire(TirePosition.RearLeft, 2), Tire(TirePosition.FrontRight, 1)],
         Lap = new LapState
@@ -124,12 +131,19 @@ public sealed class HostFrameFixtureTests
             SessionBestLapTime = 101.25,
             ClassBestLapTime = 102.5,
             IsValid = false,
+            LastLapValid = false,
             TrackPosition = 0.4375f,
+            LastFiveLapsAverage = 104.5,
+            LastTenLapsAverage = 104.75,
+            AllTimeBestLapTime = 100.5,
+            PitLossSeconds = 33.5,
+            LastLapTopSpeedMetersPerSecond = 86.5f,
         },
         Flags = new RaceFlags { Yellow = true, DoubleYellow = true, Red = true, SafetyCar = true, VirtualSafetyCar = true, Checkered = true },
         Electronics = new ElectronicsState
         {
             TractionControlActive = true,
+            AbsActive = true,
             TractionControl = 3,
             TractionControlMax = 11,
             TractionControlSlip = 4,
@@ -148,9 +162,36 @@ public sealed class HostFrameFixtureTests
             RearAntiRollBarMax = 18,
             DrsActive = true,
         },
-        Race = new RaceState { Position = 25, TotalPositions = 31, GapAhead = 1.5f, GapBehind = 2.25f, CarLeftMeters = -2.5f, CarRightMeters = 3.5f },
-        Energy = new EnergyState { VirtualEnergy = 68.5f, VirtualEnergyPerLap = 3.375f, StateOfCharge = 0.625f, RegenPower = 18.5f, DeployPower = 92.5f },
-        Penalties = new PenaltiesState { Incidents = 19, TrackLimitSteps = 20, PitStops = 22 },
+        Race = new RaceState
+        {
+            Position = 25,
+            TotalPositions = 31,
+            GapAhead = 1.5f,
+            GapBehind = 2.25f,
+            ClassGapAhead = 4.5f,
+            ClassGapBehind = 5.5f,
+            PositionGapAhead = 6.25f,
+            PositionGapBehind = 7.25f,
+            GapToLeader = 12.5f,
+            GapToClassLeader = 8.5f,
+            CarLeftMeters = -2.5f,
+            CarRightMeters = 3.5f,
+        },
+        Energy = new EnergyState
+        {
+            VirtualEnergy = 68.5f,
+            VirtualEnergyPerLap = 3.375f,
+            StateOfCharge = 0.625f,
+            RegenPower = 18.5f,
+            DeployPower = 92.5f,
+            MotorState = ElectricMotorState.Regeneration,
+            MotorTempCelsius = 66.5f,
+            MotorWaterTempCelsius = 44.5f,
+            LiftAndCoastProgress = 221,
+            VirtualEnergyLastLap = 3.25f,
+            VirtualEnergyStintPerLap = 3.125f,
+        },
+        Penalties = new PenaltiesState { Incidents = 19, TrackLimitSteps = 20, TrackLimitStepsPerPenalty = 21, PitStops = 22, ScheduledPitStops = 23 },
         Conditions = new SessionConditions
         {
             PathWetness = 0.3125,
@@ -163,10 +204,11 @@ public sealed class HostFrameFixtureTests
             Raining = 0.5,
         },
         Damage = new DamageState { Dents = [0, 1, 2, 0, 1, 2, 0, 1], LastImpactSessionTime = 95.5, LastImpactMagnitude = 1250.5, Overheating = true, DetachedParts = true },
-        Field = [new FieldCar { Id = 9, Driver = "Someone Else", Car = "Other Car", CarClass = "Fixture Class", IsPlayer = true, Place = 4, ClassPlace = 4, LapsCompleted = 23, LapDistanceMeters = 2500.5, Penalties = 2, BlueFlag = true }],
+        Field = [new FieldCar { Id = 9, Driver = "Someone Else", Car = "Other Car", CarClass = "Fixture Class", IsPlayer = true, Place = 4, ClassPlace = 3, LapsCompleted = 23, LapDistanceMeters = 2500.5, InPitLane = true, Penalties = 2, BlueFlag = true, RelativeGapSeconds = -0.75 }],
     };
 
-    // Tyre n of the four (FrontLeft = 0): temperatures 8n1..8n5 °C, pressure 16n.5 kPa, wear 1n.25 %, brake 4n0.5 °C.
+    // Tyre n of the four (FrontLeft = 0): temperatures 8n1..8n5 °C, pressure 16n.5 kPa, wear 1n.25 %, brake 4n0.5 °C,
+    // optimal 7n.5 °C, last lap's wear n.5 % and average 8n6 °C. Front right is flat, rear left off the car.
     private static TireState Tire(TirePosition position, int n) => new()
     {
         Position = position,
@@ -178,9 +220,14 @@ public sealed class HostFrameFixtureTests
         PressureKPa = 160.5f + (10 * n),
         WearPercent = 10.25f + n,
         BrakeTempCelsius = 400.5f + (10 * n),
+        OptimalTempCelsius = 70.5f + (10 * n),
+        WearLastLapPercent = 0.5f + n,
+        AverageTempLastLapCelsius = 86 + (10 * n),
         Compound = $"Compound {position}",
         LoadNewtons = 3000.5f + n,
         Surface = TireSurface.Dry,
+        Flat = n == 1,
+        Detached = n == 2,
     };
 
     private static string FixtureDirectory =>

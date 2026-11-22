@@ -484,6 +484,11 @@ export type SprintBridge = {
   resizeHud(width: number, height: number, done: boolean): void
   /** Opens a dash in its own designer window, or brings that window forward. */
   openDashDesigner(dashId: string): Promise<void>
+  /**
+   * From a designer window: moves it on to another dash. 'switched' when this window now edits it,
+   * 'focused' when that dash's own window came forward instead (this one stays where it was).
+   */
+  switchDashDesigner(dashId: string): Promise<'switched' | 'focused'>
   /** From a designer window: brings the main window forward on Dashes > Settings. */
   openDashSettings(): Promise<void>
   /** The main window: called when a designer asks for Dashes > Settings (`openDashSettings`). */
@@ -540,8 +545,9 @@ type RawBridge = {
   /** Both absent in the preview harness's stub. */
   subscribeHud?(listener: (message: unknown) => void): () => void
   resizeHud?(width: number, height: number, done: boolean): void
-  /** Absent in the preview harness's stub. */
+  /** Both absent in the preview harness's stub. */
   openDashDesigner?(dashId: string): Promise<unknown>
+  switchDashDesigner?(dashId: string): Promise<unknown>
   /** Both absent in the preview harness's stub. */
   openDashSettings?(): Promise<unknown>
   subscribeOpenDashSettings?(listener: () => void): () => void
@@ -962,9 +968,33 @@ const parseDashAlerts = (value: unknown): DashAlertSettings[] => {
       durationSeconds: typeof entry.durationSeconds === 'number' && Number.isFinite(entry.durationSeconds) ? entry.durationSeconds : fallback.durationSeconds,
       untilAck: typeof entry.untilAck === 'boolean' ? entry.untilAck : fallback.untilAck,
     }
-    return fallback.type === 'fuel_low'
-      ? { ...settings, type: fallback.type, lapsLeft: typeof entry.lapsLeft === 'number' && Number.isInteger(entry.lapsLeft) ? entry.lapsLeft : fallback.lapsLeft }
-      : { ...settings, type: fallback.type }
+    const whole = (value: unknown, otherwise: number): number => (typeof value === 'number' && Number.isInteger(value) ? value : otherwise)
+    switch (fallback.type) {
+      case 'fuel_low':
+        return { ...settings, type: fallback.type, lapsLeft: whole(entry.lapsLeft, fallback.lapsLeft), warningLapsLeft: whole(entry.warningLapsLeft, fallback.warningLapsLeft) }
+      case 'engine_warning':
+        return {
+          ...settings,
+          type: fallback.type,
+          waterLimitCelsius: whole(entry.waterLimitCelsius, fallback.waterLimitCelsius),
+          oilLimitCelsius: whole(entry.oilLimitCelsius, fallback.oilLimitCelsius),
+        }
+      case 'launch':
+        return {
+          ...settings,
+          type: fallback.type,
+          clutchPercent: whole(entry.clutchPercent, fallback.clutchPercent),
+          speedKmh: whole(entry.speedKmh, fallback.speedKmh),
+          rpmFrom: whole(entry.rpmFrom, fallback.rpmFrom),
+          rpmTo: whole(entry.rpmTo, fallback.rpmTo),
+          throttleFrom: whole(entry.throttleFrom, fallback.throttleFrom),
+          throttleTo: whole(entry.throttleTo, fallback.throttleTo),
+        }
+      case 'lift_now':
+        return { ...settings, type: fallback.type, liftPoint: whole(entry.liftPoint, fallback.liftPoint) }
+      default:
+        return { ...settings, type: fallback.type }
+    }
   })
 }
 
@@ -1146,6 +1176,8 @@ export const bridge: SprintBridge = raw
           : () => undefined,
       resizeHud: (width, height, done) => raw.resizeHud?.(width, height, done),
       openDashDesigner: async (dashId) => { await raw.openDashDesigner?.(dashId) },
+      // Without Electron (the preview) the page switches by itself.
+      switchDashDesigner: async (dashId) => ((await raw.switchDashDesigner?.(dashId)) === 'focused' ? 'focused' : 'switched'),
       openDashSettings: async () => { await raw.openDashSettings?.() },
       subscribeOpenDashSettings: (listener) => (raw.subscribeOpenDashSettings ? raw.subscribeOpenDashSettings(listener) : () => undefined),
       openPitWall: async (target) => { await raw.openPitWall?.(target) },
@@ -1192,6 +1224,7 @@ export const bridge: SprintBridge = raw
       subscribeHud: () => () => undefined,
       resizeHud: () => undefined,
       openDashDesigner: async () => undefined,
+      switchDashDesigner: async () => 'switched',
       openDashSettings: async () => undefined,
       subscribeOpenDashSettings: () => () => undefined,
       openPitWall: async () => undefined,

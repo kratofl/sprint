@@ -9,7 +9,8 @@ import { InlineName } from '../shell/InlineName'
 import { PageHeader } from '../shell/PageHeader'
 import { Status, type StatusTone } from '../shell/Status'
 import type { RuntimeState } from '../shell/runtime'
-import { CHANNELS, parseSettings } from './SettingsDomain'
+import type { DashUnits } from '@sprint/dashboard'
+import { CHANNELS, UNITS, parseSettings } from './SettingsDomain'
 import type { AppSettings, UpdateChannel } from './SettingsDomain'
 import { TRACE_EXPIRY_DAYS, lapsText, parseStorageInfo, sizeText } from './SettingsStorage'
 import type { StorageInfo } from './SettingsStorage'
@@ -22,8 +23,8 @@ type Send = (command: SprintCommand) => Promise<void>
 
 /**
  * Settings: you first, as a driver card (name and race number, renamed in place with the pen),
- * then grouped lists — Sprint web (only with the feature on), Updates, Storage, and Reset on its own
- * at the bottom. Everything saves on commit; risky changes (pre-release builds, web-only storage,
+ * then grouped lists — Units, Sprint web (only with the feature on), Updates, Storage, and Reset on its
+ * own at the bottom. Everything saves on commit; risky changes (pre-release builds, web-only storage,
  * deleting old laps' telemetry, resetting preferences) confirm first. The page has no primary
  * button until an update is out.
  */
@@ -57,6 +58,7 @@ export function SettingsView({
     <div className="settings">
       <PageHeader title="Settings" />
       <DriverCard settings={settings} send={send} />
+      <UnitsGroup units={settings.units} send={send} />
       {runtime.sprint.features.sprintWeb && <CloudGroup account={runtime.sprint.account} cloud={runtime.sprint.cloud} send={send} onSetUp={onSetUpCloud} />}
       <UpdatesGroup info={updatesInfo} channel={settings.updateChannel} status={updateStatus} send={send} />
       {storageInfo && <StorageGroup info={storageInfo} send={send} />}
@@ -137,6 +139,37 @@ function NumberPlate({ number, onChange }: { number: string; onChange: (number: 
         <Check size={16} />
       </button>
     </form>
+  )
+}
+
+// ── Units ────────────────────────────────────────────────────────────────
+
+/** Metric or imperial for every dash: the wheel, browser displays and every dash picture in the app. */
+function UnitsGroup({ units, send }: { units: DashUnits; send: Send }) {
+  const detail = UNITS.find((option) => option.id === units)?.detail
+  return (
+    <SettingsList>
+      <ListRow id="settings-units" label="Units" detail={detail}>
+        {(labels) => (
+          <div className="segmented" role="radiogroup" {...labels}>
+            {UNITS.map((option) => (
+              <button
+                key={option.id}
+                type="button"
+                role="radio"
+                aria-checked={units === option.id}
+                className="segmented-item"
+                onClick={() => {
+                  if (option.id !== units) void send({ type: 'settings.update', units: option.id })
+                }}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+        )}
+      </ListRow>
+    </SettingsList>
   )
 }
 

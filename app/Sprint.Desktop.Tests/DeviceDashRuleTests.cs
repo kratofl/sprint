@@ -30,6 +30,20 @@ public sealed class DeviceDashRuleTests
     }
 
     [Fact]
+    public void Pick_WeighsTheRulesForEveryDeviceBesideTheDevicesOwn()
+    {
+        List<DeviceDashRule> own = [Rule(DeviceDashRules.Game, "LeMansUltimate", "device-lmu"), Rule(DeviceDashRules.Class, "Hypercar", "device-hyper")];
+        DriverCar car = BmwHypercar with { AllDevices = [Rule(DeviceDashRules.Class, "Hypercar", "all-hyper"), Rule(DeviceDashRules.Car, "Hypercar BMW", "all-bmw")] };
+
+        // The car for every device beats the device's class; at the class, the device's own wins.
+        Assert.Equal("all-bmw", DeviceDashRules.Pick(own, car, _ => true));
+        Assert.Equal("device-hyper", DeviceDashRules.Pick(own, car with { Car = "Hypercar Ferrari" }, _ => true));
+        // A class for every device beats the device's game.
+        Assert.Equal("all-hyper", DeviceDashRules.Pick([own[0]], car with { Car = "Hypercar Ferrari" }, _ => true));
+        Assert.Equal("all-hyper", DeviceDashRules.Pick([], car with { Car = "Hypercar Ferrari" }, _ => true));
+    }
+
+    [Fact]
     public void Pick_PassesOverARuleWhoseDashIsGone()
     {
         List<DeviceDashRule> rules = [Rule(DeviceDashRules.Car, "Hypercar BMW", "deleted"), Rule(DeviceDashRules.Class, "Hypercar", "hyper")];

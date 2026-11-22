@@ -277,6 +277,7 @@
 
   const state = structuredClone(window.__SPRINT_PREVIEW_STATE__ ?? {})
   if (params.get('collapsed') === '1') state.settings = { ...state.settings, sidebarCollapsed: true }
+  if (params.get('units') === 'Imperial') state.settings = { ...state.settings, units: 'Imperial' }
   state.foundDevices = (params.get('found') ?? '').split(',').filter((id) => id !== '')
   // listening=<deviceId>:<function>: that function waits for its wheel button (devices.buttonListen).
   const listening = params.get('listening')
@@ -1165,6 +1166,32 @@
     }, 20)
   }
 
+  // Presses the pointer on the `press=` selector and lets go (what selects a widget on the dash
+  // designer's canvas), or with `drag=<selector>@<dx>,<dy>` presses it and moves that many pixels
+  // without letting go, for what only shows mid-drag (a resize's ghost and its tag).
+  const pointerLater = (step, hold) => {
+    if (!step) return
+    const at = /^(.*)@(-?\d+),(-?\d+)$/.exec(step)
+    const selector = at ? at[1] : step
+    const started = Date.now()
+    const timer = setInterval(() => {
+      const element = document.querySelector(selector)
+      if (!element && Date.now() - started < 2500) return
+      clearInterval(timer)
+      if (!element) {
+        console.warn(`[preview] nothing matches ${hold ? 'drag' : 'press'} selector "${selector}"`)
+        return
+      }
+      const box = element.getBoundingClientRect()
+      const x = box.left + box.width / 2
+      const y = box.top + box.height / 2
+      const event = (type, dx, dy) => new PointerEvent(type, { bubbles: true, cancelable: true, pointerId: 1, isPrimary: true, button: 0, buttons: type === 'pointerup' ? 0 : 1, clientX: x + dx, clientY: y + dy })
+      element.dispatchEvent(event('pointerdown', 0, 0))
+      if (!hold) setTimeout(() => element.dispatchEvent(event('pointerup', 0, 0)), 50)
+      else setTimeout(() => element.dispatchEvent(event('pointermove', Number(at?.[2] ?? 0), Number(at?.[3] ?? 0))), 50)
+    }, 20)
+  }
+
   // Presses each `key=` on whatever has focus once the focus step ran, through the app's own
   // keyboard handling (React listens at the root, so a bubbling keydown reaches it).
   const pressKeys = (keys) => {
@@ -1187,6 +1214,14 @@
     setTimeout(() => clearLater(params.get('clear'), params.get('blur') === '1'), focusAt)
     setTimeout(() => focusLater(params.get('focus')), focusAt)
     setTimeout(() => contextLater(params.get('context')), focusAt)
+    setTimeout(() => pointerLater(params.get('press'), false), focusAt)
+    setTimeout(() => {
+      const selector = params.get('dblclick')
+      const element = selector ? document.querySelector(selector) : null
+      if (element) element.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))
+      else if (selector) console.warn(`[preview] nothing matches dblclick selector "${selector}"`)
+    }, focusAt + 150)
+    setTimeout(() => pointerLater(params.get('drag'), true), focusAt + 300)
     // The focus step waits up to 2.5s for its element; keys go after it has had time to land.
     if (params.getAll('key').length > 0) setTimeout(() => pressKeys(params.getAll('key')), focusAt + 1500)
   })

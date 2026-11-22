@@ -6,6 +6,7 @@ import { ConfirmDialog } from '../shell/ContentDialog'
 import { MenuLayer, type MenuAnchor } from '../shell/Menu'
 import { Switch } from '../shell/Switch'
 import { SESSIONS, setEverySession, setPageJump, showsEverywhere, toggleShowIn } from './pageModes'
+import { evenTracks } from './layoutOps'
 import type { Mutate } from './useDesignerDoc'
 
 type Apply = (mutate: Mutate, group?: string) => boolean
@@ -28,6 +29,8 @@ const JUMPS: readonly { id: DashPageJump | null; label: string; hint: string }[]
  * The page's own panel, on the right of the Layout section while nothing is selected: where the
  * wheel cycles it — every session (what every page starts as), or only the picked sessions and
  * the driver's own modes — and when the wheel jumps to it by itself. The idle page has neither.
+ * Below, on a dash with its own track sizes, the grid every page shares: even columns or rows (the
+ * grips on the bezel size them one by one).
  */
 export function PageInspector({ layout, page, isIdlePage, apply, modes }: { layout: DashLayout; page: DashPage; isIdlePage: boolean; apply: Apply; modes: ModeActions }) {
   const index = layout.pages.findIndex((candidate) => candidate.id === page.id)
@@ -43,7 +46,10 @@ export function PageInspector({ layout, page, isIdlePage, apply, modes }: { layo
       </div>
 
       {isIdlePage ? (
-        <p className="field-hint">Shown while you are in the menus or the garage.</p>
+        <>
+          <p className="field-hint">Shown while you are in the menus or the garage.</p>
+          <GridGroup layout={layout} apply={apply} />
+        </>
       ) : (
         <>
           <div className="designer-group">
@@ -93,9 +99,29 @@ export function PageInspector({ layout, page, isIdlePage, apply, modes }: { layo
             </div>
             <p className="field-hint designer-jump-hint">{jump.hint}</p>
           </div>
+          <GridGroup layout={layout} apply={apply} />
         </>
       )}
     </aside>
+  )
+}
+
+/** The grid every page of the dash shares: the bezel's grips size each column and row; these even them all out. None on an older, even-grid dash. */
+function GridGroup({ layout, apply }: { layout: DashLayout; apply: Apply }) {
+  if (!layout.colSizes || !layout.rowSizes) return null
+  return (
+    <div className="designer-group">
+      <h3 className="designer-group-title">Grid</h3>
+      <p className="field-hint">{`${layout.gridCols} × ${layout.gridRows} on every page. Drag the grips on the frame to size a column or row.`}</p>
+      <div className="designer-button-row">
+        <button type="button" className="button subtle small" disabled={evenTracks(layout, 'cols') === null} onClick={() => apply((current) => evenTracks(current, 'cols'))}>
+          Even columns
+        </button>
+        <button type="button" className="button subtle small" disabled={evenTracks(layout, 'rows') === null} onClick={() => apply((current) => evenTracks(current, 'rows'))}>
+          Even rows
+        </button>
+      </div>
+    </div>
   )
 }
 

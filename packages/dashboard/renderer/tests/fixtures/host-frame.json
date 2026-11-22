@@ -33,6 +33,9 @@
     "fuelLiters": 42.5,
     "fuelPerLapLiters": 2.75,
     "fuelCapacityLiters": null,
+    "fuelLastLapLiters": 2.875,
+    "fuelThisLapLiters": 1.125,
+    "fuelStintPerLapLiters": 2.625,
     "positionX": 11.5,
     "positionY": 12.5,
     "positionZ": 13.5,
@@ -41,7 +44,11 @@
     "inPitLane": true,
     "pitState": "Stopped",
     "pitLimiter": true,
-    "pose": null
+    "pose": null,
+    "engineTorqueNewtonMeters": 640.5,
+    "turboBoostPressure": 1.375,
+    "headlights": true,
+    "wiperState": 2
   },
   "tires": [
     {
@@ -66,6 +73,9 @@
       "camberRadians": 0,
       "radiusMeters": 0,
       "brakeTempCelsius": 430.5,
+      "optimalTempCelsius": 100.5,
+      "wearLastLapPercent": 3.5,
+      "averageTempLastLapCelsius": 116,
       "suspensionDeflectionMeters": 0,
       "rideHeightMeters": 0,
       "surface": "Dry",
@@ -94,6 +104,9 @@
       "camberRadians": 0,
       "radiusMeters": 0,
       "brakeTempCelsius": 400.5,
+      "optimalTempCelsius": 70.5,
+      "wearLastLapPercent": 0.5,
+      "averageTempLastLapCelsius": 86,
       "suspensionDeflectionMeters": 0,
       "rideHeightMeters": 0,
       "surface": "Dry",
@@ -122,11 +135,14 @@
       "camberRadians": 0,
       "radiusMeters": 0,
       "brakeTempCelsius": 420.5,
+      "optimalTempCelsius": 90.5,
+      "wearLastLapPercent": 2.5,
+      "averageTempLastLapCelsius": 106,
       "suspensionDeflectionMeters": 0,
       "rideHeightMeters": 0,
       "surface": "Dry",
       "flat": false,
-      "detached": false
+      "detached": true
     },
     {
       "position": "FrontRight",
@@ -150,10 +166,13 @@
       "camberRadians": 0,
       "radiusMeters": 0,
       "brakeTempCelsius": 410.5,
+      "optimalTempCelsius": 80.5,
+      "wearLastLapPercent": 1.5,
+      "averageTempLastLapCelsius": 96,
       "suspensionDeflectionMeters": 0,
       "rideHeightMeters": 0,
       "surface": "Dry",
-      "flat": false,
+      "flat": true,
       "detached": false
     }
   ],
@@ -191,7 +210,13 @@
     "sessionBestLapTime": 101.25,
     "classBestLapTime": 102.5,
     "isValid": false,
-    "trackPosition": 0.4375
+    "lastLapValid": false,
+    "trackPosition": 0.4375,
+    "lastFiveLapsAverage": 104.5,
+    "lastTenLapsAverage": 104.75,
+    "allTimeBestLapTime": 100.5,
+    "pitLossSeconds": 33.5,
+    "lastLapTopSpeedMetersPerSecond": 86.5
   },
   "flags": {
     "yellow": true,
@@ -206,6 +231,7 @@
   },
   "electronics": {
     "tractionControlActive": true,
+    "absActive": true,
     "tractionControl": 3,
     "tractionControlMax": 11,
     "tractionControlSlip": 4,
@@ -229,6 +255,12 @@
     "totalPositions": 31,
     "gapAhead": 1.5,
     "gapBehind": 2.25,
+    "classGapAhead": 4.5,
+    "classGapBehind": 5.5,
+    "positionGapAhead": 6.25,
+    "positionGapBehind": 7.25,
+    "gapToLeader": 12.5,
+    "gapToClassLeader": 8.5,
     "carLeftMeters": -2.5,
     "carRightMeters": 3.5
   },
@@ -237,12 +269,20 @@
     "virtualEnergyPerLap": 3.375,
     "stateOfCharge": 0.625,
     "regenPower": 18.5,
-    "deployPower": 92.5
+    "deployPower": 92.5,
+    "motorState": "Regeneration",
+    "motorTempCelsius": 66.5,
+    "motorWaterTempCelsius": 44.5,
+    "liftAndCoastProgress": 221,
+    "virtualEnergyLastLap": 3.25,
+    "virtualEnergyStintPerLap": 3.125
   },
   "penalties": {
     "incidents": 19,
     "trackLimitSteps": 20,
-    "pitStops": 22
+    "trackLimitStepsPerPenalty": 21,
+    "pitStops": 22,
+    "scheduledPitStops": 23
   },
   "conditions": {
     "pathWetness": 0.3125,
@@ -278,7 +318,7 @@
       "carClass": "Fixture Class",
       "isPlayer": true,
       "place": 4,
-      "classPlace": 4,
+      "classPlace": 3,
       "lapsCompleted": 23,
       "lapDistanceMeters": 2500.5,
       "sector": 0,
@@ -293,7 +333,7 @@
       "lapsToLeader": 0,
       "gapToNext": 0,
       "lapsToNext": 0,
-      "inPitLane": false,
+      "inPitLane": true,
       "inGarage": false,
       "pitState": "None",
       "pitStops": 0,
@@ -302,7 +342,8 @@
       "blueFlag": true,
       "compound": null,
       "positionX": 0,
-      "positionZ": 0
+      "positionZ": 0,
+      "relativeGapSeconds": -0.75
     }
   ]
 }

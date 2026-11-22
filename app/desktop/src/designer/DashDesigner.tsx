@@ -1,14 +1,18 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
-import { Redo2, Undo2 } from 'lucide-react'
-import type { DashLayout, DashPreviewState } from '@sprint/dashboard'
+import { Gauge, LayoutDashboard, Palette, Redo2, Settings2, Timer, Undo2 } from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
+import { DashUnitsContext, resolvePreviewFrame, type DashLayout, type DashPreviewState } from '@sprint/dashboard'
 import type { TelemetryFrame } from '@sprint/types'
 import { bridge, type DashCategoryLists, type DashMode, type SprintCommand, type SprintState } from '../bridge'
 import { buildDashCreate, buildDashDelete, buildDashReset, buildDashSetCategory, buildDashSetScreenProfile, layoutScreenProfile, parseDashLayouts, screenChoices, type ScreenChoice } from '../views/DashesDomain'
-import { deviceScreenSizes } from '../views/DevicesDomain'
+import { deviceHasScreen, deviceScreenSizes, parseDashRules, parseDevices, type Device, type DeviceDashRule } from '../views/DevicesDomain'
 import { openDashDesigner } from '../views/dashDesigner'
+import { parseSettings } from '../views/SettingsDomain'
 import { useDesignerDoc, type DesignerDocApi } from './useDesignerDoc'
 import { LayoutSection } from './LayoutSection'
+import { LapReviewEditor } from './LapReviewEditor'
+import { PitLimiterSection } from './PitLimiterSection'
 import { SettingsSection } from './SettingsSection'
 import { ThemeSection } from './ThemeSection'
 import { isInOverlay, isTypingTarget } from './keys'
@@ -16,25 +20,61 @@ import { shownPage } from './layoutOps'
 import { newModeId } from './pageModes'
 import type { CanvasView } from './CanvasViews'
 import { ViewTools } from './ViewTools'
+import { ScopeStrip } from './ScopeStrip'
+import { placesOf, pointScope, scopeName, scopeOf, shownDash, type DashScope } from './dashScope'
 import type { ModeActions } from './PageInspector'
 import '../views/DashesView.css'
 import './DashDesigner.css'
 
-type Section = 'layout' | 'theme' | 'settings'
+type Section = 'layout' | 'review' | 'pitLimiter' | 'theme' | 'settings'
 
-const SECTIONS: readonly { id: Section; label: string }[] = [
-  { id: 'layout', label: 'Layout' },
-  { id: 'theme', label: 'Theme' },
-  { id: 'settings', label: 'Settings' },
+/**
+ * The toolbar's sections in two tab groups: what the wheel shows (its pages, the lap review, the
+ * pit limiter), then how the dash looks and its settings. Icon and text, as Luca asked
+ * (docs/design/DESIGN.md has the exception).
+ */
+const SECTION_GROUPS: ReadonlyArray<ReadonlyArray<{ id: Section; label: string; icon: LucideIcon }>> = [
+  [
+    { id: 'layout', label: 'Layout', icon: LayoutDashboard },
+    { id: 'review', label: 'Lap review', icon: Timer },
+    { id: 'pitLimiter', label: 'Pit limiter', icon: Gauge },
+  ],
+  [
+    { id: 'theme', label: 'Theme', icon: Palette },
+    { id: 'settings', label: 'Settings', icon: Settings2 },
+  ],
 ]
+const SECTIONS = SECTION_GROUPS.flat()
+
+/** Where a fresh window looks: the first place its dash is used, else the first screen's own dash. */
+function firstScope(dashId: string, devices: readonly Device[], allDevices: readonly DeviceDashRule[]): DashScope {
+  const place = placesOf(dashId, devices, allDevices)[0]
+  if (place) return scopeOf(place)
+  return devices[0] ? { device: devices[0].id, game: null, carClass: null, car: null } : { device: null, game: 'LeMansUltimate', carClass: null, car: null }
+}
+
+/** The copy Duplicate or "Own copy" waits for: the dash ids before it, and what to do with the copy's id. */
+type PendingCopy = { known: ReadonlySet<string>; then: (copyId: string) => void }
 
 /**
  * The dash designer window's page (`?designer=<dashId>`, electron/designerWindows.ts): one dash on
  * a stage, no app shell. It keeps its own state subscription, like the app shell does, and
- * renders nothing of the dash once the dash is gone (the window closes with it).
+ * renders nothing of the dash once the dash is gone (the window closes with it). The scope strip
+ * moves the window on to another dash (`bridge.switchDashDesigner`); the scope survives that.
  */
-export function DashDesigner({ dashId }: { dashId: string }) {
+export function DashDesigner({ dashId: openedDashId }: { dashId: string }) {
   const [sprint, setSprint] = useState<SprintState | null>(null)
+  const [dashId, setDashId] = useState(openedDashId)
+  const [scope, setScope] = useState<DashScope | null>(null)
+  const [recorded, setRecorded] = useState<{ games: string[]; cars: string[] }>({ games: [], cars: [] })
+
+  // The games and cars Sprint has recorded, for the strip's pickers (once; the Output tab loads them the same way).
+  useEffect(() => {
+    bridge
+      .planContext()
+      .then((context) => setRecorded({ games: [context.prefill.game, ...context.games], cars: [context.prefill.car, ...context.cars] }))
+      .catch((error: unknown) => console.error('Loading recorded games and cars failed', error))
+  }, [])
 
   useEffect(() => {
     bridge
@@ -50,22 +90,25 @@ export function DashDesigner({ dashId }: { dashId: string }) {
     return result
   }, [])
 
-  // Set right before Duplicate is sent; the effect below opens the copy, whose id it does not
+  // Set right before a copy is made; the effect below hands over the copy, whose id it does not
   // know, once a state poll delivers it (dash.create answers with no id of its own).
-  const pendingCopy = useRef<Set<string> | null>(null)
+  const pendingCopy = useRef<PendingCopy | null>(null)
   const layouts = useMemo(() => (sprint ? parseDashLayouts(sprint.dashLayouts) : null), [sprint])
+  const devices = useMemo(() => (sprint ? parseDevices(sprint.devices).filter((device) => device.purpose === 'dash' && deviceHasScreen(device)) : []), [sprint])
+  const allDevices = useMemo(() => (sprint ? parseDashRules(sprint.settings.dashRules) : []), [sprint])
 
   useEffect(() => {
-    const known = pendingCopy.current
-    if (!known || !layouts) return
-    const copy = layouts.find((layout) => !known.has(layout.id))
+    const pending = pendingCopy.current
+    if (!pending || !layouts) return
+    const copy = layouts.find((layout) => !pending.known.has(layout.id))
     if (copy) {
       pendingCopy.current = null
-      openDashDesigner(copy.id)
+      pending.then(copy.id)
     }
   }, [layouts])
 
   if (!sprint || !layouts) return <div className="designer" />
+  const shownScope = scope ?? firstScope(dashId, devices, allDevices)
   const host = layouts.find((layout) => layout.id === dashId) ?? null
   if (!host) {
     return (
@@ -79,32 +122,79 @@ export function DashDesigner({ dashId }: { dashId: string }) {
     )
   }
 
-  const duplicate = async (): Promise<void> => {
-    pendingCopy.current = new Set(layouts.map((layout) => layout.id))
+  const copyThen = async (name: string | undefined, then: (copyId: string) => void): Promise<void> => {
+    pendingCopy.current = { known: new Set(layouts.map((layout) => layout.id)), then }
     try {
-      await send(buildDashCreate({ start: { kind: 'copy', dashId: host.id }, profileId: layoutScreenProfile(host).id }))
+      await send(buildDashCreate({ start: { kind: 'copy', dashId: host.id }, profileId: layoutScreenProfile(host).id, name }))
     } catch (error) {
       pendingCopy.current = null
       throw error
     }
   }
+  const duplicate = (): Promise<void> => copyThen(undefined, openDashDesigner)
 
+  // The window moves on to another dash, or that dash's own window comes forward.
+  const open = async (id: string): Promise<void> => {
+    if (id === dashId) return
+    if ((await bridge.switchDashDesigner(id)) === 'switched') setDashId(id)
+  }
+  const exists = (id: string): boolean => layouts.some((layout) => layout.id === id)
+  const strip = {
+    scope: shownScope,
+    layouts,
+    devices,
+    allDevices,
+    games: recorded.games,
+    cars: recorded.cars,
+    /** A scope opens the dash it shows. */
+    onScope: (next: DashScope): Promise<void> => {
+      setScope(next)
+      const target = shownDash(next, devices, allDevices, exists)
+      return target ? open(target.dashId) : Promise.resolve()
+    },
+    /** The scope points at `id` from now on, and the window opens it. */
+    onPoint: async (id: string): Promise<void> => {
+      const command = pointScope(shownScope, id, devices, allDevices)
+      if (!command) return
+      await send(command)
+      await open(id)
+    },
+    /** The scope gets a copy of this dash of its own, and the window opens the copy. */
+    onOwnCopy: (): Promise<void> =>
+      copyThen(`${host.name} · ${scopeName(shownScope, devices)}`, (copyId) => {
+        const command = pointScope(shownScope, copyId, devices, allDevices)
+        if (command) void send(command).then(() => open(copyId))
+      }),
+  }
+
+  // The designer's dash pictures print in the driver's units, as the wheel does.
   return (
-    <DesignerWindow
-      host={host}
-      frame={sprint.telemetry.frame}
-      categories={sprint.dashCategories}
-      modes={sprint.dashModes}
-      screens={screenChoices(deviceScreenSizes(sprint.devices))}
-      losses={sprint.dashRefitLosses[host.id] ?? {}}
-      send={send}
-      duplicate={duplicate}
-    />
+    <DashUnitsContext value={parseSettings(sprint.settings).units}>
+      <DesignerWindow
+        key={host.id}
+        host={host}
+        strip={strip}
+        frame={sprint.telemetry.frame}
+        categories={sprint.dashCategories}
+        modes={sprint.dashModes}
+        screens={screenChoices(deviceScreenSizes(sprint.devices))}
+        losses={sprint.dashRefitLosses[host.id] ?? {}}
+        send={send}
+        duplicate={duplicate}
+      />
+    </DashUnitsContext>
   )
+}
+
+type StripProps = Omit<Parameters<typeof ScopeStrip>[0], 'dashId' | 'status' | 'onScope' | 'onPoint' | 'onOwnCopy'> & {
+  onScope: (scope: DashScope) => Promise<void>
+  onPoint: (dashId: string) => Promise<void>
+  onOwnCopy: () => Promise<void>
 }
 
 function DesignerWindow({
   host,
+  strip,
   frame,
   categories,
   modes,
@@ -114,6 +204,8 @@ function DesignerWindow({
   duplicate,
 }: {
   host: DashLayout
+  /** The scope strip's state and actions; every action saves the last edit first. */
+  strip: StripProps
   frame: TelemetryFrame | null
   categories: DashCategoryLists
   /** The driver's own dash modes (app-wide). */
@@ -129,8 +221,6 @@ function DesignerWindow({
   const { layout, undo, redo } = doc
   const [section, setSection] = useState<Section>('layout')
   const [chosenPageId, setChosenPageId] = useState(() => host.pages[0]?.id ?? host.idlePage?.id ?? '')
-  // The page dock's Lap review stop instead of a page; kept here, like the page, across sections.
-  const [reviewing, setReviewing] = useState(false)
   // How the Layout section shows the dash; kept here so it survives a trip to another section.
   const [view, setView] = useState<CanvasView>('outline')
   const [previewState, setPreviewState] = useState<DashPreviewState>('live')
@@ -186,7 +276,7 @@ function DesignerWindow({
     }
   }
 
-  // Left/Right move between the section tabs (WAI-ARIA tabs pattern).
+  // Left/Right move between the section tabs, across both groups (WAI-ARIA tabs pattern).
   const onTabKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>): void => {
     if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
     event.preventDefault()
@@ -206,19 +296,17 @@ function DesignerWindow({
             doc={doc}
             frame={frame}
             chosenPageId={chosenPageId}
-            onChoosePage={(pageId) => {
-              setReviewing(false)
-              setChosenPageId(pageId)
-            }}
-            reviewing={reviewing}
-            onReview={() => setReviewing(true)}
-            onOpenDashSettings={() => void bridge.openDashSettings()}
+            onChoosePage={setChosenPageId}
             modes={modeActions}
             view={view}
             previewState={previewState}
             showGrid={showGrid}
           />
         )}
+        {section === 'review' && (
+          <LapReviewEditor layout={layout} apply={doc.apply} frame={resolvePreviewFrame(previewState, frame)} onOpenDashSettings={() => void bridge.openDashSettings()} />
+        )}
+        {section === 'pitLimiter' && <PitLimiterSection doc={doc} pageId={chosenPageId} modes={modeActions} onOpenDashSettings={() => void bridge.openDashSettings()} />}
         {section === 'theme' && <ThemeSection layout={layout} apply={doc.apply} frame={frame} page={page} idle={idle} />}
         {section === 'settings' && (
           <SettingsSection
@@ -237,29 +325,43 @@ function DesignerWindow({
         )}
       </div>
 
-      <div className="designer-toolbar">
-        <NamePill doc={doc} />
+      <ScopeStrip
+        {...strip}
+        dashId={host.id}
+        onScope={(scope) => void runAfterSave(() => strip.onScope(scope), 'The dash could not be opened.')}
+        onPoint={(id) => void runAfterSave(() => strip.onPoint(id), 'The dash could not be picked here.')}
+        onOwnCopy={() => void runAfterSave(strip.onOwnCopy, 'The copy could not be made.')}
+        status={<SaveStatus doc={doc} />}
+      />
 
-        <div className="designer-glass designer-tabs" role="tablist" aria-label="Designer sections" onKeyDown={onTabKeyDown}>
-          {SECTIONS.map((candidate) => (
-            <button
-              key={candidate.id}
-              type="button"
-              role="tab"
-              id={`${tabsId}-${candidate.id}`}
-              aria-selected={section === candidate.id}
-              aria-controls={`${tabsId}-panel`}
-              tabIndex={section === candidate.id ? 0 : -1}
-              className="designer-tab"
-              onClick={() => setSection(candidate.id)}
-            >
-              {candidate.label}
-            </button>
+      <div className="designer-toolbar">
+        <span aria-hidden="true" />
+
+        <div className="designer-tab-groups" role="tablist" aria-label="Designer sections" onKeyDown={onTabKeyDown}>
+          {SECTION_GROUPS.map((group) => (
+            <div key={group[0]?.id} className="designer-glass designer-tabs" role="presentation">
+              {group.map(({ id, label, icon: Icon }) => (
+                <button
+                  key={id}
+                  type="button"
+                  role="tab"
+                  id={`${tabsId}-${id}`}
+                  aria-selected={section === id}
+                  aria-controls={`${tabsId}-panel`}
+                  tabIndex={section === id ? 0 : -1}
+                  className="designer-tab"
+                  onClick={() => setSection(id)}
+                >
+                  <Icon size={15} aria-hidden="true" />
+                  {label}
+                </button>
+              ))}
+            </div>
           ))}
         </div>
 
         <div className="designer-trail">
-          {section === 'layout' && !reviewing && (
+          {section === 'layout' && (
             <ViewTools view={view} onView={setView} previewState={previewState} onPreviewState={setPreviewState} showGrid={showGrid} onToggleGrid={() => setShowGrid((value) => !value)} />
           )}
           <div className="designer-glass designer-tools">
@@ -286,20 +388,15 @@ function DesignerWindow({
   )
 }
 
-/** Top left: the dash's name and whether it is saved. A failed save offers to try again. */
-function NamePill({ doc }: { doc: DesignerDocApi }) {
-  return (
-    <div className="designer-glass designer-pill">
-      <span className="designer-pill-name">{doc.layout.name || 'Untitled dash'}</span>
-      {doc.status === 'failed' ? (
-        <button type="button" className="designer-pill-retry" title={doc.error ?? undefined} onClick={() => void doc.flush()}>
-          Not saved · Retry
-        </button>
-      ) : (
-        <span className="designer-pill-status" role="status">
-          {doc.status === 'saving' ? 'Saving…' : 'Saved'}
-        </span>
-      )}
-    </div>
+/** The end of the scope strip: whether the dash is saved. A failed save offers to try again. */
+function SaveStatus({ doc }: { doc: DesignerDocApi }) {
+  return doc.status === 'failed' ? (
+    <button type="button" className="designer-pill-retry" title={doc.error ?? undefined} onClick={() => void doc.flush()}>
+      Not saved · Retry
+    </button>
+  ) : (
+    <span className="designer-pill-status" role="status">
+      {doc.status === 'saving' ? 'Saving…' : 'Saved'}
+    </span>
   )
 }

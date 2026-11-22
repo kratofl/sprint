@@ -6,33 +6,39 @@
 
 import type { DashAlertDisplayMode } from './alerts'
 import type { DashLapReview } from './lapReview'
+import type { DashPitLimiter } from './pitLimiter'
 
 export type DashColorSystem = 'functional' | 'styled'
 /**
- * How every widget on a dash is framed and titled: separate rounded panels, one ruled grid,
- * or panels with a title bar. Independent of layout: switching it never moves or resizes a
- * widget, and condition colors read the same in each.
+ * The driver's measurement system (host `AppSettings.Units`, by name): every speed, temperature,
+ * pressure and fuel volume a dash prints is in it (the renderer's `Units`). Imperial is US
+ * customary: mph, °F, psi and US gallons.
  */
-export type DashStyle = 'panels' | 'grid' | 'bars' | 'flat'
-export const dashStyles: readonly DashStyle[] = ['panels', 'grid', 'bars', 'flat']
-export const isDashStyle = (value: unknown): value is DashStyle => value === 'panels' || value === 'grid' || value === 'bars' || value === 'flat'
+export type DashUnits = 'Metric' | 'Imperial'
 export interface DashTheme { [key: string]: string | undefined }
-/** A frame's edge in the flat style. */
+/** A frame's edge. */
 export type DashBorder = 'none' | 'thin' | 'normal' | 'thick'
 export const dashBorders: readonly DashBorder[] = ['none', 'thin', 'normal', 'thick']
 export const isDashBorder = (value: unknown): value is DashBorder => dashBorders.some((border) => border === value)
-/** A frame's label in the flat style: none, small above the value, or in a band across its top. */
-export type DashLabelMode = 'off' | 'on' | 'capsule'
-export const dashLabelModes: readonly DashLabelMode[] = ['off', 'on', 'capsule']
+/** Where a dash puts its widgets' labels: none, top left in the edge (`on`, "Top"), centred above the value (`top`, "Center"), beside it at the left or right, or in a band across its top. */
+export type DashLabelMode = 'off' | 'on' | 'top' | 'left' | 'right' | 'capsule'
+export const dashLabelModes: readonly DashLabelMode[] = ['off', 'on', 'top', 'left', 'right', 'capsule']
 export const isDashLabelMode = (value: unknown): value is DashLabelMode => dashLabelModes.some((mode) => mode === value)
-/** The flat style's dash-wide look: corner radius (px at 800x480) and the default edge and label. */
+/** A group frame's name: none, set into the top edge, or in a pill. */
+export type DashGroupLabel = 'off' | 'on' | 'capsule'
+export const dashGroupLabels: readonly DashGroupLabel[] = ['off', 'on', 'capsule']
+export const isDashGroupLabel = (value: unknown): value is DashGroupLabel => dashGroupLabels.some((label) => label === value)
+/** A dash's look, the only one: corner radius (px at 800x480), its edge and where its labels sit. */
 export interface DashChrome { radius: number; border: DashBorder; label: DashLabelMode }
-/** The look a flat dash without `chrome` gets (the renderer's `DashChrome::default`). */
+/** The look a dash without `chrome` gets (the renderer's `DashChrome::default`). */
 export const DEFAULT_DASH_CHROME: DashChrome = { radius: 6, border: 'normal', label: 'on' }
-/** `border`/`label` override the dash's `chrome` for one widget (flat style). */
-export interface DashWidgetStyle { textColor?: string; labelColor?: string; border?: DashBorder; label?: DashLabelMode }
-/** A group's own frame round its widgets (flat style), its name as the label, at the left or centred. */
-export interface DashGroupStyle { border: DashBorder; label: DashLabelMode; align?: 'start' | 'center' }
+/** The label spots a widget may move its own label to; a band (`capsule`) is the dash's alone. */
+export type DashWidgetLabel = Exclude<DashLabelMode, 'capsule'>
+export const isDashWidgetLabel = (value: unknown): value is DashWidgetLabel => value !== 'capsule' && isDashLabelMode(value)
+/** What one widget changes of the dash's look: only where its label sits. Colours follow meaning, not the widget. */
+export interface DashWidgetStyle { label?: DashWidgetLabel }
+/** A group's own frame round its widgets, its name as the label, at the left or centred. */
+export interface DashGroupStyle { border: DashBorder; label: DashGroupLabel; align?: 'start' | 'center' }
 /** One widget, in page grid coordinates. `group` is the group it sits in; `hidden` keeps it off the wheel (it still holds its cells). */
 export interface DashWidget { id: string; type: string; col: number; row: number; colSpan: number; rowSpan: number; config?: Record<string, unknown>; style?: DashWidgetStyle; group?: string; hidden?: boolean }
 /** How a group shows its direct children: all of them, or one at a time (a widget stack: each child is a layer). */
@@ -59,38 +65,53 @@ export interface DashPage { id: string; name: string; widgets: DashWidget[]; gro
  * (`dashAlertFromSettings`). The look fields (`displayMode`, `colorToken`, `durationSeconds`,
  * `invertColors`) are the alert's own look; all absent means it uses the layout's `alertConfig`.
  * `displayMode` "full" shows the popup over the whole dash, "strip" as a band across its middle,
- * "center" in the alert's grid rect. `untilAck` keeps it up until the driver acknowledges it;
- * `lapsLeft` is `fuel_low`'s threshold.
+ * "center" in the alert's grid rect. `untilAck` keeps it up until the driver acknowledges it.
+ * The rest are a type's own settings (`DashAlertSettings`): `lapsLeft`/`warningLapsLeft` are
+ * `fuel_low`'s two levels, `waterLimitCelsius`/`oilLimitCelsius` `engine_warning`'s limits, the
+ * launch window `launch`'s and `liftPoint` `lift_now`'s; the widgets warn from them too.
  */
-export interface DashAlert { id: string; type: string; enabled: boolean; col: number; row: number; colSpan: number; rowSpan: number; displayMode?: DashAlertDisplayMode; colorToken?: string; durationSeconds?: number; invertColors?: boolean; untilAck?: boolean; lapsLeft?: number }
+export interface DashAlert {
+  id: string; type: string; enabled: boolean; col: number; row: number; colSpan: number; rowSpan: number
+  displayMode?: DashAlertDisplayMode; colorToken?: string; durationSeconds?: number; invertColors?: boolean; untilAck?: boolean
+  lapsLeft?: number; warningLapsLeft?: number; waterLimitCelsius?: number; oilLimitCelsius?: number
+  clutchPercent?: number; speedKmh?: number; rpmFrom?: number; rpmTo?: number; throttleFrom?: number; throttleTo?: number; liftPoint?: number
+}
 /**
  * `category` is the Dashes page grouping (host `DashLayout.Category`); absent means "Other". The
- * renderer ignores it. `zoned`: the bar spots, side grids and gear centre of `zones.ts` instead of
- * an even grid (then `gridCols`/`gridRows` are 11 x 9). `chrome`: the flat style's look.
+ * renderer ignores it. `colSizes`/`rowSizes`: the dash's own column widths and row heights, as
+ * shares (one per `gridCols`/`gridRows`); absent on older dashes, whose grid is even and refits to
+ * its screen. `chrome`: the flat style's look.
  * `lapReview`: the lap review's six cells (`lapReviewCells` reads them); absent shows the defaults.
+ * `pitLimiter`: the overlay shown while the pit limiter is on (`pitLimiterOf` reads it); absent
+ * shows the default style with no widgets of its own.
  */
-export interface DashLayout { id: string; name: string; category?: string; mode: string; colorSystem?: DashColorSystem; dashStyle?: DashStyle; chrome?: DashChrome; zoned?: boolean; screenProfile?: string; gridCols: number; gridRows: number; pages: DashPage[]; idlePage?: DashPage | null; alerts: DashAlert[]; theme?: DashTheme; alertConfig?: Record<string, unknown>; lapReview?: DashLapReview }
+export interface DashLayout { id: string; name: string; category?: string; mode: string; colorSystem?: DashColorSystem; chrome?: DashChrome; colSizes?: number[]; rowSizes?: number[]; screenProfile?: string; gridCols: number; gridRows: number; pages: DashPage[]; idlePage?: DashPage | null; alerts: DashAlert[]; theme?: DashTheme; alertConfig?: Record<string, unknown>; lapReview?: DashLapReview; pitLimiter?: DashPitLimiter }
 
-export { DashCanvas, type DashCanvasProps } from './DashCanvas'
+export { DashCanvas, DashUnitsContext, type DashCanvasProps } from './DashCanvas'
 export { dashboardWidgetTypes, isDashWidgetType, type DashWidgetType } from './widgetTypes'
 // Palette and alert looks are part of the package's public contract: the desktop editor picks
 // colours and alert looks from these same lists, so a consumer never keeps its own copy in step.
 export {
-  resolveDashPalette, styleColorTokens, resolveStyleColor, dashThemePresets, dashSettingColors,
+  resolveDashPalette, dashThemePresets, dashSettingColors,
   matchLayoutThemeName, type DashPaletteColors, type DashThemePreset,
 } from './palette'
 export {
   dashAlertTypes, isDashAlertType, dashAlertDefaults, dashAlertFromSettings, previewAlertBanner, alertColorSwatch, maxAlertSeconds,
   LAP_SUMMARY_SECONDS, LAP_SUMMARY_MAX_SECONDS, MIN_ALERT_SECONDS, MAX_ALERT_SECONDS, FUEL_LAPS_LEFT_MIN, FUEL_LAPS_LEFT_MAX,
-  type DashAlertBanner, type DashAlertType, type DashAlertSize, type DashAlertDisplayMode, type DashAlertSettings, type DashAlertPopup,
+  ENGINE_LIMIT_MIN, ENGINE_LIMIT_MAX, LIFT_POINT_MIN, LIFT_POINT_MAX, LAUNCH_RANGES,
+  type DashAlertBanner, type DashLaunchWindow, type DashAlertType, type DashAlertSize, type DashAlertDisplayMode, type DashAlertSettings, type DashAlertPopup,
   type DashAlertPlacement, type DashLapSummaryPopup, type DashLapSector, type DashSectorRating,
 } from './alerts'
 export { dashLapReviewFields, isDashLapReviewField, lapReviewCells, DEFAULT_LAP_REVIEW_CELLS, LAP_REVIEW_TOP_SHARE, type DashLapReviewField, type DashLapReview } from './lapReview'
+export {
+  dashPitLimiterStyles, isDashPitLimiterStyle, pitLimiterOf, pitLimiterStyle, pageGear, pitLimiterCovers, DEFAULT_PIT_LIMITER_STYLE,
+  type DashPitLimiterStyle, type DashPitLimiter,
+} from './pitLimiter'
 export { multiDialInk, multiDialSwatches, type DashMultiDialPopup } from './multiDial'
 // The editor's direct-manipulation overlay (drag/resize handles) positions itself with the same
 // grid math the renderer places widgets with, so it never drifts a pixel from what is drawn.
-export { gridRect, layoutRect, cellAt, zonedRect, ZONE_COLS, ZONE_ROWS, type PixelRect, type GridSpan, type LayoutGrid } from './grid'
-export { DASH_ZONES, GEAR_SPOT, ZONED_COLS, ZONED_ROWS, BAR_WIDGET_TYPES, TOP_WIDGET_TYPES, zoneOf, zoneTakes, fitsZone, zoneAtCell, dropRect, type DashZone } from './zones'
+export { gridRect, trackRect, tracksOf, layoutRect, gridLines, cellAt, type PixelRect, type GridSpan, type LayoutGrid, type Tracks } from './grid'
+export { widgetForms, formIndex, referenceSize, holdsSmallest, hasLabel, type WidgetForm } from './widgetForms'
 export { pageTree, shownChild, nodeWidgets, drawnWidgets, groupParents, stackLayers, mayOverlap, type DashNode, type DashGroupNode } from './groups'
 export { dashPreviewStates, previewFrame, resolvePreviewFrame, type DashPreviewState } from './previewFrames'
 // The host's telemetry JSON is what the renderer reads; the app's views read the @sprint/types mirror.
@@ -99,7 +120,7 @@ export { parseHostFrame, toHostFrame, type HostTelemetryFrame } from './hostFram
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null
 const isOptional = (value: unknown, type: 'string' | 'boolean'): boolean => value === undefined || typeof value === type
 const isDashGroupStyle = (value: unknown): value is DashGroupStyle =>
-  isRecord(value) && isDashBorder(value.border) && isDashLabelMode(value.label) && (value.align === undefined || value.align === 'start' || value.align === 'center')
+  isRecord(value) && isDashBorder(value.border) && isDashGroupLabel(value.label) && (value.align === undefined || value.align === 'start' || value.align === 'center')
 /** A group as the host writes it: absent fields are omitted, never null. */
 export const isDashWidgetGroup = (value: unknown): value is DashWidgetGroup =>
   isRecord(value) && typeof value.id === 'string' && typeof value.name === 'string' && isDashGroupMode(value.mode) && isOptional(value.parent, 'string') && isOptional(value.shownFirst, 'string') && isOptional(value.hidden, 'boolean') && (value.style === undefined || isDashGroupStyle(value.style))

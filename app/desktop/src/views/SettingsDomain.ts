@@ -1,13 +1,11 @@
+import type { DashUnits } from '@sprint/dashboard'
+
 /**
- * Settings domain model and parsing.
- *
- * `RuntimeCoordinator.UpdateSettings` (app/Sprint.Desktop.Core/RuntimeCoordinator.cs)
- * only accepts four fields: sidebarCollapsed, updateChannel, driverName, and
- * driverNumber. sidebarCollapsed is owned by the shell's sidebar toggle, not this
- * page, so it is not surfaced here. The other `AppSettings` slices (dashEditorUI,
- * newDashDefaults, devicesUI, sessionPlanner, liveCompare, cloud) are each edited
- * from their own feature, not from the Settings page itself, so they are out of
- * scope here too.
+ * Settings domain model and parsing: the `AppSettings` fields the Settings page shows and
+ * edits through `settings.update` (`RuntimeCoordinator.UpdateSettings`). sidebarCollapsed is
+ * owned by the shell's sidebar toggle, and the other slices (dashEditorUI, newDashDefaults,
+ * devicesUI, sessionPlanner, liveCompare, cloud) are each edited from their own feature, so
+ * they are not modelled here.
  */
 export type UpdateChannel = 'stable' | 'pre-release'
 
@@ -24,10 +22,18 @@ export const normalizeChannel = (value: string): UpdateChannel => {
     : 'stable'
 }
 
+/** The Units choices, in the order the Settings page offers them. */
+export const UNITS: ReadonlyArray<{ id: DashUnits; label: string; detail: string }> = [
+  { id: 'Metric', label: 'Metric', detail: 'Dashes show km/h, °C, kPa and litres' },
+  { id: 'Imperial', label: 'Imperial', detail: 'Dashes show mph, °F, psi and US gallons' },
+]
+
 export type AppSettings = {
   driverName: string
   driverNumber: string
   updateChannel: UpdateChannel
+  /** What every dash prints speeds, temperatures, pressures and fuel in (host `AppSettings.Units`). */
+  units: DashUnits
 }
 
 const str = (row: Record<string, unknown>, key: string, fallback: string): string => {
@@ -39,4 +45,5 @@ export const parseSettings = (row: Record<string, unknown>): AppSettings => ({
   driverName: str(row, 'driverName', 'Your Name'),
   driverNumber: str(row, 'driverNumber', '22'),
   updateChannel: normalizeChannel(str(row, 'updateChannel', 'stable')),
+  units: row.units === 'Imperial' ? 'Imperial' : 'Metric',
 })

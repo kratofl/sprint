@@ -19,7 +19,7 @@ public class DashWidgetGroupsTests
               "id": "stack", "name": "Right column", "col": 14, "row": 4, "colSpan": 6, "rowSpan": 8,
               "defaultLayerId": "layer-2",
               "layers": [
-                { "id": "layer-1", "name": "Timing", "widgets": [{ "id": "fuel", "type": "lap_time", "col": 0, "row": 0, "colSpan": 6, "rowSpan": 4 }] },
+                { "id": "layer-1", "name": "Timing", "widgets": [{ "id": "fuel", "type": "last_lap", "col": 0, "row": 0, "colSpan": 6, "rowSpan": 4 }] },
                 { "id": "layer-2", "name": "Tyres", "widgets": [{ "id": "tyres", "type": "tyre_temp", "col": 0, "row": 0, "colSpan": 9, "rowSpan": 4 }] }
               ]
             }]
@@ -42,7 +42,7 @@ public class DashWidgetGroupsTests
         Assert.Equal("layer-2", stack.ShownFirst);
 
         // Layer widgets move into page coordinates, clipped to the stack; a taken id gets a suffix.
-        DashWidget timing = Assert.Single(page.Widgets, widget => widget.Type == "lap_time");
+        DashWidget timing = Assert.Single(page.Widgets, widget => widget.Type == "last_lap");
         Assert.Equal(("fuel-2", "layer-1", 14, 4, 6, 4), (timing.Id, timing.Group, timing.Col, timing.Row, timing.ColSpan, timing.RowSpan));
         DashWidget tyres = Assert.Single(page.Widgets, widget => widget.Type == "tyre_temp");
         Assert.Equal(6, tyres.ColSpan);

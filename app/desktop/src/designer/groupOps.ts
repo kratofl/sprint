@@ -133,7 +133,7 @@ function replacePage(layout: DashLayout, pageId: string, page: DashPage): DashLa
 function editPage(layout: DashLayout, pageId: string, edit: (page: DashPage) => DashPage | null): DashLayout | null {
   const page = findPage(layout, pageId)
   const next = page ? edit(page) : null
-  if (!next || !pageFits(next, layout)) return null
+  if (!page || !next || !pageFits(next, layout)) return null
   return replacePage(layout, pageId, next)
 }
 

@@ -53,58 +53,68 @@ export function gridRect(width: number, height: number, cols: number, rows: numb
   return { left: normLeft, top: normTop, width: normRight - normLeft, height: normBottom - normTop }
 }
 
-/**
- * A zoned layout's fixed tracks, in pixels at 800x480 (renderer/src/grid.rs `ZONE_COLS`/`ZONE_ROWS`):
- * the left bar spot, the left grid's four columns, the centre column, the right grid's four and the
- * right bar spot; the top bar spot, then eight rows. Every zoned dash keeps these proportions.
- */
-export const ZONE_COLS: readonly number[] = [40, 68, 68, 68, 68, 176, 68, 68, 68, 68, 40]
-export const ZONE_ROWS: readonly number[] = [36, 55.5, 55.5, 55.5, 55.5, 55.5, 55.5, 55.5, 55.5]
-
 const sum = (values: readonly number[]): number => values.reduce((total, value) => total + value, 0)
 
 /** Where grid line `edge` of `tracks` falls on a `total`-pixel side. */
 function trackEdge(total: number, tracks: readonly number[], edge: number): number {
+  const all = sum(tracks)
+  if (all <= 0) return 0
   const lines = Math.min(Math.max(edge, 0), tracks.length)
-  return Math.round((sum(tracks.slice(0, lines)) * total) / sum(tracks))
+  return Math.round((sum(tracks.slice(0, lines)) * total) / all)
 }
 
-/** A widget's rectangle in pixels on a zoned layout. */
-export function zonedRect(width: number, height: number, span: GridSpan): PixelRect {
-  const left = trackEdge(width, ZONE_COLS, span.col)
-  const right = trackEdge(width, ZONE_COLS, span.col + span.colSpan)
-  const top = trackEdge(height, ZONE_ROWS, span.row)
-  const bottom = trackEdge(height, ZONE_ROWS, span.row + span.rowSpan)
+/** A dash's own column widths and row heights (`DashLayout.colSizes`/`rowSizes`): shares, only their ratios count. */
+export interface Tracks {
+  cols: readonly number[]
+  rows: readonly number[]
+}
+
+/** A span's rectangle in pixels on a dash with its own track sizes (renderer/src/grid.rs `track_rect`). */
+export function trackRect(width: number, height: number, tracks: Tracks, span: GridSpan): PixelRect {
+  const left = trackEdge(width, tracks.cols, span.col)
+  const right = trackEdge(width, tracks.cols, span.col + span.colSpan)
+  const top = trackEdge(height, tracks.rows, span.row)
+  const bottom = trackEdge(height, tracks.rows, span.row + span.rowSpan)
   return { left, top, width: Math.max(0, right - left), height: Math.max(0, bottom - top) }
 }
 
-/** What the editor needs of a layout's grid: zoned or even, and its size in cells. */
+/** What the editor needs of a layout's grid: its size in cells and, on a newer dash, its own track sizes. */
 export interface LayoutGrid {
-  zoned?: boolean
   gridCols: number
   gridRows: number
+  colSizes?: readonly number[]
+  rowSizes?: readonly number[]
 }
 
 const evenCols = (grid: LayoutGrid): number => (grid.gridCols > 0 ? grid.gridCols : 20)
 const evenRows = (grid: LayoutGrid): number => (grid.gridRows > 0 ? grid.gridRows : 12)
 
+/** The grid's track sizes: its own, else even ones (an older dash). */
+export function tracksOf(grid: LayoutGrid): Tracks {
+  if (grid.colSizes && grid.rowSizes) return { cols: grid.colSizes, rows: grid.rowSizes }
+  return { cols: Array.from({ length: evenCols(grid) }, () => 1), rows: Array.from({ length: evenRows(grid) }, () => 1) }
+}
+
 /** A span's rectangle in pixels on `grid`'s canvas, where the renderer places it. */
 export function layoutRect(grid: LayoutGrid, width: number, height: number, span: GridSpan): PixelRect {
-  return grid.zoned ? zonedRect(width, height, span) : gridRect(width, height, evenCols(grid), evenRows(grid), span)
+  return grid.colSizes && grid.rowSizes ? trackRect(width, height, tracksOf(grid), span) : gridRect(width, height, evenCols(grid), evenRows(grid), span)
+}
+
+/** Where every grid line falls on a `width` x `height` canvas: the column lines left to right, the row lines top to bottom, both edges included. */
+export function gridLines(grid: LayoutGrid, width: number, height: number): { cols: number[]; rows: number[] } {
+  const tracks = tracksOf(grid)
+  const lines = (sizes: readonly number[], total: number): number[] => Array.from({ length: sizes.length + 1 }, (_, edge) => trackEdge(total, sizes, edge))
+  return { cols: lines(tracks.cols, width), rows: lines(tracks.rows, height) }
 }
 
 /** The cell under a canvas pixel, clamped into the grid. */
 export function cellAt(grid: LayoutGrid, width: number, height: number, x: number, y: number): { col: number; row: number } {
-  if (!grid.zoned) {
-    const cols = evenCols(grid)
-    const rows = evenRows(grid)
-    return { col: Math.min(Math.max(Math.floor((x * cols) / width), 0), cols - 1), row: Math.min(Math.max(Math.floor((y * rows) / height), 0), rows - 1) }
-  }
-  const index = (tracks: readonly number[], total: number, at: number): number => {
-    for (let line = 1; line < tracks.length; line++) {
-      if (at < trackEdge(total, tracks, line)) return line - 1
+  const lines = gridLines(grid, width, height)
+  const index = (edges: number[], at: number): number => {
+    for (let line = 1; line < edges.length - 1; line++) {
+      if (at < edges[line]) return line - 1
     }
-    return tracks.length - 1
+    return edges.length - 2
   }
-  return { col: index(ZONE_COLS, width, x), row: index(ZONE_ROWS, height, y) }
+  return { col: index(lines.cols, x), row: index(lines.rows, y) }
 }

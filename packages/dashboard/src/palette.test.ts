@@ -9,7 +9,6 @@ import {
   matchThemeName,
   presetSwatchColor,
   resolveDashPalette,
-  resolveStyleColor,
 } from './palette'
 import type { DashTheme } from './index'
 
@@ -41,6 +40,12 @@ test('resolveDashPalette applies valid hex overrides and ignores unparseable one
   assert.equal(palette.accent, defaultDashPalette.accent) // invalid hex falls back to default
 })
 
+test("a theme may override each setting's identity colour", () => {
+  const palette = resolveDashPalette({ settingAbs: '#123456' }, 'styled')
+  assert.equal(palette.settingAbs, '#123456')
+  assert.equal(palette.settingTc, defaultDashPalette.settingTc)
+})
+
 test('resolveDashPalette pins danger/critical/fault/rpmNearLimit regardless of the theme', () => {
   const palette = resolveDashPalette({ danger: '#00FF00', critical: '#00FF00', fault: '#00FF00' }, 'styled')
   assert.equal(palette.danger, defaultDashPalette.critical)
@@ -52,16 +57,6 @@ test('resolveDashPalette pins danger/critical/fault/rpmNearLimit regardless of t
 test('resolveDashPalette falls back neutral to foreground, then to the default', () => {
   assert.equal(resolveDashPalette({ foreground: '#AABBCC' }, 'styled').neutral, '#AABBCC')
   assert.equal(resolveDashPalette({ primary: '#112233' }, 'styled').neutral, defaultDashPalette.neutral)
-})
-
-test('resolveStyleColor maps known tokens and treats anything else as inherit', () => {
-  const palette = defaultDashPalette
-  assert.equal(resolveStyleColor('ember', palette), palette.primary)
-  assert.equal(resolveStyleColor('Info', palette), palette.accent)
-  assert.equal(resolveStyleColor('danger', palette), palette.danger)
-  assert.equal(resolveStyleColor('', palette), undefined)
-  assert.equal(resolveStyleColor(undefined, palette), undefined)
-  assert.equal(resolveStyleColor('not-a-token', palette), undefined)
 })
 
 test('canonicalAlertColorToken maps shorthand tokens to their preset name', () => {

@@ -1,49 +1,8 @@
-/* The Theme section (ThemeSection.tsx): dash styles and colour presets on the left panel, the
+/* The Theme section (ThemeSection.tsx): the dash's look and colour presets on the left panel, the
    preview situations as chips on the right one. */
 
 .theme-body {
   gap: 16px;
-}
-
-.theme-styles {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-}
-
-.theme-style {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 6px;
-  border: 1px solid var(--card-stroke);
-  border-radius: var(--radius-control);
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  text-align: left;
-}
-
-.theme-style:hover {
-  background: var(--subtle-hover);
-}
-
-.theme-style[aria-checked='true'] {
-  border-color: var(--brand-500);
-  background: color-mix(in srgb, var(--brand-500) 14%, transparent);
-}
-
-.theme-style-well {
-  display: grid;
-  place-items: center;
-  height: 62px;
-  overflow: hidden;
-  border-radius: var(--radius-control-small);
-}
-
-.theme-style-name {
-  font-size: 12px;
-  line-height: 16px;
 }
 
 .theme-presets {

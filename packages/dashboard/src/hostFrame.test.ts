@@ -11,7 +11,7 @@ const hostFrame = {
   car: { speedMetersPerSecond: 50, gear: 4, rpm: 8000, maxRpm: 9000, fuelLiters: 42.5, fuelPerLapLiters: 2.75 },
   tires: [
     { position: 'RearRight', tempSurfaceCelsius: 92 },
-    { position: 'FrontLeft', tempSurfaceCelsius: 86, pressureKPa: 165 },
+    { position: 'FrontLeft', tempSurfaceCelsius: 86, pressureKPa: 165, flat: true },
   ],
   lap: { currentLap: 3, isValid: false, lastLapSectorsSeconds: [30.1, 40.2, 'x'] },
   flags: { virtualSafetyCar: true },
@@ -42,6 +42,7 @@ test('tyres land at their TirePosition index, missing ones are zeroed', () => {
   assert.equal(frame.tires[TirePosition.RearRight].tempSurface, 92)
   assert.equal(frame.tires[TirePosition.FrontRight].pressureKPa, 0)
   assert.equal(frame.tires[TirePosition.RearLeft].position, TirePosition.RearLeft)
+  assert.deepEqual([frame.tires[TirePosition.FrontLeft].flat, frame.tires[TirePosition.FrontLeft].detached], [true, false])
 })
 
 test('pit state, cockpit settings and the scored field cross over', () => {
@@ -89,4 +90,7 @@ test('toHostFrame writes host names, enum names and tyres by position name', () 
   assert.equal(host.car.speedMetersPerSecond, frame.car.speedMS)
   assert.deepEqual(host.tires.map((t) => t.position), ['RearRight', 'FrontRight', 'RearLeft', 'FrontLeft'])
   assert.equal(parseHostFrame(host)?.tires[TirePosition.RearRight].tempSurface, frame.tires[TirePosition.RearRight].tempSurface)
+  const [fl, fr, rl, rr] = frame.tires
+  const lost = toHostFrame({ ...frame, tires: [fl, fr, { ...rl, flat: true, detached: true }, rr] })
+  assert.deepEqual(lost.tires.map((t) => [t.position, t.flat, t.detached]), [['FrontLeft', false, false], ['FrontRight', false, false], ['RearLeft', true, true], ['RearRight', false, false]])
 })

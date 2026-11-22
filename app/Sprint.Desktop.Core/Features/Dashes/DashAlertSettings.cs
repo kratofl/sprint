@@ -13,7 +13,11 @@ public enum DashAlertSize
 /// <summary>
 /// One alert type's app-wide settings (<c>DashAlertSettings</c> in packages/dashboard/src/alerts.ts).
 /// <see cref="DurationSeconds"/> is kept while <see cref="UntilAck"/> ignores it, for when the driver
-/// turns that off. <see cref="LapsLeft"/> is set on <c>fuel_low</c> only, and null on every other type.
+/// turns that off. The numbers after it belong to one type each (<see cref="DashAlertTypes.Numbers"/>)
+/// and are null on every other: <c>fuel_low</c>'s two levels, laps left (amber widgets at
+/// <see cref="WarningLapsLeft"/>, red and LOW FUEL at <see cref="LapsLeft"/>); <c>engine_warning</c>'s
+/// water and oil limits, °C; <c>launch</c>'s window (clutch %, speed in km/h, revs and throttle %
+/// from–to); <c>lift_now</c>'s point on the game's 0–255 cue. The dash's widgets warn from them too.
 /// </summary>
 [JsonConverter(typeof(DashAlertSettingsJsonConverter))]
 public sealed record DashAlertSettings(
@@ -23,7 +27,17 @@ public sealed record DashAlertSettings(
     bool InvertColors,
     double DurationSeconds,
     bool UntilAck,
-    int? LapsLeft = null)
+    int? LapsLeft = null,
+    int? WarningLapsLeft = null,
+    int? WaterLimitCelsius = null,
+    int? OilLimitCelsius = null,
+    int? ClutchPercent = null,
+    int? SpeedKmh = null,
+    int? RpmFrom = null,
+    int? RpmTo = null,
+    int? ThrottleFrom = null,
+    int? ThrottleTo = null,
+    int? LiftPoint = null)
 {
     /// <summary>The layout alert the renderer reads for these settings (<c>dashAlertFromSettings</c> in alerts.ts). Its grid rect only matters to a "center" alert, which settings never make.</summary>
     public DashAlert ToLayoutAlert() => new()
@@ -40,20 +54,60 @@ public sealed record DashAlertSettings(
         DurationSeconds = this.DurationSeconds,
         UntilAck = this.UntilAck,
         LapsLeft = this.LapsLeft,
+        WarningLapsLeft = this.WarningLapsLeft,
+        WaterLimitCelsius = this.WaterLimitCelsius,
+        OilLimitCelsius = this.OilLimitCelsius,
+        ClutchPercent = this.ClutchPercent,
+        SpeedKmh = this.SpeedKmh,
+        RpmFrom = this.RpmFrom,
+        RpmTo = this.RpmTo,
+        ThrottleFrom = this.ThrottleFrom,
+        ThrottleTo = this.ThrottleTo,
+        LiftPoint = this.LiftPoint,
     };
 
-    /// <summary>These settings inside the ranges the renderer draws: the duration within the type's limits, <see cref="LapsLeft"/> 1–9 on <c>fuel_low</c> and null elsewhere.</summary>
+    /// <summary>
+    /// These settings inside the ranges the renderer draws: the duration within the type's limits,
+    /// each of the type's own numbers within its range (its default when unset), the second of an
+    /// <see cref="DashAlertTypes.Ordered"/> pair raised to the first, and every other type's numbers null.
+    /// </summary>
     public DashAlertSettings Clamped()
     {
         double duration = double.IsFinite(this.DurationSeconds)
             ? Math.Clamp(this.DurationSeconds, DashAlertTypes.MinSeconds, DashAlertTypes.MaxSeconds(this.Type))
             : DashAlertTypes.DefaultOf(this.Type)?.DurationSeconds ?? DashAlertTypes.MinSeconds;
-        int? lapsLeft = this.Type == DashAlertTypes.FuelLow
-            ? Math.Clamp(this.LapsLeft ?? DashAlertTypes.DefaultFuelLapsLeft, DashAlertTypes.MinLapsLeft, DashAlertTypes.MaxLapsLeft)
-            : null;
-        return this with { DurationSeconds = duration, LapsLeft = lapsLeft };
+        DashAlertSettings clamped = this with { DurationSeconds = duration };
+        foreach (DashAlertNumber number in DashAlertTypes.Numbers)
+        {
+            int? value = number.Type == this.Type ? Math.Clamp(number.Get(this) ?? number.Default, number.Min, number.Max) : null;
+            clamped = number.With(clamped, value);
+        }
+
+        foreach ((DashAlertNumber low, DashAlertNumber high) in DashAlertTypes.Ordered)
+        {
+            if (low.Get(clamped) is int lowValue && high.Get(clamped) is int highValue && highValue < lowValue)
+            {
+                clamped = high.With(clamped, lowValue);
+            }
+        }
+
+        return clamped;
     }
 }
+
+/// <summary>
+/// One whole number an alert type has beside its look: its wire name (the settings file, the
+/// <c>dashAlerts.update</c> command and the stamped layout alert spell it the same), its range and
+/// default, and the <see cref="DashAlertSettings"/> property that holds it.
+/// </summary>
+public sealed record DashAlertNumber(
+    string Type,
+    string Name,
+    int Min,
+    int Max,
+    int Default,
+    Func<DashAlertSettings, int?> Get,
+    Func<DashAlertSettings, int?, DashAlertSettings> With);
 
 /// <summary>
 /// Every alert type, by its wire id, and its settings before the driver changes them. The same
@@ -62,7 +116,10 @@ public sealed record DashAlertSettings(
 /// </summary>
 public static class DashAlertTypes
 {
+    public const string Launch = "launch";
     public const string FuelLow = "fuel_low";
+    public const string EngineWarning = "engine_warning";
+    public const string LiftNow = "lift_now";
     public const string LapSummary = "lap_summary";
 
     /// <summary>The shortest and longest an alert stays up, seconds; the lap summary keeps to <see cref="LapSummaryMaxSeconds"/>.</summary>
@@ -70,14 +127,48 @@ public static class DashAlertTypes
     public const double MaxAlertSeconds = 30;
     public const double LapSummaryMaxSeconds = 15;
 
-    /// <summary>The range of <c>fuel_low</c>'s laps-left threshold.</summary>
+    /// <summary>The range of <c>fuel_low</c>'s two laps-left levels.</summary>
     public const int MinLapsLeft = 1;
     public const int MaxLapsLeft = 9;
-    public const int DefaultFuelLapsLeft = 2;
 
-    /// <summary>Every type's defaults, in the order the app lists them.</summary>
-    public static readonly IReadOnlyList<DashAlertSettings> Defaults =
+    /// <summary>The range of <c>engine_warning</c>'s water and oil limits, °C.</summary>
+    public const int MinEngineLimitCelsius = 60;
+    public const int MaxEngineLimitCelsius = 160;
+
+    /// <summary>
+    /// Every type's own numbers, with their ranges and defaults (<c>FUEL_LAPS_LEFT_*</c>,
+    /// <c>ENGINE_LIMIT_*</c>, <c>LAUNCH_RANGES</c>, <c>LIFT_POINT_*</c> and the defaults in alerts.ts;
+    /// the renderer clamps to the same). The launch revs are only a starting point: they differ per car.
+    /// </summary>
+    public static readonly IReadOnlyList<DashAlertNumber> Numbers =
     [
+        new(FuelLow, "lapsLeft", MinLapsLeft, MaxLapsLeft, 2, settings => settings.LapsLeft, (settings, value) => settings with { LapsLeft = value }),
+        new(FuelLow, "warningLapsLeft", MinLapsLeft, MaxLapsLeft, 4, settings => settings.WarningLapsLeft, (settings, value) => settings with { WarningLapsLeft = value }),
+        new(EngineWarning, "waterLimitCelsius", MinEngineLimitCelsius, MaxEngineLimitCelsius, 110, settings => settings.WaterLimitCelsius, (settings, value) => settings with { WaterLimitCelsius = value }),
+        new(EngineWarning, "oilLimitCelsius", MinEngineLimitCelsius, MaxEngineLimitCelsius, 130, settings => settings.OilLimitCelsius, (settings, value) => settings with { OilLimitCelsius = value }),
+        new(Launch, "clutchPercent", 5, 95, 50, settings => settings.ClutchPercent, (settings, value) => settings with { ClutchPercent = value }),
+        new(Launch, "speedKmh", 1, 50, 10, settings => settings.SpeedKmh, (settings, value) => settings with { SpeedKmh = value }),
+        new(Launch, "rpmFrom", 1000, 20000, 5000, settings => settings.RpmFrom, (settings, value) => settings with { RpmFrom = value }),
+        new(Launch, "rpmTo", 1000, 20000, 6000, settings => settings.RpmTo, (settings, value) => settings with { RpmTo = value }),
+        new(Launch, "throttleFrom", 0, 100, 20, settings => settings.ThrottleFrom, (settings, value) => settings with { ThrottleFrom = value }),
+        new(Launch, "throttleTo", 0, 100, 30, settings => settings.ThrottleTo, (settings, value) => settings with { ThrottleTo = value }),
+        new(LiftNow, "liftPoint", 0, 255, 220, settings => settings.LiftPoint, (settings, value) => settings with { LiftPoint = value }),
+    ];
+
+    /// <summary>
+    /// The pairs of numbers whose second may never be under its first: the fuel warning's amber
+    /// level and its LOW FUEL level (equal, the widgets go straight to red), and the launch windows' ends.
+    /// </summary>
+    public static readonly IReadOnlyList<(DashAlertNumber Low, DashAlertNumber High)> Ordered =
+    [
+        (NumberOf("lapsLeft"), NumberOf("warningLapsLeft")),
+        (NumberOf("rpmFrom"), NumberOf("rpmTo")),
+        (NumberOf("throttleFrom"), NumberOf("throttleTo")),
+    ];
+
+    /// <summary>Every type's defaults, in the order the app lists them; a type's own numbers take their <see cref="Numbers"/> defaults.</summary>
+    public static readonly IReadOnlyList<DashAlertSettings> Defaults = new DashAlertSettings[]
+    {
         new("tc_change", true, DashAlertSize.Full, false, 2, false),
         new("abs_change", true, DashAlertSize.Full, false, 2, false),
         new("bias_change", true, DashAlertSize.Strip, false, 2, false),
@@ -86,13 +177,19 @@ public static class DashAlertTypes
         new("arb_change", false, DashAlertSize.Strip, false, 2, false),
         new("dial_change", true, DashAlertSize.Strip, false, 2, false),
         new("pit_limiter", true, DashAlertSize.Strip, false, 3, true),
+        new(Launch, true, DashAlertSize.Strip, false, 5, true),
         new("flag", true, DashAlertSize.Strip, false, 3, false),
         new("penalty", true, DashAlertSize.Full, true, 5, true),
         new("damage", true, DashAlertSize.Full, false, 5, false),
-        new("engine_warning", true, DashAlertSize.Full, true, 5, true),
-        new(FuelLow, true, DashAlertSize.Strip, false, 3, true, DefaultFuelLapsLeft),
+        new(EngineWarning, true, DashAlertSize.Full, true, 5, true),
+        new(FuelLow, true, DashAlertSize.Strip, false, 3, true),
+        new("pit_now", true, DashAlertSize.Strip, false, 5, true),
+        new(LiftNow, true, DashAlertSize.Strip, false, 2, true),
         new(LapSummary, true, DashAlertSize.Full, false, 5, false),
-    ];
+    }.Select(settings => settings.Clamped()).ToList();
+
+    /// <summary>The number spelt <paramref name="name"/> (no two types share a name).</summary>
+    public static DashAlertNumber NumberOf(string name) => Numbers.Single(number => number.Name == name);
 
     public static bool IsKnown(string type) => DefaultOf(type) is not null;
 
@@ -208,9 +305,12 @@ public sealed class DashAlertSettingsJsonConverter : JsonConverter<DashAlertSett
             settings = settings with { UntilAck = untilAck };
         }
 
-        if (Number(entry, "lapsLeft") is double lapsLeft && double.IsFinite(lapsLeft))
+        foreach (DashAlertNumber number in DashAlertTypes.Numbers)
         {
-            settings = settings with { LapsLeft = (int)Math.Round(Math.Clamp(lapsLeft, DashAlertTypes.MinLapsLeft, DashAlertTypes.MaxLapsLeft)) };
+            if (Number(entry, number.Name) is double value && double.IsFinite(value))
+            {
+                settings = number.With(settings, (int)Math.Round(Math.Clamp(value, number.Min, number.Max)));
+            }
         }
 
         return settings.Clamped();
@@ -225,9 +325,12 @@ public sealed class DashAlertSettingsJsonConverter : JsonConverter<DashAlertSett
         writer.WriteBoolean("invertColors", value.InvertColors);
         writer.WriteNumber("durationSeconds", value.DurationSeconds);
         writer.WriteBoolean("untilAck", value.UntilAck);
-        if (value.LapsLeft is int lapsLeft)
+        foreach (DashAlertNumber number in DashAlertTypes.Numbers)
         {
-            writer.WriteNumber("lapsLeft", lapsLeft);
+            if (number.Get(value) is int set)
+            {
+                writer.WriteNumber(number.Name, set);
+            }
         }
 
         writer.WriteEndObject();

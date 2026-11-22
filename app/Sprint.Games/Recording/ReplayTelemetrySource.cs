@@ -6,7 +6,7 @@ namespace Sprint.Games.Recording;
 /// <summary>
 /// Plays a recording made by <see cref="RecordingTelemetrySource"/> back as a live source, at
 /// the speed it was driven, looping at the end. Dev only: the host uses it instead of the game
-/// when <c>SPRINT_TELEMETRY_REPLAY</c> names a file (<c>make replay-app</c>), so dashes, the
+/// when <c>SPRINT_TELEMETRY_REPLAY</c> names a file (<c>make dev-app REPLAY=</c>), so dashes, the
 /// HUD and the planner can be checked end to end without the game running.
 /// </summary>
 /// <remarks>

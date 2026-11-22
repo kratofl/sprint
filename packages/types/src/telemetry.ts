@@ -7,6 +7,9 @@ export type PitState = 'none' | 'requested' | 'entering' | 'stopped' | 'exiting'
 
 export type FinishStatus = 'none' | 'finished' | 'dnf' | 'disqualified'
 
+// What a car's hybrid motor is doing; 'unavailable' for a car without one.
+export type ElectricMotorState = 'unavailable' | 'inactive' | 'propulsion' | 'regeneration'
+
 export interface Session {
   game: string
   track: string
@@ -50,6 +53,15 @@ export interface CarState {
   inPitLane: boolean | null  // between pit entry and pit exit
   pitState: PitState | null
   pitLimiter: boolean | null // pit speed limiter switched on
+  engineTorque: number | null // Nm, hybrid torque included; null when the game does not say
+  turboBoost: number | null   // as the game reports it (LMU states no unit); null without a turbo
+  headlights: boolean | null
+  wiperState: number | null   // the game's own wiper setting, 0 presumably off
+  // Fuel per lap as the host measures it from the tank, litres; null until known. The stint
+  // average counts only laps with no pit lane and no yellow, safety car or full course yellow.
+  fuelLastLap: number | null
+  fuelThisLap: number | null
+  fuelStintPerLap: number | null
 }
 
 export enum TirePosition {
@@ -70,6 +82,11 @@ export interface TireState {
   wearPercent: number
   compound: string
   brakeTemp: number // °C
+  optimalTemp: number // the compound's ideal temperature, °C; 0 when unknown
+  wearLastLap: number | null    // wear the last lap took, percentage points; null until known
+  avgTempLastLap: number | null // tread temperature averaged over the last lap, °C; null until known
+  flat: boolean     // a puncture
+  detached: boolean // the wheel has come off
 }
 
 export interface LapState {
@@ -98,7 +115,14 @@ export interface LapState {
   isInLap: boolean
   isOutLap: boolean
   isValid: boolean
+  lastLapValid: boolean // whether the last completed lap counted; true until one has been
   trackPosition: number
+  // From the player's own laps, seconds; null until known.
+  lastFiveLapsAverage: number | null // average of the last five valid laps this session
+  lastTenLapsAverage: number | null  // average of the last ten valid laps this session
+  allTimeBestLapTime: number | null  // fastest valid lap ever at this track in this car
+  pitLoss: number | null             // what a pit stop costs: lane loss plus standing time
+  lastLapTopSpeedMS: number | null   // the fastest the car went on the last completed lap, m/s
 }
 
 export interface Flags {
@@ -142,8 +166,16 @@ export interface Electronics {
 export interface RaceState {
   position: number       // 1-based race position; 0 if unknown
   totalPositions: number // total cars in session; 0 if unknown
-  gapAhead: number       // seconds to car directly ahead; 0 if none/unknown
-  gapBehind: number      // seconds to car directly behind; 0 if none/unknown
+  // Gaps in seconds, timed by the host from where the cars were when (so they hold while both
+  // cars brake), else the game's own figure.
+  gapAhead: number       // to the nearest car ahead on the road; 0 if none/unknown
+  gapBehind: number      // to the nearest car behind on the road; 0 if none/unknown
+  classGapAhead: number | null    // to the car one place ahead in our class; null if none/unknown
+  classGapBehind: number | null
+  positionGapAhead: number | null // to the car one place ahead overall; null if none/unknown
+  positionGapBehind: number | null
+  gapToLeader: number | null      // null when we lead or it is unknown
+  gapToClassLeader: number | null
   // The spotter: how far ahead (negative: behind) the nearest car alongside is, metres, on
   // each side; null when nobody is alongside.
   carLeftMeters: number | null
@@ -155,13 +187,21 @@ export interface EnergyState {
   virtualEnergyPerLap: number // rolling virtual-energy consumption per completed lap
   soc: number            // state of charge fraction (0–1)
   regenPower: number     // current regen power in kW
-  deployPower: number    // current deploy power in kW
+  deployPower: number    // current deploy power in kW; 0 unless the motor propels the car
+  motorState: ElectricMotorState
+  motorTemp: number | null      // hybrid motor, °C; null without one
+  motorWaterTemp: number | null // hybrid motor cooling water, °C; null without a cooler
+  liftAndCoast: number   // the game's lift-and-coast cue, 0–255, counting up
+  virtualEnergyLastLap: number | null     // used by the last lap; null until known
+  virtualEnergyStintPerLap: number | null // per clean lap of the stint, as fuelStintPerLap
 }
 
 export interface Penalties {
   incidents: number
   trackLimitSteps: number
+  trackLimitStepsPerPenalty: number // 0 when unknown
   pitStops: number
+  scheduledPitStops: number // pit stops the game's strategy plans; 0 when none
 }
 
 export interface TelemetryFrame {
@@ -215,6 +255,9 @@ export interface FieldCar {
   // World position in metres, right-handed and seen from above: the frame lap traces use.
   positionX: number
   positionZ: number
+  // Seconds on the road from the player's car (negative: ahead), timed by the host; null for
+  // the player's own car and while the host has too little history.
+  relativeGapSeconds: number | null
 }
 
 // Conditions a session is run under. Every value is nullable because no game reports all

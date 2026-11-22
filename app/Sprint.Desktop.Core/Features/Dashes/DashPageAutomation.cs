@@ -39,7 +39,7 @@ public sealed class DashPageAutomation
         }
 
         List<DashLayout> layouts = this._runtime.DashLayouts.ToList();
-        DriverCar car = DriverCar.Of(this._runtime.Settings.LastSeenContext);
+        DriverCar car = DriverCar.Of(this._runtime.Settings);
         List<CatalogDevice> catalog = this._runtime.Catalog.ToList();
         foreach (SavedDevice device in devices)
         {

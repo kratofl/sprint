@@ -5,9 +5,15 @@ internal readonly record struct LmuVector3(double X, double Y, double Z);
 internal sealed record LmuWheel
 {
     public double PressureKPa { get; init; }
-    public double TempInnerKelvin { get; init; }
-    public double TempMiddleKelvin { get; init; }
-    public double TempOuterKelvin { get; init; }
+
+    /// <summary>
+    /// mTemperature[3]: the tread across the tyre as seen from behind the car, LEFT, centre, RIGHT
+    /// (the header warns: not inside/centre/outside). Which side is the inner shoulder depends on
+    /// the corner, so the mapper decides that.
+    /// </summary>
+    public double TempLeftKelvin { get; init; }
+    public double TempCentreKelvin { get; init; }
+    public double TempRightKelvin { get; init; }
     public double WearFraction { get; init; }
     public double CarcassTempKelvin { get; init; }
     public double SuspensionDeflectionMeters { get; init; }
@@ -29,6 +35,12 @@ internal sealed record LmuWheel
     public bool Flat { get; init; }
     public bool Detached { get; init; }
     public byte RadiusCentimeters { get; init; }
+
+    /// <summary>
+    /// mOptimalTemp: the compound's ideal temperature. The header states no unit; read as Kelvin
+    /// like every other tyre temperature in the struct (unverified against a live game).
+    /// </summary>
+    public float OptimalTempKelvin { get; init; }
 }
 
 internal sealed record LmuVehicleTelemetry
@@ -67,11 +79,17 @@ internal sealed record LmuVehicleTelemetry
     /// <summary>mFuelCapacity: the tank's size, litres.</summary>
     public double FuelCapacityLiters { get; init; }
 
+    /// <summary>mScheduledStops: the pit stops the in-game strategy plans.</summary>
+    public byte ScheduledStops { get; init; }
+
     /// <summary>mOverheating: whether the overheating warning shows.</summary>
     public bool Overheating { get; init; }
 
     /// <summary>mDetached: whether any part other than a wheel has come off.</summary>
     public bool DetachedParts { get; init; }
+
+    /// <summary>mHeadlights: whether the headlights are on.</summary>
+    public bool Headlights { get; init; }
 
     /// <summary>mDentSeverity[8]: 0 none, 1 some, 2 more, at eight places around the car.</summary>
     public IReadOnlyList<byte> DentSeverity { get; init; } = new byte[8];
@@ -81,10 +99,34 @@ internal sealed record LmuVehicleTelemetry
 
     /// <summary>mLastImpactMagnitude.</summary>
     public double LastImpactMagnitude { get; init; }
+
+    /// <summary>mEngineTorque: engine torque including additive torque, Nm.</summary>
+    public double EngineTorque { get; init; }
     public int CurrentSectorRaw { get; init; }
     public string FrontCompoundName { get; init; } = "";
     public string RearCompoundName { get; init; } = "";
     public double RearBrakeBias { get; init; }
+
+    /// <summary>mTurboBoostPressure: "current turbo boost pressure if available"; the header gives no unit.</summary>
+    public double TurboBoostPressure { get; init; }
+
+    /// <summary>mElectricBoostMotorTorque: the hybrid motor's torque, Nm (negative while regenerating).</summary>
+    public double ElectricMotorTorque { get; init; }
+
+    /// <summary>mElectricBoostMotorRPM.</summary>
+    public double ElectricMotorRpm { get; init; }
+
+    /// <summary>mElectricBoostMotorTemperature: no unit in the header; read as °C like the engine's fluids.</summary>
+    public double ElectricMotorTemperature { get; init; }
+
+    /// <summary>mElectricBoostWaterTemperature: the motor cooler's water, 0 when the car has none.</summary>
+    public double ElectricMotorWaterTemperature { get; init; }
+
+    /// <summary>mElectricBoostMotorState: 0 unavailable, 1 inactive, 2 propulsion, 3 regeneration.</summary>
+    public byte ElectricMotorState { get; init; }
+
+    /// <summary>mLapInvalidated: the game has invalidated the lap being driven.</summary>
+    public bool LapInvalidated { get; init; }
     public bool AbsActive { get; init; }
     public bool TractionControlActive { get; init; }
     public byte TractionControl { get; init; }
@@ -106,6 +148,14 @@ internal sealed record LmuVehicleTelemetry
 
     /// <summary>mSpeedLimiter: whether the pit limiter is switched on.</summary>
     public bool SpeedLimiter { get; init; }
+
+    /// <summary>mWiperState: the wiper setting; the header does not document its values.</summary>
+    public byte WiperState { get; init; }
+
+    /// <summary>mLiftAndCoastProgress: the lift-and-coast cue, 0–255, counting up.</summary>
+    public byte LiftAndCoastProgress { get; init; }
+
+    /// <summary>mTrackLimitsSteps: track-limit points times the steps per point.</summary>
     public byte TrackLimitSteps { get; init; }
     public float RegenPower { get; init; }
     public float StateOfCharge { get; init; }
@@ -235,6 +285,9 @@ internal sealed record LmuScoringInfo
 
     /// <summary>mTrackGripLevel: the sim's own grip grade.</summary>
     public byte TrackGripLevel { get; init; }
+
+    /// <summary>mTrackLimitsStepsPerPenalty: the track-limit steps that earn a penalty; 0 when the session has none.</summary>
+    public byte TrackLimitsStepsPerPenalty { get; init; }
 
     /// <summary>mRaining: how hard it rains, 0–1.</summary>
     public double Raining { get; init; }
