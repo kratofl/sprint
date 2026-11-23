@@ -26,8 +26,8 @@ splits searches and confuses the next agent.
   shows "one at a time" is a **widget stack**, each child a **layer** (`packages/dashboard/src/groups.ts`).
 - **Binding** — a named value a widget reads (`lap.delta`, `target.fuelPerLapLiters`).
 - **Preset** — a shipped dash, device or setup template under `app/Sprint.Desktop.Host/presets/`.
-- **Theme preset** — a complete dash color theme. **Functional** is the default condition palette;
-  **Styled** remaps it except protected colors. Internal classification, not an editor mode.
+- **Colour theme** — the driver's app-wide choice of what cold and good look like (Sprint, Calm,
+  Strict), with the **colour limits** where values change; shared by dashes, the pit wall and Analysis.
 - **Condition** — what a dash color means: Neutral, Good/OnTarget, ColdLow, AssistActive, Warning,
   Critical, Fault, RaceControl.
 - **Device** — a saved wheel or screen entry. Its **screen** is the physical panel.

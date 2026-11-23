@@ -588,23 +588,23 @@
 }
 
 .analysis-heat.cold {
-  fill: var(--blue-500);
-  background: var(--blue-500);
+  fill: var(--heat-cold);
+  background: var(--heat-cold);
 }
 
 .analysis-heat.ok {
-  fill: var(--green-500);
-  background: var(--green-500);
+  fill: var(--heat-good);
+  background: var(--heat-good);
 }
 
 .analysis-heat.warm {
-  fill: var(--yellow-500);
-  background: var(--yellow-500);
+  fill: var(--heat-warm);
+  background: var(--heat-warm);
 }
 
 .analysis-heat.hot {
-  fill: var(--red-500);
-  background: var(--red-500);
+  fill: var(--heat-hot);
+  background: var(--heat-hot);
 }
 
 .analysis-heat.none {

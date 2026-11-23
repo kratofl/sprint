@@ -1,6 +1,6 @@
 import { useContext, useState } from 'react'
 import { Bell, Check, RotateCcw } from 'lucide-react'
-import { DashUnitsContext, LAP_REVIEW_TOP_SHARE, dashAlertDefaults, dashAlertFromSettings, dashLapReviewFields, lapReviewCells, previewAlertBanner, resolveDashPalette } from '@sprint/dashboard'
+import { DashColoursContext, DashUnitsContext, LAP_REVIEW_TOP_SHARE, dashAlertDefaults, dashAlertFromSettings, dashLapReviewFields, lapReviewCells, previewAlertBanner, themedPalette } from '@sprint/dashboard'
 import type { DashLapReviewField, DashLayout } from '@sprint/dashboard'
 import type { TelemetryFrame } from '@sprint/types'
 import { layoutScreenProfile } from '../views/DashesDomain'
@@ -47,7 +47,8 @@ export function LapReviewEditor({
   const shown = cells[box] ?? 'none'
   const profile = layoutScreenProfile(layout)
   const units = useContext(DashUnitsContext)
-  const banner = previewAlertBanner(layout, LAP_ALERT, resolveDashPalette(layout.theme, layout.colorSystem), units)
+  const { theme } = useContext(DashColoursContext)
+  const banner = previewAlertBanner(layout, LAP_ALERT, themedPalette(theme), units)
 
   return (
     <>

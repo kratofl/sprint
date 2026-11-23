@@ -200,12 +200,27 @@ public sealed class NativeDashFrameSourceTests
     public void TheSceneCarriesTheDriversUnitsByNameSoChangingThemIsANewScene()
     {
         DashLayout layout = TestDash.Layout("dash");
-        DashSceneContent metric = DashSceneContent.Build(layout, "Driver", "22", UnitSystem.Metric, DashTargets.None, Json);
-        DashSceneContent imperial = DashSceneContent.Build(layout, "Driver", "22", UnitSystem.Imperial, DashTargets.None, Json);
+        DashSceneContent metric = DashSceneContent.Build(layout, "Driver", "22", UnitSystem.Metric, new ColourSettings(), DashTargets.None, Json);
+        DashSceneContent imperial = DashSceneContent.Build(layout, "Driver", "22", UnitSystem.Imperial, new ColourSettings(), DashTargets.None, Json);
 
         using JsonDocument settings = JsonDocument.Parse(imperial.Settings);
         Assert.Equal("Imperial", settings.RootElement.GetProperty("units").GetString());
         Assert.False(imperial.HasSameBytes(metric));
+    }
+
+    [Fact]
+    public void TheSceneCarriesTheColoursThemeByNameAndTheLimitsSoChangingThemIsANewScene()
+    {
+        DashLayout layout = TestDash.Layout("dash");
+        DashSceneContent sprint = DashSceneContent.Build(layout, "Driver", "22", UnitSystem.Metric, new ColourSettings(), DashTargets.None, Json);
+        ColourSettings calm = new() { Theme = ColourTheme.Calm, Limits = new ColourLimits { BrakeHotAbove = 900 } };
+        DashSceneContent changed = DashSceneContent.Build(layout, "Driver", "22", UnitSystem.Metric, calm, DashTargets.None, Json);
+
+        using JsonDocument settings = JsonDocument.Parse(changed.Settings);
+        JsonElement colours = settings.RootElement.GetProperty("colours");
+        Assert.Equal("Calm", colours.GetProperty("theme").GetString());
+        Assert.Equal(900, colours.GetProperty("limits").GetProperty("brakeHotAbove").GetInt32());
+        Assert.False(changed.HasSameBytes(sprint));
     }
 
     private static byte[] Draw(NativeDashFrameSource source, TelemetryFrame frame)
@@ -226,7 +241,7 @@ public sealed class NativeDashFrameSourceTests
     }
 
     private static DashSceneContent Content(DashLayout layout) =>
-        DashSceneContent.Build(layout, "Driver", "22", UnitSystem.Metric, DashTargets.None, Json);
+        DashSceneContent.Build(layout, "Driver", "22", UnitSystem.Metric, new ColourSettings(), DashTargets.None, Json);
 
     private static ScreenConfig Config(int width, int height, DeviceOrientation orientation = DeviceOrientation.Portrait) => new()
     {

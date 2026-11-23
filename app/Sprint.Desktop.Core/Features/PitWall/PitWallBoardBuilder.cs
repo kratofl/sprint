@@ -208,6 +208,7 @@ public sealed class PitWallBoardBuilder
             PressureKPa = Math.Round(tire.PressureKPa, 1),
             WearPercent = Math.Round(tire.WearPercent, 1),
             Compound = tire.Compound,
+            OptimalTemp = Math.Round(tire.OptimalTempCelsius, 1),
         };
     }
 

@@ -1,6 +1,6 @@
 import { useContext, useEffect, useId, useLayoutEffect, useState } from 'react'
 import { ChevronLeft, Play, X } from 'lucide-react'
-import { DashUnitsContext, dashAlertDefaults, dashAlertFromSettings, previewAlertBanner, previewFrame, resolveDashPalette } from '@sprint/dashboard'
+import { DashColoursContext, DashUnitsContext, dashAlertDefaults, dashAlertFromSettings, previewAlertBanner, previewFrame, themedPalette } from '@sprint/dashboard'
 import type { DashAlertSettings, DashAlertType, DashLaunchWindow, DashLayout } from '@sprint/dashboard'
 import type { ButtonState, SprintCommand } from '../bridge'
 import { NumberBox } from '../designer/controls'
@@ -467,6 +467,7 @@ function AlertPreview({ alert, alerts, layouts, devices }: { alert: DashAlertSet
   const dash = previewDash(devices, layouts)
   const copy = ALERT_COPY[alert.type]
   const units = useContext(DashUnitsContext)
+  const { theme } = useContext(DashColoursContext)
 
   // The key stands for the alert and the dash by content, so a fresh but equal state poll does not replay it.
   const playKey = `${replays}|${dash?.layout.id ?? ''}|${JSON.stringify(alert)}`
@@ -484,7 +485,7 @@ function AlertPreview({ alert, alerts, layouts, devices }: { alert: DashAlertSet
 
   const stamped = dash ? stampDashAlerts(dash.layout, alerts) : null
   const banner =
-    stamped && playing && alert.enabled ? previewAlertBanner(stamped, dashAlertFromSettings(alert), resolveDashPalette(stamped.theme, stamped.colorSystem), units) : null
+    stamped && playing && alert.enabled ? previewAlertBanner(stamped, dashAlertFromSettings(alert), themedPalette(theme), units) : null
   const overlay = !isTimed(alert.type)
   const frame = !alert.enabled ? PREVIEW_FRAME : overlay ? PIT_FRAME : alert.type === 'flag' ? FLAG_FRAME : PREVIEW_FRAME
 

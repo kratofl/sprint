@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { DashUnitsContext } from '@sprint/dashboard'
+import { DashColoursContext, DashUnitsContext, defaultDashColours } from '@sprint/dashboard'
 import { bridge, type AppView, type ResultsImportOffer, type SprintCommand, type UpdateStatus } from './bridge'
 import type { RuntimeState } from './shell/runtime'
 import { TitleBar } from './shell/TitleBar'
@@ -12,6 +12,7 @@ import { Backdrop } from './shell/Backdrop'
 import { FirstRun } from './firstRun/FirstRun'
 import type { FirstRunActions } from './firstRun/FirstRun'
 import { parseSettings } from './views/SettingsDomain'
+import { useColourTheme } from './shell/useColourTheme'
 import { AccountDialog } from './shell/AccountDialog'
 import { Onboarding } from './onboarding/Onboarding'
 import { localCounts } from './onboarding/summary'
@@ -225,8 +226,12 @@ export function App({ mockup }: { mockup?: { view: AppView; content: ReactNode }
   }, [paletteOpen, toasts, dismissToast, navigate, up])
 
   const account = runtime.kind === 'ready' ? runtime.sprint.account : null
-  // Every dash picture in the window prints in the driver's units (DashCanvas reads them).
-  const units = runtime.kind === 'ready' ? parseSettings(runtime.sprint.settings).units : 'Metric'
+  // Every dash picture in the window prints in the driver's units and colours (DashCanvas reads
+  // them); the app's own cold-to-hot values take the colour theme from <html data-colours>.
+  const appSettings = runtime.kind === 'ready' ? parseSettings(runtime.sprint.settings) : null
+  const units = appSettings?.units ?? 'Metric'
+  const colours = appSettings?.colours ?? defaultDashColours
+  useColourTheme(colours.theme)
   // Off (the shipped default), Sprint web shows nowhere: no setup, no account row, no Settings group.
   const sprintWeb = runtime.kind === 'ready' && runtime.sprint.features.sprintWeb
   const build = describeBuild(import.meta.env.DEV, __SPRINT_DEV_BRANCH__, runtime.kind === 'ready' ? parseUpdatesInfo(runtime.sprint)?.version ?? null : null)
@@ -329,6 +334,7 @@ export function App({ mockup }: { mockup?: { view: AppView; content: ReactNode }
           <ToolbarActionsContext value={toolbarActions}>
             <PageUpContext value={setUp}>
               <DashUnitsContext value={units}>
+                <DashColoursContext value={colours}>
                 {mockup && view === mockup.view ? (
                   mockup.content
                 ) : (
@@ -344,6 +350,7 @@ export function App({ mockup }: { mockup?: { view: AppView; content: ReactNode }
                     updateStatus={updateStatus}
                   />
                 )}
+                </DashColoursContext>
               </DashUnitsContext>
             </PageUpContext>
           </ToolbarActionsContext>

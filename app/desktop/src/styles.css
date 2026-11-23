@@ -25,6 +25,28 @@
   box-sizing: border-box;
 }
 
+/* The colour scale (Settings › Colours): what cold, good, warm and hot look like wherever the app
+   colours a value by it (the pit wall's tyres, Analysis's car). Aliases of the status scale, picked
+   by the driver's theme on <html data-colours>, which the window roots set (useColourTheme). The
+   wheel dash draws the same theme in its own colours. */
+:root {
+  --heat-cold: var(--blue-500);
+  --heat-good: var(--green-500);
+  --heat-warm: var(--yellow-500);
+  --heat-hot: var(--red-500);
+}
+
+/* Calm: only what is off gets colour. Good is a neutral fill here, not the text colour the wheel
+   uses, because the pit wall prints its values on the band. */
+:root[data-colours='Calm'] {
+  --heat-cold: var(--label-tertiary);
+  --heat-good: var(--track);
+}
+
+:root[data-colours='Strict'] {
+  --heat-cold: var(--red-500);
+}
+
 html,
 body {
   margin: 0;
@@ -331,35 +353,42 @@ a:hover {
 }
 
 /* The self-update (TitleBar.tsx `UpdateIndicator`): a brand glyph on offer, a ring while it
-   downloads, then a word while it installs. */
+   downloads (.progress-ring), then a word while it installs. */
 /* Through .titlebar so it outranks .icon-button's colours, which come later in this file. */
 .titlebar .titlebar-update,
 .titlebar .titlebar-update:hover {
   color: var(--brand-500);
 }
 
-.titlebar-update-ring {
+/* A ring filling with a download (ProgressRing.tsx), in the 28px box of an icon button; an icon
+   inside it sits in the middle. */
+.progress-ring {
   display: inline-grid;
   place-items: center;
   width: 28px;
   height: 28px;
   flex: none;
+  color: var(--label-secondary);
 }
 
-.titlebar-update-ring svg {
+.progress-ring > * {
+  grid-area: 1 / 1;
+}
+
+.progress-ring-gauge {
   transform: rotate(-90deg);
 }
 
-.titlebar-update-ring circle {
+.progress-ring-gauge circle {
   fill: none;
   stroke-width: 2;
 }
 
-.titlebar-update-ring-track {
+.progress-ring-track {
   stroke: var(--track);
 }
 
-.titlebar-update-ring-fill {
+.progress-ring-fill {
   stroke: var(--brand-500);
   stroke-linecap: round;
   transition: stroke-dashoffset 200ms ease-out;

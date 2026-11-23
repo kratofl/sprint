@@ -19,7 +19,8 @@ public sealed record ScreenOutputHardware(ScreenStatus Status, ScreenPerformance
 /// <summary>
 /// What every dash screen's scene is built from, read by the reconcile loop under the devices gate:
 /// the dashes (each device resolves its own for the car, <see cref="DevicePurposeLayouts.Resolve"/>),
-/// the driver's name and number, the units every dash prints in, the active plan's targets, and the
+/// the driver's name and number, the units every dash prints in, what its colours mean
+/// (<see cref="ColourSettings"/>), the active plan's targets, and the
 /// app-wide alert settings every dash is stamped with (<see cref="AppDashAlerts.Stamp"/>).
 /// </summary>
 public sealed record DashSceneInputs(
@@ -28,6 +29,7 @@ public sealed record DashSceneInputs(
     string DriverName,
     string DriverNumber,
     UnitSystem Units,
+    ColourSettings Colours,
     DashTargets Targets,
     AppDashAlerts Alerts);
 
@@ -391,7 +393,7 @@ public sealed class ScreenOutputService : IDisposable
                 try
                 {
                     DashLayout shown = DevicePurposes.Resolve(device.Purpose).Output is DevicePurposeOutputKind.DashboardLayout ? scenes.Alerts.Stamp(layout) : layout;
-                    content = DashSceneContent.Build(shown, scenes.DriverName, scenes.DriverNumber, scenes.Units, scenes.Targets, this._json);
+                    content = DashSceneContent.Build(shown, scenes.DriverName, scenes.DriverNumber, scenes.Units, scenes.Colours, scenes.Targets, this._json);
                 }
                 catch (Exception ex)
                 {

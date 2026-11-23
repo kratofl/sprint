@@ -142,6 +142,7 @@ public sealed class DesktopRuntime : IDesktopRuntime
             this.Settings.DriverName = defaults.DriverName;
             this.Settings.DriverNumber = defaults.DriverNumber;
             this.Settings.Units = defaults.Units;
+            this.Settings.Colours = defaults.Colours;
             this.Settings.DashEditorUI = defaults.DashEditorUI;
             this.Settings.NewDashDefaults = defaults.NewDashDefaults;
             this.SaveSettings();
@@ -800,6 +801,8 @@ public sealed class DesktopRuntime : IDesktopRuntime
         settings.UpdateChannel = AppSettings.NormalizeChannel(settings.UpdateChannel);
         settings.CustomDashCategories = NormalizeCustomDashCategories(settings.CustomDashCategories);
         settings.DashRules = DeviceDashRules.Clean(settings.DashRules);
+        // Hand-edited limits out of range or order would colour every value wrong; the defaults stand in.
+        settings.Colours = (settings.Colours ?? new ColourSettings()).Clean();
         // A hand-edited reserve outside what planner.settings accepts would make every plan seeded
         // from it (Quick plan sends it as is) fail plan.create's check.
         settings.SessionPlanner.FuelReserveLaps = Math.Clamp(settings.SessionPlanner.FuelReserveLaps, 0, SessionPlannerSettings.MaxFuelReserveLaps);

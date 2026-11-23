@@ -252,7 +252,7 @@ public sealed class ScreenOutputServiceTests
     }
 
     private static DashSceneInputs Scenes(params DashLayout[] layouts) =>
-        new(layouts, DriverCar.None, "Driver", "22", UnitSystem.Metric, DashTargets.None, AppDashAlerts.Default);
+        new(layouts, DriverCar.None, "Driver", "22", UnitSystem.Metric, new ColourSettings(), DashTargets.None, AppDashAlerts.Default);
 
     private static async Task WaitUntilAsync(Func<bool> condition, TimeSpan timeout)
     {

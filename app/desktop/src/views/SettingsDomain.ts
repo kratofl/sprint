@@ -1,8 +1,10 @@
-import type { DashUnits } from '@sprint/dashboard'
+import type { DashColours, DashUnits } from '@sprint/dashboard'
+import { parseColours } from '../colours'
 
 /**
  * Settings domain model and parsing: the `AppSettings` fields the Settings page shows and
- * edits through `settings.update` (`RuntimeCoordinator.UpdateSettings`). sidebarCollapsed is
+ * edits through `settings.update` (`RuntimeCoordinator.UpdateSettings`), and the colours through
+ * `settings.colours`. sidebarCollapsed is
  * owned by the shell's sidebar toggle, and the other slices (dashEditorUI, newDashDefaults,
  * devicesUI, sessionPlanner, liveCompare, cloud) are each edited from their own feature, so
  * they are not modelled here.
@@ -34,6 +36,8 @@ export type AppSettings = {
   updateChannel: UpdateChannel
   /** What every dash prints speeds, temperatures, pressures and fuel in (host `AppSettings.Units`). */
   units: DashUnits
+  /** What colours mean and where values change colour, on the dashes, the pit wall and in Analysis (host `AppSettings.Colours`). */
+  colours: DashColours
 }
 
 const str = (row: Record<string, unknown>, key: string, fallback: string): string => {
@@ -46,4 +50,5 @@ export const parseSettings = (row: Record<string, unknown>): AppSettings => ({
   driverNumber: str(row, 'driverNumber', '22'),
   updateChannel: normalizeChannel(str(row, 'updateChannel', 'stable')),
   units: row.units === 'Imperial' ? 'Imperial' : 'Metric',
+  colours: parseColours(row.colours),
 })

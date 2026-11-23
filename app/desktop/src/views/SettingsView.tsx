@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { Check, CloudDownload, CloudUpload, Download, Pencil } from 'lucide-react'
+import type { ReactNode } from 'react'
+import { Check, ChevronLeft, CloudDownload, CloudUpload, Download, Pencil, RefreshCw } from 'lucide-react'
 import { bridge } from '../bridge'
 import type { Account, CloudState, CloudStorageMode, LiveUplink, LiveUplinkStatus, SprintCommand, SyncDirection, SyncReport, UpdateStatus } from '../bridge'
 import { syncReportText } from '../onboarding/summary'
@@ -7,9 +8,18 @@ import { accountName, accountWhere, initialsFor } from '../shell/account'
 import { ConfirmDialog } from '../shell/ContentDialog'
 import { InlineName } from '../shell/InlineName'
 import { PageHeader } from '../shell/PageHeader'
+import { usePageUp } from '../shell/pageUp'
+import { ProgressRing, RingGauge } from '../shell/ProgressRing'
 import { Status, type StatusTone } from '../shell/Status'
 import type { RuntimeState } from '../shell/runtime'
-import type { DashUnits } from '@sprint/dashboard'
+import { colourThemes } from '@sprint/dashboard'
+import type { ColourTheme, DashColours, DashUnits } from '@sprint/dashboard'
+import { NumberBox } from '../designer/controls'
+import { TyreDrawing } from '../pitwall/tiles/CarTiles'
+import '../pitwall/PitWall.css'
+import { COLOUR_LIMIT_ROWS, COLOUR_PREVIEW_FRAME, COLOUR_PREVIEW_LAYOUT, COLOUR_PREVIEW_TYRES, THEME_DETAIL, colourLimitText, stepColourLimit } from './ColoursDomain'
+import type { ColourMark } from './ColoursDomain'
+import { ScaledDash } from './ScaledDash'
 import { CHANNELS, UNITS, parseSettings } from './SettingsDomain'
 import type { AppSettings, UpdateChannel } from './SettingsDomain'
 import { TRACE_EXPIRY_DAYS, lapsText, parseStorageInfo, sizeText } from './SettingsStorage'
@@ -17,14 +27,15 @@ import type { StorageInfo } from './SettingsStorage'
 import { parseUpdatesInfo } from './SettingsUpdates'
 import type { UpdatesInfo } from './SettingsUpdates'
 import { Switch } from '../shell/Switch'
-import { ListRow, SettingsList } from './SettingsLayout'
+import { ListRow, OpenRow, SettingsList } from './SettingsLayout'
 
 type Send = (command: SprintCommand) => Promise<void>
 
 /**
  * Settings: you first, as a driver card (name and race number, renamed in place with the pen),
- * then grouped lists — Units, Sprint web (only with the feature on), Updates, Storage, and Reset on its
- * own at the bottom. Everything saves on commit; risky changes (pre-release builds, web-only storage,
+ * then grouped lists — Units, a row each for Colours and Sprint web (only with the feature on),
+ * which are big enough for a page of their own ("‹ All settings" back), Updates, Storage, and
+ * Reset on its own at the bottom. Everything saves on commit; risky changes (pre-release builds, web-only storage,
  * deleting old laps' telemetry, resetting preferences) confirm first. The page has no primary
  * button until an update is out.
  */
@@ -39,6 +50,11 @@ export function SettingsView({
   onSetUpCloud: () => void
   updateStatus: UpdateStatus
 }) {
+  const [opened, setPage] = useState<SettingsPage | null>(null)
+  // Sprint web's page closes by itself when its feature is turned off.
+  const page = opened === 'web' && (runtime.kind === 'loading' || !runtime.sprint.features.sprintWeb) ? null : opened
+  usePageUp(page === null ? null : 'All settings', () => setPage(null))
+
   if (runtime.kind === 'loading') {
     return (
       <div className="settings">
@@ -53,16 +69,62 @@ export function SettingsView({
   const settings = parseSettings(runtime.sprint.settings)
   const updatesInfo = parseUpdatesInfo(runtime.sprint)
   const storageInfo = parseStorageInfo(runtime.sprint)
+  const sprintWeb = runtime.sprint.features.sprintWeb
+  const account = runtime.sprint.account
+
+  if (page === 'colours') {
+    return (
+      <SettingsSubPage title="Colours" onBack={() => setPage(null)}>
+        <ColoursGroup colours={settings.colours} units={settings.units} send={send} />
+      </SettingsSubPage>
+    )
+  }
+  if (page === 'web') {
+    return (
+      <SettingsSubPage title="Sprint web" onBack={() => setPage(null)}>
+        <CloudGroup account={account} cloud={runtime.sprint.cloud} send={send} onSetUp={onSetUpCloud} />
+      </SettingsSubPage>
+    )
+  }
 
   return (
     <div className="settings">
       <PageHeader title="Settings" />
       <DriverCard settings={settings} send={send} />
       <UnitsGroup units={settings.units} send={send} />
-      {runtime.sprint.features.sprintWeb && <CloudGroup account={runtime.sprint.account} cloud={runtime.sprint.cloud} send={send} onSetUp={onSetUpCloud} />}
+      <SettingsList>
+        <OpenRow label="Colours" detail="Cold, good, warm and hot on your dashes, the pit wall and Analysis" value={settings.colours.theme} onOpen={() => setPage('colours')} />
+        {sprintWeb && (
+          <OpenRow
+            label="Sprint web"
+            detail={account.signedIn ? accountWhere(account) : 'Keep sessions, setups and dashes on your Sprint web server too'}
+            value={account.signedIn ? 'Connected' : 'Not connected'}
+            onOpen={() => setPage('web')}
+          />
+        )}
+      </SettingsList>
       <UpdatesGroup info={updatesInfo} channel={settings.updateChannel} status={updateStatus} send={send} />
       {storageInfo && <StorageGroup info={storageInfo} send={send} />}
       <ResetGroup send={send} />
+    </div>
+  )
+}
+
+/** The groups with a page of their own. */
+type SettingsPage = 'colours' | 'web'
+
+/** A group's own page: "‹ All settings" (Alt+Left too), its name, then its lists. */
+function SettingsSubPage({ title, onBack, children }: { title: string; onBack: () => void; children: ReactNode }) {
+  return (
+    <div className="settings">
+      <PageHeader title="Settings" />
+      <div className="settings-sub-head">
+        <button type="button" className="button subtle settings-back" onClick={onBack}>
+          <ChevronLeft /> All settings
+        </button>
+        <h2 className="settings-sub-title">{title}</h2>
+      </div>
+      {children}
     </div>
   )
 }
@@ -173,6 +235,103 @@ function UnitsGroup({ units, send }: { units: DashUnits; send: Send }) {
   )
 }
 
+// ── Colours ──────────────────────────────────────────────────────────────
+
+/** The theme's scale as four dots, cold to hot, in the app's own shades. */
+function HeatDots() {
+  return (
+    <span className="settings-colours-dots" aria-hidden="true">
+      <span className="settings-colours-dot cold" />
+      <span className="settings-colours-dot ok" />
+      <span className="settings-colours-dot warm" />
+      <span className="settings-colours-dot hot" />
+    </span>
+  )
+}
+
+/**
+ * Settings › Colours, a page of its own: what colours mean on every dash, the pit wall and
+ * Analysis. The theme (a select, with its scale and a small wheel and pit-wall preview drawn in
+ * it) and, in its own list, where each value moves from cold to hot. Each mark steps within its range and never past its neighbour.
+ */
+function ColoursGroup({ colours, units, send }: { colours: DashColours; units: DashUnits; send: Send }) {
+  const setTheme = (theme: ColourTheme) => {
+    if (theme !== colours.theme) void send({ type: 'settings.colours', theme })
+  }
+  return (
+    <>
+      <SettingsList
+        footer="Your dashes, the pit wall and Analysis colour every value this way. Fastest laps stay purple and each knob keeps its colour in every theme."
+      >
+        <ListRow
+          id="settings-colour-theme"
+          label="Theme"
+          detail={
+            <span className="settings-colours-theme-detail">
+              <HeatDots />
+              {THEME_DETAIL[colours.theme]}
+            </span>
+          }
+        >
+          {(labels) => (
+            <select {...labels} value={colours.theme} onChange={(event) => setTheme(colourThemes.find((theme) => theme === event.target.value) ?? colours.theme)}>
+              {colourThemes.map((theme) => (
+                <option key={theme} value={theme}>
+                  {theme}
+                </option>
+              ))}
+            </select>
+          )}
+        </ListRow>
+        <div className="settings-colours-preview">
+          <figure>
+            <ScaledDash layout={COLOUR_PREVIEW_LAYOUT} size={{ width: 800, height: 480 }} maxWidth={320} maxHeight={192} frame={COLOUR_PREVIEW_FRAME} />
+            <figcaption>Wheel</figcaption>
+          </figure>
+          <figure>
+            <div className="settings-colours-tyres">
+              {COLOUR_PREVIEW_TYRES.map((tyre) => (
+                <TyreDrawing key={tyre.position} tyre={tyre} />
+              ))}
+            </div>
+            <figcaption>Pit wall</figcaption>
+          </figure>
+        </div>
+      </SettingsList>
+
+      <SettingsList title="When colours change" footer="Water, oil and fuel laps warn from their alert’s limits (Dashes › Settings).">
+        {COLOUR_LIMIT_ROWS.map((row) => (
+          <ListRow key={row.id} id={`settings-colours-${row.id}`} label={row.label} detail={row.detail}>
+            {() => row.marks.map((mark) => <ColourMarkBox key={mark.key} row={row.label} mark={mark} colours={colours} units={units} send={send} />)}
+          </ListRow>
+        ))}
+      </SettingsList>
+    </>
+  )
+}
+
+/** One mark: the state it starts as a dot, and its limit with minus and plus. */
+function ColourMarkBox({ row, mark, colours, units, send }: { row: string; mark: ColourMark; colours: DashColours; units: DashUnits; send: Send }) {
+  const down = stepColourLimit(colours.limits, mark.key, -1)
+  const up = stepColourLimit(colours.limits, mark.key, 1)
+  const set = (value: number | null) => {
+    if (value !== null) void send({ type: 'settings.colours', [mark.key]: value })
+  }
+  return (
+    <span className="settings-colours-mark" title={mark.label}>
+      <span className={`settings-colours-dot ${mark.heat}`} aria-hidden="true" />
+      <NumberBox
+        label={`${row}: ${mark.label}`}
+        display={colourLimitText(mark.key, colours.limits[mark.key], units)}
+        canDecrease={down !== null}
+        canIncrease={up !== null}
+        onDecrease={() => set(down)}
+        onIncrease={() => set(up)}
+      />
+    </span>
+  )
+}
+
 // ── Sprint web ───────────────────────────────────────────────────────────
 
 const STORAGE_OPTIONS: Array<{ id: CloudStorageMode; label: string }> = [
@@ -241,7 +400,7 @@ function CloudGroup({ account, cloud, send, onSetUp }: { account: Account; cloud
   const live = LIVE_STATUS[cloud.live.status]
 
   return (
-    <SettingsList title="Sprint web" footer={account.signedIn ? STORAGE_DESCRIPTIONS[cloud.storage] : undefined}>
+    <SettingsList footer={account.signedIn ? STORAGE_DESCRIPTIONS[cloud.storage] : undefined}>
       <ListRow
         id="settings-cloud-account"
         label={account.signedIn ? accountName(account) : 'Not connected'}
@@ -358,8 +517,10 @@ const CHECK_STATUS: Record<'idle' | 'checking' | 'up-to-date' | 'failed', { labe
 /**
  * The running version as a row that turns into the update itself once one is out: "Sprint 0.3.0
  * is out" carries Update, the page's one primary, which downloads it and restarts Sprint into it
- * (the toolbar's update button does the same). Otherwise a quiet Check now with the last result
- * beside it. A dev build cannot update and says so.
+ * (the toolbar's update button does the same), then shows the download as a filling ring.
+ * Otherwise a check-for-updates icon button with the last result beside it; while it checks, its
+ * icon turns once and the download's ring stands empty around it. A dev build cannot
+ * update and says so.
  */
 function UpdatesGroup({ info, channel, status, send }: { info: UpdatesInfo | null; channel: UpdateChannel; status: UpdateStatus; send: Send }) {
   const [confirmPreRelease, setConfirmPreRelease] = useState(false)
@@ -386,11 +547,11 @@ function UpdatesGroup({ info, channel, status, send }: { info: UpdatesInfo | nul
         )
       case 'downloading':
         return (
-          <ListRow id="settings-update" label={`Sprint ${status.version} is out`} detail={you}>
+          <ListRow id="settings-update" label={`Sprint ${status.version} is out`} detail={`${you} · Downloading… ${status.percent}%`}>
             {() => (
-              <Status tone="neutral" quiet role="status">
-                Downloading… {status.percent}%
-              </Status>
+              <ProgressRing percent={status.percent} label={`Downloading Sprint ${status.version}`} size={24}>
+                <Download size={12} aria-hidden="true" />
+              </ProgressRing>
             )}
           </ListRow>
         )
@@ -412,6 +573,7 @@ function UpdatesGroup({ info, channel, status, send }: { info: UpdatesInfo | nul
         )
       default: {
         const shown = CHECK_STATUS[status.kind]
+        const checkLabel = status.kind === 'failed' ? 'Try again' : 'Check for updates'
         return (
           <ListRow id="settings-update" label={info ? `Sprint ${info.version}` : 'Sprint'} detail={channelLabel}>
             {(labels) => (
@@ -421,15 +583,20 @@ function UpdatesGroup({ info, channel, status, send }: { info: UpdatesInfo | nul
                     {shown.label}
                   </Status>
                 )}
-                <button
-                  type="button"
-                  className="button subtle"
-                  aria-describedby={labels['aria-describedby']}
-                  onClick={() => void bridge.checkUpdates()}
-                  disabled={status.kind === 'checking'}
-                >
-                  {status.kind === 'failed' ? 'Try again' : 'Check now'}
-                </button>
+                <span className={status.kind === 'checking' ? 'settings-check checking' : 'settings-check'}>
+                  <RingGauge size={24} percent={null} />
+                  <button
+                    type="button"
+                    className="icon-button"
+                    aria-label={checkLabel}
+                    title={checkLabel}
+                    aria-describedby={labels['aria-describedby']}
+                    onClick={() => void bridge.checkUpdates()}
+                    disabled={status.kind === 'checking'}
+                  >
+                    <RefreshCw size={16} />
+                  </button>
+                </span>
               </>
             )}
           </ListRow>

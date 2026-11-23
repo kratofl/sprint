@@ -9,6 +9,7 @@ import {
   matchThemeName,
   presetSwatchColor,
   resolveDashPalette,
+  themedPalette,
 } from './palette'
 import type { DashTheme } from './index'
 
@@ -21,6 +22,15 @@ test('the default palette keeps the wheel colors the hardware output was tuned w
   assert.equal(defaultDashPalette.warning, '#FF6A00')
   assert.equal(defaultDashPalette.danger, '#F02744')
   assert.equal(defaultDashPalette.rpmShift, '#1F7FE6')
+})
+
+test('a colour theme recolours only the scale’s cold and good, as the renderer does', () => {
+  const d = defaultDashPalette
+  assert.deepEqual(themedPalette('Sprint'), d)
+  const calm = themedPalette('Calm')
+  assert.deepEqual([calm.coldLow, calm.goodOnTarget, calm.warning, calm.critical], [d.secondary, d.foreground, d.warning, d.critical])
+  const strict = themedPalette('Strict')
+  assert.deepEqual([strict.coldLow, strict.goodOnTarget, strict.timingFastestOverall], [d.critical, d.goodOnTarget, d.timingFastestOverall])
 })
 
 test('resolveDashPalette ignores the theme entirely under the functional color system', () => {

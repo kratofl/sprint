@@ -150,6 +150,8 @@ export type TyreCorner = {
   pressureKPa: number
   wearPercent: number
   compound: string
+  /** The compound's ideal, °C; 0 when the game names none (or the driver's Sprint is older). */
+  optimalTemp: number
 }
 
 export type CarDamage = {
@@ -367,6 +369,7 @@ const parseTyre = (value: unknown): TyreCorner | null => {
     pressureKPa: finite(value.pressureKPa),
     wearPercent: finite(value.wearPercent),
     compound: text(value.compound),
+    optimalTemp: finite(value.optimalTemp),
   }
 }
 

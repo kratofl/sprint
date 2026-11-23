@@ -562,14 +562,6 @@ export function renameLayout(layout: DashLayout, name: string): DashLayout | nul
   return next
 }
 
-/** Applies a complete theme preset (palette override + its effective color system) to the layout — mirrors `DashEditorController.ApplyThemePreset`. "Graphite" is the empty theme, so it always resolves to `'functional'`. */
-export function applyThemePreset(layout: DashLayout, theme: DashTheme, colorSystem: DashColorSystem): DashLayout {
-  const next = cloneLayout(layout)
-  next.theme = theme
-  next.colorSystem = colorSystem
-  return next
-}
-
 /** Changes the dash's look (corners, edge, label); null when nothing changes. */
 export function setDashChrome(layout: DashLayout, patch: Partial<DashChrome>): DashLayout | null {
   const current = layout.chrome ?? DEFAULT_DASH_CHROME

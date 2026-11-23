@@ -11,7 +11,7 @@ use crate::grid::{GridSpan, PixelRect, layout_rect, page_has_race_logic_lap_time
 use crate::groups::drawn_widgets;
 use crate::model::{DashPage, DashWidget, Scene, TelemetryFrame};
 use crate::overlays::{alert_banner, flag_bar, race_logic_lap_timer_overlay};
-use crate::palette::{DashPaletteColors, Rgba, effective_color_system, resolve_dash_palette};
+use crate::palette::{DashPaletteColors, Rgba, themed_palette};
 use crate::pit_limiter::{PIT_INK, PIT_YELLOW, PitLimiter, PitLimiterStyle, draw_box_frame, draw_full_screen, draw_gear_box};
 use crate::racelogic::RaceLogicLapTimerView;
 use crate::text::Fonts;
@@ -30,9 +30,10 @@ pub struct Overlays<'a> {
     pub flag_bar: Option<FlagBar>,
 }
 
-/// The palette the scene's layout draws in.
+/// The palette every dash draws in: Sprint's, in the driver's colour theme (the app-wide Colours
+/// setting). A layout's own theme is not read: colours mean the same on every dash.
 pub fn scene_palette(scene: &Scene) -> DashPaletteColors {
-    resolve_dash_palette(scene.layout.theme.as_ref(), effective_color_system(&scene.layout))
+    themed_palette(scene.settings.as_ref().map(|s| s.colours.theme).unwrap_or_default())
 }
 
 /// True when the scene's page draws the full-canvas RaceLogic lap timer, so its presenter must
@@ -433,19 +434,6 @@ mod tests {
             { "id": "off", "name": "O", "mode": "together", "hidden": true }
         ]);
         assert_eq!(texts(&ops_for(&scene(l), &TelemetryFrame::default())), ["LAYER_B"]);
-    }
-
-    #[test]
-    fn a_theme_color_dim_color_cannot_parse_makes_the_picture_an_error_like_the_typescript_throw() {
-        // A tall rpm bar dims the primary color for its unlit segments; '#f00a' throws in dimColor.
-        let mut l = layout(json!([{ "id": "r", "type": "rpm_bar", "col": 0, "row": 0, "colSpan": 2, "rowSpan": 12 }]));
-        l["colorSystem"] = json!("styled");
-        l["theme"] = json!({ "primary": "#f00a" });
-        let fonts = Fonts::new();
-        let result = build_display_list(&fonts, &scene(l.clone()), &TelemetryFrame::default(), Overlays::default(), &mut Vec::new());
-        assert!(result.is_err_and(|e| e.contains("dimColor")));
-        l["theme"] = json!({ "primary": "#ff0000aa" });
-        assert!(build_display_list(&fonts, &scene(l), &TelemetryFrame::default(), Overlays::default(), &mut Vec::new()).is_ok());
     }
 
     #[test]

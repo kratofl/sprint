@@ -10,6 +10,8 @@
 // color remembers how the TypeScript would have written it (`CssForm`), because `dimColor` and
 // `withAlpha` read the string themselves, differently from CSS (see `dim_color`).
 
+use serde_json::{Map, Value};
+
 use crate::model::{ColorSystem, DashLayout, DashTheme};
 
 /// How the TypeScript writes a color as a string. CSS paints every form the same way, but
@@ -85,9 +87,9 @@ pub fn parse_css_hex(value: &str) -> Option<Rgba> {
     }
 }
 
-/// The resolved on-wheel color set for a dash. Functional dashboards keep focal values neutral
-/// and reserve orange for warnings; styled themes may replace optical accents. The canvas
-/// remains a near-black surface.
+/// The resolved on-wheel color set for a dash. Focal values stay neutral and orange is kept for
+/// warnings, apart from race-control yellow; the driver's colour theme (`themed_palette`)
+/// recolours the scale's cold and good. The canvas remains a near-black surface.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct DashPaletteColors {
     pub background: Rgba,
@@ -298,22 +300,172 @@ pub fn resolve_dash_palette(theme: Option<&DashTheme>, color_system: ColorSystem
     }
 }
 
-/// A tyre temperature's colour (°C), against the compound's ideal (`optimal`, 0 when unknown):
-/// blue more than 10° under it, green within 10°, amber up to 20° over, red beyond. Without an
-/// ideal, fixed marks: blue to 70°, green to 100°, amber to 110°, red above. Every tyre widget
-/// colours its temperatures with this.
-pub fn resolve_tyre_color(celsius: f64, optimal: f64, palette: &DashPaletteColors) -> Rgba {
-    let cold = if optimal > 0.0 { celsius < optimal - 10.0 } else { celsius <= 70.0 };
-    let (hot, too_hot) = if optimal > 0.0 { (optimal + 10.0, optimal + 20.0) } else { (100.0, 110.0) };
-    if celsius > too_hot {
-        palette.critical
-    } else if celsius > hot {
-        palette.warning
-    } else if cold {
-        palette.cold_low
-    } else {
-        palette.good_on_target
+/// Sprint's colour themes (Settings › Colours, `ColourTheme` in Core): each sets the scale's cold
+/// and good colours. Warm stays amber and hot red; timing and knob colours are the same in all.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum ColourTheme {
+    /// Cold blue, good green.
+    #[default]
+    Sprint,
+    /// Cold grey, good in the plain text colour: colour only when something is off.
+    Calm,
+    /// Cold red, good green: outside the window is red.
+    Strict,
+}
+
+impl ColourTheme {
+    /// The host's name for it; anything else, or nothing, is Sprint.
+    pub fn parse(name: Option<&str>) -> ColourTheme {
+        match name {
+            Some("Calm") => ColourTheme::Calm,
+            Some("Strict") => ColourTheme::Strict,
+            _ => ColourTheme::Sprint,
+        }
     }
+}
+
+/// Where values change colour (`ColourLimits` in Core), °C and percent; the host has checked their
+/// ranges and order. Tyres against the compound's ideal: cold more than `tyre_cold_below` under it,
+/// warm and hot more than `tyre_warm_above` and `tyre_hot_above` over it.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ColourLimits {
+    pub tyre_cold_below: f64,
+    pub tyre_warm_above: f64,
+    pub tyre_hot_above: f64,
+    pub brake_cold_below: f64,
+    pub brake_warm_above: f64,
+    pub brake_hot_above: f64,
+    /// Tread left, percent.
+    pub wear_low_below: f64,
+    pub wear_critical_below: f64,
+    /// A fuel, battery or virtual-energy bar's level, percent.
+    pub energy_low_below: f64,
+    pub energy_critical_below: f64,
+}
+
+impl Default for ColourLimits {
+    fn default() -> Self {
+        ColourLimits {
+            tyre_cold_below: 10.0,
+            tyre_warm_above: 10.0,
+            tyre_hot_above: 20.0,
+            brake_cold_below: 300.0,
+            brake_warm_above: 650.0,
+            brake_hot_above: 800.0,
+            wear_low_below: 60.0,
+            wear_critical_below: 30.0,
+            energy_low_below: 50.0,
+            energy_critical_below: 20.0,
+        }
+    }
+}
+
+impl ColourLimits {
+    /// The host's `limits` object; a missing or non-numeric field keeps its default.
+    pub fn parse(raw: Option<&Map<String, Value>>) -> ColourLimits {
+        let d = ColourLimits::default();
+        let Some(raw) = raw else { return d };
+        let num = |key: &str, fallback: f64| raw.get(key).and_then(Value::as_f64).filter(|v| v.is_finite()).unwrap_or(fallback);
+        ColourLimits {
+            tyre_cold_below: num("tyreColdBelow", d.tyre_cold_below),
+            tyre_warm_above: num("tyreWarmAbove", d.tyre_warm_above),
+            tyre_hot_above: num("tyreHotAbove", d.tyre_hot_above),
+            brake_cold_below: num("brakeColdBelow", d.brake_cold_below),
+            brake_warm_above: num("brakeWarmAbove", d.brake_warm_above),
+            brake_hot_above: num("brakeHotAbove", d.brake_hot_above),
+            wear_low_below: num("wearLowBelow", d.wear_low_below),
+            wear_critical_below: num("wearCriticalBelow", d.wear_critical_below),
+            energy_low_below: num("energyLowBelow", d.energy_low_below),
+            energy_critical_below: num("energyCriticalBelow", d.energy_critical_below),
+        }
+    }
+}
+
+/// The app-wide colours a scene's settings carry (`colours`): the theme and the limits.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Colours {
+    pub theme: ColourTheme,
+    pub limits: ColourLimits,
+}
+
+impl Colours {
+    /// The host's `colours` object; absent is Sprint's theme with the default limits.
+    pub fn parse(raw: Option<&Value>) -> Colours {
+        let raw = raw.and_then(Value::as_object);
+        Colours {
+            theme: ColourTheme::parse(raw.and_then(|r| r.get("theme")).and_then(Value::as_str)),
+            limits: ColourLimits::parse(raw.and_then(|r| r.get("limits")).and_then(Value::as_object)),
+        }
+    }
+}
+
+/// The dash palette in the driver's colour theme: the default with the scale's cold and good recoloured.
+pub fn themed_palette(theme: ColourTheme) -> DashPaletteColors {
+    let d = DEFAULT_DASH_PALETTE;
+    match theme {
+        ColourTheme::Sprint => d,
+        ColourTheme::Calm => DashPaletteColors { cold_low: d.secondary, good_on_target: d.foreground, ..d },
+        ColourTheme::Strict => DashPaletteColors { cold_low: d.critical, ..d },
+    }
+}
+
+/// Where a temperature sits on the colour scale.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Heat {
+    Cold,
+    Good,
+    Warm,
+    Hot,
+}
+
+impl Heat {
+    /// The scale's colour for it in `palette`.
+    pub fn color(self, palette: &DashPaletteColors) -> Rgba {
+        match self {
+            Heat::Cold => palette.cold_low,
+            Heat::Good => palette.good_on_target,
+            Heat::Warm => palette.warning,
+            Heat::Hot => palette.critical,
+        }
+    }
+}
+
+/// The ideal tyre temperature assumed when the game names none for the compound, °C.
+pub const FALLBACK_TYRE_IDEAL: f64 = 90.0;
+
+/// A tyre temperature (°C) against the compound's ideal (`optimal`, 0 when unknown, then
+/// `FALLBACK_TYRE_IDEAL`): cold more than the cold limit under it, hot and warm more than their
+/// limits over it, good in between.
+pub fn tyre_heat(celsius: f64, optimal: f64, limits: &ColourLimits) -> Heat {
+    let ideal = if optimal > 0.0 { optimal } else { FALLBACK_TYRE_IDEAL };
+    if celsius > ideal + limits.tyre_hot_above {
+        Heat::Hot
+    } else if celsius > ideal + limits.tyre_warm_above {
+        Heat::Warm
+    } else if celsius < ideal - limits.tyre_cold_below {
+        Heat::Cold
+    } else {
+        Heat::Good
+    }
+}
+
+/// A brake disc temperature (°C) against the brake limits.
+pub fn brake_heat(celsius: f64, limits: &ColourLimits) -> Heat {
+    if celsius > limits.brake_hot_above {
+        Heat::Hot
+    } else if celsius > limits.brake_warm_above {
+        Heat::Warm
+    } else if celsius < limits.brake_cold_below {
+        Heat::Cold
+    } else {
+        Heat::Good
+    }
+}
+
+/// A tyre temperature's colour (°C): `tyre_heat` in `palette`. Every tyre widget colours its
+/// temperatures with this.
+pub fn resolve_tyre_color(celsius: f64, optimal: f64, palette: &DashPaletteColors, limits: &ColourLimits) -> Rgba {
+    tyre_heat(celsius, optimal, limits).color(palette)
 }
 
 /// The channels `parseHexColor` reads from the color's string: (r, g, b, a). `None` where it
@@ -501,17 +653,51 @@ mod tests {
     }
 
     #[test]
-    fn a_tyre_temperature_is_coloured_against_the_compounds_ideal_or_fixed_marks_without_one() {
-        let p = DEFAULT_DASH_PALETTE;
-        let at = |celsius| resolve_tyre_color(celsius, 90.0, &p);
+    fn a_tyre_temperature_is_coloured_against_the_compounds_ideal_or_the_fallback_ideal_without_one() {
+        let (p, l) = (DEFAULT_DASH_PALETTE, ColourLimits::default());
+        let at = |celsius| resolve_tyre_color(celsius, 85.0, &p, &l);
         assert_eq!(
-            (at(79.0), at(80.0), at(100.0), at(101.0), at(110.0), at(111.0)),
+            (at(74.0), at(75.0), at(95.0), at(96.0), at(105.0), at(106.0)),
             (p.cold_low, p.good_on_target, p.good_on_target, p.warning, p.warning, p.critical)
         );
-        assert_eq!(resolve_tyre_color(120.0, 0.0, &p), p.critical);
-        assert_eq!(resolve_tyre_color(105.0, 0.0, &p), p.warning);
-        assert_eq!(resolve_tyre_color(85.0, 0.0, &p), p.good_on_target);
-        assert_eq!(resolve_tyre_color(40.0, 0.0, &p), p.cold_low);
+        assert_eq!(tyre_heat(79.0, 0.0, &l), Heat::Cold, "the fallback ideal is 90°");
+        assert_eq!(tyre_heat(101.0, 0.0, &l), Heat::Warm);
+    }
+
+    #[test]
+    fn the_drivers_limits_move_where_tyres_and_brakes_change_colour() {
+        let l = ColourLimits {
+            tyre_cold_below: 5.0,
+            tyre_warm_above: 3.0,
+            tyre_hot_above: 8.0,
+            brake_cold_below: 200.0,
+            brake_warm_above: 500.0,
+            brake_hot_above: 700.0,
+            ..ColourLimits::default()
+        };
+        assert_eq!([79.0, 86.0, 89.0, 94.0].map(|c| tyre_heat(c, 85.0, &l)), [Heat::Cold, Heat::Good, Heat::Warm, Heat::Hot]);
+        assert_eq!([150.0, 400.0, 600.0, 750.0].map(|c| brake_heat(c, &l)), [Heat::Cold, Heat::Good, Heat::Warm, Heat::Hot]);
+    }
+
+    #[test]
+    fn a_colour_theme_recolours_only_the_scales_cold_and_good() {
+        let d = DEFAULT_DASH_PALETTE;
+        assert_eq!(themed_palette(ColourTheme::Sprint), d);
+        let calm = themed_palette(ColourTheme::Calm);
+        assert_eq!((calm.cold_low, calm.good_on_target, calm.warning, calm.critical), (d.secondary, d.foreground, d.warning, d.critical));
+        let strict = themed_palette(ColourTheme::Strict);
+        assert_eq!((strict.cold_low, strict.good_on_target), (d.critical, d.good_on_target));
+        assert_eq!(strict.timing_fastest_overall, d.timing_fastest_overall, "timing colours are the same in every theme");
+    }
+
+    #[test]
+    fn the_scenes_colours_read_the_theme_by_name_and_each_limit_falling_back_to_its_default() {
+        let raw = serde_json::json!({ "theme": "Strict", "limits": { "brakeHotAbove": 900, "tyreColdBelow": "x" } });
+        let colours = Colours::parse(Some(&raw));
+        assert_eq!(colours.theme, ColourTheme::Strict);
+        assert_eq!(colours.limits, ColourLimits { brake_hot_above: 900.0, ..ColourLimits::default() });
+        assert_eq!(Colours::parse(None), Colours::default());
+        assert_eq!(ColourTheme::parse(Some("calm")), ColourTheme::Sprint, "by name, as the host writes it");
     }
 
     #[test]
