@@ -38,6 +38,12 @@ public sealed record PitWallTile
     public bool Detached { get; init; }
 
     public PitWallBounds? Bounds { get; init; }
+
+    /// <summary>
+    /// The timing layer's columns in order (<see cref="PitWallLayouts.TimingColumns"/>); null is the
+    /// default set. Per tile, so a half-width timing tile and a full-screen one can differ.
+    /// </summary>
+    public IReadOnlyList<string>? TimingColumns { get; init; }
 }
 
 public sealed record PitWallPage
@@ -78,6 +84,16 @@ public static class PitWallLayouts
     public static IReadOnlySet<string> Kinds { get; } = new HashSet<string>(StringComparer.Ordinal)
     {
         "session", "timing", "track", "stint", "fuel", "relative", "target", "tyres", "pressure", "damage", "radar", "traces", "control", "pitstop", "radio", "windows",
+    };
+
+    /// <summary>The timing column that cannot be hidden: it takes the spare width and carries the flags.</summary>
+    private const string DriverColumn = "driver";
+
+    /// <summary>Every timing column the renderer draws (<c>app/desktop/src/pitwall/timingColumns.ts</c>).</summary>
+    public static IReadOnlySet<string> TimingColumns { get; } = new HashSet<string>(StringComparer.Ordinal)
+    {
+        "place", "gained", "classBar", "number", DriverColumn, "tyre", "laps", "gap", "interval", "last", "lastSectors", "best", "pit",
+        "classPlace", "classTag", "car", "bestSectors", "start", "penalties",
     };
 
     /// <summary>
@@ -284,7 +300,8 @@ public static class PitWallLayouts
             || !TryFlag(json, "jumpRadar", out bool jumpRadar, out error)
             || !TryFlag(json, "jumpDamage", out bool jumpDamage, out error)
             || !TryFlag(json, "detached", out bool detached, out error)
-            || !TryOptionalBounds(json, out PitWallBounds? bounds, out error))
+            || !TryOptionalBounds(json, out PitWallBounds? bounds, out error)
+            || !TryTimingColumns(json, out IReadOnlyList<string>? timingColumns, out error))
         {
             return false;
         }
@@ -303,7 +320,31 @@ public static class PitWallLayouts
             JumpDamage = jumpDamage,
             Detached = detached,
             Bounds = bounds,
+            TimingColumns = timingColumns,
         };
+        return true;
+    }
+
+    /// <summary>
+    /// Optional timing columns: absent or null is the default set. A list is tidied rather than
+    /// refused, since a refused stored layout would cost the engineer every page: ids this build
+    /// does not know (a column from a newer Sprint) and repeats are dropped, and a list without
+    /// Driver falls back to the default set, as the desktop reads it too.
+    /// </summary>
+    private static bool TryTimingColumns(JsonElement json, out IReadOnlyList<string>? columns, out string error)
+    {
+        columns = null;
+        error = "";
+        if (!json.TryGetProperty("timingColumns", out JsonElement element) || element.ValueKind == JsonValueKind.Null)
+            return true;
+        if (element.ValueKind != JsonValueKind.Array || element.EnumerateArray().Any(column => column.ValueKind != JsonValueKind.String))
+        {
+            error = "timingColumns is a list of column ids or null";
+            return false;
+        }
+
+        string[] known = [.. element.EnumerateArray().Select(column => column.GetString() ?? "").Where(TimingColumns.Contains).Distinct(StringComparer.Ordinal)];
+        columns = known.Contains(DriverColumn, StringComparer.Ordinal) ? known : null;
         return true;
     }
 

@@ -1,8 +1,23 @@
-import { useId, useState } from 'react'
-import { ArrowDown, ArrowUp, Plus, Star, X } from 'lucide-react'
-import { addLayer, freeSpot, MAX_CYCLE_SECONDS, MAX_LAYERS, MIN_CYCLE_SECONDS, moveLayer, removeLayer, setStackOptions, unstack } from './layoutOps'
+import { useEffect, useId, useRef, useState } from 'react'
+import { ArrowDown, ArrowUp, EyeOff, GripVertical, Plus, RotateCcw, Star, X } from 'lucide-react'
+import {
+  addLayer,
+  freeSpot,
+  hideTimingColumn,
+  MAX_CYCLE_SECONDS,
+  MAX_LAYERS,
+  MIN_CYCLE_SECONDS,
+  moveLayer,
+  moveTimingColumn,
+  removeLayer,
+  resetTimingColumns,
+  setStackOptions,
+  showTimingColumn,
+  unstack,
+} from './layoutOps'
 import { TILE_KINDS, type PitWallLayout, type PitWallPage, type PitWallTile, type TileKind } from './pitWallData'
 import { KIND_LABEL } from './tileFrame'
+import { hiddenColumns, shownColumns, TIMING_COLUMN_SPECS, type TimingColumn } from './timingColumns'
 
 type OnChange = (next: PitWallLayout | null, refusal: string) => boolean
 
@@ -23,8 +38,8 @@ export function TileTray({ page, onAdd }: { page: PitWallPage; onAdd: (kind: Til
 
 /**
  * The selected tile in Edit layout: its layers (the first is shown first; reorder, remove, add
- * one to make a stack) and, for a stack, how it switches, whether the mouse pauses it, when it
- * jumps to the radar or damage on its own, and Unstack.
+ * one to make a stack), the timing layer's columns, and, for a stack, how it switches, whether the
+ * mouse pauses it, when it jumps to the radar or damage on its own, and Unstack.
  */
 export function StackInspector({
   layout,
@@ -109,6 +124,8 @@ export function StackInspector({
         </div>
       )}
 
+      {tile.layers.includes('timing') && <TimingColumns layout={layout} pageId={pageId} tile={tile} heading={stack ? 'Timing columns' : 'Columns'} onChange={onChange} />}
+
       {stack && (
         <>
           <h4>Switches</h4>
@@ -167,5 +184,113 @@ export function StackInspector({
         </>
       )}
     </aside>
+  )
+}
+
+/**
+ * The timing layer's columns: the shown ones in order (drag one by its row, or ↑ ↓), each hidden
+ * with its eye except Driver, the hidden ones below to add back at the end, and Reset to the
+ * default set. The tile beside it follows every change.
+ */
+function TimingColumns({ layout, pageId, tile, heading, onChange }: { layout: PitWallLayout; pageId: string; tile: PitWallTile; heading: string; onChange: OnChange }) {
+  const [drag, setDrag] = useState<{ from: number; over: number | null } | null>(null)
+  // A button pressed from the keyboard moves or leaves the list with its row, which drops focus;
+  // after the edit renders, focus goes to the first of these buttons that is there and enabled.
+  const [focusNext, setFocusNext] = useState<readonly string[]>([])
+  const section = useRef<HTMLDivElement>(null)
+  const shown = shownColumns(tile)
+  const hidden = hiddenColumns(shown)
+  const label = (index: number) => TIMING_COLUMN_SPECS[shown[index]].label
+  const move = (from: number, to: number) => onChange(moveTimingColumn(layout, pageId, tile.id, from, to), 'It is already there.')
+  const moveBy = (index: number, step: -1 | 1) => {
+    const column = shown[index]
+    if (move(index, index + step)) setFocusNext(step < 0 ? [`${column}:up`, `${column}:down`] : [`${column}:down`, `${column}:up`])
+  }
+  const hide = (column: TimingColumn) => {
+    if (onChange(hideTimingColumn(layout, pageId, tile.id, column), 'Driver always shows.')) setFocusNext([`${column}:show`])
+  }
+  const show = (column: TimingColumn) => {
+    if (onChange(showTimingColumn(layout, pageId, tile.id, column), 'It already shows.')) setFocusNext([`${column}:hide`])
+  }
+
+  useEffect(() => {
+    if (focusNext.length === 0) return
+    const buttons = focusNext.map((key) => section.current?.querySelector<HTMLButtonElement>(`[data-focus="${key}"]`))
+    buttons.find((button) => button && !button.disabled)?.focus()
+    setFocusNext([])
+  }, [focusNext])
+
+  return (
+    <div ref={section} className="pw-columns">
+      <div className="pw-inspector-row">
+        <h4>{heading}</h4>
+        <button type="button" className="button small subtle" disabled={tile.timingColumns === null} onClick={() => onChange(resetTimingColumns(layout, pageId, tile.id), 'It already shows the default columns.')}>
+          <RotateCcw /> Reset
+        </button>
+      </div>
+      <ul className="pw-layers" aria-label={heading}>
+        {shown.map((column, index) => {
+          const over = drag !== null && drag.over === index && drag.from !== index
+          const classes = ['pw-layer', 'pw-column', over ? (drag.from < index ? 'drop-after' : 'drop-before') : '', drag?.from === index ? 'dragging' : '']
+          return (
+            <li
+              key={column}
+              className={classes.filter(Boolean).join(' ')}
+              draggable
+              onDragStart={(event) => {
+                event.dataTransfer.effectAllowed = 'move'
+                setDrag({ from: index, over: null })
+              }}
+              onDragOver={(event) => {
+                if (!drag) return
+                event.preventDefault()
+                if (drag.over !== index) setDrag({ ...drag, over: index })
+              }}
+              onDrop={(event) => {
+                event.preventDefault()
+                if (drag && drag.from !== index) move(drag.from, index)
+                setDrag(null)
+              }}
+              onDragEnd={() => setDrag(null)}
+            >
+              <GripVertical size={13} className="pw-column-grip" aria-hidden="true" />
+              <span className="pw-layer-name">{label(index)}</span>
+              {column === 'driver' && <span className="pw-layer-first">Always</span>}
+              <span className="pw-layer-tools">
+                <button type="button" className="icon-button" aria-label={`Move ${label(index)} up`} title="Move up" data-focus={`${column}:up`} disabled={index === 0} onClick={() => moveBy(index, -1)}>
+                  <ArrowUp size={13} />
+                </button>
+                <button type="button" className="icon-button" aria-label={`Move ${label(index)} down`} title="Move down" data-focus={`${column}:down`} disabled={index === shown.length - 1} onClick={() => moveBy(index, 1)}>
+                  <ArrowDown size={13} />
+                </button>
+                <button
+                  type="button"
+                  className="icon-button"
+                  aria-label={`Hide ${label(index)}`}
+                  title={column === 'driver' ? 'Driver always shows' : 'Hide'}
+                  data-focus={`${column}:hide`}
+                  disabled={column === 'driver'}
+                  onClick={() => hide(column)}
+                >
+                  <EyeOff size={13} />
+                </button>
+              </span>
+            </li>
+          )
+        })}
+      </ul>
+      {hidden.length > 0 && (
+        <>
+          <h4>Hidden</h4>
+          <div className="pw-add-layer" role="group" aria-label="Hidden columns">
+            {hidden.map((column) => (
+              <button key={column} type="button" className="pw-tray-item" data-focus={`${column}:show`} onClick={() => show(column)}>
+                <Plus size={12} /> {TIMING_COLUMN_SPECS[column].label}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
   )
 }

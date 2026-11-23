@@ -1,4 +1,5 @@
 import type { PitWallLayout, PitWallPage, PitWallTile, TileKind } from './pitWallData'
+import { shownColumns, validColumns, type TimingColumn } from './timingColumns'
 
 // Pure edits of the pit wall layout. Each returns the new layout, or null when the edit is not
 // allowed (it would overlap, leave the grid, or break a limit the host also checks in
@@ -85,6 +86,7 @@ export const newTile = (id: string, kind: TileKind, rect: Rect): PitWallTile => 
   jumpDamage: true,
   detached: false,
   bounds: null,
+  timingColumns: null,
 })
 
 export const moveTile = (layout: PitWallLayout, pageId: string, tileId: string, x: number, y: number): PitWallLayout | null =>
@@ -105,8 +107,9 @@ export const addTile = (layout: PitWallLayout, pageId: string, kind: TileKind, i
 
 /**
  * Drops the tile `dragId` onto `ontoId`: one slot (the target's) with the target's layers first,
- * then the dropped tile's. Kinds already in the target are not repeated. Null when nothing new
- * would join or the stack would pass `MAX_LAYERS`.
+ * then the dropped tile's. Kinds already in the target are not repeated, and the timing columns
+ * come with whichever tile brings the timing layer. Null when nothing new would join or the stack
+ * would pass `MAX_LAYERS`.
  */
 export const stackOnto = (layout: PitWallLayout, pageId: string, dragId: string, ontoId: string): PitWallLayout | null =>
   withPage(layout, pageId, (page) => {
@@ -115,7 +118,7 @@ export const stackOnto = (layout: PitWallLayout, pageId: string, dragId: string,
     if (!drag || !onto || drag === onto) return null
     const joining = drag.layers.filter((kind) => !onto.layers.includes(kind))
     if (joining.length === 0 || onto.layers.length + joining.length > MAX_LAYERS) return null
-    const merged = { ...onto, layers: [...onto.layers, ...joining] }
+    const merged = { ...onto, layers: [...onto.layers, ...joining], timingColumns: onto.layers.includes('timing') ? onto.timingColumns : drag.timingColumns }
     return { ...page, tiles: page.tiles.filter((tile) => tile.id !== dragId).map((tile) => (tile.id === ontoId ? merged : tile)) }
   })
 
@@ -124,11 +127,14 @@ export const addLayer = (layout: PitWallLayout, pageId: string, tileId: string, 
     tile.layers.includes(kind) || tile.layers.length >= MAX_LAYERS ? null : { ...tile, layers: [...tile.layers, kind] },
   )
 
-/** Takes one layer out of a stack; the last layer cannot go (remove the tile instead). */
+/** Takes one layer out of a stack (the timing layer takes its columns along); the last layer cannot go (remove the tile instead). */
 export const removeLayer = (layout: PitWallLayout, pageId: string, tileId: string, index: number): PitWallLayout | null =>
   withTile(layout, pageId, tileId, (tile) =>
-    tile.layers.length <= 1 || index < 0 || index >= tile.layers.length ? null : { ...tile, layers: tile.layers.filter((_, at) => at !== index) },
+    tile.layers.length <= 1 || index < 0 || index >= tile.layers.length ? null : withoutStrayColumns({ ...tile, layers: tile.layers.filter((_, at) => at !== index) }),
   )
+
+/** Timing columns stay with a tile only while it has a timing layer. */
+const withoutStrayColumns = (tile: PitWallTile): PitWallTile => (tile.layers.includes('timing') ? tile : { ...tile, timingColumns: null })
 
 /** Moves a layer one place up (−1) or down (+1); the first layer is the one shown first. */
 export const moveLayer = (layout: PitWallLayout, pageId: string, tileId: string, index: number, delta: -1 | 1): PitWallLayout | null =>
@@ -142,17 +148,19 @@ export const moveLayer = (layout: PitWallLayout, pageId: string, tileId: string,
 
 /**
  * Splits a stack: its first layer keeps the slot, every other layer becomes a tile of its own at
- * a free spot. Null when the page has no room for all of them.
+ * a free spot, the timing layer with its columns. Null when the page has no room for all of them.
  */
 export const unstack = (layout: PitWallLayout, pageId: string, tileId: string, newId: () => string): PitWallLayout | null =>
   withPage(layout, pageId, (page) => {
     const tile = page.tiles.find((candidate) => candidate.id === tileId)
     if (!tile || tile.layers.length < 2) return null
-    let next: PitWallPage = { ...page, tiles: page.tiles.map((candidate) => (candidate.id === tileId ? { ...tile, layers: tile.layers.slice(0, 1) } : candidate)) }
+    const kept = withoutStrayColumns({ ...tile, layers: tile.layers.slice(0, 1) })
+    let next: PitWallPage = { ...page, tiles: page.tiles.map((candidate) => (candidate.id === tileId ? kept : candidate)) }
     for (const kind of tile.layers.slice(1)) {
       const rect = freeSpot(next, { w: tile.w, h: tile.h })
       if (!rect) return null
-      next = { ...next, tiles: [...next.tiles, newTile(newId(), kind, rect)] }
+      const split = newTile(newId(), kind, rect)
+      next = { ...next, tiles: [...next.tiles, kind === 'timing' ? { ...split, timingColumns: tile.timingColumns } : split] }
     }
     return next
   })
@@ -165,6 +173,35 @@ export const setStackOptions = (layout: PitWallLayout, pageId: string, tileId: s
   if (cycle !== undefined && cycle !== null && !(Number.isInteger(cycle) && cycle >= MIN_CYCLE_SECONDS && cycle <= MAX_CYCLE_SECONDS)) return null
   return withTile(layout, pageId, tileId, (tile) => ({ ...tile, ...options }))
 }
+
+/** Edits a timing tile's columns from what it shows now; null without a timing layer, or when the result breaks a rule (validColumns). */
+const withColumns = (layout: PitWallLayout, pageId: string, tileId: string, edit: (shown: readonly TimingColumn[]) => TimingColumn[] | null): PitWallLayout | null =>
+  withTile(layout, pageId, tileId, (tile) => {
+    if (!tile.layers.includes('timing')) return null
+    const columns = edit(shownColumns(tile))
+    return columns && validColumns(columns) ? { ...tile, timingColumns: columns } : null
+  })
+
+/** Moves the shown column at `from` to `to` (both indexes in what the tile shows now). */
+export const moveTimingColumn = (layout: PitWallLayout, pageId: string, tileId: string, from: number, to: number): PitWallLayout | null =>
+  withColumns(layout, pageId, tileId, (shown) => {
+    if (from === to || from < 0 || to < 0 || from >= shown.length || to >= shown.length) return null
+    const columns = shown.filter((_, at) => at !== from)
+    columns.splice(to, 0, shown[from])
+    return columns
+  })
+
+/** Hides a shown column; Driver stays (validColumns refuses a list without it). */
+export const hideTimingColumn = (layout: PitWallLayout, pageId: string, tileId: string, column: TimingColumn): PitWallLayout | null =>
+  withColumns(layout, pageId, tileId, (shown) => (shown.includes(column) ? shown.filter((other) => other !== column) : null))
+
+/** Shows a hidden column at the end. */
+export const showTimingColumn = (layout: PitWallLayout, pageId: string, tileId: string, column: TimingColumn): PitWallLayout | null =>
+  withColumns(layout, pageId, tileId, (shown) => (shown.includes(column) ? null : [...shown, column]))
+
+/** Back to the default columns; null when the tile already shows them. */
+export const resetTimingColumns = (layout: PitWallLayout, pageId: string, tileId: string): PitWallLayout | null =>
+  withTile(layout, pageId, tileId, (tile) => (tile.layers.includes('timing') && tile.timingColumns !== null ? { ...tile, timingColumns: null } : null))
 
 /** A page or tile in its own window (or back). Finds the tile on whichever page holds it. */
 export const setDetached = (layout: PitWallLayout, target: { kind: 'page' | 'tile'; id: string }, detached: boolean): PitWallLayout | null => {
