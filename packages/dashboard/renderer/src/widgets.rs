@@ -17,7 +17,7 @@ use crate::format::{
 };
 use crate::grid::PixelRect;
 use crate::model::{CarState, DashSettings, DashTargets, DashWidget, FieldCar, LapState, TelemetryFrame, TireState};
-use crate::palette::{DashPaletteColors, Rgba, class_color, dash_color, dim_color, resolve_tyre_color};
+use crate::palette::{ColourLimits, DashPaletteColors, Rgba, brake_heat, class_color, dash_color, dim_color, resolve_tyre_color};
 use crate::primitives::{
     TextAlign, TextLine, TextSizing, VALUE_SHARE, ValueWithUnit, big_value, dot, h_bar, text_line, value_size, value_with_unit, vertical_seg_bar,
 };
@@ -45,6 +45,11 @@ impl WidgetContext<'_> {
     /// What this dash prints speeds, temperatures, pressures and fuel in.
     fn units(&self) -> Units {
         self.settings.map_or(Units::Metric, |s| s.units)
+    }
+
+    /// Where values change colour (the app-wide Colours setting).
+    fn colour_limits(&self) -> ColourLimits {
+        self.settings.map_or_else(ColourLimits::default, |s| s.colours.limits)
     }
 }
 
@@ -350,11 +355,13 @@ fn unlit(color: Rgba, p: &DashPaletteColors) -> Rgba {
     dim_color(color, BAR_UNLIT).unwrap_or(p.surface)
 }
 
-/// An energy level's colour: fine from half up, warning below half, critical below a fifth.
-fn level_color(share: f64, p: &DashPaletteColors) -> Rgba {
-    if share >= 0.5 {
-        p.success
-    } else if share >= 0.2 {
+/// A fuel or energy level's colour (0–1 share) against the driver's limits: good down to the low
+/// mark, amber under it, red under the critical mark.
+fn level_color(share: f64, p: &DashPaletteColors, limits: &ColourLimits) -> Rgba {
+    let percent = share * 100.0;
+    if percent >= limits.energy_low_below {
+        p.good_on_target
+    } else if percent >= limits.energy_critical_below {
         p.warning
     } else {
         p.critical
@@ -381,14 +388,14 @@ fn segment_rect(track: PixelRect, vertical: bool, count: usize, gap: f64, i: usi
 
 /// A level bar in segments, no label or value: as many lit from the bottom (left) as the share
 /// fills, rounded up so a drop left still shows. Each segment wears its zone's colour (`level_color`
-/// of the share it stands for: red in the bottom fifth, then amber to half, green above), lit or as
+/// of the share it stands for: red under the critical mark, amber under the low one, good above), lit or as
 /// a dim tint, so the scale reads even when full; a track with its own colour (`fixed`) wears
 /// that instead.
 fn level_segments(b: &mut Builder, w: &WidgetContext, track: PixelRect, vertical: bool, share: f64, fixed: Option<Rgba>) {
-    let p = w.palette;
+    let (p, limits) = (w.palette, w.colour_limits());
     let lit = (share.clamp(0.0, 1.0) * BAR_SEGMENTS as f64).ceil() as usize;
     for i in 0..BAR_SEGMENTS {
-        let zone = fixed.unwrap_or_else(|| level_color((i as f64 + 0.5) / BAR_SEGMENTS as f64, p));
+        let zone = fixed.unwrap_or_else(|| level_color((i as f64 + 0.5) / BAR_SEGMENTS as f64, p, &limits));
         let color = if i < lit { zone } else { unlit(zone, p) };
         b.rect(segment_rect(track, vertical, BAR_SEGMENTS, BAR_SEGMENT_GAP * w.chrome.scale, i), Radii::ZERO, color);
     }
@@ -610,26 +617,20 @@ fn tyre_degrees(celsius: f64, units: Units) -> String {
     if celsius > 0.0 { format_degrees(celsius, units) } else { "--".to_owned() }
 }
 
-/// The wear left's colour: plain while healthy, amber under 60 %, red under 30 %.
-fn wear_color(left: f64, p: &DashPaletteColors) -> Rgba {
-    if left < 30.0 {
+/// The wear left's colour: plain while healthy, amber under the driver's low mark, red under the critical one.
+fn wear_color(left: f64, p: &DashPaletteColors, limits: &ColourLimits) -> Rgba {
+    if left < limits.wear_critical_below {
         p.critical
-    } else if left < 60.0 {
+    } else if left < limits.wear_low_below {
         p.warning
     } else {
         p.foreground
     }
 }
 
-/// A hot brake's colour (°C): amber over 650°, red over 800°; `None` below.
-fn brake_heat(celsius: f64, p: &DashPaletteColors) -> Option<Rgba> {
-    if celsius > 800.0 {
-        Some(p.critical)
-    } else if celsius > 650.0 {
-        Some(p.warning)
-    } else {
-        None
-    }
+/// A brake disc's colour (°C) on the colour scale; `None` while it reads 0 (unknown).
+fn brake_color(celsius: f64, p: &DashPaletteColors, limits: &ColourLimits) -> Option<Rgba> {
+    (celsius > 0.0).then(|| brake_heat(celsius, limits).color(p))
 }
 
 /// The small line icons the Tyre widget draws beside its readings.
@@ -693,7 +694,7 @@ fn stripes(b: &mut Builder, tire: &TireState, rect: PixelRect, left_side: bool, 
         let color = if broken {
             p.critical
         } else if temp > 0.0 {
-            resolve_tyre_color(temp, tire.optimal_temp, p)
+            resolve_tyre_color(temp, tire.optimal_temp, p, &w.colour_limits())
         } else {
             p.surface
         };
@@ -704,13 +705,13 @@ fn stripes(b: &mut Builder, tire: &TireState, rect: PixelRect, left_side: bool, 
 /// One tyre (the Tyre widget, framed and titled with its corner): its tread as stripes on the
 /// car's outside, so four read as a car from above, with the wear left on a dark pill across them;
 /// beside it the pressure large, then the tread temperature by a thermometer in its colour and the
-/// brake's by a disc (amber, then red, when hot). A flat or detached tyre's stripes are red and its
+/// brake's by a disc, both in their colour on the scale. A flat or detached tyre's stripes are red and its
 /// pill says `FLAT` or `OFF`.
 fn tyre(b: &mut Builder, w: &WidgetContext) {
     let index = corner_index(w.widget);
     let left_side = index.is_multiple_of(2);
     let tire = &w.frame.tires[index];
-    let (p, s, units) = (w.palette, w.chrome.scale, w.units());
+    let (p, s, units, limits) = (w.palette, w.chrome.scale, w.units(), w.colour_limits());
     let (width, height) = (w.width, w.height);
     let square_w = (height * 0.62).min(width * 0.36);
     let square_left = if left_side { 0.0 } else { width - square_w };
@@ -722,7 +723,7 @@ fn tyre(b: &mut Builder, w: &WidgetContext) {
     b.rect(pill, Radii::all(pill_h / 2.0), p.background);
     let (wear, wear_ink) = match broken_tyre(tire) {
         Some(state) => (state.to_owned(), p.critical),
-        None if tire.wear_percent > 0.0 => (format!("{}%", js_number_string(tire.wear_percent.round())), wear_color(tire.wear_percent, p)),
+        None if tire.wear_percent > 0.0 => (format!("{}%", js_number_string(tire.wear_percent.round())), wear_color(tire.wear_percent, p, &limits)),
         None => ("--".to_owned(), p.muted),
     };
     // On a lit box (the pit limiter's) the text is the dark ink, like the pill: letter it light.
@@ -736,8 +737,8 @@ fn tyre(b: &mut Builder, w: &WidgetContext) {
     let anchor = if left_side { square_w + gap } else { text_w };
     let align = if left_side { TextAlign::Start } else { TextAlign::End };
     let temp = tyre_temperature(tire);
-    let temp_color = if temp > 0.0 { resolve_tyre_color(temp, tire.optimal_temp, p) } else { p.muted };
-    let brake_color = brake_heat(tire.brake_temp, p).unwrap_or(p.secondary);
+    let temp_color = if temp > 0.0 { resolve_tyre_color(temp, tire.optimal_temp, p, &limits) } else { p.muted };
+    let brake_color = brake_color(tire.brake_temp, p, &limits).unwrap_or(p.muted);
     // (text, colour, icon); the pressure first, large, two lines tall. Compact drops the brake
     // temperature, Small the tread temperature too (`widgetForms.json`).
     let all = [
@@ -1053,14 +1054,14 @@ fn rain(b: &mut Builder, w: &WidgetContext) {
 
 /// The four tyres' wear left, in a car's two-by-two: plain while healthy, then amber, then red.
 fn tyre_wear(b: &mut Builder, w: &WidgetContext) {
-    let p = w.palette;
+    let (p, limits) = (w.palette, w.colour_limits());
     let (cell_w, cell_h) = (w.width / 2.0, w.height / 2.0);
     let size = value_size("000", cell_w - 4.0, cell_h, 0.78);
     for (i, tire) in w.frame.tires.iter().enumerate() {
         let left = tire.wear_percent;
         let (text, color) = match broken_tyre(tire) {
             Some(state) => (state.to_owned(), p.critical),
-            None if left > 0.0 => (js_number_string(left.round()), wear_color(left, p)),
+            None if left > 0.0 => (js_number_string(left.round()), wear_color(left, p, &limits)),
             None => ("--".to_owned(), p.muted),
         };
         let center = ((i % 2) as f64 * cell_w + cell_w / 2.0, (i / 2) as f64 * cell_h + cell_h / 2.0);
@@ -1201,7 +1202,7 @@ fn flag_info(frame: &TelemetryFrame, palette: &DashPaletteColors) -> (&'static s
         "RED" => palette.critical,
         "SC" | "VSC" | "YELLOW" => palette.race_control_yellow,
         "CHECKERED" => palette.neutral,
-        _ => palette.good_on_target,
+        _ => palette.success,
     };
     (text, color)
 }
@@ -1223,7 +1224,7 @@ fn value_unit<'t>(value: &'t str, unit: &'t str, left: f64, top: f64, size: f64,
 fn input_trace(b: &mut Builder, w: &WidgetContext) {
     let (car, p) = (&w.frame.car, w.palette);
     let rows = [
-        ("THR", car.throttle, p.good_on_target, false),
+        ("THR", car.throttle, p.success, false),
         ("BRK", car.brake, p.critical, false),
         ("CLU", car.clutch, p.secondary, false),
         ("STR", (car.steering + 1.0) / 2.0, p.secondary, true),
@@ -1434,14 +1435,14 @@ fn tyre_laps_left(b: &mut Builder, w: &WidgetContext) {
 
 /// The tyre widgets: one tyre (`tyre`), the four's wear left in a two-by-two, the laps the most
 /// worn lasts, and the four corners in frames of their own: the tread temperature, the core's,
-/// last lap's average (each in its colour against the compound's ideal), the brakes (lit amber,
-/// then red, when hot), the pressures and the wear last lap took.
+/// last lap's average (each in its colour against the compound's ideal), the brakes (each in its
+/// colour on the scale), the pressures and the wear last lap took.
 fn tyres(b: &mut Builder, w: &WidgetContext) {
-    let (p, units) = (w.palette, w.units());
+    let (p, units, limits) = (w.palette, w.units(), w.colour_limits());
     let temp = |celsius: f64, tire: &TireState| TyreCorner {
         value: tyre_degrees(celsius, units),
         template: "000°",
-        fill: (celsius > 0.0).then(|| resolve_tyre_color(celsius, tire.optimal_temp, p)),
+        fill: (celsius > 0.0).then(|| resolve_tyre_color(celsius, tire.optimal_temp, p, &limits)),
     };
     match w.widget.widget_type.as_str() {
         "tyre" => tyre(b, w),
@@ -1453,7 +1454,7 @@ fn tyres(b: &mut Builder, w: &WidgetContext) {
         "brake_temp" => tyre_corners(b, w, " BRAKE", |t| TyreCorner {
             value: tyre_degrees(t.brake_temp, units),
             template: if units == Units::Imperial { "0000°" } else { "000°" },
-            fill: brake_heat(t.brake_temp, p),
+            fill: brake_color(t.brake_temp, p, &limits),
         }),
         "tyre_pressure" => {
             let title = format!(" {}", units.pressure_unit().to_uppercase());
@@ -1938,7 +1939,7 @@ mod tests {
     use crate::chrome::ChromeContext;
     use crate::draw::{DrawOp, TextRun};
     use crate::model::Damage;
-    use crate::palette::DEFAULT_DASH_PALETTE;
+    use crate::palette::{Colours, DEFAULT_DASH_PALETTE};
     use crate::text::Fonts;
     use serde_json::json;
 
@@ -2011,6 +2012,13 @@ mod tests {
     }
 
     #[test]
+    fn calm_leaves_the_green_flag_green_because_a_theme_only_changes_the_colour_scale() {
+        let calm = crate::palette::themed_palette(crate::palette::ColourTheme::Calm);
+        assert_ne!(calm.good_on_target, calm.success, "Calm draws good in the value colour");
+        assert_eq!(flag_info(&TelemetryFrame::default(), &calm), ("GREEN", calm.success));
+    }
+
+    #[test]
     fn input_trace_draws_four_labelled_bars_with_steering_filled_from_the_middle() {
         let mut frame = TelemetryFrame::default();
         frame.car.throttle = 0.5;
@@ -2020,7 +2028,7 @@ mod tests {
         let bars = rects(&ops);
         // Track + fill for throttle, bare tracks for brake and clutch, track + midline + fill for steering.
         assert_eq!(bars.len(), 7);
-        assert_eq!(bars[1].1, P.good_on_target);
+        assert_eq!(bars[1].1, P.success);
         assert_eq!(bars[1].0.width, 76.0, "half of the 152px bar right of the 24% label column");
         let steer = bars[6].0;
         assert!((steer.left + steer.width - 124.0).abs() < 1.0 / 64.0, "a left turn fills leftward from the middle");
@@ -2322,7 +2330,11 @@ mod tests {
         assert_eq!(corners("tyre_wear_lap")[..2], ["FL WEAR/LAP", "0.50%"]);
         let brakes = draw(&widget("brake_temp", json!({})), &frame, 300.0, 200.0);
         assert_eq!(text_of(&brakes)[..4], ["FL BRAKE", "600°", "FR BRAKE", "700°"]);
-        assert_eq!(fills(&brakes), [P.warning, P.warning, P.critical], "lit over 650°, red over 800°");
+        assert_eq!(fills(&brakes), [P.good_on_target, P.warning, P.warning, P.critical], "good to 650°, warm over it, hot over 800°");
+        let limits = ColourLimits { brake_warm_above: 550.0, brake_hot_above: 650.0, ..ColourLimits::default() };
+        let settings = DashSettings { colours: Colours { limits, ..Colours::default() }, ..DashSettings::default() };
+        let brakes = draw_with(&widget("brake_temp", json!({})), &frame, 300.0, 200.0, None, Some(&settings));
+        assert_eq!(fills(&brakes), [P.warning, P.critical, P.critical, P.critical], "the driver's limits move the marks");
         let avg = draw(&widget("tyre_avg", json!({})), &frame, 300.0, 200.0);
         assert_eq!(fills(&avg), [P.good_on_target, P.good_on_target, P.warning, P.warning]);
         // Laps left: the rear right lasts 60 / 1.25 = 48 laps, the fewest.

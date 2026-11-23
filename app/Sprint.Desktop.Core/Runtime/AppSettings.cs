@@ -68,6 +68,13 @@ public sealed class AppSettings
     public UnitSystem Units { get; set; } = UnitSystem.Metric;
 
     /// <summary>
+    /// What colours mean on every dash, the pit wall and in Analysis, and where values change
+    /// colour. The host hands it to the renderer in each scene's settings, beside the units.
+    /// </summary>
+    [JsonPropertyName("colours")]
+    public ColourSettings Colours { get; set; } = new();
+
+    /// <summary>
     /// The first-run setup (driver, game folder, results import) was finished, so it is not
     /// shown again. False by default, so an install from before the setup existed sees it once.
     /// </summary>

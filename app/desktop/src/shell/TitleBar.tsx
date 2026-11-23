@@ -2,6 +2,7 @@ import { useLayoutEffect, useRef, type RefObject } from 'react'
 import { Download, PanelLeft, Search } from 'lucide-react'
 import type { UpdateStatus } from '../bridge'
 import { platform } from '../platform'
+import { ProgressRing } from './ProgressRing'
 import { displayVersion } from './updates'
 import { shortcutAria, shortcutLabel } from './shortcuts'
 
@@ -129,10 +130,6 @@ function SearchButton({ onOpenPalette, ref }: { onOpenPalette: () => void; ref?:
   )
 }
 
-/** The ring's radius in a 16px box, with room for its 2px stroke. */
-const RING_RADIUS = 6.5
-const RING_LENGTH = 2 * Math.PI * RING_RADIUS
-
 /**
  * The self-update in the toolbar, shown only while there is one: a brand download button while a
  * version is on offer (a click installs it: download, quit, install, start again), a ring filling
@@ -148,33 +145,8 @@ function UpdateIndicator({ status, onInstall, ref }: { status: UpdateStatus; onI
         </button>
       )
     }
-    case 'downloading': {
-      const label = `Downloading Sprint ${displayVersion(status.version)}`
-      return (
-        <span
-          ref={(element) => { ref.current = element }}
-          className="titlebar-update-ring"
-          role="progressbar"
-          aria-label={label}
-          aria-valuemin={0}
-          aria-valuemax={100}
-          aria-valuenow={status.percent}
-          title={`${label} · ${status.percent}%`}
-        >
-          <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
-            <circle className="titlebar-update-ring-track" cx="8" cy="8" r={RING_RADIUS} />
-            <circle
-              className="titlebar-update-ring-fill"
-              cx="8"
-              cy="8"
-              r={RING_RADIUS}
-              strokeDasharray={RING_LENGTH}
-              strokeDashoffset={RING_LENGTH * (1 - status.percent / 100)}
-            />
-          </svg>
-        </span>
-      )
-    }
+    case 'downloading':
+      return <ProgressRing ref={(element) => { ref.current = element }} percent={status.percent} label={`Downloading Sprint ${displayVersion(status.version)}`} />
     case 'installing':
       return (
         <span ref={(element) => { ref.current = element }} className="titlebar-update-text" role="status">

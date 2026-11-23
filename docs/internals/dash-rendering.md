@@ -49,8 +49,8 @@ Conditions are modeled separately from the colors that render them:
   host stamps on every dash it shows), red at or under them.
 - Bar widgets carry no label and no value (the driver's call, 2026-11), but wear the dash's
   edge like any box (the dash's edge "None" drops it): twenty segments, and
-  an energy bar's segments each wear their zone's color (red below a fifth, amber below half,
-  green above), lit or as a dim tint, so the scale reads at a glance even when full. The fuel
+  an energy bar's segments each wear their zone's color (red under the driver's critical mark,
+  amber under the low one, good above), lit or as a dim tint, so the scale reads at a glance even when full. The fuel
   bar measures against the tank's size when the game reports it.
 - A frame's edge is the text color, white by default (the driver's call, 2026-11, after a
   works team's wheel): a white outline separates values on a washed-out panel where a grey one
@@ -70,8 +70,7 @@ its edge and its value alike (the driver's call, 2026-11: a colored label beside
 value looked unfinished), and its change popup fills the screen with it, so the driver knows which
 knob moved before reading the number. The one
 lit state: while TC or ABS is working, its whole frame fills with the color and the value turns to
-ink. A theme may override each color (`settingTc`, `settingAbs`, `settingBrakeBias`,
-`settingEngineMap`, `settingMigration`, `settingArb`), the widget and its popup alike. They share
+ink. No theme changes them. They share
 hues with conditions (TC blue with AssistActive, ABS yellow with race-control yellow), so a knob
 never also takes a condition color: its value only ever wears its identity, or ink on its fill.
 
@@ -86,23 +85,25 @@ dashes' `dashStyle` (panels, grid, label bars) and widget colours and edges are 
 is framed, bare (gear, text, RPM) or split into several frames of its own (the four tyres), and
 `chrome.rs` draws the frame and the label, so widgets render only their values.
 
-## Functional and Styled
+## The driver's colours
 
-Every dash has one color system:
+Colours are the driver's, not the dash's (the driver's call, 2026-11-23: Sprint draws its own look;
+a driver picks what colours mean, not hex values). One app-wide setting, Settings › Colours
+(`ColourSettings` in Core), reaches every dash in the scene's `settings.colours`; the pit wall and
+Analysis read the same setting through `DashColoursContext`. It holds:
 
-- **Functional** (default) uses the condition mappings above.
-- **Styled** may remap Neutral, Good/OnTarget, ColdLow, AssistActive, Warning, timing and
-  the primary/accent colors, including the RPM endpoints. It never changes layout, type,
-  readout stability or non-color cues.
-- **Protected in both:** Critical and Fault stay red, RaceControl keeps its signal color.
-  Stored or imported themes cannot override them.
+- a **colour theme** that sets only the scale's cold and good (`themed_palette`): Sprint (blue,
+  green), Calm (grey, and good in the plain value colour, so only trouble is coloured), Strict
+  (red, green). Warning stays orange and critical red in every theme; race-control yellow, timing
+  and the knobs' identity colours never change;
+- the **limits** where values move along the scale: tyres against the compound's ideal (the game's
+  `optimalTemp`, 90 °C when it gives none), brakes in °C, tyre wear and fuel and energy bars in
+  percent. The host refuses limits out of range or order, so the renderer trusts them.
 
-Functional and Styled are internal classifications, not an editor mode. The dash editor
-offers complete theme presets, each with a rendered preview and a swatch; previews use a
-redline frame so the whole RPM sequence shows. The **Graphite** preset is the empty theme:
-it restores the Functional palette and its swatch is neutral, because Functional has no
-brand-primary color. Every other preset applies its Styled palette. Per-condition and
-generic accent overrides are not exposed; stored legacy overrides stay readable.
+Each surface draws a meaning in its own shade: the wheel's warning is orange, because yellow is
+race control's, while the app (`--heat-*` in `styles.css`) draws warm in its warning yellow. A
+layout's own `theme` and `colorSystem` are no longer read (#274 removes them); a dash looks the
+same on every wheel the driver owns.
 
 ## Type
 

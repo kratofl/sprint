@@ -94,6 +94,7 @@ export const defaultDashPalette: DashPaletteColors = {
   primary: dashColor.text,
   accent: dashColor.blue,
   success: dashColor.green,
+  // Amber, the warm of the colour scale, as the app's pit wall and Analysis draw it.
   warning: dashColor.orange,
   danger: dashColor.red,
   raceControlYellow: dashColor.yellow,
@@ -114,6 +115,61 @@ export const defaultDashPalette: DashPaletteColors = {
   settingEngineMap: dashSettingColors.engineMap,
   settingMigration: dashSettingColors.migration,
   settingArb: dashSettingColors.arb,
+}
+
+/**
+ * Sprint's colour themes (Settings › Colours, `ColourTheme` in Core): each sets the scale's cold
+ * and good colours. Warm stays amber and hot red; timing and knob colours are the same in all.
+ */
+export type ColourTheme = 'Sprint' | 'Calm' | 'Strict'
+export const colourThemes: readonly ColourTheme[] = ['Sprint', 'Calm', 'Strict']
+
+/**
+ * Where values change colour (`ColourLimits` in Core), °C and percent. Tyres against the
+ * compound's ideal: cold more than `tyreColdBelow` under it, warm and hot more than
+ * `tyreWarmAbove` and `tyreHotAbove` over it. Brakes in plain °C; tyre wear (tread left) and fuel
+ * and energy bars turn low, then critical, under their marks.
+ */
+export interface DashColourLimits {
+  tyreColdBelow: number
+  tyreWarmAbove: number
+  tyreHotAbove: number
+  brakeColdBelow: number
+  brakeWarmAbove: number
+  brakeHotAbove: number
+  wearLowBelow: number
+  wearCriticalBelow: number
+  energyLowBelow: number
+  energyCriticalBelow: number
+}
+
+/** The app-wide Colours setting: what colours mean (the theme) and where values change colour. */
+export interface DashColours {
+  theme: ColourTheme
+  limits: DashColourLimits
+}
+
+/** The Colours setting a fresh install has (`ColourSettings` in Core). */
+export const defaultDashColours: DashColours = {
+  theme: 'Sprint',
+  limits: {
+    tyreColdBelow: 10, tyreWarmAbove: 10, tyreHotAbove: 20,
+    brakeColdBelow: 300, brakeWarmAbove: 650, brakeHotAbove: 800,
+    wearLowBelow: 60, wearCriticalBelow: 30,
+    energyLowBelow: 50, energyCriticalBelow: 20,
+  },
+}
+
+/**
+ * The palette every dash draws in, in the driver's colour theme: the default with the scale's
+ * cold and good recoloured (the renderer's `themed_palette`). A layout's own theme is not read.
+ */
+export function themedPalette(theme: ColourTheme): DashPaletteColors {
+  switch (theme) {
+    case 'Sprint': return defaultDashPalette
+    case 'Calm': return { ...defaultDashPalette, coldLow: defaultDashPalette.secondary, goodOnTarget: defaultDashPalette.foreground }
+    case 'Strict': return { ...defaultDashPalette, coldLow: defaultDashPalette.critical }
+  }
 }
 
 const THEME_KEYS = [

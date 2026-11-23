@@ -1150,26 +1150,26 @@
 
 .pw-band.cold,
 .pw-key.cold {
-  fill: var(--blue-500);
-  background: var(--blue-500);
+  fill: var(--heat-cold);
+  background: var(--heat-cold);
 }
 
 .pw-band.ok,
 .pw-key.ok {
-  fill: var(--green-500);
-  background: var(--green-500);
+  fill: var(--heat-good);
+  background: var(--heat-good);
 }
 
 .pw-band.warm,
 .pw-key.warm {
-  fill: var(--yellow-500);
-  background: var(--yellow-500);
+  fill: var(--heat-warm);
+  background: var(--heat-warm);
 }
 
 .pw-band.hot,
 .pw-key.hot {
-  fill: var(--red-500);
-  background: var(--red-500);
+  fill: var(--heat-hot);
+  background: var(--heat-hot);
 }
 
 .pw-groove {
@@ -1189,14 +1189,15 @@
   stroke-width: 2;
 }
 
-.pw-t-core.cold { stroke: var(--blue-500); }
-.pw-t-core.ok { stroke: var(--green-500); }
-.pw-t-core.warm { stroke: var(--yellow-500); }
-.pw-t-core.hot { stroke: var(--red-500); }
+.pw-t-core.cold { stroke: var(--heat-cold); }
+.pw-t-core.ok { stroke: var(--heat-good); }
+.pw-t-core.warm { stroke: var(--heat-warm); }
+.pw-t-core.hot { stroke: var(--heat-hot); }
 
-.pw-t-brake.cold { fill: var(--blue-500); }
-.pw-t-brake.ok { fill: var(--yellow-500); }
-.pw-t-brake.hot { fill: var(--red-500); }
+.pw-t-brake.cold { fill: var(--heat-cold); }
+.pw-t-brake.ok { fill: var(--heat-good); }
+.pw-t-brake.warm { fill: var(--heat-warm); }
+.pw-t-brake.hot { fill: var(--heat-hot); }
 
 .pw-t-lab {
   fill: var(--label-tertiary);

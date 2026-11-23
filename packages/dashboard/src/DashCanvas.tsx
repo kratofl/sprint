@@ -5,6 +5,7 @@
 import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { TelemetryFrame } from '@sprint/types'
 import type { DashLayout, DashUnits } from './index'
+import { defaultDashColours, type DashColours } from './palette'
 import type { DashAlertBanner } from './alerts'
 import { loadDashWasm, type DashWasm } from './dashWasm.js'
 import { toHostFrame } from './hostFrame'
@@ -56,6 +57,12 @@ function useDashWasm(): WasmState {
  * at each window's root; without a provider a dash prints metric.
  */
 export const DashUnitsContext = createContext<DashUnits>('Metric')
+
+/**
+ * The driver's Colours setting every `DashCanvas` below draws with: the theme and where values
+ * change colour. Provided beside the units; without a provider a dash shows Sprint's defaults.
+ */
+export const DashColoursContext = createContext<DashColours>(defaultDashColours)
 
 /** `window.devicePixelRatio`, followed when the window moves to another display or zooms. */
 function useDevicePixelRatio(): number {
@@ -121,8 +128,9 @@ export function DashCanvas({ layout, frame, width, height, pageId, idle, alertBa
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const [error, setError] = useState<string | null>(null)
   const units = useContext(DashUnitsContext)
+  const colours = useContext(DashColoursContext)
   // The clock widget shows the frame's moment in the viewer's time zone.
-  const settings = { utcOffsetMinutes: -new Date().getTimezoneOffset(), units }
+  const settings = { utcOffsetMinutes: -new Date().getTimezoneOffset(), units, colours }
   const scene = JSON.stringify({ layout, width, height, scale: ratio, pageId, idle: idle ?? false, settings, pitLimiterOnly: pitLimiterOnly ?? false })
   // The renderer reads the host's telemetry JSON; the app hands over the @sprint/types mirror.
   const frameJson = frame ? JSON.stringify(toHostFrame(frame)) : ''

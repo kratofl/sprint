@@ -9,7 +9,6 @@ import {
   growToSmallest,
   holdsSmallestAt,
   widgetFormAt,
-  applyThemePreset,
   buildDashCreate,
   canPlaceNewWidget,
   dashCategoryNameProblem,
@@ -178,26 +177,6 @@ test('previewResizeRect clamps growth at the grid edge', () => {
   assert.deepEqual(previewResizeRect(start, { hx: 0, hy: 1 }, 0, 100, 20, 12), { col: 5, row: 5, colSpan: 4, rowSpan: 7 })
   // Left/top handles can't push col/row below 0.
   assert.deepEqual(previewResizeRect(start, { hx: -1, hy: -1 }, -100, -100, 20, 12), { col: 0, row: 0, colSpan: 9, rowSpan: 7 })
-})
-
-// ── applyThemePreset ─────────────────────────────────────────────────────
-
-test('applyThemePreset sets theme + colorSystem on a new layout, leaving the source untouched', () => {
-  const dash = layout(pageWithWidgets())
-  const styled = applyThemePreset(dash, { primary: '#FF6A00', accent: '#E0A30C' }, 'styled')
-
-  assert.deepEqual(styled.theme, { primary: '#FF6A00', accent: '#E0A30C' })
-  assert.equal(styled.colorSystem, 'styled')
-  assert.notEqual(styled, dash)
-  assert.equal(dash.theme, undefined, 'the source layout keeps no theme override')
-})
-
-test('applyThemePreset resets to Graphite (empty theme, functional system)', () => {
-  const dash = layout(pageWithWidgets(), { theme: { primary: '#FF0000' }, colorSystem: 'styled' })
-  const graphite = applyThemePreset(dash, {}, 'functional')
-
-  assert.deepEqual(graphite.theme, {})
-  assert.equal(graphite.colorSystem, 'functional')
 })
 
 test("a dash's lap review boxes survive parsing; a malformed one is left unset", () => {

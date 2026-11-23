@@ -413,7 +413,7 @@ Task screenReconcileLoop = Task.Run(async () =>
                 DashSceneInputs? scenes = null;
                 try
                 {
-                    scenes = new DashSceneInputs([.. runtime.DashLayouts], DriverCar.Of(runtime.Settings), runtime.Settings.DriverName, runtime.Settings.DriverNumber, runtime.Settings.Units, planTargets.Targets,
+                    scenes = new DashSceneInputs([.. runtime.DashLayouts], DriverCar.Of(runtime.Settings), runtime.Settings.DriverName, runtime.Settings.DriverNumber, runtime.Settings.Units, runtime.Settings.Colours, planTargets.Targets,
                         devices.Any(device => device.Bindings.Any(binding => binding.Command == SprintCommands.Acknowledge)) ? runtime.Settings.DashAlerts : runtime.Settings.DashAlerts.WithoutUntilAck());
                 }
                 catch (InvalidOperationException)
