@@ -91,11 +91,14 @@ export const hiddenColumns = (shown: readonly TimingColumn[]): TimingColumn[] =>
 /** The table's `grid-template-columns` for the shown columns. */
 export const gridTemplate = (shown: readonly TimingColumn[]): string => shown.flatMap((column) => TIMING_COLUMN_SPECS[column].tracks).join(' ')
 
+/** Where an out car's note sits: the column it starts in and how many tracks it takes. */
+export type OutNote = { column: 'gap' | 'interval'; span: 1 | 2 }
+
 /**
  * Where a car out of the race says so ("DNF · lap 22"): across Gap and Int when they sit side by
  * side (from whichever comes first), else in Gap, else in Int; nowhere when both are hidden.
  */
-export function outNoteAt(shown: readonly TimingColumn[]): { column: 'gap' | 'interval'; span: 1 | 2 } | null {
+export function outNoteAt(shown: readonly TimingColumn[]): OutNote | null {
   const gap = shown.indexOf('gap')
   const interval = shown.indexOf('interval')
   if (gap >= 0 && interval >= 0 && Math.abs(gap - interval) === 1) return { column: gap < interval ? 'gap' : 'interval', span: 2 }

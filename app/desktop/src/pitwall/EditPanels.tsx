@@ -1,4 +1,4 @@
-import { useId, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { ArrowDown, ArrowUp, EyeOff, GripVertical, Plus, RotateCcw, Star, X } from 'lucide-react'
 import {
   addLayer,
@@ -17,7 +17,7 @@ import {
 } from './layoutOps'
 import { TILE_KINDS, type PitWallLayout, type PitWallPage, type PitWallTile, type TileKind } from './pitWallData'
 import { KIND_LABEL } from './tileFrame'
-import { hiddenColumns, shownColumns, TIMING_COLUMN_SPECS } from './timingColumns'
+import { hiddenColumns, shownColumns, TIMING_COLUMN_SPECS, type TimingColumn } from './timingColumns'
 
 type OnChange = (next: PitWallLayout | null, refusal: string) => boolean
 
@@ -194,13 +194,34 @@ export function StackInspector({
  */
 function TimingColumns({ layout, pageId, tile, heading, onChange }: { layout: PitWallLayout; pageId: string; tile: PitWallTile; heading: string; onChange: OnChange }) {
   const [drag, setDrag] = useState<{ from: number; over: number | null } | null>(null)
+  // A button pressed from the keyboard moves or leaves the list with its row, which drops focus;
+  // after the edit renders, focus goes to the first of these buttons that is there and enabled.
+  const [focusNext, setFocusNext] = useState<readonly string[]>([])
+  const section = useRef<HTMLDivElement>(null)
   const shown = shownColumns(tile)
   const hidden = hiddenColumns(shown)
   const label = (index: number) => TIMING_COLUMN_SPECS[shown[index]].label
   const move = (from: number, to: number) => onChange(moveTimingColumn(layout, pageId, tile.id, from, to), 'It is already there.')
+  const moveBy = (index: number, step: -1 | 1) => {
+    const column = shown[index]
+    if (move(index, index + step)) setFocusNext(step < 0 ? [`${column}:up`, `${column}:down`] : [`${column}:down`, `${column}:up`])
+  }
+  const hide = (column: TimingColumn) => {
+    if (onChange(hideTimingColumn(layout, pageId, tile.id, column), 'Driver always shows.')) setFocusNext([`${column}:show`])
+  }
+  const show = (column: TimingColumn) => {
+    if (onChange(showTimingColumn(layout, pageId, tile.id, column), 'It already shows.')) setFocusNext([`${column}:hide`])
+  }
+
+  useEffect(() => {
+    if (focusNext.length === 0) return
+    const buttons = focusNext.map((key) => section.current?.querySelector<HTMLButtonElement>(`[data-focus="${key}"]`))
+    buttons.find((button) => button && !button.disabled)?.focus()
+    setFocusNext([])
+  }, [focusNext])
 
   return (
-    <>
+    <div ref={section} className="pw-columns">
       <div className="pw-inspector-row">
         <h4>{heading}</h4>
         <button type="button" className="button small subtle" disabled={tile.timingColumns === null} onClick={() => onChange(resetTimingColumns(layout, pageId, tile.id), 'It already shows the default columns.')}>
@@ -236,10 +257,10 @@ function TimingColumns({ layout, pageId, tile, heading, onChange }: { layout: Pi
               <span className="pw-layer-name">{label(index)}</span>
               {column === 'driver' && <span className="pw-layer-first">Always</span>}
               <span className="pw-layer-tools">
-                <button type="button" className="icon-button" aria-label={`Move ${label(index)} up`} title="Move up" disabled={index === 0} onClick={() => move(index, index - 1)}>
+                <button type="button" className="icon-button" aria-label={`Move ${label(index)} up`} title="Move up" data-focus={`${column}:up`} disabled={index === 0} onClick={() => moveBy(index, -1)}>
                   <ArrowUp size={13} />
                 </button>
-                <button type="button" className="icon-button" aria-label={`Move ${label(index)} down`} title="Move down" disabled={index === shown.length - 1} onClick={() => move(index, index + 1)}>
+                <button type="button" className="icon-button" aria-label={`Move ${label(index)} down`} title="Move down" data-focus={`${column}:down`} disabled={index === shown.length - 1} onClick={() => moveBy(index, 1)}>
                   <ArrowDown size={13} />
                 </button>
                 <button
@@ -247,8 +268,9 @@ function TimingColumns({ layout, pageId, tile, heading, onChange }: { layout: Pi
                   className="icon-button"
                   aria-label={`Hide ${label(index)}`}
                   title={column === 'driver' ? 'Driver always shows' : 'Hide'}
+                  data-focus={`${column}:hide`}
                   disabled={column === 'driver'}
-                  onClick={() => onChange(hideTimingColumn(layout, pageId, tile.id, column), 'Driver always shows.')}
+                  onClick={() => hide(column)}
                 >
                   <EyeOff size={13} />
                 </button>
@@ -262,13 +284,13 @@ function TimingColumns({ layout, pageId, tile, heading, onChange }: { layout: Pi
           <h4>Hidden</h4>
           <div className="pw-add-layer" role="group" aria-label="Hidden columns">
             {hidden.map((column) => (
-              <button key={column} type="button" className="pw-tray-item" onClick={() => onChange(showTimingColumn(layout, pageId, tile.id, column), 'It already shows.')}>
+              <button key={column} type="button" className="pw-tray-item" data-focus={`${column}:show`} onClick={() => show(column)}>
                 <Plus size={12} /> {TIMING_COLUMN_SPECS[column].label}
               </button>
             ))}
           </div>
         </>
       )}
-    </>
+    </div>
   )
 }

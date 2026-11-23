@@ -87,7 +87,7 @@ public static class PitWallLayouts
     };
 
     /// <summary>The timing column that cannot be hidden: it takes the spare width and carries the flags.</summary>
-    public const string DriverColumn = "driver";
+    private const string DriverColumn = "driver";
 
     /// <summary>Every timing column the renderer draws (<c>app/desktop/src/pitwall/timingColumns.ts</c>).</summary>
     public static IReadOnlySet<string> TimingColumns { get; } = new HashSet<string>(StringComparer.Ordinal)
@@ -195,8 +195,6 @@ public static class PitWallLayouts
                     return $"tile '{tile.Id}' does not fit the {Columns}×{Rows} grid";
                 if (tile.CycleSeconds is < MinCycleSeconds or > MaxCycleSeconds)
                     return $"a stack switches every {MinCycleSeconds} to {MaxCycleSeconds} seconds, or by hand";
-                if (CheckTimingColumns(tile) is { } columnsInvalid)
-                    return columnsInvalid;
 
                 for (int column = tile.X; column < tile.X + tile.W; column++)
                 {
@@ -210,19 +208,6 @@ public static class PitWallLayouts
             }
         }
 
-        return null;
-    }
-
-    private static string? CheckTimingColumns(PitWallTile tile)
-    {
-        if (tile.TimingColumns is not { } columns)
-            return null;
-        if (columns.FirstOrDefault(column => !TimingColumns.Contains(column)) is { } unknown)
-            return $"unknown timing column: {unknown}";
-        if (columns.Distinct(StringComparer.Ordinal).Count() != columns.Count)
-            return $"tile '{tile.Id}' shows a timing column twice";
-        if (!columns.Contains(DriverColumn, StringComparer.Ordinal))
-            return $"tile '{tile.Id}' always shows the {DriverColumn} column";
         return null;
     }
 
@@ -341,9 +326,10 @@ public static class PitWallLayouts
     }
 
     /// <summary>
-    /// Optional timing columns: absent or null is the default set. Ids this build does not know (a
-    /// column from a newer Sprint) are dropped rather than refused, since a refused stored layout
-    /// would cost the engineer every page.
+    /// Optional timing columns: absent or null is the default set. A list is tidied rather than
+    /// refused, since a refused stored layout would cost the engineer every page: ids this build
+    /// does not know (a column from a newer Sprint) and repeats are dropped, and a list without
+    /// Driver falls back to the default set, as the desktop reads it too.
     /// </summary>
     private static bool TryTimingColumns(JsonElement json, out IReadOnlyList<string>? columns, out string error)
     {
@@ -357,7 +343,8 @@ public static class PitWallLayouts
             return false;
         }
 
-        columns = [.. element.EnumerateArray().Select(column => column.GetString() ?? "").Where(TimingColumns.Contains)];
+        string[] known = [.. element.EnumerateArray().Select(column => column.GetString() ?? "").Where(TimingColumns.Contains).Distinct(StringComparer.Ordinal)];
+        columns = known.Contains(DriverColumn, StringComparer.Ordinal) ? known : null;
         return true;
     }
 

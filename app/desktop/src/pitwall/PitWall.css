@@ -1644,6 +1644,11 @@
   margin: 0;
 }
 
+/* The columns section: a box only to find its buttons in; its rows sit in the inspector's flow. */
+.pw-columns {
+  display: contents;
+}
+
 /* A timing column: dragged by its row, with a line where it would land. */
 .pw-column {
   gap: 4px;

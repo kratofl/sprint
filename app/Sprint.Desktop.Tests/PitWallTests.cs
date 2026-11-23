@@ -358,8 +358,6 @@ public sealed class PitWallTests
     [InlineData("""{"pages":[{"id":"a","name":"   ","tiles":[]}]}""", "1 to 40 characters")]
     [InlineData("""{"pages":[{"id":"a","name":"This page name is far too long to fit a tab","tiles":[]}]}""", "1 to 40 characters")]
     [InlineData("""{"pages":[{"id":"a","name":"A","tiles":[{"id":"t1","layers":["timing","radar","track","fuel","stint","tyres","damage"],"x":0,"y":0,"w":1,"h":1}]}]}""", "1 to 6 layers")]
-    [InlineData("""{"pages":[{"id":"a","name":"A","tiles":[{"id":"t1","layers":["timing"],"x":0,"y":0,"w":1,"h":1,"timingColumns":["place","driver","gap","place"]}]}]}""", "timing column twice")]
-    [InlineData("""{"pages":[{"id":"a","name":"A","tiles":[{"id":"t1","layers":["timing"],"x":0,"y":0,"w":1,"h":1,"timingColumns":["place","gap"]}]}]}""", "always shows the driver column")]
     [InlineData("""{"pages":[{"id":"a","name":"A","tiles":[{"id":"t1","layers":["timing"],"x":0,"y":0,"w":1,"h":1,"timingColumns":"driver"}]}]}""", "list of column ids")]
     public void AnInvalidLayoutIsRefusedWithTheReason(string json, string reason)
     {
@@ -370,16 +368,19 @@ public sealed class PitWallTests
     }
 
     [Fact]
-    public void ATimingColumnFromANewerSprintIsDroppedAndTheLayoutKept()
+    public void TimingColumnsAreTidiedRatherThanCostingTheLayout()
     {
+        // A column from a newer Sprint and a repeat are dropped; a list without Driver, or none,
+        // is the default set.
         using JsonDocument document = JsonDocument.Parse(
-            """{"pages":[{"id":"a","name":"A","tiles":[{"id":"t1","layers":["timing"],"x":0,"y":0,"w":6,"h":4,"timingColumns":["place","fuelLeft","driver","gap"]},{"id":"t2","layers":["timing"],"x":6,"y":0,"w":6,"h":4}]}]}""");
+            """{"pages":[{"id":"a","name":"A","tiles":[{"id":"t1","layers":["timing"],"x":0,"y":0,"w":3,"h":4,"timingColumns":["place","fuelLeft","driver","gap","place"]},{"id":"t2","layers":["timing"],"x":3,"y":0,"w":3,"h":4,"timingColumns":["place","gap"]},{"id":"t3","layers":["timing"],"x":6,"y":0,"w":6,"h":4}]}]}""");
 
         Assert.True(PitWallLayouts.TryParse(document.RootElement, null, out PitWallLayout layout, out string error), error);
 
         PitWallPage page = Assert.Single(layout.Pages);
         Assert.Equal(new[] { "place", "driver", "gap" }, page.Tiles[0].TimingColumns);
         Assert.Null(page.Tiles[1].TimingColumns);
+        Assert.Null(page.Tiles[2].TimingColumns);
     }
 
     [Fact]

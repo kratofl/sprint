@@ -1,10 +1,10 @@
-import { Fragment, useState, type ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { Flag } from 'lucide-react'
 import { ClassTag } from '../../views/CarBadges'
 import type { FieldEntry } from '../pitWallData'
 import { outCell } from '../raceControl'
 import { carName, carNumber, classLabel, classMark, classesOf, compoundLetter, gapCell, inYellow, isOut, lapClock, placesGained, sectorMarks, timingRows, timingSummary, type SectorMark } from '../timing'
-import { gridTemplate, outNoteAt, TIMING_COLUMN_SPECS, type TimingColumn } from '../timingColumns'
+import { gridTemplate, outNoteAt, TIMING_COLUMN_SPECS, type OutNote, type TimingColumn } from '../timingColumns'
 import { TileFrame, type FrameProps, type TileData } from '../tileFrame'
 
 /** Places gained since the start: ▲2 green, ▼1 red, – none; blank outside a race. */
@@ -37,8 +37,18 @@ function PitCell({ entry }: { entry: FieldEntry }) {
   return <span className="muted tabular">{entry.pitStops > 0 ? entry.pitStops : ''}</span>
 }
 
-/** What a row's cells read besides the car: the field, its sector marks, and the shown columns. */
-type RowContext = { field: readonly FieldEntry[]; marks: readonly [SectorMark, SectorMark, SectorMark]; out: boolean; yellow: boolean; columns: readonly TimingColumn[] }
+/**
+ * What a row's cells read besides the car: the field, its sector marks, and from the shown columns
+ * where an out car's note goes and whether penalties have their own column.
+ */
+type RowContext = {
+  field: readonly FieldEntry[]
+  marks: readonly [SectorMark, SectorMark, SectorMark]
+  out: boolean
+  yellow: boolean
+  outNote: OutNote | null
+  penaltyColumn: boolean
+}
 
 /** One column's cell (three for the sector columns); nothing for Int when an out car's note in Gap spans it. */
 function Cell({ column, entry, row }: { column: TimingColumn; entry: FieldEntry; row: RowContext }): ReactNode {
@@ -60,7 +70,7 @@ function Cell({ column, entry, row }: { column: TimingColumn; entry: FieldEntry;
           {entry.blueFlag && !out && <Flag size={11} className="pw-blue" aria-label="Blue flag" />}
           {entry.stopped && !out && <span className="chip chip-warning">Stopped</span>}
           {/* With a Penalties column the count is there instead. */}
-          {entry.penalties > 0 && !out && !row.columns.includes('penalties') && <span className="chip chip-danger">{entry.penalties} pen</span>}
+          {entry.penalties > 0 && !out && !row.penaltyColumn && <span className="chip chip-danger">{entry.penalties} pen</span>}
         </span>
       )
     case 'tyre':
@@ -73,7 +83,7 @@ function Cell({ column, entry, row }: { column: TimingColumn; entry: FieldEntry;
       return <span className="r tabular muted">{entry.lapsCompleted}</span>
     case 'gap':
     case 'interval': {
-      const note = out ? outNoteAt(row.columns) : null
+      const note = out ? row.outNote : null
       if (note?.column === column) {
         return (
           <span className={note.span === 2 ? 'pw-outcell wide tabular' : 'pw-outcell tabular'} title={outCell(entry)}>
@@ -104,11 +114,7 @@ function Cell({ column, entry, row }: { column: TimingColumn; entry: FieldEntry;
     case 'classPlace':
       return <span className="r tabular">{entry.classPlace || '—'}</span>
     case 'classTag':
-      return (
-        <span className="pw-classtag">
-          <ClassTag tag={entry.classTag} />
-        </span>
-      )
+      return <span className="pw-classtag">{entry.classTag && <ClassTag tag={entry.classTag} />}</span>
     case 'car':
       return <span className="pw-ellipsis muted">{carName(entry)}</span>
     case 'bestSectors':
@@ -157,6 +163,8 @@ export function TimingTile({ data, frame, columns }: { data: TileData; frame: Fr
   const marks = sectorMarks(wall.field)
   const rows = timingRows(wall.field, shownClass)
   const template = gridTemplate(columns)
+  const outNote = outNoteAt(columns)
+  const penaltyColumn = columns.includes('penalties')
   return (
     <TileFrame frame={frame} title="Timing" extra={filter} bodyClass="pw-flush pw-timing">
       <div className="pw-summary">
@@ -190,13 +198,11 @@ export function TimingTile({ data, frame, columns }: { data: TileData; frame: Fr
           const out = isOut(entry)
           const yellow = inYellow(entry, wall.session.yellowSectors)
           const rowClass = ['pw-trow', entry.isPlayer && 'you', yellow ? 'yellow' : entry.blueFlag && !out && 'blue', out && 'out'].filter(Boolean).join(' ')
-          const row: RowContext = { field: wall.field, marks: marks.get(entry.id) ?? [null, null, null], out, yellow, columns }
+          const row: RowContext = { field: wall.field, marks: marks.get(entry.id) ?? [null, null, null], out, yellow, outNote, penaltyColumn }
           return (
             <div key={entry.id} role="row" className={rowClass} style={{ gridTemplateColumns: template }}>
               {columns.map((column) => (
-                <Fragment key={column}>
-                  <Cell column={column} entry={entry} row={row} />
-                </Fragment>
+                <Cell key={column} column={column} entry={entry} row={row} />
               ))}
             </div>
           )
