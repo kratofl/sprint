@@ -445,6 +445,11 @@ public sealed class DashWidgetGroup
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public bool Hidden { get; set; }
 
+    /// <summary>Sprint's group frame round its widgets, its name in the top edge.</summary>
+    [JsonPropertyName("framed")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool Framed { get; set; }
+
     [JsonExtensionData]
     public Dictionary<string, JsonElement>? ExtensionData { get; set; }
 }
@@ -530,15 +535,19 @@ public sealed class DashWidget
 }
 
 /// <summary>
-/// What one widget changes of its dash's look: only where its label sits
-/// (<see cref="DashLooks.WidgetLabels"/>). Colours follow meaning and frames are the dash's, so a
-/// saved colour or edge is not read (<see cref="DashLooks"/>).
+/// What one widget turns off of Sprint's look: its label, its frame, or both, each as
+/// <see cref="DashLooks.Off"/>. Sprint draws everything else the same on every dash
+/// (<see cref="DashLooks"/>).
 /// </summary>
 public sealed class DashWidgetStyle
 {
     [JsonPropertyName("label")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Label { get; set; }
+
+    [JsonPropertyName("frame")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Frame { get; set; }
 }
 
 public sealed class DashAlert

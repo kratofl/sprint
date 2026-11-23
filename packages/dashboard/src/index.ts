@@ -16,29 +16,11 @@ export type DashColorSystem = 'functional' | 'styled'
  */
 export type DashUnits = 'Metric' | 'Imperial'
 export interface DashTheme { [key: string]: string | undefined }
-/** A frame's edge. */
-export type DashBorder = 'none' | 'thin' | 'normal' | 'thick'
-export const dashBorders: readonly DashBorder[] = ['none', 'thin', 'normal', 'thick']
-export const isDashBorder = (value: unknown): value is DashBorder => dashBorders.some((border) => border === value)
-/** Where a dash puts its widgets' labels: none, top left in the edge (`on`, "Top"), centred above the value (`top`, "Center"), beside it at the left or right, or in a band across its top. */
-export type DashLabelMode = 'off' | 'on' | 'top' | 'left' | 'right' | 'capsule'
-export const dashLabelModes: readonly DashLabelMode[] = ['off', 'on', 'top', 'left', 'right', 'capsule']
-export const isDashLabelMode = (value: unknown): value is DashLabelMode => dashLabelModes.some((mode) => mode === value)
-/** A group frame's name: none, set into the top edge, or in a pill. */
-export type DashGroupLabel = 'off' | 'on' | 'capsule'
-export const dashGroupLabels: readonly DashGroupLabel[] = ['off', 'on', 'capsule']
-export const isDashGroupLabel = (value: unknown): value is DashGroupLabel => dashGroupLabels.some((label) => label === value)
-/** A dash's look, the only one: corner radius (px at 800x480), its edge and where its labels sit. */
-export interface DashChrome { radius: number; border: DashBorder; label: DashLabelMode }
-/** The look a dash without `chrome` gets (the renderer's `DashChrome::default`). */
-export const DEFAULT_DASH_CHROME: DashChrome = { radius: 6, border: 'normal', label: 'on' }
-/** The label spots a widget may move its own label to; a band (`capsule`) is the dash's alone. */
-export type DashWidgetLabel = Exclude<DashLabelMode, 'capsule'>
-export const isDashWidgetLabel = (value: unknown): value is DashWidgetLabel => value !== 'capsule' && isDashLabelMode(value)
-/** What one widget changes of the dash's look: only where its label sits. Colours follow meaning, not the widget. */
-export interface DashWidgetStyle { label?: DashWidgetLabel }
-/** A group's own frame round its widgets, its name as the label, at the left or centred. */
-export interface DashGroupStyle { border: DashBorder; label: DashGroupLabel; align?: 'start' | 'center' }
+/**
+ * What one widget turns off of Sprint's look: its label, its frame, or both. Sprint draws
+ * everything else the same on every dash (the renderer's `chrome.rs`); colours follow meaning.
+ */
+export interface DashWidgetStyle { label?: 'off'; frame?: 'off' }
 /** One widget, in page grid coordinates. `group` is the group it sits in; `hidden` keeps it off the wheel (it still holds its cells). */
 export interface DashWidget { id: string; type: string; col: number; row: number; colSpan: number; rowSpan: number; config?: Record<string, unknown>; style?: DashWidgetStyle; group?: string; hidden?: boolean }
 /** How a group shows its direct children: all of them, or one at a time (a widget stack: each child is a layer). */
@@ -48,7 +30,7 @@ export const isDashGroupMode = (value: unknown): value is DashGroupMode => value
  * A named group of widgets and groups on a page (see `groups.ts` for the tree and the drawing
  * rule). `parent` is the group it sits in; `shownFirst` is the child a one-at-a-time group shows.
  */
-export interface DashWidgetGroup { id: string; name: string; parent?: string; mode: DashGroupMode; shownFirst?: string; hidden?: boolean; style?: DashGroupStyle }
+export interface DashWidgetGroup { id: string; name: string; parent?: string; mode: DashGroupMode; shownFirst?: string; hidden?: boolean; framed?: boolean }
 /**
  * When the wheel switches to a page by itself (host `DashPageJump`): leaving the pit lane
  * (`outLap`), or crossing the line on track (`flyingLap`).
@@ -85,7 +67,7 @@ export interface DashAlert {
  * `pitLimiter`: the overlay shown while the pit limiter is on (`pitLimiterOf` reads it); absent
  * shows the default style with no widgets of its own.
  */
-export interface DashLayout { id: string; name: string; category?: string; mode: string; colorSystem?: DashColorSystem; chrome?: DashChrome; colSizes?: number[]; rowSizes?: number[]; screenProfile?: string; gridCols: number; gridRows: number; pages: DashPage[]; idlePage?: DashPage | null; alerts: DashAlert[]; theme?: DashTheme; alertConfig?: Record<string, unknown>; lapReview?: DashLapReview; pitLimiter?: DashPitLimiter }
+export interface DashLayout { id: string; name: string; category?: string; mode: string; colorSystem?: DashColorSystem; colSizes?: number[]; rowSizes?: number[]; screenProfile?: string; gridCols: number; gridRows: number; pages: DashPage[]; idlePage?: DashPage | null; alerts: DashAlert[]; theme?: DashTheme; alertConfig?: Record<string, unknown>; lapReview?: DashLapReview; pitLimiter?: DashPitLimiter }
 
 export { DashCanvas, DashColoursContext, DashUnitsContext, type DashCanvasProps } from './DashCanvas'
 export { dashboardWidgetTypes, isDashWidgetType, type DashWidgetType } from './widgetTypes'
@@ -111,7 +93,7 @@ export { multiDialInk, multiDialSwatches, type DashMultiDialPopup } from './mult
 // The editor's direct-manipulation overlay (drag/resize handles) positions itself with the same
 // grid math the renderer places widgets with, so it never drifts a pixel from what is drawn.
 export { gridRect, trackRect, tracksOf, layoutRect, gridLines, cellAt, type PixelRect, type GridSpan, type LayoutGrid, type Tracks } from './grid'
-export { widgetForms, formIndex, referenceSize, holdsSmallest, hasLabel, type WidgetForm } from './widgetForms'
+export { widgetForms, formIndex, referenceSize, holdsSmallest, hasLabel, hasFrame, type WidgetForm } from './widgetForms'
 export { pageTree, shownChild, nodeWidgets, drawnWidgets, groupParents, stackLayers, mayOverlap, type DashNode, type DashGroupNode } from './groups'
 export { dashPreviewStates, previewFrame, resolvePreviewFrame, type DashPreviewState } from './previewFrames'
 // The host's telemetry JSON is what the renderer reads; the app's views read the @sprint/types mirror.
@@ -119,11 +101,6 @@ export { parseHostFrame, toHostFrame, type HostTelemetryFrame } from './hostFram
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null
 const isOptional = (value: unknown, type: 'string' | 'boolean'): boolean => value === undefined || typeof value === type
-const isDashGroupStyle = (value: unknown): value is DashGroupStyle =>
-  isRecord(value) && isDashBorder(value.border) && isDashGroupLabel(value.label) && (value.align === undefined || value.align === 'start' || value.align === 'center')
 /** A group as the host writes it: absent fields are omitted, never null. */
 export const isDashWidgetGroup = (value: unknown): value is DashWidgetGroup =>
-  isRecord(value) && typeof value.id === 'string' && typeof value.name === 'string' && isDashGroupMode(value.mode) && isOptional(value.parent, 'string') && isOptional(value.shownFirst, 'string') && isOptional(value.hidden, 'boolean') && (value.style === undefined || isDashGroupStyle(value.style))
-/** The flat style's dash-wide look, narrowed from a host row; null when it is not one. */
-export const parseDashChrome = (value: unknown): DashChrome | null =>
-  isRecord(value) && typeof value.radius === 'number' && value.radius >= 0 && isDashBorder(value.border) && isDashLabelMode(value.label) ? { radius: value.radius, border: value.border, label: value.label } : null
+  isRecord(value) && typeof value.id === 'string' && typeof value.name === 'string' && isDashGroupMode(value.mode) && isOptional(value.parent, 'string') && isOptional(value.shownFirst, 'string') && isOptional(value.hidden, 'boolean') && isOptional(value.framed, 'boolean')

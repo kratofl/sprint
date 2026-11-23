@@ -76,14 +76,19 @@ never also takes a condition color: its value only ever wears its identity, or i
 
 ## One look
 
-A dash has one look (the driver's call, 2026-11-22: four frame styles, six label spots, edges and
-free colours per widget made too many combinations that looked bad on the wheel). Its `chrome`
-sets the corner radius, the edge and where labels sit; a widget may move only its own label
-(never into the band, which is the dash's), and colours follow meaning, never the widget. Older
-dashes' `dashStyle` (panels, grid, label bars) and widget colours and edges are dropped on load
-(`DashLooks.Flatten`); the renderer has no other style to draw. A widget's type says whether it
-is framed, bare (gear, text, RPM) or split into several frames of its own (the four tyres), and
-`chrome.rs` draws the frame and the label, so widgets render only their values.
+Sprint draws one look on every dash: a 2-px edge with 6-px corners, the label cut into the top
+edge, and one group frame (the driver's call, 2026-11-22 and 2026-11-23, issue #274: Sprint is
+opinionated, not a second SimHub; frame styles, corners, edges, label spots and per-widget
+colours made too many combinations that looked bad on the wheel). The driver decides what is
+shown and where; Sprint decides how. A widget may only turn its frame or its label off
+(`style: { frame: "off", label: "off" }`; a frameless widget's label sits small above its value),
+and a group's frame is on or off (`framed`). Older dashes' looks (`dashStyle`, `chrome`, label
+spots, widget colours and edges, group edges, name pills and alignment) are dropped on load
+(`DashLooks.Flatten`); the renderer has no other look to draw. A widget's type says whether it
+is framed, bare (gear, text) or split into several frames of its own (the four tyres);
+`widgetForms.json` lists the types without a label (`unlabelled`) or a frame (`unframed`) for
+the designer, pinned by the renderer's tests. `chrome.rs` draws the frame and the label, so widgets
+render only their values.
 
 ## The driver's colours
 

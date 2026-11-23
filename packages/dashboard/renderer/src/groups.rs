@@ -190,7 +190,7 @@ mod tests {
     }
 
     fn group(id: &str, mode: GroupMode, parent: Option<&str>) -> DashWidgetGroup {
-        DashWidgetGroup { id: id.to_owned(), name: id.to_owned(), parent: parent.map(str::to_owned), mode, shown_first: None, hidden: false, style: None }
+        DashWidgetGroup { id: id.to_owned(), name: id.to_owned(), parent: parent.map(str::to_owned), mode, shown_first: None, hidden: false, framed: false }
     }
 
     fn page(widgets: Vec<DashWidget>, groups: Vec<DashWidgetGroup>) -> DashPage {

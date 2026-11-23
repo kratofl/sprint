@@ -436,7 +436,7 @@ fn bar(b: &mut Builder, w: &WidgetContext) {
         return rpm_strip(b, w, pct);
     }
     let vertical = w.height > w.width;
-    let radius = w.chrome.look.radius * s * 0.5;
+    let radius = crate::chrome::RADIUS * s * 0.5;
     let track =
         if vertical { PixelRect::new(w.width * 0.15, 0.0, w.width * 0.7, w.height) } else { PixelRect::new(0.0, w.height * 0.15, w.width, w.height * 0.7) };
     match channel {
@@ -715,7 +715,7 @@ fn tyre(b: &mut Builder, w: &WidgetContext) {
     let (width, height) = (w.width, w.height);
     let square_w = (height * 0.62).min(width * 0.36);
     let square_left = if left_side { 0.0 } else { width - square_w };
-    stripes(b, tire, PixelRect::new(square_left, 0.0, square_w, height), left_side, w.chrome.look.radius * s, w);
+    stripes(b, tire, PixelRect::new(square_left, 0.0, square_w, height), left_side, crate::chrome::RADIUS * s, w);
 
     let pill_h = (height * 0.24).min(20.0 * s);
     let pill_w = square_w * 0.84;
@@ -1976,7 +1976,7 @@ mod tests {
             height,
             targets,
             settings,
-            chrome: ChromeContext { scale: 1.0, look: Default::default() },
+            chrome: ChromeContext { scale: 1.0, look: crate::chrome::Look::SPRINT },
             limits: AlertLimits::default(),
             form: 0,
         };
@@ -2247,7 +2247,7 @@ mod tests {
                 height: 120.0,
                 targets: None,
                 settings: None,
-                chrome: ChromeContext { scale: 1.0, look: Default::default() },
+                chrome: ChromeContext { scale: 1.0, look: crate::chrome::Look::SPRINT },
                 limits: AlertLimits::default(),
                 form,
             };
@@ -2354,7 +2354,7 @@ mod tests {
             height: 60.0,
             targets: None,
             settings: None,
-            chrome: ChromeContext { scale: 1.0, look: Default::default() },
+            chrome: ChromeContext { scale: 1.0, look: crate::chrome::Look::SPRINT },
             limits: AlertLimits { engine: limits, ..AlertLimits::default() },
             form: 0,
         };
@@ -2813,6 +2813,22 @@ mod tests {
             })
             .collect();
         assert_eq!(listed, untitled);
+    }
+
+    /// The designer offers a frame switch only for a widget with a frame: `unframed` in
+    /// `widgetForms.json` lists exactly the offered widgets this renderer draws with no edge.
+    #[test]
+    fn the_designer_knows_which_widgets_draw_no_frame() {
+        let offered = quoted_between(include_str!("../../src/widgetTypes.ts"), '\'', "export const dashboardWidgetTypes = [", "] as const");
+        let listed = quoted_between(include_str!("../../src/widgetForms.json"), '"', "\"unframed\": [", "]");
+        let frame = TelemetryFrame::default();
+        let unframed: std::collections::BTreeSet<&str> = offered
+            .into_iter()
+            .filter(|kind| {
+                matches!(widget_chrome(&widget(kind, json!({})), &frame, &DEFAULT_DASH_PALETTE, Units::Metric, LIFT_POINT), WidgetChrome::Bare | WidgetChrome::Split)
+            })
+            .collect();
+        assert_eq!(listed, unframed);
     }
 
     #[test]

@@ -8,6 +8,7 @@ import table from './widgetForms.json'
 export type WidgetForm = { name?: string; width: number; height: number; hides?: string }
 
 const UNLABELLED: ReadonlySet<string> = new Set(table.unlabelled)
+const UNFRAMED: ReadonlySet<string> = new Set(table.unframed)
 const FORMS: ReadonlyMap<string, readonly WidgetForm[]> = new Map(Object.entries(table.types))
 const DEFAULT_FORMS: readonly WidgetForm[] = table.default
 
@@ -38,3 +39,6 @@ export function holdsSmallest(type: string, size: { width: number; height: numbe
 
 /** Whether a widget of `type` draws a label (a bar, the gear or the four-corner tyres draw none). */
 export const hasLabel = (type: string): boolean => !UNLABELLED.has(type)
+
+/** Whether a widget of `type` draws a frame (the gear and the four-corner tyres draw none). */
+export const hasFrame = (type: string): boolean => !UNFRAMED.has(type)

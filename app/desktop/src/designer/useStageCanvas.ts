@@ -21,8 +21,8 @@ function useElementSize(element: HTMLElement | null): { width: number; height: n
 }
 
 /**
- * The dash's size on the stage, for the sections that draw it in the bezel (Layout, Alerts,
- * Theme): it fills the `.designer-fit` box handed to `setFitElement`, but is never drawn larger
+ * The dash's size on the stage, for the sections that draw it in the bezel (Layout, Lap review,
+ * Pit limiter): it fills the `.designer-fit` box handed to `setFitElement`, but is never drawn larger
  * than the panel itself — at 100% the designer shows the dash at the driver's pixels. Null until
  * the box is measured.
  */

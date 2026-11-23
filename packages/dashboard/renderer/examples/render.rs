@@ -2,7 +2,7 @@
 //
 //   cargo run --release --example render -- --dash <layout.json> <out.png> [--page <id>] [--size 800x480]
 //                                           [--banner <banner.json> | --alert <type>[:full|strip|center][:invert]]
-//                                           [--level <percent>] [--radius <px>] [--units metric|imperial]
+//                                           [--level <percent>] [--units metric|imperial]
 //                                           [--pit gear|box|full] [--flag <ms>[:ack]]
 //   cargo run --release --example render -- <case.json> <out.png>
 //   cargo run --release --example render -- --all <cases-dir> <out-dir> [name-filter]
@@ -13,7 +13,7 @@
 // default.json) against the fixed race frame below; --banner draws an alert banner over it (the JSON
 // `render_still` takes, e.g. `{ "kind": "lapSummary", ... }`), so a popup can be checked too;
 // --level puts the fuel (of a 90 L tank), virtual energy and charge all at that percentage, for the
-// bars' level colours; --radius overrides the dash's corner radius; --units prints the values in
+// bars' level colours; --units prints the values in
 // that system (the app-wide Units setting; metric by default); --pit drives the car down the pit
 // lane with the limiter on (2nd gear, 16 m/s) and the pit limiter alert on, showing the layout's
 // pit limiter overlay in that style (its own widgets as the layout file has them).
@@ -166,11 +166,6 @@ fn render_dash(layout_path: &Path, out: &Path, options: &[&str]) -> Result<(), S
             }
             ["--units", "metric"] => units = "Metric",
             ["--units", "imperial"] => units = "Imperial",
-            ["--radius", px] => {
-                let px: f64 = px.parse().map_err(|_| format!("not a radius: {px}"))?;
-                let chrome = layout.as_object_mut().ok_or("the layout is not a JSON object")?.entry("chrome").or_insert(json!({}));
-                chrome["radius"] = json!(px);
-            }
             _ => return Err(format!("unknown option: {}", pair.join(" "))),
         }
     }
@@ -313,7 +308,7 @@ fn main() {
         ["--bench", case, n] => n.parse().map_err(|_| format!("not a count: {n}")).and_then(|n| bench(Path::new(case), n)),
         [case, out] if !case.starts_with("--") => render_one(Path::new(case), Path::new(out)),
         _ => Err("usage: render --dash <layout.json> <out.png> [--page <id>] [--size WxH] \
-                  [--banner <banner.json> | --alert <type>[:full|strip|center][:invert]] [--level <percent>] [--radius <px>] [--pit gear|box|full] [--flag <ms>[:ack]] \
+                  [--banner <banner.json> | --alert <type>[:full|strip|center][:invert]] [--level <percent>] [--pit gear|box|full] [--flag <ms>[:ack]] \
                   | <case.json> <out.png> \
                   | --all <cases-dir> <out-dir> [filter] | --bench <case.json> [iterations] | --ops <case.json>"
             .to_owned()),

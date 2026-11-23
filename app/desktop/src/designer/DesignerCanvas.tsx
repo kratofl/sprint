@@ -1,6 +1,6 @@
 import { useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from 'react'
 import { EyeOff, Group, Plus } from 'lucide-react'
-import { DashCanvas, cellAt, drawnWidgets, gridLines, hasLabel, layoutRect, pageTree } from '@sprint/dashboard'
+import { DashCanvas, cellAt, drawnWidgets, gridLines, layoutRect, pageTree } from '@sprint/dashboard'
 import type { DashGroupNode, DashLayout, DashNode, DashPage, DashWidget, DashWidgetType, GridSpan, LayoutGrid, PixelRect } from '@sprint/dashboard'
 import type { TelemetryFrame } from '@sprint/types'
 import {
@@ -10,7 +10,6 @@ import {
   previewMoveRect,
   previewResizeRect,
   rectsIntersect,
-  setWidgetLabel,
   swapWidgets,
   widgetFormAt,
   widgetName,
@@ -20,7 +19,6 @@ import {
 import { boundsOf, clickTarget, findNode, hiddenWidgets, nodeRect, parentGroup, selectionWidgets, setNodeRect, translateNodes } from './groupOps'
 import { DashLabels, DashOutline, type CanvasView } from './CanvasViews'
 import { GridGrips, type LineDrag } from './GridGrips'
-import { LabelBar } from './LabelBar'
 import { moveGridLine } from './layoutOps'
 import { nodeName } from './NodeLabel'
 import type { MenuAnchor } from '../shell/Menu'
@@ -393,11 +391,9 @@ export function DesignerCanvas({
           const layer = parentGroup(tree, node.id)?.group.mode === 'oneAtATime'
           const stack = layer || (node.kind === 'group' && node.group.mode === 'oneAtATime')
           const hidden = node.kind === 'group' ? node.group.hidden === true : node.widget.hidden === true
-          // A widget with a label gets the label bar above it, in place of its name.
-          const labelBar = single !== undefined && node.kind === 'widget' && hasLabel(node.widget.type)
           return (
             <div key={node.id} className={`designer-selection${stack ? ' is-stack' : ''}${hidden ? ' is-hidden' : ''}`} style={box(pixels(rect))}>
-              {single && !stack && !labelBar && <span className="designer-widget-tag">{nodeName(node)}</span>}
+              {single && !stack && <span className="designer-widget-tag">{nodeName(node)}</span>}
               {single &&
                 RESIZE_HANDLES.map((handle) => (
                   <span key={`${handle.hx}:${handle.hy}`} className="designer-resize-handle" style={handleStyle(handle)} onPointerDown={(event) => onHandleDown(node, rect, handle, event)} />
@@ -424,16 +420,6 @@ export function DesignerCanvas({
             </div>
           )
         })}
-
-      {!dragging && single?.kind === 'widget' && hasLabel(single.widget.type) && (
-        <LabelBar
-          layout={layout}
-          widget={single.widget}
-          left={pixels(single.widget).left}
-          top={pixels(single.widget).top}
-          onPick={(label) => commit((current) => setWidgetLabel(current, page.id, single.widget.id, label), "The label couldn't be moved.")}
-        />
-      )}
 
       {!dragging && selectedNodes.length > 1 && selectionBounds && (
         <div className="designer-glass designer-selection-bar" style={{ left: pixels(selectionBounds).left, top: pixels(selectionBounds).top }}>

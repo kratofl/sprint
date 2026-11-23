@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { Minus, Plus } from 'lucide-react'
-import type { DashBorder, DashGroupLabel, DashLabelMode } from '@sprint/dashboard'
 import type { GridRect } from '../views/DashesDomain'
 
 /** Small form controls the designer's panels share. */
@@ -87,51 +86,6 @@ export function Segmented<T extends string>({ label, value, options, full = fals
     </div>
   )
 }
-
-/** One choice of more than a segmented control holds, as a drop-down; picking the current one does nothing. */
-export function SelectField<T extends string>({ label, value, options, onChange }: { label: string; value: T; options: ReadonlyArray<{ value: T; label: string }>; onChange: (value: T) => void }) {
-  return (
-    <label className="field">
-      <span>{label}</span>
-      <select
-        value={value}
-        onChange={(event) => {
-          const picked = options.find((option) => option.value === event.target.value)
-          if (picked && picked.value !== value) onChange(picked.value)
-        }}
-      >
-        {options.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </select>
-    </label>
-  )
-}
-
-/** The flat style's edges and labels, as the frame controls offer them. */
-export const BORDER_OPTIONS: ReadonlyArray<{ value: DashBorder; label: string }> = [
-  { value: 'none', label: 'None' },
-  { value: 'thin', label: 'Thin' },
-  { value: 'normal', label: 'Normal' },
-  { value: 'thick', label: 'Thick' },
-]
-/** Where a dash puts its widgets' labels, named as on the canvas's label bar; a band is the dash's alone. */
-export const LABEL_OPTIONS: ReadonlyArray<{ value: DashLabelMode; label: string }> = [
-  { value: 'top', label: 'Center' },
-  { value: 'on', label: 'Top' },
-  { value: 'left', label: 'Left' },
-  { value: 'right', label: 'Right' },
-  { value: 'off', label: 'Off' },
-  { value: 'capsule', label: 'Band' },
-]
-/** How a group frame shows its name. */
-export const GROUP_LABEL_OPTIONS: ReadonlyArray<{ value: DashGroupLabel; label: string }> = [
-  { value: 'off', label: 'Off' },
-  { value: 'on', label: 'Small' },
-  { value: 'capsule', label: 'Capsule' },
-]
 
 /** A free-text value committed on blur or Enter. */
 export function TextConfigField({ label, value, onCommit }: { label: string; value: string; onCommit: (value: string) => void }) {

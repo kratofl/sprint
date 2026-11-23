@@ -4,7 +4,7 @@
 // decided, as `Overlays`.
 
 use crate::alerts::{AlertLimits, DashAlertBanner, FlagBar, alert_limits, pit_limiter_alert_on};
-use crate::chrome::{ChromeContext, WidgetFrame, bare_content, frame_box, group_frame, ink_palette, lit_content, widget_frame};
+use crate::chrome::{ChromeContext, Look, WidgetFrame, bare_content, frame_box, group_frame, ink_palette, lit_content, widget_frame};
 use crate::draw::{Builder, DrawOp, Radii};
 use crate::forms::form_index;
 use crate::grid::{GridSpan, PixelRect, layout_rect, page_has_race_logic_lap_timer, select_page, track_rect};
@@ -52,7 +52,7 @@ struct TileInputs<'a> {
     limits: AlertLimits,
 }
 
-/// One widget's cell: its frame and label in the dash's look, then its values in the
+/// One widget's cell: its frame and label in Sprint's look (either may be off), then its values in the
 /// content box (`WidgetTile`). `lit` fills its box in that colour with every text in the dark ink
 /// whatever its condition (the pit limiter's own widgets).
 fn widget_tile(b: &mut Builder, widget: &DashWidget, rect: PixelRect, inputs: &TileInputs, lit: Option<Rgba>) {
@@ -61,9 +61,7 @@ fn widget_tile(b: &mut Builder, widget: &DashWidget, rect: PixelRect, inputs: &T
     }
     // On a lit box the ink is the pit limiter's, not the theme's background.
     let tile_palette = if lit.is_some() { DashPaletteColors { background: PIT_INK, ..*inputs.palette } } else { *inputs.palette };
-    // The widget's own label spot wins over the dash's.
-    let mut chrome = inputs.chrome;
-    chrome.look.label = widget.label.unwrap_or(chrome.look.label);
+    let chrome = ChromeContext { look: Look { framed: !widget.frame_off, labelled: !widget.label_off }, ..inputs.chrome };
     // Forms are sized at 800x480, like the chrome.
     let reference = (inputs.scene.width / 800.0).min(inputs.scene.height / 480.0).max(f64::EPSILON);
     let form = form_index(&widget.widget_type, rect.width / reference, rect.height / reference);
@@ -192,7 +190,7 @@ pub fn build_display_list(fonts: &Fonts, scene: &Scene, frame: &TelemetryFrame, 
     let background = if focused_lap_timer { Rgba::BLACK } else { palette.background };
     // The chrome is authored at 800x480 whatever the grid.
     let scale = (width / 800.0).min(height / 480.0);
-    let chrome = ChromeContext { scale, look: layout.chrome };
+    let chrome = ChromeContext { scale, look: Look::SPRINT };
     let canvas_color = if scene.transparent || scene.pit_limiter_only { Rgba::TRANSPARENT } else { background };
 
     let mut b = Builder::new(fonts, ops);
@@ -206,14 +204,16 @@ pub fn build_display_list(fonts: &Fonts, scene: &Scene, frame: &TelemetryFrame, 
     // Drawn widgets never overlap (only layers of one stack may, and a stack draws one), so
     // their order never shows. One with no pixels (a span past the grid) is not drawn.
     let drawn: Vec<&DashWidget> = page.map(drawn_widgets).unwrap_or_default().into_iter().filter(|widget| has_area(rect_of(widget))).collect();
-    // A styled group draws its frame round its widgets' cells, and they step inside it.
+    // A framed group draws Sprint's group frame round its widgets' cells, and they step inside it.
     let mut framed_groups: Vec<(&str, PixelRect, f64)> = Vec::new();
     if let Some(page) = page {
         for group in &page.groups {
-            let Some(group_style) = group.style else { continue };
+            if !group.framed {
+                continue;
+            }
             let Some(union) = drawn.iter().filter(|w| w.group.as_deref() == Some(group.id.as_str())).map(|w| rect_of(w)).reduce(union_rect) else { continue };
             let outline = inset_rect(union, 3.0 * scale);
-            group_frame(&mut b, chrome, outline, group_style, &group.name.to_uppercase(), &palette);
+            group_frame(&mut b, chrome, outline, &group.name.to_uppercase(), &palette);
             framed_groups.push((group.id.as_str(), union, 5.0 * scale));
         }
     }
@@ -489,25 +489,43 @@ mod tests {
     }
 
     #[test]
-    fn a_bar_wears_the_dashs_edge_and_none_when_the_dash_has_none() {
-        let edges = |chrome: serde_json::Value| {
-            let mut l = layout(
-                json!([{ "id": "b", "type": "bar", "col": 0, "row": 0, "colSpan": 1, "rowSpan": 12, "config": { "channel": "fuel" }, "style": { "border": "thick" } }]),
-            );
+    fn a_widget_may_go_without_its_frame_and_a_saved_dash_look_is_gone() {
+        let edges = |style: serde_json::Value, chrome: serde_json::Value| {
+            let mut l =
+                layout(json!([{ "id": "b", "type": "bar", "col": 0, "row": 0, "colSpan": 1, "rowSpan": 12, "config": { "channel": "fuel" }, "style": style }]));
             l["chrome"] = chrome;
             ops_for(&scene(l), &TelemetryFrame::default()).iter().filter(|op| matches!(op, DrawOp::Border { .. })).count()
         };
-        assert_eq!((edges(json!({})), edges(json!({ "border": "none" }))), (1, 0), "a widget's saved edge is gone");
+        assert_eq!(edges(json!({}), json!({})), 1);
+        assert_eq!(edges(json!({ "frame": "off" }), json!({})), 0);
+        assert_eq!(edges(json!({ "border": "none" }), json!({ "border": "none" })), 1, "only Sprint's look is drawn");
     }
 
     #[test]
-    fn a_widget_moves_only_its_own_label_and_never_into_a_band() {
+    fn a_widget_may_go_without_its_label_and_nothing_else_moves_it() {
         let titles = |style: serde_json::Value| {
             let s = scene(layout(json!([{ "id": "w", "type": "current_lap", "col": 0, "row": 0, "colSpan": 8, "rowSpan": 4, "style": style }])));
             texts(&ops_for(&s, &TelemetryFrame::default())).iter().filter(|text| *text == "CURRENT").count()
         };
         assert_eq!(titles(json!({})), 1);
         assert_eq!(titles(json!({ "label": "off" })), 0);
-        assert_eq!(titles(json!({ "label": "capsule" })), 1, "a band is the dash's alone: the dash's label stands");
+        assert_eq!(titles(json!({ "label": "left" })), 1);
+        assert_eq!(titles(json!({ "frame": "off" })), 1, "a frameless widget keeps its label");
+    }
+
+    #[test]
+    fn a_framed_group_wears_one_edge_with_its_name_and_an_unframed_one_none() {
+        let groups = |framed: bool| {
+            let mut l = layout(json!([
+                { "id": "a", "type": "current_lap", "col": 0, "row": 0, "colSpan": 4, "rowSpan": 2, "group": "g" },
+                { "id": "b", "type": "current_lap", "col": 4, "row": 0, "colSpan": 4, "rowSpan": 2, "group": "g" }
+            ]));
+            l["pages"][0]["groups"] = json!([{ "id": "g", "name": "Tyres", "mode": "together", "framed": framed }]);
+            let ops = ops_for(&scene(l), &TelemetryFrame::default());
+            let edges = ops.iter().filter(|op| matches!(op, DrawOp::Border { .. })).count();
+            (edges, texts(&ops).contains(&"TYRES".to_owned()))
+        };
+        assert_eq!(groups(false), (2, false));
+        assert_eq!(groups(true), (3, true));
     }
 }

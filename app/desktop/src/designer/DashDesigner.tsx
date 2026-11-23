@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
-import { Gauge, LayoutDashboard, Palette, Redo2, Settings2, Timer, Undo2 } from 'lucide-react'
+import { Gauge, LayoutDashboard, Redo2, Settings2, Timer, Undo2 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { DashColoursContext, DashUnitsContext, resolvePreviewFrame, type DashLayout, type DashPreviewState } from '@sprint/dashboard'
 import type { TelemetryFrame } from '@sprint/types'
@@ -14,9 +14,7 @@ import { LayoutSection } from './LayoutSection'
 import { LapReviewEditor } from './LapReviewEditor'
 import { PitLimiterSection } from './PitLimiterSection'
 import { SettingsSection } from './SettingsSection'
-import { ThemeSection } from './ThemeSection'
 import { isInOverlay, isTypingTarget } from './keys'
-import { shownPage } from './layoutOps'
 import { newModeId } from './pageModes'
 import type { CanvasView } from './CanvasViews'
 import { ViewTools } from './ViewTools'
@@ -26,12 +24,12 @@ import type { ModeActions } from './PageInspector'
 import '../views/DashesView.css'
 import './DashDesigner.css'
 
-type Section = 'layout' | 'review' | 'pitLimiter' | 'theme' | 'settings'
+type Section = 'layout' | 'review' | 'pitLimiter' | 'settings'
 
 /**
  * The toolbar's sections in two tab groups: what the wheel shows (its pages, the lap review, the
- * pit limiter), then how the dash looks and its settings. Icon and text, as Luca asked
- * (docs/design/DESIGN.md has the exception).
+ * pit limiter), then the dash's settings. There is no look to pick: Sprint draws every dash the
+ * same way. Icon and text, as Luca asked (docs/design/DESIGN.md has the exception).
  */
 const SECTION_GROUPS: ReadonlyArray<ReadonlyArray<{ id: Section; label: string; icon: LucideIcon }>> = [
   [
@@ -39,10 +37,7 @@ const SECTION_GROUPS: ReadonlyArray<ReadonlyArray<{ id: Section; label: string; 
     { id: 'review', label: 'Lap review', icon: Timer },
     { id: 'pitLimiter', label: 'Pit limiter', icon: Gauge },
   ],
-  [
-    { id: 'theme', label: 'Theme', icon: Palette },
-    { id: 'settings', label: 'Settings', icon: Settings2 },
-  ],
+  [{ id: 'settings', label: 'Settings', icon: Settings2 }],
 ]
 const SECTIONS = SECTION_GROUPS.flat()
 
@@ -228,8 +223,6 @@ function DesignerWindow({
   const [view, setView] = useState<CanvasView>('outline')
   const [previewState, setPreviewState] = useState<DashPreviewState>('live')
   const [showGrid, setShowGrid] = useState(false)
-  const page = shownPage(layout, chosenPageId)
-  const idle = page !== null && page.id === layout.idlePage?.id
   const [actionError, setActionError] = useState<string | null>(null)
   const tabsId = useId()
   // The host owns the modes; the designer makes a new one's id up so a page can join it at once.
@@ -310,7 +303,6 @@ function DesignerWindow({
           <LapReviewEditor layout={layout} apply={doc.apply} frame={resolvePreviewFrame(previewState, frame)} onOpenDashSettings={() => void bridge.openDashSettings()} />
         )}
         {section === 'pitLimiter' && <PitLimiterSection doc={doc} pageId={chosenPageId} modes={modeActions} onOpenDashSettings={() => void bridge.openDashSettings()} />}
-        {section === 'theme' && <ThemeSection layout={layout} apply={doc.apply} frame={frame} page={page} idle={idle} />}
         {section === 'settings' && (
           <SettingsSection
             layout={layout}

@@ -264,7 +264,7 @@ text-only segments; on desktop the selected segment NEVER has a shadow, border, 
 Switches between 2–6 separate panes of one page. Desktop uses `.tabs`; the web has none yet and
 splits such panes into sidebar destinations. One per page, NEVER inside a card. Renders as
 `role="tablist"` with `role="tabpanel"` panes. One tablist may show its tabs in visual groups
-(the dash designer's [Layout | Lap review | Pit limiter] [Theme | Settings]); arrow keys still
+(the dash designer's [Layout | Lap review | Pit limiter] [Settings]); arrow keys still
 run across all of them.
 
 ### Switch

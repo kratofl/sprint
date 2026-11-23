@@ -1,7 +1,8 @@
 import { Eye, EyeOff, Trash2, X } from 'lucide-react'
-import { widgetForms } from '@sprint/dashboard'
+import { hasFrame, hasLabel, widgetForms } from '@sprint/dashboard'
 import type { DashLayout, DashWidget } from '@sprint/dashboard'
-import { holdsSmallestAt, setWidgetConfig, widgetDefinition, widgetFormAt, widgetName } from '../views/DashesDomain'
+import { Switch } from '../shell/Switch'
+import { holdsSmallestAt, setWidgetConfig, setWidgetLook, widgetDefinition, widgetFormAt, widgetName } from '../views/DashesDomain'
 import { GeometryFields, TextConfigField } from './controls'
 import { deleteNodes, setHidden, setNodeRect } from './groupOps'
 import type { Mutate } from './useDesignerDoc'
@@ -18,9 +19,9 @@ function formsHint(type: string): string | null {
 
 /**
  * The floating inspector beside the dash for the selected widget: its position and size (and the
- * form that size draws), what it shows, Hide and Delete. Its label spot is on the canvas
- * (`LabelBar`); its frame and colours are the dash's (Theme). Every field edits through the same
- * mutators the canvas uses.
+ * form that size draws), whether it wears its frame and its label (Sprint draws both, the same on
+ * every dash; only those the widget has are offered), what it shows, Hide and Delete. Every field
+ * edits through the same mutators the canvas uses.
  */
 export function WidgetInspector({
   layout,
@@ -42,6 +43,9 @@ export function WidgetInspector({
   // A side shrinks only while the widget still holds its smallest form.
   const minColSpan = widget.colSpan > 1 && holdsSmallestAt(layout, widget.type, { ...widget, colSpan: widget.colSpan - 1 }) ? 1 : widget.colSpan
   const minRowSpan = widget.rowSpan > 1 && holdsSmallestAt(layout, widget.type, { ...widget, rowSpan: widget.rowSpan - 1 }) ? 1 : widget.rowSpan
+  const framed = widget.style?.frame !== 'off'
+  const labelled = widget.style?.label !== 'off'
+  const labelHint = !labelled ? 'Off: the value gets its room.' : framed || !hasFrame(widget.type) ? 'Cut into the top edge.' : 'Small, above the value.'
 
   return (
     <aside className="designer-glass designer-inspector" aria-label={`${widgetName(widget)} properties`}>
@@ -63,6 +67,34 @@ export function WidgetInspector({
         />
         {hint && <p className="field-hint">{hint}</p>}
       </div>
+
+      {(hasFrame(widget.type) || hasLabel(widget.type)) && (
+        <div className="designer-group">
+          <h3 className="designer-group-title">Frame and label</h3>
+          {hasFrame(widget.type) && (
+            <div className="designer-switch-row">
+              <span className="designer-switch-text">
+                <span id="widget-frame" className="designer-switch-title">
+                  Frame
+                </span>
+                <span className="muted designer-switch-hint">{framed ? 'An edge round it.' : 'Off: no edge, it sits on the dash.'}</span>
+              </span>
+              <Switch checked={framed} onChange={(on) => apply((current) => setWidgetLook(current, pageId, widget.id, 'frame', on))} stateText={false} aria-labelledby="widget-frame" />
+            </div>
+          )}
+          {hasLabel(widget.type) && (
+            <div className="designer-switch-row">
+              <span className="designer-switch-text">
+                <span id="widget-label" className="designer-switch-title">
+                  Label
+                </span>
+                <span className="muted designer-switch-hint">{labelHint}</span>
+              </span>
+              <Switch checked={labelled} onChange={(on) => apply((current) => setWidgetLook(current, pageId, widget.id, 'label', on))} stateText={false} aria-labelledby="widget-label" />
+            </div>
+          )}
+        </div>
+      )}
 
       {definition && definition.config.length > 0 && (
         <div className="designer-group">

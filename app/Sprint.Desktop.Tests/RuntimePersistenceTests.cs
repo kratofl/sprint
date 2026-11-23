@@ -99,7 +99,7 @@ public sealed class RuntimePersistenceTests
     }
 
     [Fact]
-    public void AnOldDashMovesToTheFlatLookAndEachWidgetKeepsOnlyItsLabelSpot()
+    public void AnOldDashMovesToSprintsOneLookKeepingOnlyWhatWasTurnedOff()
     {
         string dataRoot = TestEnv.NewTempDataRoot();
 
@@ -108,24 +108,35 @@ public sealed class RuntimePersistenceTests
             string file = Path.Combine(dataRoot, "dash-layouts", "old.json");
             Directory.CreateDirectory(Path.GetDirectoryName(file)!);
             File.WriteAllText(file, """
-                {"id":"old","name":"Old","dashStyle":"bars","gridCols":20,"gridRows":12,"pages":[{"id":"main","name":"Main","widgets":[
+                {"id":"old","name":"Old","dashStyle":"bars","chrome":{"radius":10,"border":"thick","label":"capsule"},"gridCols":20,"gridRows":12,"pages":[{"id":"main","name":"Main",
+                  "groups":[
+                    {"id":"framed","name":"Framed","mode":"together","style":{"border":"thin","label":"capsule","align":"center"}},
+                    {"id":"bare","name":"Bare","mode":"together","style":{"border":"none","label":"off"}}],
+                  "widgets":[
                   {"id":"tc","type":"tc","col":0,"row":0,"colSpan":4,"rowSpan":2,"style":{"textColor":"red","labelColor":"muted","border":"thick","label":"left"}},
-                  {"id":"abs","type":"abs","col":4,"row":0,"colSpan":4,"rowSpan":2,"style":{"label":"capsule"}},
-                  {"id":"map","type":"engine_map","col":8,"row":0,"colSpan":4,"rowSpan":2,"style":{"textColor":"ember"}}]}]}
+                  {"id":"abs","type":"abs","col":4,"row":0,"colSpan":4,"rowSpan":2,"style":{"label":"off","frame":"off"}},
+                  {"id":"map","type":"engine_map","col":8,"row":0,"colSpan":4,"rowSpan":2,"style":{"textColor":"ember"},"group":"framed"},
+                  {"id":"bias","type":"brake_bias","col":12,"row":0,"colSpan":4,"rowSpan":2,"group":"bare"}]}]}
                 """);
             DesktopRuntime runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
 
             DashLayout layout = runtime.DashLayouts.Single(item => item.Id == "old");
             Assert.False(layout.ExtensionData?.ContainsKey("dashStyle") == true);
-            Assert.Equal("left", layout.Pages[0].Widgets[0].Style?.Label);
-            Assert.Null(layout.Pages[0].Widgets[1].Style);
+            Assert.False(layout.ExtensionData?.ContainsKey("chrome") == true);
+            // A label spot is Sprint's to place now; a label or frame turned off stays off.
+            Assert.Null(layout.Pages[0].Widgets[0].Style);
+            Assert.Equal((DashLooks.Off, DashLooks.Off), (layout.Pages[0].Widgets[1].Style?.Label, layout.Pages[0].Widgets[1].Style?.Frame));
             Assert.Null(layout.Pages[0].Widgets[2].Style);
+            // A group with any frame of its own wears Sprint's; one without stays bare.
+            Assert.Equal([true, false], layout.Pages[0].Groups.Select(group => group.Framed));
 
             // The file is rewritten without them, so the renderer never sees an old look again.
             string saved = File.ReadAllText(file);
             Assert.DoesNotContain("dashStyle", saved);
+            Assert.DoesNotContain("chrome", saved);
             Assert.DoesNotContain("textColor", saved);
             Assert.DoesNotContain("thick", saved);
+            Assert.DoesNotContain("capsule", saved);
         }
         finally
         {

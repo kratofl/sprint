@@ -1,8 +1,9 @@
 import { Eye, EyeOff, Group, Plus, Star, Trash2, Ungroup, X } from 'lucide-react'
 import { nodeWidgets, shownChild, type DashGroupNode, type DashNode } from '@sprint/dashboard'
-import type { DashGroupMode, DashGroupStyle } from '@sprint/dashboard'
-import { BORDER_OPTIONS, GROUP_LABEL_OPTIONS, GeometryFields, Segmented, blurOnEnter } from './controls'
-import { addLayer, deleteNodes, nodeRect, renameGroup, setGroupMode, setGroupStyle, setHidden, setNodeRect, setShownFirst, takeOutOfGroup } from './groupOps'
+import type { DashGroupMode } from '@sprint/dashboard'
+import { Switch } from '../shell/Switch'
+import { GeometryFields, blurOnEnter } from './controls'
+import { addLayer, deleteNodes, nodeRect, renameGroup, setGroupFramed, setGroupMode, setHidden, setNodeRect, setShownFirst, takeOutOfGroup } from './groupOps'
 import { NodeIcon, nodeName } from './NodeLabel'
 import type { Mutate } from './useDesignerDoc'
 
@@ -13,22 +14,13 @@ const MODES: readonly { mode: DashGroupMode; label: string }[] = [
   { mode: 'oneAtATime', label: 'One at a time' },
 ]
 
-/** A group with no frame of its own yet: no edge, no label, the name at the left. */
-const NO_GROUP_FRAME: DashGroupStyle = { border: 'none', label: 'off', align: 'start' }
-
-const ALIGN_OPTIONS: ReadonlyArray<{ value: 'start' | 'center'; label: string }> = [
-  { value: 'start', label: 'Left' },
-  { value: 'center', label: 'Centre' },
-]
-
 const count = (n: number, one: string, many: string): string => `${n} ${n === 1 ? one : many}`
 
 /**
  * The inspector for a selected group: its place and size (resizing scales its widgets), whether it
  * shows all its children or one at a time, and for one at a time (a widget stack) its layers with
- * the one the wheel shows first, else the widgets in it, each of which can be taken out. Its own
- * frame round its widgets: an edge and its name as a label. Below: its name, ungroup,
- * hide and delete, all as one.
+ * the one the wheel shows first, else the widgets in it, each of which can be taken out. Sprint's
+ * group frame round its widgets, on or off. Below: its name, ungroup, hide and delete, all as one.
  */
 export function GroupInspector({
   pageId,
@@ -50,12 +42,6 @@ export function GroupInspector({
   const rect = nodeRect(node)
   const shown = stack ? shownChild(node) : null
   const hidden = group.hidden === true
-  const frame = group.style ?? NO_GROUP_FRAME
-  const setFrame = (patch: Partial<DashGroupStyle>): void => {
-    const next: DashGroupStyle = { ...frame, ...patch }
-    // No edge and no label is no frame: the group goes back to having none.
-    apply((current) => setGroupStyle(current, pageId, node.id, next.border === 'none' && next.label === 'off' ? null : next))
-  }
 
   return (
     <aside className="designer-glass designer-inspector" aria-label={`${group.name} properties`}>
@@ -103,20 +89,15 @@ export function GroupInspector({
 
       <div className="designer-group">
         <h3 className="designer-group-title">Frame</h3>
-        <div className="field">
-          <span>Edge</span>
-          <Segmented full label="Edge" value={frame.border} options={BORDER_OPTIONS} onChange={(border) => setFrame({ border })} />
+        <div className="designer-switch-row">
+          <span className="designer-switch-text">
+            <span id="group-frame" className="designer-switch-title">
+              Frame round it
+            </span>
+            <span className="muted designer-switch-hint">An edge round its widgets, its name in the top edge.</span>
+          </span>
+          <Switch checked={group.framed === true} onChange={(on) => apply((current) => setGroupFramed(current, pageId, node.id, on))} stateText={false} aria-labelledby="group-frame" />
         </div>
-        <div className="field">
-          <span>Name</span>
-          <Segmented full label="Name" value={frame.label} options={GROUP_LABEL_OPTIONS} onChange={(label) => setFrame({ label })} />
-        </div>
-        {frame.label !== 'off' && (
-          <div className="field">
-            <span>Name at</span>
-            <Segmented full label="Name at" value={frame.align ?? 'start'} options={ALIGN_OPTIONS} onChange={(align) => setFrame({ align })} />
-          </div>
-        )}
       </div>
 
       {!stack && (

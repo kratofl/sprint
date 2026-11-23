@@ -1,7 +1,7 @@
 import type { DashCategoryLists, DashRefitLosses, SprintCommand } from '../bridge'
-import { dashboardWidgetTypes, groupParents, isDashPitLimiterStyle, parseDashChrome, isDashWidgetGroup, isDashWidgetType, mayOverlap, stackLayers } from '@sprint/dashboard'
-import { DEFAULT_DASH_CHROME, DEFAULT_PIT_LIMITER_STYLE, formIndex, holdsSmallest, layoutRect, referenceSize, widgetForms, type WidgetForm } from '@sprint/dashboard'
-import type { DashAlert, DashChrome, DashColorSystem, DashLayout, DashPitLimiter, DashPage, DashTheme, DashWidget, DashWidgetLabel, DashWidgetType, LayoutGrid } from '@sprint/dashboard'
+import { dashboardWidgetTypes, groupParents, isDashPitLimiterStyle, isDashWidgetGroup, isDashWidgetType, mayOverlap, stackLayers } from '@sprint/dashboard'
+import { DEFAULT_PIT_LIMITER_STYLE, formIndex, holdsSmallest, layoutRect, referenceSize, widgetForms, type WidgetForm } from '@sprint/dashboard'
+import type { DashAlert, DashColorSystem, DashLayout, DashPitLimiter, DashPage, DashTheme, DashWidget, DashWidgetStyle, DashWidgetType, LayoutGrid } from '@sprint/dashboard'
 import type { TelemetryFrame } from '@sprint/types'
 
 /**
@@ -107,8 +107,6 @@ export function parseDashLayout(row: Record<string, unknown>): DashLayout | null
     layout.colSizes = colSizes
     layout.rowSizes = rowSizes
   }
-  const chrome = parseDashChrome(row.chrome)
-  if (chrome) layout.chrome = chrome
   if (isRecord(row.theme)) {
     layout.theme = Object.fromEntries(Object.entries(row.theme).filter((entry): entry is [string, string] => typeof entry[1] === 'string'))
   }
@@ -562,14 +560,6 @@ export function renameLayout(layout: DashLayout, name: string): DashLayout | nul
   return next
 }
 
-/** Changes the dash's look (corners, edge, label); null when nothing changes. */
-export function setDashChrome(layout: DashLayout, patch: Partial<DashChrome>): DashLayout | null {
-  const current = layout.chrome ?? DEFAULT_DASH_CHROME
-  const chrome: DashChrome = { ...current, ...patch }
-  if (chrome.radius === current.radius && chrome.border === current.border && chrome.label === current.label) return null
-  return { ...cloneLayout(layout), chrome }
-}
-
 // ── Page widgets ─────────────────────────────────────────────────────────
 
 /**
@@ -755,10 +745,17 @@ export function setWidgetConfig(layout: DashLayout, pageId: string, widgetId: st
   })
 }
 
-/** Moves one widget's label to `label`, or back to the dash's spot (`undefined`). The only look a widget has of its own. */
-export function setWidgetLabel(layout: DashLayout, pageId: string, widgetId: string, label: DashWidgetLabel | undefined): DashLayout | null {
+/**
+ * Turns a widget's label or frame on or off: the only look a widget has of its own (Sprint draws
+ * the rest). On is the default and is not written; null when nothing changes.
+ */
+export function setWidgetLook(layout: DashLayout, pageId: string, widgetId: string, part: keyof DashWidgetStyle, on: boolean): DashLayout | null {
+  if ((findWidget(layout, pageId, widgetId)?.style?.[part] !== 'off') === on) return null
   return withWidget(layout, pageId, widgetId, (widget) => {
-    widget.style = label ? { label } : undefined
+    const style: DashWidgetStyle = { ...widget.style }
+    if (on) delete style[part]
+    else style[part] = 'off'
+    widget.style = Object.keys(style).length > 0 ? style : undefined
   })
 }
 

@@ -27,7 +27,7 @@ import {
   refitLossWarning,
   resolveDashesFilter,
   screenChoices,
-  setWidgetLabel,
+  setWidgetLook,
   swapWidgets,
   type GridRect,
   type ResizeHandle,
@@ -368,11 +368,14 @@ test('two widgets swap places when each fits the other\'s, and not otherwise', (
   assert.ok(swapWidgets(dash, 'page-1', 'tc', 'fuel'), 'any widget may go where a bar was')
 })
 
-test('a widget moves only its own label, and follows the dash again once it has none', () => {
+test('a widget turns its label and frame off and on, and writes nothing while both are on', () => {
   const dash = trackedDash([{ id: 'tc', type: 'tc', col: 1, row: 1, colSpan: 2, rowSpan: 2 }])
-  const moved = setWidgetLabel(dash, 'page-1', 'tc', 'left')
-  assert.deepEqual(moved?.pages[0]?.widgets[0]?.style, { label: 'left' })
-  const back = moved && setWidgetLabel(moved, 'page-1', 'tc', undefined)
+  const bare = setWidgetLook(dash, 'page-1', 'tc', 'frame', false)
+  const quiet = bare && setWidgetLook(bare, 'page-1', 'tc', 'label', false)
+  assert.deepEqual(quiet?.pages[0]?.widgets[0]?.style, { frame: 'off', label: 'off' })
+  assert.equal(quiet && setWidgetLook(quiet, 'page-1', 'tc', 'label', false), null, 'already off')
+  const framed = quiet && setWidgetLook(quiet, 'page-1', 'tc', 'frame', true)
+  const back = framed && setWidgetLook(framed, 'page-1', 'tc', 'label', true)
   assert.equal(back?.pages[0]?.widgets[0]?.style, undefined)
 })
 

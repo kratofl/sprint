@@ -1,5 +1,6 @@
 {
   "unlabelled": ["bar", "brake_temp", "gear", "gear_speed", "rpm_bar", "text", "tyre_avg", "tyre_core_temp", "tyre_pressure", "tyre_temp", "tyre_wear_lap"],
+  "unframed": ["brake_temp", "gear", "gear_speed", "text", "tyre_avg", "tyre_core_temp", "tyre_pressure", "tyre_temp", "tyre_wear_lap"],
   "default": [{ "width": 80, "height": 44 }],
   "types": {
     "tyre": [
