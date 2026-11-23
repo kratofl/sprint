@@ -214,3 +214,169 @@
 .settings-input-narrow {
   width: 96px;
 }
+
+/* ── Colours ──────────────────────────────────────────────────────────────── */
+
+/* The heat scale's dots follow the theme through the --heat-* aliases in styles.css. */
+.settings-colours-dots {
+  display: inline-flex;
+  gap: 3px;
+}
+
+.settings-colours-dot {
+  width: 10px;
+  height: 10px;
+  flex: none;
+  border-radius: 50%;
+}
+
+.settings-colours-dot.cold { background: var(--heat-cold); }
+.settings-colours-dot.ok { background: var(--heat-good); }
+.settings-colours-dot.warm { background: var(--heat-warm); }
+.settings-colours-dot.hot { background: var(--heat-hot); }
+
+.settings-colours-theme-detail {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* The wheel and the pit wall side by side under the theme row, captions under each. */
+.settings-colours-preview {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 16px;
+  align-items: end;
+  padding: 12px 16px 16px;
+  border-top: 1px solid var(--divider);
+}
+
+.settings-colours-preview figure {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  margin: 0;
+}
+
+.settings-colours-preview figcaption {
+  color: var(--label-secondary);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.settings-colours-tyres {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  height: 192px;
+}
+
+.settings-colours-mark {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.settings-colours-mark .designer-numberbox {
+  width: 108px;
+}
+
+/* ── A group's own page ───────────────────────────────────────────────────── */
+
+/* A row that opens a group's page (SettingsLayout.tsx `OpenRow`): a list row as a button. */
+.settings-open-row {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+}
+
+.settings-open-row:hover {
+  background: var(--subtle-hover);
+}
+
+.settings-open-row:first-child {
+  border-top-left-radius: var(--radius-card);
+  border-top-right-radius: var(--radius-card);
+}
+
+.settings-open-row:last-child {
+  border-bottom-left-radius: var(--radius-card);
+  border-bottom-right-radius: var(--radius-card);
+}
+
+.settings-open-value {
+  flex: none;
+  color: var(--label-secondary);
+}
+
+.settings-open-chevron {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  color: var(--label-tertiary);
+}
+
+/* "‹ All settings" over the group's name, as a session page's "‹ All sessions". */
+.settings-sub-head {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+
+.settings-back {
+  margin-left: -8px;
+}
+
+.settings-sub-title {
+  margin: 0;
+  font: 600 20px/28px var(--font-display);
+}
+
+/* ── Updates: the check button ────────────────────────────────────────────── */
+
+/* While Sprint checks, the download's ring stands empty around the button (fading in and out)
+   and the icon turns once: a finite animation, set off by the check, never a loop. */
+.settings-check {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  flex: none;
+}
+
+.settings-check > * {
+  grid-area: 1 / 1;
+}
+
+.settings-check .progress-ring-gauge {
+  opacity: 0;
+  transition: opacity 200ms ease-out;
+}
+
+.settings-check.checking .progress-ring-gauge {
+  opacity: 1;
+}
+
+.settings-check.checking .icon-button svg {
+  animation: settings-check-turn 600ms ease-out;
+}
+
+@keyframes settings-check-turn {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .settings-check .progress-ring-gauge {
+    transition: none;
+  }
+
+  .settings-check.checking .icon-button svg {
+    animation: none;
+  }
+}

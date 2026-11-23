@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Sprint.Desktop;
 using Sprint.Desktop.Core;
 using Sprint.Desktop.Features.Analysis;
@@ -121,6 +122,89 @@ public sealed class RuntimeCoordinatorTests
             Assert.Equal(UnitSystem.Imperial, runtime.Settings.Units);
             Assert.True(coordinator.Execute(Command("""{"type":"settings.reset"}"""), out error), error);
             Assert.Equal(UnitSystem.Metric, new DesktopRuntime(dataRoot, PresetRoot).Settings.Units);
+        }
+        finally
+        {
+            Cleanup(dataRoot);
+        }
+    }
+
+    [Fact]
+    public void SettingsColours_ChangeTheThemeAndLimitsAndPersist()
+    {
+        RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
+        try
+        {
+            Assert.Equal(ColourTheme.Sprint, runtime.Settings.Colours.Theme);
+
+            Assert.True(coordinator.Execute(Command("""{"type":"settings.colours","theme":"Calm","brakeHotAbove":850}"""), out string error), error);
+
+            ColourSettings reloaded = new DesktopRuntime(dataRoot, PresetRoot).Settings.Colours;
+            Assert.Equal(ColourTheme.Calm, reloaded.Theme);
+            Assert.Equal(850, reloaded.Limits.BrakeHotAbove);
+            Assert.Equal(650, reloaded.Limits.BrakeWarmAbove);
+        }
+        finally
+        {
+            Cleanup(dataRoot);
+        }
+    }
+
+    [Theory]
+    [InlineData("""{"type":"settings.colours","theme":"1"}""", "theme must be Sprint, Calm or Strict")]
+    [InlineData("""{"type":"settings.colours","theme":"calm"}""", "theme must be Sprint, Calm or Strict")]
+    [InlineData("""{"type":"settings.colours","wearLowBelow":120}""", "wearLowBelow must be a whole number from 5 to 95")]
+    [InlineData("""{"type":"settings.colours","brakeWarmAbove":900}""", "brakeHotAbove must be over brakeWarmAbove")]
+    [InlineData("""{"type":"settings.colours","energyCriticalBelow":50}""", "energyCriticalBelow must be under energyLowBelow")]
+    [InlineData("""{"type":"settings.colours"}""", "no colour settings were provided")]
+    public void SettingsColours_RefuseUnknownThemesAndLimitsOutOfRangeOrOrder(string json, string expected)
+    {
+        RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
+        try
+        {
+            Assert.False(coordinator.Execute(Command(json), out string error));
+            Assert.Equal(expected, error);
+            Assert.Equal(new ColourSettings(), runtime.Settings.Colours);
+        }
+        finally
+        {
+            Cleanup(dataRoot);
+        }
+    }
+
+    [Fact]
+    public void SettingsColours_HandEditedLimitsOutOfOrderLoadAsTheDefaults()
+    {
+        RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
+        try
+        {
+            runtime.Settings.Colours = new ColourSettings { Theme = ColourTheme.Strict, Limits = new ColourLimits { TyreWarmAbove = 30, TyreHotAbove = 20 } };
+            runtime.SaveSettings();
+
+            ColourSettings reloaded = new DesktopRuntime(dataRoot, PresetRoot).Settings.Colours;
+            Assert.Equal(ColourTheme.Strict, reloaded.Theme);
+            Assert.Equal(new ColourLimits(), reloaded.Limits);
+        }
+        finally
+        {
+            Cleanup(dataRoot);
+        }
+    }
+
+    [Fact]
+    public void SettingsColours_AHandEditedThemeNumberOrMissingLimitsLoadAsTheDefaults()
+    {
+        RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
+        try
+        {
+            runtime.SaveSettings();
+            string path = Path.Combine(dataRoot, "settings.json");
+            JsonNode settings = JsonNode.Parse(File.ReadAllText(path)) ?? throw new InvalidOperationException("settings.json is empty");
+            settings["colours"] = JsonNode.Parse("""{"theme":7,"limits":null}""");
+            File.WriteAllText(path, settings.ToJsonString());
+
+            ColourSettings reloaded = new DesktopRuntime(dataRoot, PresetRoot).Settings.Colours;
+            Assert.Equal(new ColourSettings(), reloaded);
         }
         finally
         {

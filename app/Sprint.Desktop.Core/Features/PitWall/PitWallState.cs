@@ -127,7 +127,10 @@ public sealed record PitWallCar
     public double Z { get; init; }
 }
 
-/// <summary>One tyre corner: surface temperatures inner/middle/outer, core and brake in °C.</summary>
+/// <summary>
+/// One tyre corner: surface temperatures inner/middle/outer, core and brake in °C, and the
+/// compound's ideal (0 when the game names none), which the pit wall colours the tyre against.
+/// </summary>
 public sealed record PitWallTyre
 {
     public TirePosition Position { get; init; }
@@ -147,6 +150,8 @@ public sealed record PitWallTyre
     public double WearPercent { get; init; }
 
     public string Compound { get; init; } = "";
+
+    public double OptimalTemp { get; init; }
 }
 
 /// <summary>The last impact: when (session seconds), how hard, and on which lap when the driver's desktop saw it happen.</summary>

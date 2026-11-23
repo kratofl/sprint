@@ -1,9 +1,8 @@
 import { useState } from 'react'
-import { Check } from 'lucide-react'
-import { DashCanvas, DEFAULT_DASH_CHROME, dashPreviewStates, dashThemePresets, matchLayoutThemeName, resolveDashPalette, resolvePreviewFrame } from '@sprint/dashboard'
-import type { DashColorSystem, DashLayout, DashPage, DashPreviewState } from '@sprint/dashboard'
+import { DashCanvas, DEFAULT_DASH_CHROME, dashPreviewStates, resolvePreviewFrame } from '@sprint/dashboard'
+import type { DashLayout, DashPage, DashPreviewState } from '@sprint/dashboard'
 import type { TelemetryFrame } from '@sprint/types'
-import { applyThemePreset, setDashChrome } from '../views/DashesDomain'
+import { setDashChrome } from '../views/DashesDomain'
 import { BORDER_OPTIONS, LABEL_OPTIONS, Segmented, SelectField } from './controls'
 import { BEZEL, useStageCanvas } from './useStageCanvas'
 import type { Mutate } from './useDesignerDoc'
@@ -18,18 +17,11 @@ const CORNER_OPTIONS: ReadonlyArray<{ value: string; label: string }> = [
   { value: '10', label: 'Rounder' },
 ]
 
-// Each preset's two dots: its focal and its comparison colour, as the dash resolves them.
-const PRESETS = dashThemePresets.map((preset) => {
-  const colorSystem: DashColorSystem = preset.name === 'Graphite' ? 'functional' : 'styled'
-  const palette = resolveDashPalette(preset.theme, colorSystem)
-  return { preset, colorSystem, dots: [palette.primary, palette.accent] }
-})
-
 /**
- * Theme: the dash's one look (its corners, edges and where labels sit) and the colour presets on
- * the left, the live dash in the middle, and on the right what the dash shows meanwhile — live
- * or a sample situation — so each colour can be checked in each one. A click applies; undo
- * takes it back.
+ * Theme: the dash's one look (its corners, edges and where labels sit) on the left, the live dash
+ * in the middle, and on the right what the dash shows meanwhile — live or a sample situation — so
+ * the look can be checked in each one. A click applies; undo takes it back. Colours are not the
+ * dash's own: every dash, the pit wall and Analysis share the driver's Settings › Colours.
  */
 export function ThemeSection({
   layout,
@@ -47,7 +39,6 @@ export function ThemeSection({
   const [previewState, setPreviewState] = useState<DashPreviewState>('live')
   const { setFitElement, canvas } = useStageCanvas(layout)
   const chrome = layout.chrome ?? DEFAULT_DASH_CHROME
-  const activePreset = matchLayoutThemeName(layout)
 
   return (
     <>
@@ -70,34 +61,8 @@ export function ThemeSection({
               <p className="field-hint">For every widget. A widget can only move its own label; a group can wear its own frame.</p>
             </div>
 
-          <div className="designer-group">
-            <h3 className="designer-group-title">Colours</h3>
-            <div className="theme-presets" role="radiogroup" aria-label="Colours">
-              {PRESETS.map(({ preset, colorSystem, dots }) => {
-                const selected = preset.name === activePreset
-                return (
-                  <button
-                    key={preset.name}
-                    type="button"
-                    role="radio"
-                    aria-checked={selected}
-                    className="theme-preset"
-                    onClick={() => apply((current) => (selected ? null : applyThemePreset(current, preset.theme, colorSystem)))}
-                  >
-                    <span className="theme-dots" aria-hidden="true">
-                      {dots.map((color, index) => (
-                        <span key={index} className="theme-dot" style={{ background: color }} />
-                      ))}
-                    </span>
-                    <span className="designer-row-label">{preset.name}</span>
-                    {selected && <Check size={14} className="theme-check" aria-hidden="true" />}
-                  </button>
-                )
-              })}
-            </div>
-          </div>
         </div>
-        <p className="field-hint designer-sidebar-foot">Colours follow what they mean: each knob its own, purple best, amber when fuel runs low.</p>
+        <p className="field-hint designer-sidebar-foot">Colours are the same on every dash: set them in Settings › Colours.</p>
       </aside>
 
       <div ref={setFitElement} className="designer-fit">

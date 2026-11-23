@@ -87,13 +87,13 @@ export interface DashAlert {
  */
 export interface DashLayout { id: string; name: string; category?: string; mode: string; colorSystem?: DashColorSystem; chrome?: DashChrome; colSizes?: number[]; rowSizes?: number[]; screenProfile?: string; gridCols: number; gridRows: number; pages: DashPage[]; idlePage?: DashPage | null; alerts: DashAlert[]; theme?: DashTheme; alertConfig?: Record<string, unknown>; lapReview?: DashLapReview; pitLimiter?: DashPitLimiter }
 
-export { DashCanvas, DashUnitsContext, type DashCanvasProps } from './DashCanvas'
+export { DashCanvas, DashColoursContext, DashUnitsContext, type DashCanvasProps } from './DashCanvas'
 export { dashboardWidgetTypes, isDashWidgetType, type DashWidgetType } from './widgetTypes'
 // Palette and alert looks are part of the package's public contract: the desktop editor picks
 // colours and alert looks from these same lists, so a consumer never keeps its own copy in step.
 export {
-  resolveDashPalette, dashThemePresets, dashSettingColors,
-  matchLayoutThemeName, type DashPaletteColors, type DashThemePreset,
+  themedPalette, dashSettingColors, colourThemes, defaultDashColours,
+  type ColourTheme, type DashColours, type DashColourLimits, type DashPaletteColors,
 } from './palette'
 export {
   dashAlertTypes, isDashAlertType, dashAlertDefaults, dashAlertFromSettings, previewAlertBanner, alertColorSwatch, maxAlertSeconds,

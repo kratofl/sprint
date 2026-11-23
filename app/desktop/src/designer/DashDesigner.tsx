@@ -2,7 +2,7 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { Gauge, LayoutDashboard, Palette, Redo2, Settings2, Timer, Undo2 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
-import { DashUnitsContext, resolvePreviewFrame, type DashLayout, type DashPreviewState } from '@sprint/dashboard'
+import { DashColoursContext, DashUnitsContext, resolvePreviewFrame, type DashLayout, type DashPreviewState } from '@sprint/dashboard'
 import type { TelemetryFrame } from '@sprint/types'
 import { bridge, type DashCategoryLists, type DashMode, type SprintCommand, type SprintState } from '../bridge'
 import { buildDashCreate, buildDashDelete, buildDashReset, buildDashSetCategory, buildDashSetScreenProfile, layoutScreenProfile, parseDashLayouts, screenChoices, type ScreenChoice } from '../views/DashesDomain'
@@ -167,9 +167,11 @@ export function DashDesigner({ dashId: openedDashId }: { dashId: string }) {
       }),
   }
 
-  // The designer's dash pictures print in the driver's units, as the wheel does.
+  // The designer's dash pictures print in the driver's units and colours, as the wheel does.
+  const settings = parseSettings(sprint.settings)
   return (
-    <DashUnitsContext value={parseSettings(sprint.settings).units}>
+    <DashUnitsContext value={settings.units}>
+      <DashColoursContext value={settings.colours}>
       <DesignerWindow
         key={host.id}
         host={host}
@@ -182,6 +184,7 @@ export function DashDesigner({ dashId: openedDashId }: { dashId: string }) {
         send={send}
         duplicate={duplicate}
       />
+      </DashColoursContext>
     </DashUnitsContext>
   )
 }

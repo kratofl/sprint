@@ -1,7 +1,9 @@
-import { useId } from 'react'
+import { useContext, useId } from 'react'
+import { DashColoursContext } from '@sprint/dashboard'
 import type { LinkSample } from '../../bridge'
 import type { CarDamage, PitWall, TyreCorner } from '../pitWallData'
-import { brakeHeat, damageRows, dentOf, DENT_ZONES, pressureRange, PRESSURE_TARGET, ticksIn, tyreHeat, worstZone, type DentZone } from '../carDomain'
+import { brakeHeat, tyreHeat } from '../../colours'
+import { damageRows, dentOf, DENT_ZONES, pressureRange, PRESSURE_TARGET, ticksIn, worstZone, type DentZone } from '../carDomain'
 import { carAlongside } from '../stack'
 import { carNumber, playerOf } from '../timing'
 import { TileEmpty, TileFrame, type FrameProps, type TileData } from '../tileFrame'
@@ -14,9 +16,12 @@ const CORNER_NAME: Record<TyreCorner['position'], string> = { FrontLeft: 'FL', F
 /**
  * One tyre drawn (ported from `corner2` in .dev/mockups/_pitwall3.py): the surface outer, middle
  * and inner across the tread (outer on the car's outside), the core in the middle, the brake
- * inboard, tread and pressure outboard, a tread bar under it.
+ * inboard, tread and pressure outboard, a tread bar under it. Coloured by the app-wide Colours
+ * setting, against the compound's ideal; Settings › Colours previews it too.
  */
-function TyreDrawing({ tyre }: { tyre: TyreCorner }) {
+export function TyreDrawing({ tyre }: { tyre: TyreCorner }) {
+  const { limits } = useContext(DashColoursContext)
+  const heat = (celsius: number) => tyreHeat(celsius, tyre.optimalTemp, limits)
   const left = tyre.position === 'FrontLeft' || tyre.position === 'RearLeft'
   const bands = left
     ? [{ label: 'O', value: tyre.outer }, { label: 'M', value: tyre.middle }, { label: 'I', value: tyre.inner }]
@@ -36,7 +41,7 @@ function TyreDrawing({ tyre }: { tyre: TyreCorner }) {
         </clipPath>
         <g clipPath={`url(#${clip})`}>
           {bands.map((band, index) => (
-            <rect key={band.label} x={tx + index * 20} y={22} width={20} height={116} className={`pw-band ${tyreHeat(band.value)}`} />
+            <rect key={band.label} x={tx + index * 20} y={22} width={20} height={116} className={`pw-band ${heat(band.value)}`} />
           ))}
           <path d={`M${tx},70 h60 M${tx},100 h60`} className="pw-groove" />
         </g>
@@ -51,14 +56,14 @@ function TyreDrawing({ tyre }: { tyre: TyreCorner }) {
           </g>
         ))}
         <rect x={tx} y={22} width={60} height={116} rx={12} className="pw-t-out" />
-        <rect x={tx + 12} y={64} width={36} height={34} rx={8} className={`pw-t-core ${tyreHeat(tyre.core)}`} />
+        <rect x={tx + 12} y={64} width={36} height={34} rx={8} className={`pw-t-core ${heat(tyre.core)}`} />
         <text x={tx + 30} y={80} className="pw-t-core-val">
           {Math.round(tyre.core)}°
         </text>
         <text x={tx + 30} y={92} className="pw-t-small">
           core
         </text>
-        <rect x={bx} y={48} width={8} height={64} rx={3} className={`pw-t-brake ${brakeHeat(tyre.brake)}`} />
+        <rect x={bx} y={48} width={8} height={64} rx={3} className={`pw-t-brake ${brakeHeat(tyre.brake, limits)}`} />
         <text x={bx + 4} y={128} className="pw-t-val">
           {Math.round(tyre.brake)}°
         </text>

@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useContext, useEffect, useMemo, useRef, useState } from 'react'
+import { DashColoursContext } from '@sprint/dashboard'
 import { Check, ChevronDown, ChevronLeft, Crosshair, GitCompareArrows, Maximize2, MoreHorizontal, Plus, X } from 'lucide-react'
 import type { SprintCommand } from '../bridge'
-import { tyreHeat } from '../pitwall/carDomain'
+import { tyreHeat } from '../colours'
 import { CarSvg } from '../pitwall/tiles/CarSvg'
 import { CORNER_NAMES, carHere } from './AnalysisCar'
 import type { CornerHere } from './AnalysisCar'
@@ -559,8 +560,12 @@ function TrackMapCard({
 // The car drawing's own units (`CarSvg`, 200 wide): each tyre drawn large beside its corner.
 const TYRE = { width: 68, height: 96, band: 20, gap: 2, left: -62, right: 194, front: 44, rear: 288 }
 
-/** A tyre across its tread in the pit wall's heat colours, the inner side facing the car; under it, what stands out about the wheel. */
+/**
+ * A tyre across its tread in the pit wall's heat colours, the inner side facing the car; under it,
+ * what stands out about the wheel. A lap keeps no compound ideal, so the bands use the fallback one.
+ */
 function TyreBands({ corner }: { corner: CornerHere }) {
+  const { limits } = useContext(DashColoursContext)
   const left = corner.corner.endsWith('L')
   const x = left ? TYRE.left : TYRE.right
   const y = corner.corner.startsWith('F') ? TYRE.front : TYRE.rear
@@ -576,7 +581,7 @@ function TyreBands({ corner }: { corner: CornerHere }) {
           width={TYRE.band}
           height={TYRE.height}
           rx={index === 1 ? 0 : 7}
-          className={celsius === null ? 'analysis-heat none' : `analysis-heat ${tyreHeat(celsius)}`}
+          className={celsius === null ? 'analysis-heat none' : `analysis-heat ${tyreHeat(celsius, 0, limits)}`}
         />
       ))}
       {corner.state && (

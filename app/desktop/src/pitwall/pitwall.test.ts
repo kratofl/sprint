@@ -9,7 +9,7 @@ import { pickLayer, shownLayer, startStack, stepStack } from './stack'
 import { carNumber, gapCell, lapClock, placesGained, relativeRows, sectorMarks, sectorStarts, timingSummary } from './timing'
 import { fullStintLaps, planStints, range, stintRows, strategy } from './fuel'
 import type { RaceFuelEstimate } from '../bridge'
-import { damageRows, liveDelta, pressureRange, tyreHeat, worstZone } from './carDomain'
+import { damageRows, liveDelta, pressureRange, worstZone } from './carDomain'
 import { feedLine, flagState, outCell, stoppedCars, stoppedSummary } from './raceControl'
 import { rejoin, trafficText } from './pitStop'
 import { openable, ownWindows, stepTarget, targetText } from './radio'
@@ -262,8 +262,7 @@ test('stints are the planner’s, laid over the race’s laps', () => {
   assert.deepEqual(reserveStop?.map((stint) => [stint.firstLap, stint.lastLap]), [[1, 20], [21, 39], [40, 40]])
 })
 
-test('tyre heat, damage words and the pressure range', () => {
-  assert.deepEqual([70, 85, 95, 101].map(tyreHeat), ['cold', 'ok', 'warm', 'hot'])
+test('damage words and the pressure range', () => {
   const damage = { dents: [0, 1, 2, 0, 0, 0, 0, 1], lastImpact: null, overheating: true, detachedParts: false }
   assert.deepEqual(damageRows(damage).map((row) => `${row.label}: ${row.word}`), ['Front bodywork: Heavy damage', 'Left side: Light damage', 'Right side: OK', 'Rear bodywork: OK', 'Parts: All on', 'Engine: Overheating'])
   assert.equal(worstZone(damage), 'frontRight')

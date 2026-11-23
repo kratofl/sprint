@@ -15,6 +15,7 @@ use serde_json::{Map, Value};
 
 use crate::format::Units;
 use crate::lap_summary::{LapReview, LapReviewField};
+use crate::palette::Colours;
 use crate::pit_limiter::{PitLimiter, PitLimiterStyle};
 
 /// A frame's edge weight (mockup v2), in pixels at 800x480.
@@ -229,6 +230,8 @@ pub struct DashSettings {
     pub utc_offset_minutes: Option<f64>,
     /// What speeds, temperatures, pressures and fuel print in (the app-wide Units setting).
     pub units: Units,
+    /// What colours mean and where values change colour (the app-wide Colours setting).
+    pub colours: Colours,
 }
 
 /// What the driver planned to be aiming at (`DashTargets` in bindings.ts). `None` is "no plan",
@@ -304,6 +307,7 @@ pub fn parse_scene(json: &[u8]) -> Result<Scene, String> {
             driver_number: string_field(raw, "driverNumber"),
             utc_offset_minutes: raw.get("utcOffsetMinutes").and_then(Value::as_f64),
             units: Units::parse(raw.get("units").and_then(Value::as_str)),
+            colours: Colours::parse(raw.get("colours")),
         }),
         targets: root.get("targets").and_then(Value::as_object).map(|raw| DashTargets {
             lap_time_seconds: raw.get("lapTimeSeconds").and_then(Value::as_f64),

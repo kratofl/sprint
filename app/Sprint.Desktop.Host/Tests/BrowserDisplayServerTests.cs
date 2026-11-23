@@ -250,7 +250,7 @@ public sealed class BrowserDisplayServerTests
     };
 
     private static DashSceneInputs Scenes(params DashLayout[] layouts) =>
-        new(layouts, DriverCar.None, "Driver", "22", UnitSystem.Metric, DashTargets.None, AppDashAlerts.Default);
+        new(layouts, DriverCar.None, "Driver", "22", UnitSystem.Metric, new ColourSettings(), DashTargets.None, AppDashAlerts.Default);
 
     private static int FreePort()
     {

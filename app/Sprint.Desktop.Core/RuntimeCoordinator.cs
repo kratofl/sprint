@@ -115,6 +115,7 @@ public sealed class RuntimeCoordinator
             case "settings.save": this._runtime.SaveSettings(); return true;
             case "settings.reset": this._runtime.ResetSettingsToDefaults(); return true;
             case "settings.update": return this.UpdateSettings(command, out error);
+            case "settings.colours": return this.UpdateColours(command, out error);
             case "cloud.configure": return this.ConfigureCloud(command, out error);
             case "firstRun.complete": return this.CompleteFirstRun(command, out error);
             case "game.setFolder": return this.SetGameFolder(command, out error);
@@ -952,6 +953,71 @@ public sealed class RuntimeCoordinator
     private static bool IsHexColor(string value) =>
         value.Length == 7 && value[0] == '#' && value.Skip(1).All(Uri.IsHexDigit);
 
+    /// <summary>
+    /// The app-wide colours: <c>theme</c> by name and any colour limits by their wire names
+    /// (<see cref="ColourLimits.Fields"/>), checked whole so the marks stay in order.
+    /// </summary>
+    private bool UpdateColours(JsonElement command, out string error)
+    {
+        error = "";
+        ColourTheme? theme = null;
+        if (command.TryGetProperty("theme", out _))
+        {
+            // By name only: Enum.TryParse would also take "1".
+            if (!TryString(command, "theme", out string themeName) || !Enum.TryParse(themeName, ignoreCase: false, out ColourTheme parsed) || Enum.GetName(parsed) != themeName)
+            {
+                error = "theme must be Sprint, Calm or Strict";
+                return false;
+            }
+
+            theme = parsed;
+        }
+
+        List<(string Name, int Value)> changes = [];
+        foreach (ColourLimitField field in ColourLimits.Fields)
+        {
+            if (!command.TryGetProperty(field.Name, out _))
+            {
+                continue;
+            }
+
+            if (!TryInt(command, field.Name, out int value))
+            {
+                error = $"{field.Name} must be a whole number from {field.Min} to {field.Max}";
+                return false;
+            }
+
+            changes.Add((field.Name, value));
+        }
+
+        if (theme is null && changes.Count == 0)
+        {
+            error = "no colour settings were provided";
+            return false;
+        }
+
+        lock (this._runtime.SettingsGate)
+        {
+            ColourSettings current = this._runtime.Settings.Colours;
+            ColourLimits limits = current.Limits;
+            foreach ((string name, int value) in changes)
+            {
+                limits = limits.With(name, value);
+            }
+
+            if (ColourLimits.Problem(limits) is { } problem)
+            {
+                error = problem;
+                return false;
+            }
+
+            this._runtime.Settings.Colours = current with { Theme = theme ?? current.Theme, Limits = limits };
+            this._runtime.SaveSettings();
+        }
+
+        return true;
+    }
+
     // ── Dash alerts (app-wide, every dash) ─────────────────────────────────
 
     /// <summary>
@@ -963,6 +1029,7 @@ public sealed class RuntimeCoordinator
     /// its range and an <see cref="DashAlertTypes.Ordered"/> pair never out of order. Everything is
     /// checked before anything is written. The screens take the change on their next reconcile tick.
     /// </summary>
+
     private bool UpdateDashAlert(JsonElement command, out string error)
     {
         error = "";

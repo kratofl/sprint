@@ -1,14 +1,7 @@
 import type { CarDamage, PitWallTrace, TyrePressures } from './pitWallData'
 
-// The car, worked out for the tyre, pressure, damage and traces tiles. Pure.
-
-export type Heat = 'cold' | 'ok' | 'warm' | 'hot'
-
-/** A tyre surface or core temperature (°C) in the four bands the tyre drawing colours. */
-export const tyreHeat = (celsius: number): Heat => (celsius < 80 ? 'cold' : celsius < 93 ? 'ok' : celsius < 99 ? 'warm' : 'hot')
-
-/** A brake disc temperature (°C): cold, in its window, or hot. */
-export const brakeHeat = (celsius: number): Exclude<Heat, 'warm'> => (celsius < 350 ? 'cold' : celsius < 720 ? 'ok' : 'hot')
+// The car, worked out for the tyre, pressure, damage and traces tiles. Pure. Tyre and brake
+// colours come from the app-wide Colours setting (`colours.ts`).
 
 /** The band the pressure chart shades as the target, kPa. */
 export const PRESSURE_TARGET = { low: 168, high: 172 } as const

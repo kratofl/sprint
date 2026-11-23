@@ -1,4 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { DashColoursContext, defaultDashColours } from '@sprint/dashboard'
+import { useColourTheme } from '../shell/useColourTheme'
+import { parseSettings } from '../views/SettingsDomain'
 import { bridge, type LiveLink, type SprintCommand, type SprintState } from '../bridge'
 import { ConfirmDialog } from '../shell/ContentDialog'
 import { addPage, deletePage, duplicatePage, findTile, nextPageName, overDraft, renamePage, setDetached, shownPage } from './layoutOps'
@@ -48,6 +51,10 @@ export function PitWallRoot({ route }: { route: PitWallRoute }) {
     return bridge.subscribe(setSprint)
   }, [])
 
+  // The tyres colour by the driver's Colours setting: limits from the context, theme on <html>.
+  const colours = sprint ? parseSettings(sprint.settings).colours : defaultDashColours
+  useColourTheme(colours.theme)
+
   const hostLayout = sprint?.pitWallLayout ?? null
   useEffect(() => {
     if (!pending) return
@@ -88,14 +95,17 @@ export function PitWallRoot({ route }: { route: PitWallRoute }) {
   if (!sprint || !layout) return <div className="pw-root" />
   // Windows a tile opens or puts back save at once, from any window, like a page's ↗.
   const data = tileData(sprint.link, { send, layout, place: (target, out) => void change((latestLayout) => setDetached(latestLayout, target, out)) })
-  switch (route.kind) {
-    case 'main':
-      return <MainWall layout={layout} link={sprint.link} data={data} save={save} change={change} error={error} onDismissError={() => setError(null)} />
-    case 'page':
-      return <PageWindow layout={layout} pageId={route.id} link={sprint.link} data={data} save={save} change={change} />
-    case 'tile':
-      return <TileWindow layout={layout} tileId={route.id} link={sprint.link} data={data} save={save} change={change} />
-  }
+  return (
+    <DashColoursContext value={colours}>
+      {route.kind === 'main' ? (
+        <MainWall layout={layout} link={sprint.link} data={data} save={save} change={change} error={error} onDismissError={() => setError(null)} />
+      ) : route.kind === 'page' ? (
+        <PageWindow layout={layout} pageId={route.id} link={sprint.link} data={data} save={save} change={change} />
+      ) : (
+        <TileWindow layout={layout} tileId={route.id} link={sprint.link} data={data} save={save} change={change} />
+      )}
+    </DashColoursContext>
+  )
 }
 
 const tileName = (layout: PitWallLayout, tileId: string): string | null => {
