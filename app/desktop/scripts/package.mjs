@@ -65,7 +65,8 @@ const built = await build({
     extraMetadata: { version },
     directories: { output: outDir },
     // Vite bundles the renderer and tsc the main process; node_modules only adds main's
-    // runtime dependencies (electron-updater).
+    // runtime dependencies (electron-updater). Anything the renderer imports is a
+    // devDependency: as a dependency it ships a second time, whole package folder and all.
     files: ['dist/**', 'dist-electron/**', 'package.json'],
     asar: true,
     // The published host is a native binary; asar would make it unexecutable.
@@ -73,13 +74,15 @@ const built = await build({
     // Nothing native to rebuild against Electron's headers.
     npmRebuild: false,
     win: { target: 'nsis', icon: 'resources/icon.ico' },
-    // One click, per user, no admin prompt: installs to %LocalAppData%\Programs\Sprint.
-    // Sprint's data lives elsewhere (%AppData%\Sprint) and survives an uninstall.
+    // One click, per user, no admin prompt: installs to %LocalAppData%\Programs\@sprintdesktop
+    // (named after the package). Sprint's data lives elsewhere (%AppData%\Sprint) and survives
+    // an uninstall.
     nsis: {
       oneClick: true,
       perMachine: false,
       artifactName: 'sprint-${version}-setup.${ext}',
       shortcutName: 'Sprint',
+      include: 'resources/installer.nsh',
     },
     linux: { target: 'tar.gz', icon: 'resources/icon.png', artifactName: 'sprint-${version}-linux-${arch}.${ext}' },
     // The .icns comes from scripts/icons/make-mac-icon.mjs.
@@ -88,5 +91,13 @@ const built = await build({
     publish: { provider: 'github', owner: 'kratofl', repo: 'sprint' },
   },
 })
+
+// Files outside the asar are what an update has to move one by one, and a deep package folder
+// there breaks the next update (resources/installer.nsh). Nothing Sprint ships needs one.
+const unpacked = join(outDir, 'win-unpacked', 'resources', 'app.asar.unpacked')
+if (await exists(unpacked)) {
+  console.error(`${unpacked} exists: a dependency with native files is shipping outside the asar. Make it a devDependency if the renderer bundles it.`)
+  process.exit(1)
+}
 
 console.log(`Packaged ${version}:\n${built.map((file) => `  ${file}`).join('\n')}`)
