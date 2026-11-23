@@ -1,4 +1,5 @@
 import type { TileKind } from '../pitWallData'
+import type { TimingColumn } from '../timingColumns'
 import type { FrameProps, TileData } from '../tileFrame'
 import { DamageTile, PressureTile, RadarTile, TyresTile } from './CarTiles'
 import { PitStopTile, RaceControlTile } from './ControlTiles'
@@ -8,13 +9,16 @@ import { TimingTile } from './TimingTile'
 import { TracesTile } from './TracesTile'
 import { TrackTile } from './TrackTile'
 
-/** The tile for a kind. A tile is only mounted while it shows, so those that poll traces do so then. */
-export function TileFor({ kind, data, frame }: { kind: TileKind; data: TileData; frame: FrameProps }) {
+/**
+ * The tile for a kind, with its slot's settings (`timingColumns` for the timing tile). A tile is
+ * only mounted while it shows, so those that poll traces do so then.
+ */
+export function TileFor({ kind, data, frame, timingColumns }: { kind: TileKind; data: TileData; frame: FrameProps; timingColumns: readonly TimingColumn[] }) {
   switch (kind) {
     case 'session':
       return <SessionTile data={data} frame={frame} />
     case 'timing':
-      return <TimingTile data={data} frame={frame} />
+      return <TimingTile data={data} frame={frame} columns={timingColumns} />
     case 'track':
       return <TrackTile data={data} frame={frame} />
     case 'stint':

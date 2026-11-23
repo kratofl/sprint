@@ -3,6 +3,7 @@ import type { PitWallTile, TileKind } from './pitWallData'
 import { pickLayer, shownLayer, startStack, stepIndex, stepStack, type StackRun, type StackSignals } from './stack'
 import type { EditTools, FrameProps, TileData } from './tileFrame'
 import { TileFor } from './tiles/TileFor'
+import { shownColumns } from './timingColumns'
 
 /** How often a stack looks at the clock (its countdown reads whole seconds). */
 const TICK_MS = 1000
@@ -57,7 +58,7 @@ export function PitWallSlot({
   const kind: TileKind = stacked ? view.kind : tile.layers[0]
   return (
     <div className="pw-slot-inner" onPointerEnter={() => setHovered(true)} onPointerLeave={() => setHovered(false)}>
-      <TileFor kind={kind} data={data} frame={frame} />
+      <TileFor kind={kind} data={data} frame={frame} timingColumns={shownColumns(tile)} />
     </div>
   )
 }
