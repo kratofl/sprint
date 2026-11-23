@@ -85,7 +85,7 @@ released. A bad release: delete the GitHub Release (`gh release delete <tag> --y
 3. `pnpm --filter @sprint/desktop package <version>` — electron-builder
    (`app/desktop/scripts/package.mjs`) bundles both into an asar with the host beside it in
    `resources/host`, and on Windows builds the one-click per-user NSIS installer (no admin prompt,
-   `%LocalAppData%\Programs\Sprint`). Output: `app/build/bin/`. An untagged build is `0.0.0-dev`.
+   `%LocalAppData%\Programs\@sprintdesktop`). Output: `app/build/bin/`. An untagged build is `0.0.0-dev`.
    Nothing is signed yet, so Windows SmartScreen warns on a first install.
 
 Trimming and Native AOT are off: runtime persistence uses reflection-based `System.Text.Json`, which
