@@ -192,7 +192,8 @@ export const fitScreenSize = (screen: Pick<ScreenProfile, 'width' | 'height'>, m
 
 export type DashConfigOption = { value: string; label: string }
 /** A config value the inspector edits: free text, a pick from `options`, or a switch (`on` / `off`). */
-export type DashConfigField = { key: string; label: string; kind: 'text' | 'select' | 'switch'; default: string; options: readonly DashConfigOption[] }
+/** A widget setting; `needs` names a switch that must be on for this one to change anything. */
+export type DashConfigField = { key: string; label: string; kind: 'text' | 'select' | 'switch'; default: string; options: readonly DashConfigOption[]; needs?: string }
 export type DashWidgetDefinition = { type: DashWidgetType; name: string; idleCapable: boolean; config: readonly DashConfigField[] }
 
 const NO_CONFIG: readonly DashConfigField[] = []
@@ -236,7 +237,7 @@ const ALIGN_CONFIG: readonly DashConfigField[] = [
 const GEAR_CONFIG: readonly DashConfigField[] = [
   { key: 'inputs', label: 'Throttle, brake and clutch', kind: 'switch', default: 'on', options: [] },
   { key: 'readouts', label: 'RPM and speed', kind: 'switch', default: 'on', options: [] },
-  { key: 'flip', label: 'Speed above, RPM below', kind: 'switch', default: 'off', options: [] },
+  { key: 'flip', label: 'Speed above, RPM below', kind: 'switch', default: 'off', options: [], needs: 'readouts' },
 ]
 
 const TYRE_CONFIG: readonly DashConfigField[] = [
@@ -768,6 +769,18 @@ export function setWidgetConfig(layout: DashLayout, pageId: string, widgetId: st
     else config[key] = value
     widget.config = Object.keys(config).length > 0 ? config : undefined
   })
+}
+
+/** A setting's value on a widget: what the widget says, else the field's default. */
+export function configValue(config: Readonly<Record<string, unknown>>, field: DashConfigField): string {
+  const raw = config[field.key]
+  return typeof raw === 'string' && raw !== '' ? raw : field.default
+}
+
+/** The switch a setting needs that is off on this widget, so the setting changes nothing; null when it applies. */
+export function blockedBy(config: Readonly<Record<string, unknown>>, field: DashConfigField, fields: readonly DashConfigField[]): DashConfigField | null {
+  const needed = field.needs === undefined ? undefined : fields.find((candidate) => candidate.key === field.needs)
+  return needed !== undefined && configValue(config, needed) !== 'on' ? needed : null
 }
 
 /** Sets a switch config field on or off; the field's default is not written (switching back clears it). */

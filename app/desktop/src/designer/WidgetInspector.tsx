@@ -2,7 +2,7 @@ import { Eye, EyeOff, Trash2, X } from 'lucide-react'
 import { hasFrame, hasLabel, widgetForms } from '@sprint/dashboard'
 import type { DashLayout, DashWidget } from '@sprint/dashboard'
 import { Switch } from '../shell/Switch'
-import { holdsSmallestAt, setWidgetConfig, setWidgetLook, setWidgetSwitch, widgetDefinition, widgetFormAt, widgetName } from '../views/DashesDomain'
+import { blockedBy, holdsSmallestAt, setWidgetConfig, setWidgetLook, setWidgetSwitch, widgetDefinition, widgetFormAt, widgetName } from '../views/DashesDomain'
 import { GeometryFields, TextConfigField } from './controls'
 import { deleteNodes, setHidden, setNodeRect } from './groupOps'
 import type { Mutate } from './useDesignerDoc'
@@ -105,14 +105,17 @@ export function WidgetInspector({
             if (field.kind === 'switch') {
               const id = `widget-config-${field.key}`
               const set = (on: boolean) => apply((current) => setWidgetSwitch(current, pageId, widget.id, field, on))
+              // A switch that only matters while another is on waits, and says for which.
+              const blocker = blockedBy(config, field, definition.config)
               return (
                 <div className="designer-switch-row" key={field.key}>
                   <span className="designer-switch-text">
                     <span id={id} className="designer-switch-title">
                       {field.label}
                     </span>
+                    {blocker && <span className="muted designer-switch-hint">{`Turn on ${blocker.label} first.`}</span>}
                   </span>
-                  <Switch checked={value === 'on'} onChange={set} stateText={false} aria-labelledby={id} />
+                  <Switch checked={value === 'on'} onChange={set} disabled={blocker !== null} stateText={false} aria-labelledby={id} />
                 </div>
               )
             }

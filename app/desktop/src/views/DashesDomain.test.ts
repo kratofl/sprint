@@ -6,6 +6,7 @@ import {
   SCREEN_PROFILES,
   addWidget,
   addWidgetAt,
+  blockedBy,
   growToSmallest,
   holdsSmallestAt,
   widgetFormAt,
@@ -414,4 +415,11 @@ test('a gear switch writes only what differs from its default', () => {
   assert.deepEqual(flipped?.pages[0]?.widgets[0]?.config, { inputs: 'off', flip: 'on' })
   const back = flipped && setWidgetSwitch(flipped, 'page-1', 'gear', field('inputs'), true)
   assert.deepEqual(back?.pages[0]?.widgets[0]?.config, { flip: 'on' }, 'on is the default and not written')
+})
+
+test('the gear’s swap switch waits for its RPM and speed', () => {
+  const fields = widgetDefinition('gear')?.config ?? []
+  const flip = fields.find((candidate) => candidate.key === 'flip') ?? assert.fail('flip')
+  assert.equal(blockedBy({}, flip, fields), null, 'RPM and speed are on by default')
+  assert.equal(blockedBy({ readouts: 'off' }, flip, fields)?.key, 'readouts')
 })
