@@ -247,30 +247,6 @@ export interface DashLapSummaryPopup {
 /** What the renderer draws over the dash: the JSON `render_still` takes as its banner, the multi-dial popup included. */
 export type DashAlertBanner = DashAlertPopup | DashLapSummaryPopup | DashMultiDialPopup
 
-interface ResolvedAlertConfig {
-  displayMode: DashAlertDisplayMode
-  invertColors: boolean
-  colorToken: string
-}
-
-const DEFAULT_ALERT_CONFIG: ResolvedAlertConfig = {
-  displayMode: 'full',
-  invertColors: false,
-  colorToken: 'auto',
-}
-
-const isDisplayMode = (value: unknown): value is DashAlertDisplayMode => value === 'full' || value === 'strip' || value === 'center'
-
-/** Narrows the layout's untyped `alertConfig` bag to the look fields a popup reads. */
-function readAlertConfig(raw: Record<string, unknown> | undefined): ResolvedAlertConfig {
-  if (!raw) return DEFAULT_ALERT_CONFIG
-  return {
-    displayMode: isDisplayMode(raw.displayMode) ? raw.displayMode : DEFAULT_ALERT_CONFIG.displayMode,
-    invertColors: typeof raw.invertColors === 'boolean' ? raw.invertColors : DEFAULT_ALERT_CONFIG.invertColors,
-    colorToken: typeof raw.colorToken === 'string' ? raw.colorToken : DEFAULT_ALERT_CONFIG.colorToken,
-  }
-}
-
 /** "auto" is the setting's own identity color; a named token overrides it with that preset's swatch. */
 function resolveAlertColor(token: string | undefined, settingColor: string, palette: DashPaletteColors): string {
   const preset = findPresetByAlertColorToken(token)
@@ -281,9 +257,9 @@ function resolveAlertColor(token: string | undefined, settingColor: string, pale
   return canonicalAlertColorToken(token) === 'yellow' ? palette.warning : settingColor
 }
 
-/** Where an alert's popup sits: its own choice when it has one, otherwise the layout's. */
-function alertPlacement(alert: DashAlert, layout: DashLayout, config: ResolvedAlertConfig): DashAlertPlacement {
-  const mode = alert.displayMode ?? config.displayMode
+/** Where an alert's popup sits: its own choice when it has one, otherwise full screen. */
+function alertPlacement(alert: DashAlert, layout: DashLayout): DashAlertPlacement {
+  const mode = alert.displayMode ?? 'full'
   if (mode === 'center') return { displayMode: 'center', col: alert.col, row: alert.row, colSpan: alert.colSpan, rowSpan: alert.rowSpan, gridCols: layout.gridCols, gridRows: layout.gridRows }
   return { displayMode: mode }
 }
@@ -341,7 +317,7 @@ const SAMPLE_LAP: DashLapSummaryPopup = {
 /**
  * The popup `alert` would show, with made-up values, for the app to play on a dash so its look
  * can be set without the car. Built exactly as a real one is on the wheel, so it honours the
- * alert's own look and the layout's, at either size, and prints in `units`. Null for a type the
+ * alert's own look, at either size, and prints in `units`. Null for a type the
  * renderer does not know, and for the pit limiter, an overlay that shows while the frame has the
  * limiter on (`previewFrame('pit')`).
  */
@@ -349,14 +325,13 @@ export function previewAlertBanner(layout: DashLayout, alert: DashAlert, palette
   const type = alert.type
   if (!isDashAlertType(type) || type === 'pit_limiter') return null
   if (type === 'lap_summary') return SAMPLE_LAP
-  const config = readAlertConfig(layout.alertConfig)
-  const placement = alertPlacement(alert, layout, config)
-  const invertColors = alert.invertColors ?? config.invertColors
+  const placement = alertPlacement(alert, layout)
+  const invertColors = alert.invertColors ?? false
   if (type === 'dial_change') {
     return { kind: 'multiDial', caption: 'MULTI', label: 'TC2', color: dashColor.yellow, inverted: invertColors, displayMode: placement.displayMode === 'strip' ? 'strip' : 'full' }
   }
   const sample = SAMPLES[type]
-  const color = 'setting' in sample ? resolveAlertColor(alert.colorToken ?? config.colorToken, sample.setting(palette), palette) : sample.color(palette)
+  const color = 'setting' in sample ? resolveAlertColor(alert.colorToken, sample.setting(palette), palette) : sample.color(palette)
   const detail = typeof sample.detail === 'function' ? sample.detail(units) : sample.detail
   return { kind: 'alert', alertType: type, title: sample.title, value: sample.value, detail, color, invertColors, ...placement }
 }

@@ -7,7 +7,7 @@
 
 use serde::Deserialize;
 
-use crate::alerts::{AlertSize, AlertSpec, DEFAULT_DURATION_SECONDS, DashAlertType, css_hex_color, read_alert_config};
+use crate::alerts::{AlertSize, AlertSpec, DashAlertType, css_hex_color};
 use crate::model::DashLayout;
 use crate::palette::Rgba;
 
@@ -71,8 +71,7 @@ pub fn dial_look(layout: &DashLayout) -> Option<DialLook> {
     let Some(spec) = layout.alerts.iter().filter_map(|alert| AlertSpec::of(alert, layout)).find(|spec| spec.alert_type == DashAlertType::DialChange) else {
         return Some(DialLook { size: AlertSize::Strip, inverted: false, seconds: Some(MULTI_DIAL_POPUP_SECONDS) });
     };
-    let config = read_alert_config(layout.alert_config.as_ref());
-    spec.enabled.then(|| DialLook { size: spec.size(&config), inverted: spec.inverted(&config), seconds: spec.seconds(&config, DEFAULT_DURATION_SECONDS) })
+    spec.enabled.then(|| DialLook { size: spec.size(), inverted: spec.inverted(), seconds: spec.seconds() })
 }
 
 /// Decides when the popup is up. The first reading only sets where counting starts (a dash
@@ -233,8 +232,7 @@ mod tests {
     #[test]
     fn the_popup_wears_the_dial_change_alerts_settings_or_its_defaults_without_one() {
         let layout = |alerts: serde_json::Value| {
-            let layout =
-                json!({ "id": "l", "name": "L", "gridCols": 20, "gridRows": 12, "pages": [], "alerts": alerts, "alertConfig": { "durationSeconds": 3 } });
+            let layout = json!({ "id": "l", "name": "L", "gridCols": 20, "gridRows": 12, "pages": [], "alerts": alerts });
             parse_scene(json!({ "layout": layout, "width": 800, "height": 480 }).to_string().as_bytes()).expect("scene").layout
         };
         let dial = |fields: serde_json::Value| {
@@ -249,6 +247,6 @@ mod tests {
             Some(DialLook { size: AlertSize::Full, inverted: true, seconds: Some(30.0) })
         );
         assert_eq!(dial_look(&dial(json!({ "displayMode": "strip", "untilAck": true }))).map(|look| (look.size, look.seconds)), Some((AlertSize::Strip, None)));
-        assert_eq!(dial_look(&dial(json!({}))).map(|look| look.seconds), Some(Some(3.0)), "the layout's duration when the alert has none");
+        assert_eq!(dial_look(&dial(json!({}))).map(|look| look.seconds), Some(Some(1.5)), "the default duration when the alert has none");
     }
 }

@@ -251,8 +251,7 @@ public sealed record AppDashAlerts(IReadOnlyList<DashAlertSettings> Alerts)
 
     /// <summary>
     /// What a renderer is handed for <paramref name="layout"/>: a shallow copy whose <c>alerts</c> are
-    /// these settings and whose <c>alertConfig</c> is neutral. The layout itself is not changed, so a
-    /// stamped copy is never saved.
+    /// these settings. The layout itself is not changed, so a stamped copy is never saved.
     /// </summary>
     public DashLayout Stamp(DashLayout layout) =>
         layout.WithAlerts(this.Alerts.Select(alert => alert.ToLayoutAlert()).ToList());

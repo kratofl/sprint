@@ -358,12 +358,6 @@
       "rowSpan": 12
     }
   ],
-  "alertConfig": {
-    "displayMode": "full",
-    "durationSeconds": 1.5,
-    "colorToken": "auto",
-    "invertColors": false
-  },
   "pitLimiter": {
     "style": "gear",
     "widgets": [

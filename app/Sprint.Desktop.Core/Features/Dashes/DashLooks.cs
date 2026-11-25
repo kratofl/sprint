@@ -6,20 +6,29 @@ namespace Sprint.Desktop.Features.Dashes;
 /// Sprint draws one look on every dash: a 1-px edge with the label centred in it, and one group
 /// frame. A widget may only turn its label or its frame off; a group's frame is on or off. Older
 /// dashes chose their own look: a frame style (<c>dashStyle</c>), corners, edges and label spot
-/// (<c>chrome</c>), per-widget colours, edges and label spots, and group frames with their own
-/// edge, name style and alignment. They all move to Sprint's look: a widget keeps only a label
-/// that was off, and a group that had any frame keeps Sprint's.
+/// (<c>chrome</c>), per-widget colours, edges and label spots, group frames with their own edge,
+/// name style and alignment, and a colour system (<c>colorSystem</c>) and alert look
+/// (<c>alertConfig</c>) of their own. They all move to Sprint's look: a widget keeps only a label
+/// that was off, and a group that had any frame keeps Sprint's; colours and alerts are app-wide
+/// settings now.
 /// </summary>
 public static class DashLooks
 {
     /// <summary>The one value a widget's <see cref="DashWidgetStyle.Label"/> or <see cref="DashWidgetStyle.Frame"/> takes.</summary>
     public const string Off = "off";
 
+    /// <summary>The layout-wide looks older dashes carried; Core no longer models them, so they arrive as extension data.</summary>
+    private static readonly string[] RetiredLayoutLooks = ["dashStyle", "chrome", "colorSystem", "alertConfig"];
+
     /// <summary>Drops every look Sprint no longer offers; true when anything changed.</summary>
     public static bool Flatten(DashLayout layout)
     {
-        bool changed = layout.ExtensionData?.Remove("dashStyle") == true;
-        changed |= layout.ExtensionData?.Remove("chrome") == true;
+        bool changed = false;
+        foreach (string look in RetiredLayoutLooks)
+        {
+            changed |= layout.ExtensionData?.Remove(look) == true;
+        }
+
         if (layout.IdlePage is not null)
         {
             changed |= FlattenPage(layout.IdlePage);

@@ -29,35 +29,18 @@ public sealed record DashConfigOption(string Value, string Label);
 
 public static class DashWidgetCatalog
 {
-    // The text widget reads config["content"] (literal) and config["binding"]
-    // (live telemetry value, wins over content) in DashPainter.DrawText.
+    // The text widget reads config["content"] (literal) and config["binding"] (who drives and where,
+    // wins over content; TEXT_BINDINGS in the renderer). Live values have widgets of their own.
     private static readonly IReadOnlyList<DashConfigDef> TextConfig =
     [
         new DashConfigDef("content", "Text", DashConfigKind.Text, Default: ""),
-        new DashConfigDef("binding", "Live value", DashConfigKind.Select, Default: "", Options:
+        new DashConfigDef("binding", "Shows instead", DashConfigKind.Select, Default: "", Options:
         [
-            new DashConfigOption("", "None (static text)"),
+            new DashConfigOption("", "Nothing (the text)"),
             new DashConfigOption("profile.driverName", "Driver name"),
             new DashConfigOption("profile.driverNumber", "Driver number"),
             new DashConfigOption("session.track", "Track"),
             new DashConfigOption("session.car", "Car"),
-            new DashConfigOption("car.speed", "Speed"),
-            new DashConfigOption("car.gear", "Gear"),
-            new DashConfigOption("lap.current", "Current lap time"),
-            new DashConfigOption("lap.delta", "Delta"),
-        ]),
-    ];
-
-    // Horizontal placement for the gear/speed stack (DashPainter.HorizontalAnchor).
-    // Centre is the default; the setting exists so a widget parked at a screen edge can
-    // be flushed to that edge instead.
-    private static readonly IReadOnlyList<DashConfigDef> AlignConfig =
-    [
-        new DashConfigDef("align", "Alignment", DashConfigKind.Select, Default: "center", Options:
-        [
-            new DashConfigOption("center", "Centre"),
-            new DashConfigOption("left", "Left"),
-            new DashConfigOption("right", "Right"),
         ]),
     ];
 
@@ -90,7 +73,7 @@ public static class DashWidgetCatalog
             ["text"] = Definition("text", "Text", idleCapable: true, config: TextConfig, "profile.driverName", "profile.driverNumber"),
             ["rpm_bar"] = Definition("rpm_bar", "RPM Bar", idleCapable: false, "car.rpm", "car.maxRpm"),
             ["gear"] = Definition("gear", "Gear", idleCapable: true, GearConfig, "car.gear", "car.rpm", "car.maxRpm", "car.speed", "inputs.throttle", "inputs.brake", "inputs.clutch"),
-            ["gear_speed"] = Definition("gear_speed", "Gear + Speed", idleCapable: true, AlignConfig, "car.gear", "car.speed"),
+            ["gear_speed"] = Definition("gear_speed", "Gear + Speed", idleCapable: true, "car.gear", "car.speed"),
             ["input_trace"] = Definition("input_trace", "Input Trace", idleCapable: false, "inputs.throttle", "inputs.brake", "inputs.clutch", "inputs.steering"),
             // One lap time each. A current or last lap that does not count shows "-:--.---".
             ["current_lap"] = Definition("current_lap", "Current Lap", idleCapable: false, "lap.current", "lap.isValid"),

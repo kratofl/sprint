@@ -3,15 +3,12 @@ import assert from 'node:assert/strict'
 import {
   canonicalAlertColorToken,
   defaultDashPalette,
-  effectiveColorSystem,
   findPresetByAlertColorToken,
-  matchLayoutThemeName,
   matchThemeName,
   presetSwatchColor,
   resolveDashPalette,
   themedPalette,
 } from './palette'
-import type { DashTheme } from './index'
 
 function assertDefined<T>(value: T | null | undefined): asserts value is T {
   assert.ok(value)
@@ -33,31 +30,26 @@ test('a colour theme recolours only the scale’s cold and good, as the renderer
   assert.deepEqual([strict.coldLow, strict.goodOnTarget, strict.timingFastestOverall], [d.critical, d.goodOnTarget, d.timingFastestOverall])
 })
 
-test('resolveDashPalette ignores the theme entirely under the functional color system', () => {
-  const theme: DashTheme = { primary: '#123456', accent: '#654321' }
-  assert.deepEqual(resolveDashPalette(theme, 'functional'), defaultDashPalette)
-})
-
 test('resolveDashPalette returns the default for an empty or missing theme', () => {
-  assert.deepEqual(resolveDashPalette(undefined, 'styled'), defaultDashPalette)
-  assert.deepEqual(resolveDashPalette({}, 'styled'), defaultDashPalette)
+  assert.deepEqual(resolveDashPalette(undefined), defaultDashPalette)
+  assert.deepEqual(resolveDashPalette({}), defaultDashPalette)
 })
 
 test('resolveDashPalette applies valid hex overrides and ignores unparseable ones', () => {
-  const palette = resolveDashPalette({ primary: '#112233', accent: 'not-a-color' }, 'styled')
+  const palette = resolveDashPalette({ primary: '#112233', accent: 'not-a-color' })
   assert.equal(palette.primary, '#112233')
   assert.equal(palette.rpmNormal, '#112233') // rpmNormal follows primary
   assert.equal(palette.accent, defaultDashPalette.accent) // invalid hex falls back to default
 })
 
 test("a theme may override each setting's identity colour", () => {
-  const palette = resolveDashPalette({ settingAbs: '#123456' }, 'styled')
+  const palette = resolveDashPalette({ settingAbs: '#123456' })
   assert.equal(palette.settingAbs, '#123456')
   assert.equal(palette.settingTc, defaultDashPalette.settingTc)
 })
 
 test('resolveDashPalette pins danger/critical/fault/rpmNearLimit regardless of the theme', () => {
-  const palette = resolveDashPalette({ danger: '#00FF00', critical: '#00FF00', fault: '#00FF00' }, 'styled')
+  const palette = resolveDashPalette({ danger: '#00FF00', critical: '#00FF00', fault: '#00FF00' })
   assert.equal(palette.danger, defaultDashPalette.critical)
   assert.equal(palette.critical, defaultDashPalette.critical)
   assert.equal(palette.fault, defaultDashPalette.fault)
@@ -65,8 +57,8 @@ test('resolveDashPalette pins danger/critical/fault/rpmNearLimit regardless of t
 })
 
 test('resolveDashPalette falls back neutral to foreground, then to the default', () => {
-  assert.equal(resolveDashPalette({ foreground: '#AABBCC' }, 'styled').neutral, '#AABBCC')
-  assert.equal(resolveDashPalette({ primary: '#112233' }, 'styled').neutral, defaultDashPalette.neutral)
+  assert.equal(resolveDashPalette({ foreground: '#AABBCC' }).neutral, '#AABBCC')
+  assert.equal(resolveDashPalette({ primary: '#112233' }).neutral, defaultDashPalette.neutral)
 })
 
 test('canonicalAlertColorToken maps shorthand tokens to their preset name', () => {
@@ -92,15 +84,4 @@ test('matchThemeName recognizes an exact preset and returns null for a custom th
   assert.equal(matchThemeName({}), 'Graphite')
   assert.equal(matchThemeName({ primary: '#00D64F', accent: '#FF6A00' }), 'Viper')
   assert.equal(matchThemeName({ primary: '#123456' }), null)
-})
-
-test('effectiveColorSystem defaults to styled only when a theme override is actually set', () => {
-  assert.equal(effectiveColorSystem({ colorSystem: undefined, theme: undefined }), 'functional')
-  assert.equal(effectiveColorSystem({ colorSystem: undefined, theme: { primary: '#112233' } }), 'styled')
-  assert.equal(effectiveColorSystem({ colorSystem: 'functional', theme: { primary: '#112233' } }), 'functional')
-})
-
-test('matchLayoutThemeName reports Graphite for functional layouts without inspecting the theme', () => {
-  assert.equal(matchLayoutThemeName({ colorSystem: 'functional', theme: { primary: '#123456' } }), 'Graphite')
-  assert.equal(matchLayoutThemeName({ colorSystem: 'styled', theme: {} }), 'Graphite')
 })

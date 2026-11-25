@@ -7,7 +7,7 @@
 // design tokens. Change these values only as a deliberate dash change — they are what the
 // wheel screen shows.
 
-import type { DashColorSystem, DashLayout, DashTheme } from './index'
+import type { DashTheme } from './index'
 
 /**
  * The resolved on-wheel color set for a dash. Functional dashboards keep focal values
@@ -197,15 +197,12 @@ function hex(value: string | undefined): string | undefined {
 
 /**
  * Resolves a layout theme into a concrete palette: the default palette with each supplied
- * hex override applied. Unparseable or missing values inherit the default. Styled themes
- * recolor the optical RPM endpoints while protected safety states (critical/fault/danger)
- * stay functional regardless of the theme.
+ * hex override applied. Unparseable or missing values inherit the default. A theme recolors
+ * the optical RPM endpoints while protected safety states (critical/fault/danger) stay
+ * functional regardless of the theme.
  */
-export function resolveDashPalette(
-  theme: DashTheme | undefined,
-  colorSystem: DashColorSystem = 'styled',
-): DashPaletteColors {
-  if (colorSystem === 'functional' || isThemeEmpty(theme)) {
+export function resolveDashPalette(theme: DashTheme | undefined): DashPaletteColors {
+  if (isThemeEmpty(theme)) {
     return defaultDashPalette
   }
 
@@ -299,14 +296,4 @@ export function matchThemeName(theme: DashTheme | undefined): string | null {
   const t = theme ?? {}
   const match = dashThemePresets.find((preset) => sameTheme(preset.theme, t))
   return match?.name ?? null
-}
-
-/** The layout's effective color system: an explicit choice, or "styled" whenever a theme override is set. */
-export function effectiveColorSystem(layout: Pick<DashLayout, 'colorSystem' | 'theme'>): DashColorSystem {
-  return layout.colorSystem ?? (isThemeEmpty(layout.theme) ? 'functional' : 'styled')
-}
-
-/** The preset whose output matches the layout's effective color system, or `null` for a custom styled theme. */
-export function matchLayoutThemeName(layout: Pick<DashLayout, 'colorSystem' | 'theme'>): string | null {
-  return effectiveColorSystem(layout) === 'functional' ? 'Graphite' : matchThemeName(layout.theme)
 }

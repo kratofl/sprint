@@ -75,6 +75,28 @@ public class DashWidgetTypeMigrationTests
     }
 
     [Fact]
+    public void The_gear_and_speed_loses_its_alignment_and_a_text_keeps_only_an_identity_binding()
+    {
+        DashPage page = new DashPage
+        {
+            Widgets =
+            [
+                Widget("gear", "gear_speed", ("align", "left")),
+                Widget("speed", "text", ("content", "SPEED"), ("binding", "car.speed")),
+                Widget("name", "text", ("content", "Your Name"), ("binding", "profile.driverName")),
+            ],
+        };
+        DashLayout layout = new DashLayout { Pages = [page] };
+
+        Assert.True(DashWidgetTypeMigration.Apply(layout));
+
+        Assert.Null(page.Widgets[0].Config);
+        Assert.Equal(["content"], page.Widgets[1].Config?.Keys.ToArray() ?? []);
+        Assert.Equal(["content", "binding"], page.Widgets[2].Config?.Keys.ToArray() ?? []);
+        Assert.False(DashWidgetTypeMigration.Apply(layout));
+    }
+
+    [Fact]
     public void A_zoned_flag_in_the_top_bar_spot_goes_and_the_pit_limiter_widgets_migrate()
     {
         DashLayout layout = new DashLayout

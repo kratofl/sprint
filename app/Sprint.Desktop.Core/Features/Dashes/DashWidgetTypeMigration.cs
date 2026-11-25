@@ -6,10 +6,13 @@ namespace Sprint.Desktop.Features.Dashes;
 /// <summary>
 /// Rewrites retired widget types on saved layouts so older dashes keep working after the catalog
 /// drops them: each becomes the single-value widget that shows what its old setting picked (a
-/// <c>lap_time</c> showing the last lap becomes <c>last_lap</c>), and the setting goes. Runs before
-/// <see cref="DashLayoutValidator"/> (which rejects unknown types, and so the whole dash) on every
-/// page, the idle page and the pit limiter's widgets, and reports whether anything changed so the
-/// caller can re-persist the upgrade.
+/// <c>lap_time</c> showing the last lap becomes <c>last_lap</c>), and the setting goes. Settings
+/// Sprint took back go too: the gear and speed's alignment (it always centres), and a text
+/// widget's binding to anything but who drives and where (live values have widgets of their own),
+/// which leaves it showing its own text. Runs before <see cref="DashLayoutValidator"/> (which
+/// rejects unknown types, and so the whole dash) on every page, the idle page and the pit
+/// limiter's widgets, and reports whether anything changed so the caller can re-persist the
+/// upgrade.
 /// </summary>
 public static class DashWidgetTypeMigration
 {
@@ -99,6 +102,8 @@ public static class DashWidgetTypeMigration
             }, "channel"),
             // The surface/core switch became two widgets.
             "tyre_temp" => (ConfigString(widget, "channel") == "core" ? "tyre_core_temp" : "tyre_temp", "channel"),
+            "gear_speed" => (null, "align"),
+            "text" => (null, ShowsIdentity(widget) ? null : "binding"),
             _ => (null, null),
         };
 
@@ -121,6 +126,15 @@ public static class DashWidgetTypeMigration
 
         return changed;
     }
+
+    /// <summary>What a text widget may still bind to (<c>TEXT_BINDINGS</c> in the renderer).</summary>
+    private static readonly string[] TextBindings = ["profile.driverName", "profile.driverNumber", "session.track", "session.car"];
+
+    private static bool ShowsIdentity(DashWidget widget) =>
+        widget.Config?.TryGetValue("binding", out JsonElement value) == true &&
+        value.ValueKind == JsonValueKind.String &&
+        value.GetString() is string binding &&
+        TextBindings.Contains(binding, StringComparer.Ordinal);
 
     private static string? ConfigString(DashWidget widget, string key) =>
         widget.Config?.TryGetValue(key, out JsonElement value) == true && value.ValueKind == JsonValueKind.String

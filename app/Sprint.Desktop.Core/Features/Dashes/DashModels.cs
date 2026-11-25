@@ -3,24 +3,6 @@ using System.Text.Json.Serialization;
 
 namespace Sprint.Desktop.Features.Dashes;
 
-[JsonConverter(typeof(DashColorSystemJsonConverter))]
-public enum DashColorSystem
-{
-    Functional,
-    Styled,
-}
-
-public sealed class DashColorSystemJsonConverter : JsonConverter<DashColorSystem>
-{
-    public override DashColorSystem Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
-        string.Equals(reader.GetString(), "styled", StringComparison.OrdinalIgnoreCase)
-            ? DashColorSystem.Styled
-            : DashColorSystem.Functional;
-
-    public override void Write(Utf8JsonWriter writer, DashColorSystem value, JsonSerializerOptions options) =>
-        writer.WriteStringValue(value == DashColorSystem.Styled ? "styled" : "functional");
-}
-
 public sealed class DashLayout
 {
     [JsonPropertyName("id")]
@@ -39,13 +21,6 @@ public sealed class DashLayout
 
     [JsonPropertyName("mode")]
     public string Mode { get; set; } = "basic";
-
-    [JsonPropertyName("colorSystem")]
-    public DashColorSystem? ColorSystem { get; set; }
-
-    [JsonIgnore]
-    public DashColorSystem EffectiveColorSystem => this.ColorSystem ??
-        (this.Theme is { IsEmpty: false } ? DashColorSystem.Styled : DashColorSystem.Functional);
 
     /// <summary>
     /// The target wheel-screen size this dash is designed for (PRD #122). Additive
@@ -99,15 +74,12 @@ public sealed class DashLayout
     [JsonPropertyName("theme")]
     public DashTheme? Theme { get; set; }
 
-    [JsonPropertyName("alertConfig")]
-    public DashAlertConfig? AlertConfig { get; set; }
-
     [JsonExtensionData]
     public Dictionary<string, JsonElement>? ExtensionData { get; set; }
 
     /// <summary>
-    /// A shallow copy showing <paramref name="alerts"/> in place of this layout's own alerts, with no
-    /// alert config of its own; pages, theme and the rest are shared, not copied. For handing a
+    /// A shallow copy showing <paramref name="alerts"/> in place of this layout's own alerts; pages,
+    /// theme and the rest are shared, not copied. For handing a
     /// renderer the app-wide alerts (<see cref="AppDashAlerts.Stamp"/>), never for saving.
     /// </summary>
     public DashLayout WithAlerts(List<DashAlert> alerts)
@@ -115,7 +87,6 @@ public sealed class DashLayout
         // MemberwiseClone rather than a property-by-property copy, so a property added later is never left behind.
         DashLayout copy = (DashLayout)this.MemberwiseClone();
         copy.Alerts = alerts;
-        copy.AlertConfig = null;
         return copy;
     }
 }
@@ -254,44 +225,6 @@ public sealed class DashTheme
 
         return changed;
     }
-
-    [JsonExtensionData]
-    public Dictionary<string, JsonElement>? ExtensionData { get; set; }
-}
-
-public sealed class DashAlertConfig
-{
-    [JsonPropertyName("displayMode")]
-    public string DisplayMode { get; set; } = "full";
-
-    [JsonPropertyName("durationSeconds")]
-    public double DurationSeconds { get; set; } = 1.5;
-
-    [JsonPropertyName("invertColors")]
-    public bool InvertColors { get; set; }
-
-    [JsonPropertyName("colorToken")]
-    public string ColorToken { get; set; } = "auto";
-
-    [JsonPropertyName("enabledTypes")]
-    public List<string> EnabledTypes { get; set; } = [];
-
-    [JsonIgnore]
-    public bool IsDefault =>
-        string.Equals(this.DisplayMode, "full", StringComparison.OrdinalIgnoreCase) &&
-        Math.Abs(this.DurationSeconds - 1.5) < 0.001 &&
-        !this.InvertColors &&
-        string.Equals(this.ColorToken, "auto", StringComparison.OrdinalIgnoreCase) &&
-        this.EnabledTypes.Count == 0;
-
-    public DashAlertConfig Clone() => new()
-    {
-        DisplayMode = this.DisplayMode,
-        DurationSeconds = this.DurationSeconds,
-        InvertColors = this.InvertColors,
-        ColorToken = this.ColorToken,
-        EnabledTypes = this.EnabledTypes.ToList(),
-    };
 
     [JsonExtensionData]
     public Dictionary<string, JsonElement>? ExtensionData { get; set; }
@@ -573,7 +506,7 @@ public sealed class DashAlert
     [JsonPropertyName("rowSpan")]
     public int RowSpan { get; set; } = 6;
 
-    /// <summary>The alert's own "full", "strip" or "center" (in its grid rect); null uses <see cref="DashAlertConfig.DisplayMode"/>.</summary>
+    /// <summary>The alert's own "full", "strip" or "center" (in its grid rect); null shows it full screen.</summary>
     [JsonPropertyName("displayMode")]
     public string? DisplayMode { get; set; }
 

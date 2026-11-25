@@ -14,7 +14,6 @@ public static class DevicePurposeLayouts
     {
         Id = "purpose-flags",
         Name = "Flag display",
-        ColorSystem = DashColorSystem.Functional,
         GridCols = 20,
         GridRows = 12,
         Pages =
@@ -43,7 +42,6 @@ public static class DevicePurposeLayouts
     {
         Id = "purpose-lap-times",
         Name = "Lap timer",
-        ColorSystem = DashColorSystem.Functional,
         GridCols = 20,
         GridRows = 12,
         Pages =

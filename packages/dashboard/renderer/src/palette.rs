@@ -12,7 +12,7 @@
 
 use serde_json::{Map, Value};
 
-use crate::model::{ColorSystem, DashLayout, DashTheme};
+use crate::model::DashTheme;
 
 /// How the TypeScript writes a color as a string. CSS paints every form the same way, but
 /// `dimColor`/`withAlpha` parse the string by hand: 8-digit hex alpha-first (`#AARRGGBB`, where
@@ -274,12 +274,12 @@ fn hex(theme: &DashTheme, key: &str) -> Option<Rgba> {
 }
 
 /// Resolves a layout theme into a concrete palette: the default palette with each supplied hex
-/// override applied. Styled themes recolor the optical RPM endpoints while protected safety
-/// states (critical/fault/danger) stay functional regardless of the theme.
-pub fn resolve_dash_palette(theme: Option<&DashTheme>, color_system: ColorSystem) -> DashPaletteColors {
+/// override applied. A theme recolors the optical RPM endpoints while protected safety states
+/// (critical/fault/danger) stay functional regardless of the theme.
+pub fn resolve_dash_palette(theme: Option<&DashTheme>) -> DashPaletteColors {
     let d = DEFAULT_DASH_PALETTE;
     let t = match theme {
-        Some(t) if color_system == ColorSystem::Styled && !is_theme_empty(Some(t)) => t,
+        Some(t) if !is_theme_empty(Some(t)) => t,
         _ => return d,
     };
     DashPaletteColors {
@@ -588,26 +588,12 @@ pub fn match_theme_name(theme: Option<&DashTheme>) -> Option<&'static str> {
         .map(|preset| preset.name)
 }
 
-/// The layout's effective color system: an explicit choice, or styled whenever a theme override is set.
-pub fn effective_color_system(layout: &DashLayout) -> ColorSystem {
-    layout.color_system.unwrap_or(if is_theme_empty(layout.theme.as_ref()) { ColorSystem::Functional } else { ColorSystem::Styled })
-}
-
-/// The preset whose output matches the layout's effective color system, or `None` for a custom styled theme.
-pub fn match_layout_theme_name(layout: &DashLayout) -> Option<&'static str> {
-    if effective_color_system(layout) == ColorSystem::Functional { Some("Graphite") } else { match_theme_name(layout.theme.as_ref()) }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     fn theme(pairs: &[(&str, &str)]) -> DashTheme {
         pairs.iter().map(|(k, v)| ((*k).to_owned(), (*v).to_owned())).collect()
-    }
-
-    fn layout(color_system: Option<ColorSystem>, t: Option<DashTheme>) -> DashLayout {
-        DashLayout { color_system, theme: t, ..DashLayout::default() }
     }
 
     #[test]
@@ -619,20 +605,14 @@ mod tests {
     }
 
     #[test]
-    fn resolve_dash_palette_ignores_the_theme_under_the_functional_color_system() {
-        let t = theme(&[("primary", "#123456"), ("accent", "#654321")]);
-        assert_eq!(resolve_dash_palette(Some(&t), ColorSystem::Functional), DEFAULT_DASH_PALETTE);
-    }
-
-    #[test]
     fn resolve_dash_palette_returns_the_default_for_an_empty_or_missing_theme() {
-        assert_eq!(resolve_dash_palette(None, ColorSystem::Styled), DEFAULT_DASH_PALETTE);
-        assert_eq!(resolve_dash_palette(Some(&theme(&[])), ColorSystem::Styled), DEFAULT_DASH_PALETTE);
+        assert_eq!(resolve_dash_palette(None), DEFAULT_DASH_PALETTE);
+        assert_eq!(resolve_dash_palette(Some(&theme(&[]))), DEFAULT_DASH_PALETTE);
     }
 
     #[test]
     fn resolve_dash_palette_applies_valid_hex_overrides_and_ignores_unparseable_ones() {
-        let palette = resolve_dash_palette(Some(&theme(&[("primary", "#112233"), ("accent", "not-a-color")])), ColorSystem::Styled);
+        let palette = resolve_dash_palette(Some(&theme(&[("primary", "#112233"), ("accent", "not-a-color")])));
         assert_eq!(palette.primary, Rgba::hex("#112233"));
         assert_eq!(palette.rpm_normal, Rgba::hex("#112233"));
         assert_eq!(palette.accent, DEFAULT_DASH_PALETTE.accent);
@@ -640,7 +620,7 @@ mod tests {
 
     #[test]
     fn a_theme_may_override_each_settings_identity_color() {
-        let palette = resolve_dash_palette(Some(&theme(&[("settingAbs", "#123456")])), ColorSystem::Styled);
+        let palette = resolve_dash_palette(Some(&theme(&[("settingAbs", "#123456")])));
         assert_eq!(palette.setting_abs, Rgba::hex("#123456"));
         assert_eq!(palette.setting_tc, dash_setting_colors::TC, "the others keep their own");
         assert_eq!(DEFAULT_DASH_PALETTE.setting_arb, Rgba::hex(dash_color::ORANGE));
@@ -649,7 +629,7 @@ mod tests {
     #[test]
     fn resolve_dash_palette_pins_danger_critical_fault_and_rpm_near_limit_regardless_of_the_theme() {
         let t = theme(&[("danger", "#00FF00"), ("critical", "#00FF00"), ("fault", "#00FF00")]);
-        let palette = resolve_dash_palette(Some(&t), ColorSystem::Styled);
+        let palette = resolve_dash_palette(Some(&t));
         assert_eq!(palette.danger, DEFAULT_DASH_PALETTE.critical);
         assert_eq!(palette.critical, DEFAULT_DASH_PALETTE.critical);
         assert_eq!(palette.fault, DEFAULT_DASH_PALETTE.fault);
@@ -658,8 +638,8 @@ mod tests {
 
     #[test]
     fn resolve_dash_palette_falls_back_neutral_to_foreground_then_to_the_default() {
-        assert_eq!(resolve_dash_palette(Some(&theme(&[("foreground", "#AABBCC")])), ColorSystem::Styled).neutral, Rgba::hex("#AABBCC"));
-        assert_eq!(resolve_dash_palette(Some(&theme(&[("primary", "#112233")])), ColorSystem::Styled).neutral, DEFAULT_DASH_PALETTE.neutral);
+        assert_eq!(resolve_dash_palette(Some(&theme(&[("foreground", "#AABBCC")]))).neutral, Rgba::hex("#AABBCC"));
+        assert_eq!(resolve_dash_palette(Some(&theme(&[("primary", "#112233")]))).neutral, DEFAULT_DASH_PALETTE.neutral);
     }
 
     #[test]
@@ -779,18 +759,5 @@ mod tests {
         assert_eq!(match_theme_name(Some(&theme(&[]))), Some("Graphite"));
         assert_eq!(match_theme_name(Some(&theme(&[("primary", "#00D64F"), ("accent", "#FF6A00")]))), Some("Viper"));
         assert_eq!(match_theme_name(Some(&theme(&[("primary", "#123456")]))), None);
-    }
-
-    #[test]
-    fn effective_color_system_defaults_to_styled_only_when_a_theme_override_is_set() {
-        assert_eq!(effective_color_system(&layout(None, None)), ColorSystem::Functional);
-        assert_eq!(effective_color_system(&layout(None, Some(theme(&[("primary", "#112233")])))), ColorSystem::Styled);
-        assert_eq!(effective_color_system(&layout(Some(ColorSystem::Functional), Some(theme(&[("primary", "#112233")])))), ColorSystem::Functional);
-    }
-
-    #[test]
-    fn match_layout_theme_name_reports_graphite_for_functional_layouts_without_inspecting_the_theme() {
-        assert_eq!(match_layout_theme_name(&layout(Some(ColorSystem::Functional), Some(theme(&[("primary", "#123456")])))), Some("Graphite"));
-        assert_eq!(match_layout_theme_name(&layout(Some(ColorSystem::Styled), Some(theme(&[])))), Some("Graphite"));
     }
 }

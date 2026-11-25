@@ -191,7 +191,7 @@ public sealed class DashEditorControllerTests
         DashTheme ice = DashThemePresets.All.First(preset => preset.Name == "Ice").Theme;
         controller.ApplyThemePreset(ice);
         Assert.Equal("#1F7FE6", controller.Layout.Theme!.Primary);
-        Assert.Equal("Ice", DashThemePresets.MatchName(controller.Layout));
+        Assert.Equal("Ice", DashThemePresets.MatchName(controller.Layout.Theme));
 
         // The empty "Graphite" preset clears the theme rather than persisting an empty object.
         controller.ApplyThemePreset(DashThemePresets.All.First(preset => preset.Name == "Graphite").Theme);
@@ -199,17 +199,9 @@ public sealed class DashEditorControllerTests
     }
 
     [Fact]
-    public void ThemePresetMatchingUsesTheRenderedColorSystemAndEveryPersistedCondition()
+    public void ThemePresetMatchingUsesEveryPersistedCondition()
     {
-        DashLayout customStyled = NewLayout();
-        customStyled.ColorSystem = DashColorSystem.Styled;
-        customStyled.Theme = new DashTheme { ColdLow = "#123456" };
-        Assert.Null(DashThemePresets.MatchName(customStyled));
-
-        DashLayout functionalWithIgnoredOpticalTheme = NewLayout();
-        functionalWithIgnoredOpticalTheme.ColorSystem = DashColorSystem.Functional;
-        functionalWithIgnoredOpticalTheme.Theme = DashThemePresets.All.First(preset => preset.Name == "Ice").Theme.Clone();
-        Assert.Equal("Graphite", DashThemePresets.MatchName(functionalWithIgnoredOpticalTheme));
+        Assert.Null(DashThemePresets.MatchName(new DashTheme { ColdLow = "#123456" }));
     }
 
     [Fact]
@@ -369,9 +361,7 @@ public sealed class DashEditorControllerTests
     public void AlertGeometryAndIndividualOverridesPersistIndependently()
     {
         int saves = 0;
-        DashLayout layout = NewLayout();
-        layout.AlertConfig = new DashAlertConfig { ColorToken = "ember", DurationSeconds = 1.8, InvertColors = false };
-        DashEditorController controller = new DashEditorController(layout, _ => saves++);
+        DashEditorController controller = new DashEditorController(NewLayout(), _ => saves++);
         controller.SetAlert("tc_change", true);
 
         Assert.True(controller.SetAlertGeometry("tc_change", 17, 10, 8, 6));
@@ -382,16 +372,9 @@ public sealed class DashEditorControllerTests
         controller.SetAlertColorToken("tc_change", "blue");
         controller.SetAlertDuration("tc_change", 2.4);
         controller.SetAlertInvertColors("tc_change", true);
-        DashAlertConfig effective = controller.EffectiveAlertConfig("tc_change");
-        Assert.Equal("ice", effective.ColorToken);
-        Assert.Equal(2.4, effective.DurationSeconds);
-        Assert.True(effective.InvertColors);
+        Assert.Equal(("full", "ice", (double?)2.4, (bool?)true), (alert.DisplayMode, alert.ColorToken, alert.DurationSeconds, alert.InvertColors));
 
         controller.SetAlertUseGlobal("tc_change", true);
-        effective = controller.EffectiveAlertConfig("tc_change");
-        Assert.Equal("ember", effective.ColorToken);
-        Assert.Equal(1.8, effective.DurationSeconds);
-        Assert.False(effective.InvertColors);
         Assert.True(alert.UsesGlobalSettings);
         Assert.True(saves >= 7);
     }

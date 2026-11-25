@@ -19,12 +19,6 @@ use crate::palette::Colours;
 use crate::pit_limiter::{PitLimiter, PitLimiterStyle};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ColorSystem {
-    Functional,
-    Styled,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum GroupMode {
     Together,
     OneAtATime,
@@ -102,7 +96,6 @@ pub struct DashLayout {
     pub name: String,
     pub category: Option<String>,
     pub mode: String,
-    pub color_system: Option<ColorSystem>,
     pub screen_profile: Option<String>,
     pub grid_cols: f64,
     pub grid_rows: f64,
@@ -110,7 +103,6 @@ pub struct DashLayout {
     pub idle_page: Option<DashPage>,
     pub alerts: Vec<DashAlert>,
     pub theme: Option<DashTheme>,
-    pub alert_config: Option<Map<String, Value>>,
     /// What the lap review (`lap_summary`) shows in its six cells.
     pub lap_review: LapReview,
     /// What the dash shows over its page while the pit limiter is on (`pit_limiter.rs`).
@@ -243,11 +235,6 @@ fn parse_layout(raw: &Map<String, Value>) -> Result<DashLayout, String> {
         name: name.to_owned(),
         category: string_field(raw, "category"),
         mode: string_field(raw, "mode").unwrap_or_else(|| "basic".to_owned()),
-        color_system: match raw.get("colorSystem").and_then(Value::as_str) {
-            Some("functional") => Some(ColorSystem::Functional),
-            Some("styled") => Some(ColorSystem::Styled),
-            _ => None,
-        },
         screen_profile: string_field(raw, "screenProfile"),
         grid_cols,
         grid_rows,
@@ -258,7 +245,6 @@ fn parse_layout(raw: &Map<String, Value>) -> Result<DashLayout, String> {
             .get("theme")
             .and_then(Value::as_object)
             .map(|theme| theme.iter().filter_map(|(key, value)| value.as_str().map(|v| (key.clone(), v.to_owned()))).collect()),
-        alert_config: raw.get("alertConfig").and_then(Value::as_object).cloned(),
         lap_review: parse_lap_review(raw.get("lapReview")),
         pit_limiter: parse_pit_limiter(raw.get("pitLimiter")),
         tracks: parse_tracks(raw),
@@ -1209,7 +1195,7 @@ fn utc_time_of_day(timestamp: &str) -> Option<f64> {
 mod tests {
     use super::*;
 
-    const LAYOUT: &str = r#"{"id":"l1","name":"Layout","gridCols":20,"gridRows":12,"pages":[{"id":"p1","name":"P","widgets":[{"id":"w","type":"gear_speed","col":0,"row":0,"colSpan":4,"rowSpan":3,"config":{"align":"left"},"style":{"textColor":5}}]}]}"#;
+    const LAYOUT: &str = r#"{"id":"l1","name":"Layout","gridCols":20,"gridRows":12,"pages":[{"id":"p1","name":"P","widgets":[{"id":"w","type":"gear_speed","col":0,"row":0,"colSpan":4,"rowSpan":3,"config":{"corner":"rl"},"style":{"textColor":5}}]}]}"#;
 
     fn scene(extra: &str) -> Result<Scene, String> {
         parse_scene(format!(r#"{{"layout":{LAYOUT},"width":800,"height":480{extra}}}"#).as_bytes())
@@ -1223,7 +1209,7 @@ mod tests {
         assert!(s.idle);
         assert_eq!(s.targets, Some(DashTargets { lap_time_seconds: None, fuel_per_lap_liters: Some(2.5) }));
         let widget = &s.layout.pages[0].widgets[0];
-        assert_eq!(widget.config_string("align"), Some("left"));
+        assert_eq!(widget.config_string("corner"), Some("rl"));
         assert!(!widget.label_off && !widget.frame_off);
     }
 

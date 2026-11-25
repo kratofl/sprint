@@ -820,11 +820,6 @@ public sealed class RuntimePersistenceTests
             DashLayout layout = runtime.DashLayouts.Single(layout => layout.Id == "legacy-main");
             Assert.Equal("Legacy Main", layout.Name);
             Assert.Single(layout.Alerts);
-            Assert.NotNull(layout.AlertConfig);
-            Assert.Equal("full", layout.AlertConfig!.DisplayMode);
-            Assert.Equal(2.5, layout.AlertConfig.DurationSeconds);
-            Assert.True(layout.AlertConfig.InvertColors);
-            Assert.Equal("blue", layout.AlertConfig.ColorToken);
             // A widget's colours are gone: colour follows meaning, and the dash wears the flat look.
             Assert.Null(layout.Pages[0].Widgets[0].Style);
             // Genuinely-unknown widget fields still round-trip through the extension-data catch-all.
@@ -1103,57 +1098,31 @@ public sealed class RuntimePersistenceTests
     }
 
     [Fact]
-    public void NewDashboardsDefaultToFunctionalColorSystemAndPersistItExplicitly()
+    public void ADashSavedWithItsOwnColourSystemAndAlertLookLoadsAndForgetsThem()
     {
         string dataRoot = TestEnv.NewTempDataRoot();
         try
         {
-            IDesktopRuntime runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
-
-            DashLayout created = runtime.CreateBlankDashLayout(ScreenProfileCatalog.Default, name: null, category: null);
-
-            Assert.Equal(DashColorSystem.Functional, created.ColorSystem);
-            Assert.Equal(DashColorSystem.Functional, created.EffectiveColorSystem);
-            Assert.Null(created.Theme);
-            string json = File.ReadAllText(Path.Combine(dataRoot, "dash-layouts", $"{created.Id}.json"));
-            Assert.Contains("\"colorSystem\": \"functional\"", json, StringComparison.Ordinal);
-        }
-        finally
-        {
-            Directory.Delete(dataRoot, recursive: true);
-        }
-    }
-
-    [Fact]
-    public void LegacyDashboardColorSystemsMigrateWithoutChangingAuthoredThemeValues()
-    {
-        string dataRoot = TestEnv.NewTempDataRoot();
-        try
-        {
+            // Colours and alerts are app-wide settings now; a dash from before carries its own.
             string layouts = Path.Combine(dataRoot, "dash-layouts");
             Directory.CreateDirectory(layouts);
-            File.WriteAllText(Path.Combine(layouts, "plain.json"),
-                """
-                { "id": "plain", "name": "Plain", "gridCols": 20, "gridRows": 12, "pages": [] }
-                """);
-            File.WriteAllText(Path.Combine(layouts, "authored.json"),
+            string file = Path.Combine(layouts, "older.json");
+            File.WriteAllText(file,
                 """
                 {
-                  "id": "authored", "name": "Authored", "gridCols": 20, "gridRows": 12, "pages": [],
-                  "theme": { "primary": "#123456", "accent": "#654321" }
+                  "id": "older", "name": "Older", "gridCols": 20, "gridRows": 12, "pages": [],
+                  "colorSystem": "styled",
+                  "alertConfig": { "displayMode": "center", "durationSeconds": 2.5, "invertColors": true, "colorToken": "blue", "enabledTypes": ["tc_change"] }
                 }
                 """);
 
             DesktopRuntime runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
 
-            DashLayout plain = runtime.DashLayouts.Single(layout => layout.Id == "plain");
-            DashLayout authored = runtime.DashLayouts.Single(layout => layout.Id == "authored");
-            Assert.Equal(DashColorSystem.Functional, plain.ColorSystem);
-            Assert.Equal(DashColorSystem.Styled, authored.ColorSystem);
-            Assert.Equal("#123456", authored.Theme!.Primary);
-            Assert.Equal("#654321", authored.Theme.Accent);
-            Assert.Contains("\"colorSystem\": \"functional\"", File.ReadAllText(Path.Combine(layouts, "plain.json")), StringComparison.Ordinal);
-            Assert.Contains("\"colorSystem\": \"styled\"", File.ReadAllText(Path.Combine(layouts, "authored.json")), StringComparison.Ordinal);
+            DashLayout older = runtime.DashLayouts.Single(layout => layout.Id == "older");
+            Assert.Null(older.ExtensionData?.Keys.FirstOrDefault(key => key is "colorSystem" or "alertConfig"));
+            string json = File.ReadAllText(file);
+            Assert.DoesNotContain("colorSystem", json, StringComparison.Ordinal);
+            Assert.DoesNotContain("alertConfig", json, StringComparison.Ordinal);
         }
         finally
         {
@@ -1162,14 +1131,13 @@ public sealed class RuntimePersistenceTests
     }
 
     [Fact]
-    public void SavingStyledDashboardCoercesProtectedConditionColors()
+    public void SavingAThemedDashboardCoercesProtectedConditionColors()
     {
         string dataRoot = TestEnv.NewTempDataRoot();
         try
         {
             DesktopRuntime runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
             DashLayout layout = runtime.DashLayouts.First();
-            layout.ColorSystem = DashColorSystem.Styled;
             layout.Theme = new DashTheme { Critical = "#123456", Fault = "#654321", Warning = "#AABBCC" };
 
             runtime.SaveDashLayout(layout);

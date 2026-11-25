@@ -8,7 +8,6 @@ import type { DashAlertDisplayMode } from './alerts'
 import type { DashLapReview } from './lapReview'
 import type { DashPitLimiter } from './pitLimiter'
 
-export type DashColorSystem = 'functional' | 'styled'
 /**
  * The driver's measurement system (host `AppSettings.Units`, by name): every speed, temperature,
  * pressure and fuel volume a dash prints is in it (the renderer's `Units`). Imperial is US
@@ -45,7 +44,8 @@ export interface DashPage { id: string; name: string; widgets: DashWidget[]; gro
 /**
  * One alert on a dash, as the host stamps the app-wide alert settings onto it
  * (`dashAlertFromSettings`). The look fields (`displayMode`, `colorToken`, `durationSeconds`,
- * `invertColors`) are the alert's own look; all absent means it uses the layout's `alertConfig`.
+ * `invertColors`) are the alert's own look; absent means the default: full screen, not inverted,
+ * the setting's own colour.
  * `displayMode` "full" shows the popup over the whole dash, "strip" as a band across its middle,
  * "center" in the alert's grid rect. `untilAck` keeps it up until the driver acknowledges it.
  * The rest are a type's own settings (`DashAlertSettings`): `lapsLeft`/`warningLapsLeft` are
@@ -67,7 +67,7 @@ export interface DashAlert {
  * `pitLimiter`: the overlay shown while the pit limiter is on (`pitLimiterOf` reads it); absent
  * shows the default style with no widgets of its own.
  */
-export interface DashLayout { id: string; name: string; category?: string; mode: string; colorSystem?: DashColorSystem; colSizes?: number[]; rowSizes?: number[]; screenProfile?: string; gridCols: number; gridRows: number; pages: DashPage[]; idlePage?: DashPage | null; alerts: DashAlert[]; theme?: DashTheme; alertConfig?: Record<string, unknown>; lapReview?: DashLapReview; pitLimiter?: DashPitLimiter }
+export interface DashLayout { id: string; name: string; category?: string; mode: string; colSizes?: number[]; rowSizes?: number[]; screenProfile?: string; gridCols: number; gridRows: number; pages: DashPage[]; idlePage?: DashPage | null; alerts: DashAlert[]; theme?: DashTheme; lapReview?: DashLapReview; pitLimiter?: DashPitLimiter }
 
 export { DashCanvas, DashColoursContext, DashUnitsContext, type DashCanvasProps } from './DashCanvas'
 export { dashboardWidgetTypes, isDashWidgetType, type DashWidgetType } from './widgetTypes'

@@ -353,8 +353,6 @@ public sealed class DashEditorController
     public bool IsAlertEnabled(string type) =>
         this.GetAlert(type)?.Enabled == true;
 
-    public DashAlertConfig AlertConfig => this.Layout.AlertConfig ?? new DashAlertConfig();
-
     /// <summary>Enable/disable a change-alert while preserving its authored geometry and overrides.</summary>
     public void SetAlert(string type, bool enabled)
     {
@@ -373,46 +371,11 @@ public sealed class DashEditorController
             alert.Enabled = enabled;
         }
 
-        this.SyncAlertEnabledTypes();
         this.Persist();
     }
 
-    public void SetAlertDisplayMode(string mode) => this.PatchAlertConfig(config =>
-    {
-        config.DisplayMode = string.Equals(mode, "center", StringComparison.OrdinalIgnoreCase) ? "center" : "full";
-    });
-
-    public void SetAlertDuration(double seconds) => this.PatchAlertConfig(config =>
-    {
-        config.DurationSeconds = Math.Clamp(Math.Round(seconds, 1), 0.5, 5.0);
-    });
-
-    public void SetAlertInvertColors(bool invert) => this.PatchAlertConfig(config =>
-    {
-        config.InvertColors = invert;
-    });
-
-    public void SetAlertColorToken(string token) => this.PatchAlertConfig(config =>
-    {
-        config.ColorToken = NormalizeAlertColor(token);
-    });
-
     public DashAlert? GetAlert(string type) =>
         this.Layout.Alerts.FirstOrDefault(alert => string.Equals(alert.Type, type, StringComparison.OrdinalIgnoreCase));
-
-    public DashAlertConfig EffectiveAlertConfig(string type)
-    {
-        DashAlertConfig result = this.AlertConfig.Clone();
-        if (this.GetAlert(type) is { } alert)
-        {
-            result.DisplayMode = alert.DisplayMode ?? result.DisplayMode;
-            result.ColorToken = alert.ColorToken ?? result.ColorToken;
-            result.DurationSeconds = alert.DurationSeconds ?? result.DurationSeconds;
-            result.InvertColors = alert.InvertColors ?? result.InvertColors;
-        }
-
-        return result;
-    }
 
     public bool SetAlertGeometry(string type, int col, int row, int colSpan, int rowSpan)
     {
@@ -438,6 +401,10 @@ public sealed class DashEditorController
         return true;
     }
 
+    /// <summary>
+    /// Clears the alert's own look so it wears the defaults (full screen, its setting's colour,
+    /// 1.5 s, not inverted), or writes those defaults onto it as its own to edit.
+    /// </summary>
     public void SetAlertUseGlobal(string type, bool useGlobal)
     {
         if (this.GetAlert(type) is not { } alert)
@@ -454,11 +421,10 @@ public sealed class DashEditorController
         }
         else if (alert.UsesGlobalSettings)
         {
-            DashAlertConfig global = this.AlertConfig;
-            alert.DisplayMode = global.DisplayMode;
-            alert.ColorToken = global.ColorToken;
-            alert.DurationSeconds = global.DurationSeconds;
-            alert.InvertColors = global.InvertColors;
+            alert.DisplayMode = "full";
+            alert.ColorToken = "auto";
+            alert.DurationSeconds = 1.5;
+            alert.InvertColors = false;
         }
 
         this.Persist();
@@ -505,29 +471,6 @@ public sealed class DashEditorController
             : "auto";
     }
 
-    private void PatchAlertConfig(Action<DashAlertConfig> patch)
-    {
-        DashAlertConfig config = this.Layout.AlertConfig?.Clone() ?? new DashAlertConfig();
-        patch(config);
-        config.EnabledTypes = this.Layout.Alerts.Where(alert => alert.Enabled).Select(alert => alert.Type).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-        this.Layout.AlertConfig = config.IsDefault ? null : config;
-        this.Persist();
-    }
-
-    private void SyncAlertEnabledTypes()
-    {
-        if (this.Layout.AlertConfig is null)
-        {
-            return;
-        }
-
-        this.Layout.AlertConfig.EnabledTypes = this.Layout.Alerts.Where(alert => alert.Enabled).Select(alert => alert.Type).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-        if (this.Layout.AlertConfig.IsDefault)
-        {
-            this.Layout.AlertConfig = null;
-        }
-    }
-
     // ── Theme (layout-level palette) ──────────────────────────────────────────
 
     /// <summary>Applies a named preset's overrides to the layout (empty preset clears the theme).</summary>
@@ -535,7 +478,6 @@ public sealed class DashEditorController
     {
         ArgumentNullException.ThrowIfNull(preset);
         this.Layout.Theme = preset.IsEmpty ? null : preset.Clone();
-        this.Layout.ColorSystem = preset.IsEmpty ? DashColorSystem.Functional : DashColorSystem.Styled;
         this.Persist();
     }
 

@@ -86,14 +86,12 @@ public sealed class DashAlertSettingsTests
     [Fact]
     public void StampingGivesACopyEveryAlertAndLeavesTheDashAlone()
     {
-        DashAlertConfig ownConfig = new() { DisplayMode = "center", DurationSeconds = 9 };
         DashAlert ownAlert = new() { Id = "mine", Type = "tc_change", DisplayMode = "center" };
         DashLayout layout = new()
         {
             Id = "dash",
             Pages = [new DashPage { Id = "main" }],
             Alerts = [ownAlert],
-            AlertConfig = ownConfig,
         };
         AppDashAlerts alerts = AppDashAlerts.Default.With(new DashAlertSettings("fuel_low", true, DashAlertSize.Strip, false, 3, true, 5));
 
@@ -101,7 +99,6 @@ public sealed class DashAlertSettingsTests
 
         Assert.NotSame(layout, stamped);
         Assert.Same(layout.Pages, stamped.Pages);
-        Assert.Null(stamped.AlertConfig);
         Assert.Equal(DashAlertTypes.Defaults.Select(alert => alert.Type), stamped.Alerts.Select(alert => alert.Type));
         Assert.All(stamped.Alerts, alert => Assert.Equal(alert.Type, alert.Id));
         DashAlert fuel = stamped.Alerts.Single(alert => alert.Type == "fuel_low");
@@ -110,9 +107,8 @@ public sealed class DashAlertSettingsTests
         Assert.Equal(("full", true, true, (int?)null), (penalty.DisplayMode, penalty.InvertColors, penalty.UntilAck, penalty.LapsLeft));
         Assert.False(stamped.Alerts.Single(alert => alert.Type == "arb_change").Enabled);
 
-        // The stored dash keeps its own alerts and config.
+        // The stored dash keeps its own alerts.
         Assert.Same(ownAlert, Assert.Single(layout.Alerts));
-        Assert.Same(ownConfig, layout.AlertConfig);
 
         // What the renderer reads: the new fields by name, untilAck and lapsLeft left out where unset.
         string json = JsonSerializer.Serialize(stamped);

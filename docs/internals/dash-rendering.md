@@ -103,9 +103,13 @@ opinionated, not a second SimHub; frame styles, corners, edges, label spots and 
 colours made too many combinations that looked bad on the wheel). The driver decides what is
 shown and where; Sprint decides how. A widget may only turn its frame or its label off
 (`style: { frame: "off", label: "off" }`; a frameless widget's label sits small above its value),
-and a group's frame is on or off (`framed`). Older dashes' looks (`dashStyle`, `chrome`, label
-spots, widget colours and edges, group edges, name pills and alignment) are dropped on load
-(`DashLooks.Flatten`); the renderer has no other look to draw. A widget's type says whether it
+and a group's frame is on or off (`framed`). Older dashes' looks (`dashStyle`, `chrome`,
+`colorSystem`, `alertConfig`, label spots, widget colours and edges, group edges, name pills and
+alignment) are dropped on load (`DashLooks.Flatten`); the renderer has no other look to draw. Gear +
+Speed always centres (its old `align` goes on load), and a text widget shows its own text or who
+drives and where (`TEXT_BINDINGS` in `widgets.rs`: driver name and number, track, car), never a
+live value, which has a widget of its own; a saved text bound to one loses the binding on load and
+shows its text (`DashWidgetTypeMigration`). A widget's type says whether it
 is framed, bare (gear, text) or split into several frames of its own (the four tyres);
 `widgetForms.json` lists the types without a label (`unlabelled`) or a frame (`unframed`) for
 the designer, pinned by the renderer's tests. `chrome.rs` draws the frame and the label, so widgets
@@ -128,8 +132,8 @@ Analysis read the same setting through `DashColoursContext`. It holds:
 
 Each surface draws a meaning in its own shade: the wheel's warning is orange, because yellow is
 race control's, while the app (`--heat-*` in `styles.css`) draws warm in its warning yellow. A
-layout's own `theme` and `colorSystem` are no longer read (#274 removes them); a dash looks the
-same on every wheel the driver owns.
+layout's own `theme` is no longer read (#274 removes it); a dash looks the same on every wheel the
+driver owns.
 
 ## Type
 
@@ -191,7 +195,7 @@ are not.
 - **Alerts are app-wide but the renderer reads only the layout.** The host stamps the driver's
   alert settings onto a copy of every layout it hands a renderer (`AppDashAlerts.Stamp` in
   `Sprint.Desktop.Core`, the app's previews `dashAlertFromSettings` in `src/alerts.ts`); a layout's
-  own `alerts`/`alertConfig` are never read, and a stamped copy is never saved. A
+  own `alerts` are never read, and a stamped copy is never saved. A
   `strip` is a band a third of the screen tall across its middle; under 100 logical px (a screen
   under 300 px tall) it is drawn full screen instead, decided at draw time (`overlays::strip_fits`),
   so a preview drawn smaller than its panel can fall back where the wheel shows the strip. Alerts

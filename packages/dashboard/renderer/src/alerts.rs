@@ -213,7 +213,7 @@ pub const LAP_SUMMARY_MAX_SECONDS: f64 = 15.0;
 pub const MIN_ALERT_SECONDS: f64 = 1.0;
 pub const MAX_ALERT_SECONDS: f64 = 30.0;
 
-/// The duration when neither the alert nor the layout's `alertConfig` sets one.
+/// The duration when the alert does not set one.
 pub(crate) const DEFAULT_DURATION_SECONDS: f64 = 1.5;
 
 /// The fuel warning's two levels, laps of fuel (or virtual energy) left, unless the `fuel_low`
@@ -390,27 +390,6 @@ impl DisplayMode {
             "center" => Some(DisplayMode::Center),
             _ => None,
         }
-    }
-}
-
-/// The layout's `alertConfig`: the look of every alert that does not set its own. The host
-/// stamps a neutral one; older per-dash layouts carry their own.
-#[derive(Clone, Debug, PartialEq)]
-pub(crate) struct ResolvedAlertConfig {
-    display: DisplayMode,
-    duration_seconds: f64,
-    invert_colors: bool,
-    color_token: String,
-}
-
-/// Narrows the layout's untyped `alertConfig` bag to the fields the tracker reads.
-pub(crate) fn read_alert_config(raw: Option<&Map<String, Value>>) -> ResolvedAlertConfig {
-    let get = |key: &str| raw.and_then(|r| r.get(key));
-    ResolvedAlertConfig {
-        display: DisplayMode::parse(get("displayMode")).unwrap_or(DisplayMode::Full),
-        duration_seconds: get("durationSeconds").and_then(Value::as_f64).unwrap_or(DEFAULT_DURATION_SECONDS),
-        invert_colors: get("invertColors").and_then(Value::as_bool).unwrap_or(false),
-        color_token: get("colorToken").and_then(Value::as_str).unwrap_or("auto").to_owned(),
     }
 }
 
@@ -793,9 +772,9 @@ impl<'a> AlertSpec<'a> {
         })
     }
 
-    /// Where the popup sits: the alert's own choice when it has one, otherwise the layout's.
-    fn placement(&self, config: &ResolvedAlertConfig) -> AlertPlacement {
-        match self.display.unwrap_or(config.display) {
+    /// Where the popup sits: the alert's own choice when it has one, otherwise full screen.
+    fn placement(&self) -> AlertPlacement {
+        match self.display.unwrap_or(DisplayMode::Full) {
             DisplayMode::Full => AlertPlacement::Full,
             DisplayMode::Strip => AlertPlacement::Strip,
             DisplayMode::Center => AlertPlacement::Center(self.span),
@@ -804,32 +783,30 @@ impl<'a> AlertSpec<'a> {
 
     /// The size of a popup that has no grid rect of its own (the multi-dial popup): a centered
     /// one shows full.
-    pub(crate) fn size(&self, config: &ResolvedAlertConfig) -> AlertSize {
-        if self.placement(config) == AlertPlacement::Strip { AlertSize::Strip } else { AlertSize::Full }
+    pub(crate) fn size(&self) -> AlertSize {
+        if self.placement() == AlertPlacement::Strip { AlertSize::Strip } else { AlertSize::Full }
     }
 
-    pub(crate) fn inverted(&self, config: &ResolvedAlertConfig) -> bool {
-        self.invert_colors.unwrap_or(config.invert_colors)
+    pub(crate) fn inverted(&self) -> bool {
+        self.invert_colors.unwrap_or(false)
     }
 
     /// How long it stays up, seconds; `None` until the driver acknowledges it. Unset, the lap
-    /// summary takes `LAP_SUMMARY_SECONDS` and everything else the layout's duration (or
-    /// `fallback` when that is not positive).
-    pub(crate) fn seconds(&self, config: &ResolvedAlertConfig, fallback: f64) -> Option<f64> {
+    /// summary takes `LAP_SUMMARY_SECONDS` and everything else `DEFAULT_DURATION_SECONDS`.
+    pub(crate) fn seconds(&self) -> Option<f64> {
         if self.until_ack {
             return None;
         }
         let default = match self.alert_type {
             DashAlertType::LapSummary => LAP_SUMMARY_SECONDS,
-            _ if config.duration_seconds <= 0.0 => fallback,
-            _ => config.duration_seconds,
+            _ => DEFAULT_DURATION_SECONDS,
         };
         Some(clamp(self.duration_seconds.unwrap_or(default), MIN_ALERT_SECONDS, self.alert_type.max_seconds()))
     }
 
     /// The colour of a setting popup: the setting's identity colour, or the one its colour token names.
-    fn knob_color(&self, knob: Knob, config: &ResolvedAlertConfig, palette: &DashPaletteColors) -> Rgba {
-        resolve_alert_color(Some(self.color_token.unwrap_or(&config.color_token)), knob.color(palette), palette)
+    fn knob_color(&self, knob: Knob, palette: &DashPaletteColors) -> Rgba {
+        resolve_alert_color(self.color_token, knob.color(palette), palette)
     }
 
     /// One of the alert's own number settings, kept to `min..=max`; `fallback` when it has none.
@@ -856,15 +833,15 @@ impl Raised {
         Raised { ends: Some(ends), ..self }
     }
 
-    fn popup(self, spec: &AlertSpec, config: &ResolvedAlertConfig) -> DashAlertPopup {
+    fn popup(self, spec: &AlertSpec) -> DashAlertPopup {
         DashAlertPopup {
             alert_type: spec.alert_type,
             title: self.title.to_owned(),
             value: self.value,
             detail: self.detail,
             color: self.color,
-            invert_colors: spec.inverted(config),
-            placement: spec.placement(config),
+            invert_colors: spec.inverted(),
+            placement: spec.placement(),
         }
     }
 }
@@ -885,15 +862,7 @@ fn engine_temps(now: &Readings, units: Units) -> Option<String> {
 }
 
 /// What `spec` raises on this frame, given the last one (`None`: nothing to diff against yet).
-fn detect(
-    spec: &AlertSpec,
-    now: &Readings,
-    prev: Option<&Readings>,
-    fuel: &mut FuelWatch,
-    config: &ResolvedAlertConfig,
-    palette: &DashPaletteColors,
-    units: Units,
-) -> Option<Raised> {
+fn detect(spec: &AlertSpec, now: &Readings, prev: Option<&Readings>, fuel: &mut FuelWatch, palette: &DashPaletteColors, units: Units) -> Option<Raised> {
     if spec.alert_type == DashAlertType::FuelLow {
         let laps = fuel.fire(now, prev, spec.laps_left)?;
         return Some(Raised::new("FUEL", to_fixed(laps, 1), Some("LAPS LEFT".to_owned()), palette.critical).ending(Ends::Refuelled));
@@ -940,7 +909,7 @@ fn detect(
             }
             let ((value, _), (before, _)) = (now.knob(knob), prev.knob(knob));
             let (value, previous) = (knob.shown(value), knob.shown(before));
-            (value != previous).then(|| Raised::new(knob.title(), value, Some(was(&previous)), spec.knob_color(knob, config, palette)))
+            (value != previous).then(|| Raised::new(knob.title(), value, Some(was(&previous)), spec.knob_color(knob, palette)))
         }),
     }
 }
@@ -1015,7 +984,7 @@ const SAMPLE_LAP: LapSummary = LapSummary {
 const SAMPLE_DIAL: (&str, &str, &str) = ("MULTI", "TC2", dash_color::YELLOW);
 
 /// The made-up popup content the designer plays `spec` with (the `SAMPLES` table in alerts.ts).
-fn sample(spec: &AlertSpec, config: &ResolvedAlertConfig, palette: &DashPaletteColors, units: Units) -> Option<Raised> {
+fn sample(spec: &AlertSpec, palette: &DashPaletteColors, units: Units) -> Option<Raised> {
     let raised = match spec.alert_type {
         DashAlertType::PitLimiter => return None,
         DashAlertType::Flag => Raised::new("FLAG", FlagKind::Yellow.name(), None, FlagKind::Yellow.color(palette)),
@@ -1033,7 +1002,7 @@ fn sample(spec: &AlertSpec, config: &ResolvedAlertConfig, palette: &DashPaletteC
         alert_type => {
             let knob = *Knob::of(alert_type).first()?;
             let (value, previous) = knob.sample();
-            Raised::new(knob.title(), value, Some(was(previous)), spec.knob_color(knob, config, palette))
+            Raised::new(knob.title(), value, Some(was(previous)), spec.knob_color(knob, palette))
         }
     };
     Some(raised)
@@ -1041,11 +1010,10 @@ fn sample(spec: &AlertSpec, config: &ResolvedAlertConfig, palette: &DashPaletteC
 
 /// The popup `alert` would show, with made-up values, for the designer to play on the dash so its
 /// look can be set without turning a knob in the car. Built exactly as a real one is, so it
-/// honours the alert's own look and the layout's, and prints in `units`. `None` for a type the
+/// honours the alert's own look, and prints in `units`. `None` for a type the
 /// tracker does not know, and for the pit limiter, which is an overlay, not a popup.
 pub fn preview_alert_banner(layout: &DashLayout, alert: &DashAlert, palette: &DashPaletteColors, units: Units) -> Option<DashAlertBanner> {
     let spec = AlertSpec::of(alert, layout)?;
-    let config = read_alert_config(layout.alert_config.as_ref());
     match spec.alert_type {
         DashAlertType::LapSummary => Some(DashAlertBanner::LapSummary(Box::new(SAMPLE_LAP))),
         DashAlertType::DialChange => {
@@ -1054,11 +1022,11 @@ pub fn preview_alert_banner(layout: &DashLayout, alert: &DashAlert, palette: &Da
                 caption: caption.to_owned(),
                 label: label.to_owned(),
                 color: Rgba::hex(color),
-                inverted: spec.inverted(&config),
-                size: spec.size(&config),
+                inverted: spec.inverted(),
+                size: spec.size(),
             }))
         }
-        _ => Some(DashAlertBanner::Alert(sample(&spec, &config, palette, units)?.popup(&spec, &config))),
+        _ => Some(DashAlertBanner::Alert(sample(&spec, palette, units)?.popup(&spec))),
     }
 }
 
@@ -1079,9 +1047,8 @@ struct UpAlert {
 /// it has run out or been acknowledged it stays down until its condition ends and starts again.
 /// The flag out (the highest) is kept for its bar, which Ack hides until the flag changes. Time is
 /// supplied explicitly via `advance_to` (milliseconds) rather than read from a clock.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct DashAlertTracker {
-    fallback_duration_seconds: f64,
     laps: LapSummaryWatcher,
     fuel: FuelWatch,
     now: f64,
@@ -1096,28 +1063,7 @@ pub struct DashAlertTracker {
     flag_bar_hidden: bool,
 }
 
-impl Default for DashAlertTracker {
-    fn default() -> Self {
-        DashAlertTracker::new(DEFAULT_DURATION_SECONDS)
-    }
-}
-
 impl DashAlertTracker {
-    pub fn new(fallback_duration_seconds: f64) -> DashAlertTracker {
-        DashAlertTracker {
-            fallback_duration_seconds,
-            laps: LapSummaryWatcher::default(),
-            fuel: FuelWatch::default(),
-            now: 0.0,
-            prev: None,
-            up: Vec::new(),
-            holding: Vec::new(),
-            flag: None,
-            flag_bar: None,
-            flag_bar_hidden: false,
-        }
-    }
-
     /// Advances the tracker's clock to `now_ms` (milliseconds; only differences are read). Call before `evaluate`.
     pub fn advance_to(&mut self, now_ms: f64) {
         self.now = now_ms;
@@ -1134,7 +1080,6 @@ impl DashAlertTracker {
         targets: Option<&DashTargets>,
         units: Units,
     ) -> Option<&DashAlertBanner> {
-        let config = read_alert_config(layout.alert_config.as_ref());
         let limits = alert_limits(layout);
         let enabled = || layout.alerts.iter().filter_map(|alert| AlertSpec::of(alert, layout)).filter(|spec| spec.enabled);
         let readings = Readings::of(frame, &limits.engine, self.prev.as_ref());
@@ -1146,25 +1091,25 @@ impl DashAlertTracker {
         // Watched even while the summary is off, so turning it on mid-session has a lap to compare.
         let summary = self.laps.observe(frame, self.now, targets);
         if let (Some(summary), Some(spec)) = (summary, enabled().find(|spec| spec.alert_type == DashAlertType::LapSummary)) {
-            let until = self.until(&spec, &config);
+            let until = self.until(&spec);
             self.raise(UpAlert { alert_type: DashAlertType::LapSummary, banner: DashAlertBanner::LapSummary(Box::new(summary)), until, ends: None });
         }
 
         // Anything raised on the summary's frame goes on top of it: it is the driver's own input.
         // Of several raised on one frame, the last configured ends up on top.
         for spec in enabled() {
-            if let Some(raised) = detect(&spec, &readings, self.prev.as_ref(), &mut self.fuel, &config, palette, units) {
-                let until = self.until(&spec, &config);
+            if let Some(raised) = detect(&spec, &readings, self.prev.as_ref(), &mut self.fuel, palette, units) {
+                let until = self.until(&spec);
                 let ends = raised.ends;
-                self.raise(UpAlert { alert_type: spec.alert_type, banner: DashAlertBanner::Alert(raised.popup(&spec, &config)), until, ends });
+                self.raise(UpAlert { alert_type: spec.alert_type, banner: DashAlertBanner::Alert(raised.popup(&spec)), until, ends });
             }
         }
 
         for alert_type in DashAlertType::LIVE {
             let spec = enabled().find(|spec| spec.alert_type == alert_type);
-            let shown = spec.as_ref().and_then(|spec| Some(live(spec, frame, palette, &limits)?.popup(spec, &config)));
+            let shown = spec.as_ref().and_then(|spec| Some(live(spec, frame, palette, &limits)?.popup(spec)));
             match (shown, spec) {
-                (Some(popup), Some(spec)) => self.follow_live(&spec, popup, &config),
+                (Some(popup), Some(spec)) => self.follow_live(&spec, popup),
                 _ => {
                     self.holding.retain(|held| *held != alert_type);
                     self.up.retain(|up| up.alert_type != alert_type);
@@ -1185,7 +1130,7 @@ impl DashAlertTracker {
 
     /// A live alert whose condition holds: raised when it has just started, otherwise its popup
     /// follows the frame where it is in the stack (if it has not run out or been acknowledged).
-    fn follow_live(&mut self, spec: &AlertSpec, popup: DashAlertPopup, config: &ResolvedAlertConfig) {
+    fn follow_live(&mut self, spec: &AlertSpec, popup: DashAlertPopup) {
         if self.holding.contains(&spec.alert_type) {
             if let Some(up) = self.up.iter_mut().find(|up| up.alert_type == spec.alert_type) {
                 up.banner = DashAlertBanner::Alert(popup);
@@ -1193,12 +1138,12 @@ impl DashAlertTracker {
             return;
         }
         self.holding.push(spec.alert_type);
-        let until = self.until(spec, config);
+        let until = self.until(spec);
         self.raise(UpAlert { alert_type: spec.alert_type, banner: DashAlertBanner::Alert(popup), until, ends: None });
     }
 
-    fn until(&self, spec: &AlertSpec, config: &ResolvedAlertConfig) -> Option<f64> {
-        spec.seconds(config, self.fallback_duration_seconds).map(|seconds| self.now + seconds * 1000.0)
+    fn until(&self, spec: &AlertSpec) -> Option<f64> {
+        spec.seconds().map(|seconds| self.now + seconds * 1000.0)
     }
 
     fn raise(&mut self, alert: UpAlert) {
@@ -1292,16 +1237,13 @@ mod tests {
         alert
     }
 
-    fn layout(alerts: serde_json::Value, alert_config: Option<serde_json::Value>) -> DashLayout {
-        let mut raw = json!({ "id": "l1", "name": "Layout", "mode": "basic", "gridCols": 20, "gridRows": 12, "pages": [], "alerts": alerts });
-        if let Some(config) = alert_config {
-            raw["alertConfig"] = config;
-        }
+    fn layout(alerts: serde_json::Value) -> DashLayout {
+        let raw = json!({ "id": "l1", "name": "Layout", "mode": "basic", "gridCols": 20, "gridRows": 12, "pages": [], "alerts": alerts });
         crate::model::parse_scene(json!({ "layout": raw, "width": 800, "height": 480 }).to_string().as_bytes()).expect("layout").layout
     }
 
     fn one(overrides: serde_json::Value) -> DashLayout {
-        layout(json!([alert(overrides)]), None)
+        layout(json!([alert(overrides)]))
     }
 
     fn popup(banner: Option<&DashAlertBanner>) -> DashAlertPopup {
@@ -1382,7 +1324,7 @@ mod tests {
 
     #[test]
     fn migration_and_anti_roll_bar_changes_alert_only_while_driving() {
-        let l = layout(json!([alert(json!({ "id": "m", "type": "migration_change" })), alert(json!({ "id": "a", "type": "arb_change" }))]), None);
+        let l = layout(json!([alert(json!({ "id": "m", "type": "migration_change" })), alert(json!({ "id": "a", "type": "arb_change" }))]));
         let car = |migration: f64, rear_arb: f64, in_car: bool| {
             driving(|f| {
                 (f.electronics.migration, f.electronics.migration_max, f.electronics.rear_anti_roll_bar, f.electronics.rear_anti_roll_bar_max) =
@@ -1513,7 +1455,7 @@ mod tests {
 
     #[test]
     fn the_limits_the_widgets_warn_from_are_the_alerts_whether_or_not_they_are_on() {
-        assert_eq!(alert_limits(&layout(json!([]), None)), AlertLimits::default());
+        assert_eq!(alert_limits(&layout(json!([]))), AlertLimits::default());
         assert_eq!(AlertLimits::default().fuel, FuelWarning { amber: 4.0, red: 2.0 });
         let fuel = |fields: serde_json::Value| alert_limits(&one(fields)).fuel;
         assert_eq!(fuel(json!({ "type": "fuel_low", "enabled": false, "lapsLeft": 3, "warningLapsLeft": 6 })), FuelWarning { amber: 6.0, red: 3.0 });
@@ -1642,7 +1584,7 @@ mod tests {
         quiet.evaluate(&off, &flags(true, false), &P, None, Units::Metric);
         assert_eq!(quiet.flag_bar(), None, "the flag alert off shows no bar");
         assert_eq!(flag_bar(&off, &flags(true, false), &P), None);
-        assert_eq!(flag_bar(&layout(json!([]), None), &flags(true, false), &P), Some(yellow), "a still of a dash without the alert shows it");
+        assert_eq!(flag_bar(&layout(json!([])), &flags(true, false), &P), Some(yellow), "a still of a dash without the alert shows it");
     }
 
     #[test]
@@ -1679,7 +1621,7 @@ mod tests {
 
     #[test]
     fn an_alert_held_until_acknowledged_shows_again_when_a_passing_one_runs_out() {
-        let l = layout(json!([alert(json!({ "id": "p", "type": "penalty", "untilAck": true })), alert(json!({ "durationSeconds": 2 }))]), None);
+        let l = layout(json!([alert(json!({ "id": "p", "type": "penalty", "untilAck": true })), alert(json!({ "durationSeconds": 2 }))]));
         let car = |tc: f64, penalties: f64| {
             driving(|f| {
                 (f.electronics.tc, f.electronics.tc_max) = (tc, 9.0);
@@ -1713,7 +1655,7 @@ mod tests {
     #[test]
     fn display_mode_center_keeps_the_popup_in_the_alert_rect_and_strip_is_a_band() {
         let mut tracker = DashAlertTracker::default();
-        let centered = layout(json!([alert(json!({}))]), Some(json!({ "displayMode": "center" })));
+        let centered = one(json!({ "displayMode": "center" }));
         tracker.evaluate(&centered, &tc(0.0), &P, None, Units::Metric);
         let span = AlertSpan { col: 6.0, row: 3.0, col_span: 8.0, row_span: 6.0, grid_cols: 20.0, grid_rows: 12.0 };
         assert_eq!(popup(tracker.evaluate(&centered, &tc(5.0), &P, None, Units::Metric)).placement, AlertPlacement::Center(span));
@@ -1728,7 +1670,7 @@ mod tests {
         tracker.evaluate(&l, &tc(0.0), &P, None, Units::Metric);
         assert_eq!(tracker.evaluate(&l, &tc(5.0), &P, None, Units::Metric), None);
         // `enabled` is read for its truthiness, as the TypeScript `if (!alert.enabled)` does.
-        let absent = layout(json!([{ "id": "a", "type": "tc_change", "col": 0, "row": 0, "colSpan": 1, "rowSpan": 1 }]), None);
+        let absent = layout(json!([{ "id": "a", "type": "tc_change", "col": 0, "row": 0, "colSpan": 1, "rowSpan": 1 }]));
         tracker.evaluate(&absent, &tc(0.0), &P, None, Units::Metric);
         assert_eq!(tracker.evaluate(&absent, &tc(5.0), &P, None, Units::Metric), None);
         let truthy = one(json!({ "enabled": 1 }));
@@ -1754,7 +1696,7 @@ mod tests {
     #[test]
     fn the_last_configured_alert_that_fires_this_frame_wins() {
         let mut tracker = DashAlertTracker::default();
-        let l = layout(json!([alert(json!({ "id": "tc", "type": "tc_change" })), alert(json!({ "id": "abs", "type": "abs_change" }))]), None);
+        let l = layout(json!([alert(json!({ "id": "tc", "type": "tc_change" })), alert(json!({ "id": "abs", "type": "abs_change" }))]));
         tracker.evaluate(&l, &frame(|e| (e.tc, e.abs) = (0.0, 0.0)), &P, None, Units::Metric);
         assert_eq!(popup(tracker.evaluate(&l, &frame(|e| (e.tc, e.abs) = (5.0, 5.0)), &P, None, Units::Metric)).title, "ABS");
     }
@@ -1788,17 +1730,15 @@ mod tests {
     }
 
     #[test]
-    fn the_layout_duration_applies_and_a_non_positive_one_falls_back() {
-        for (config, expires) in [(json!({ "durationSeconds": 3 }), 3000.0), (json!({ "durationSeconds": 0 }), 1500.0)] {
-            let mut tracker = DashAlertTracker::default();
-            let l = layout(json!([alert(json!({}))]), Some(config));
-            tracker.evaluate(&l, &tc(0.0), &P, None, Units::Metric);
-            tracker.evaluate(&l, &tc(5.0), &P, None, Units::Metric);
-            tracker.advance_to(expires - 1.0);
-            assert!(tracker.current().is_some());
-            tracker.advance_to(expires);
-            assert!(tracker.current().is_none());
-        }
+    fn an_alert_without_a_duration_stays_up_the_default_one_and_a_half_seconds() {
+        let mut tracker = DashAlertTracker::default();
+        let l = one(json!({}));
+        tracker.evaluate(&l, &tc(0.0), &P, None, Units::Metric);
+        tracker.evaluate(&l, &tc(5.0), &P, None, Units::Metric);
+        tracker.advance_to(1499.0);
+        assert!(tracker.current().is_some());
+        tracker.advance_to(1500.0);
+        assert!(tracker.current().is_none());
     }
 
     #[test]
@@ -1819,34 +1759,23 @@ mod tests {
     #[test]
     fn the_yellow_token_paints_the_palettes_warning_color() {
         let mut tracker = DashAlertTracker::default();
-        let l = layout(json!([alert(json!({}))]), Some(json!({ "colorToken": "yellow", "invertColors": true })));
+        let l = one(json!({ "colorToken": "yellow", "invertColors": true }));
         tracker.evaluate(&l, &tc(0.0), &P, None, Units::Metric);
         let banner = popup(tracker.evaluate(&l, &tc(5.0), &P, None, Units::Metric));
         assert_eq!(banner.color, P.warning);
-        assert!(banner.invert_colors, "the layout's look when the alert has none");
-    }
-
-    #[test]
-    fn an_alerts_own_display_mode_wins_over_the_layouts() {
-        let mut tracker = DashAlertTracker::default();
-        let boxed = layout(json!([alert(json!({ "displayMode": "center" }))]), Some(json!({ "displayMode": "full" })));
-        tracker.evaluate(&boxed, &tc(0.0), &P, None, Units::Metric);
-        assert!(matches!(popup(tracker.evaluate(&boxed, &tc(5.0), &P, None, Units::Metric)).placement, AlertPlacement::Center(_)));
-
-        let full = layout(json!([alert(json!({ "displayMode": "full" }))]), Some(json!({ "displayMode": "strip" })));
-        assert_eq!(popup(preview_alert_banner(&full, &full.alerts[0], &P, Units::Metric).as_ref()).placement, AlertPlacement::Full);
+        assert!(banner.invert_colors);
     }
 
     #[test]
     fn the_designer_preview_plays_every_type_in_the_look_a_real_one_would_wear() {
-        let own = layout(json!([alert(json!({ "colorToken": "ember", "invertColors": true }))]), Some(json!({ "displayMode": "strip" })));
+        let own = one(json!({ "colorToken": "ember", "invertColors": true, "displayMode": "strip" }));
         let banner = popup(preview_alert_banner(&own, &own.alerts[0], &P, Units::Metric).as_ref());
         assert_eq!(banner.title, "TC");
-        assert_eq!(banner.placement, AlertPlacement::Strip, "the layout's display mode when the alert has none");
+        assert_eq!(banner.placement, AlertPlacement::Strip);
         assert!(banner.invert_colors);
         assert_eq!(banner.color, preset_swatch_color(preset("ember")));
 
-        let empty = layout(json!([]), None);
+        let empty = layout(json!([]));
         // The pit limiter is an overlay, not a popup (`the_pit_limiter_raises_no_popup_...`).
         for alert_type in DashAlertType::ALL.into_iter().filter(|t| *t != DashAlertType::PitLimiter) {
             let l = one(json!({ "type": alert_type.id(), "displayMode": "strip", "invertColors": true }));
@@ -1871,7 +1800,7 @@ mod tests {
     #[test]
     fn the_tracker_shows_the_lap_summary_for_five_seconds_when_the_layout_enables_it() {
         for enabled in [true, false] {
-            let l = layout(json!([{ "id": "sum", "type": "lap_summary", "enabled": enabled, "col": 0, "row": 0, "colSpan": 1, "rowSpan": 1 }]), None);
+            let l = layout(json!([{ "id": "sum", "type": "lap_summary", "enabled": enabled, "col": 0, "row": 0, "colSpan": 1, "rowSpan": 1 }]));
             let mut tracker = DashAlertTracker::default();
             tracker.advance_to(0.0);
             tracker.evaluate(&l, &at(4.0, 0.0, 60.0, |f| f.lap.best_lap_time = 210.0), &P, None, Units::Metric);
@@ -1889,7 +1818,6 @@ mod tests {
         for (duration, expires) in [(json!(12), 12_100.0), (json!(40), 15_100.0), (json!(0.1), 1100.0)] {
             let l = layout(
                 json!([{ "id": "sum", "type": "lap_summary", "enabled": true, "durationSeconds": duration, "col": 0, "row": 0, "colSpan": 1, "rowSpan": 1 }]),
-                None,
             );
             let mut tracker = DashAlertTracker::default();
             tracker.evaluate(&l, &at(4.0, 0.0, 60.0, |_| {}), &P, None, Units::Metric);
@@ -1906,7 +1834,6 @@ mod tests {
     fn a_setting_change_on_the_lap_summary_frame_goes_on_top_and_the_summary_shows_after_it() {
         let l = layout(
             json!([{ "id": "sum", "type": "lap_summary", "enabled": true, "col": 0, "row": 0, "colSpan": 1, "rowSpan": 1 }, alert(json!({ "durationSeconds": 1 }))]),
-            None,
         );
         let mut tracker = DashAlertTracker::default();
         tracker.evaluate(&l, &at(4.0, 0.0, 60.0, |f| f.lap.best_lap_time = 210.0), &P, None, Units::Metric);

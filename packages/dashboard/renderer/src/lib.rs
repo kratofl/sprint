@@ -308,8 +308,8 @@ mod tests {
         let widget = if timer { r#"{"id":"t","type":"racelogic_lap_timer","col":0,"row":0,"colSpan":20,"rowSpan":12}"# } else { "" };
         format!(
             r#"{{"layout":{{"id":"{layout_id}","name":"L","gridCols":20,"gridRows":12,"pages":[{{"id":"p","name":"P","widgets":[{widget}]}}],
-                "alerts":[{tc_alert},{{"id":"d","type":"dial_change","enabled":true,"col":0,"row":0,"colSpan":1,"rowSpan":1,"durationSeconds":1.5}}],
-                "alertConfig":{{"displayMode":"center"}}}},"width":200,"height":120}}"#
+                "alerts":[{tc_alert},{{"id":"d","type":"dial_change","enabled":true,"col":0,"row":0,"colSpan":1,"rowSpan":1,"durationSeconds":1.5}}]}},
+                "width":200,"height":120}}"#
         )
     }
 

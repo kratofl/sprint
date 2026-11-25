@@ -1,7 +1,7 @@
 import type { DashCategoryLists, DashRefitLosses, SprintCommand } from '../bridge'
 import { dashboardWidgetTypes, groupParents, isDashPitLimiterStyle, isDashWidgetGroup, isDashWidgetType, mayOverlap, stackLayers } from '@sprint/dashboard'
 import { DEFAULT_PIT_LIMITER_STYLE, formIndex, holdsSmallest, layoutRect, referenceSize, widgetForms, type WidgetForm } from '@sprint/dashboard'
-import type { DashAlert, DashColorSystem, DashLayout, DashPitLimiter, DashPage, DashTheme, DashWidget, DashWidgetStyle, DashWidgetType, LayoutGrid } from '@sprint/dashboard'
+import type { DashAlert, DashLayout, DashPitLimiter, DashPage, DashTheme, DashWidget, DashWidgetStyle, DashWidgetType, LayoutGrid } from '@sprint/dashboard'
 import type { TelemetryFrame } from '@sprint/types'
 
 /**
@@ -100,7 +100,6 @@ export function parseDashLayout(row: Record<string, unknown>): DashLayout | null
   if (isDashPageRow(row.idlePage)) layout.idlePage = row.idlePage
   if (typeof row.screenProfile === 'string') layout.screenProfile = row.screenProfile
   if (typeof row.category === 'string' && row.category.length > 0) layout.category = row.category
-  if (row.colorSystem === 'functional' || row.colorSystem === 'styled') layout.colorSystem = row.colorSystem
   const colSizes = trackSizes(row.colSizes, layout.gridCols)
   const rowSizes = trackSizes(row.rowSizes, layout.gridRows)
   if (colSizes && rowSizes) {
@@ -110,7 +109,6 @@ export function parseDashLayout(row: Record<string, unknown>): DashLayout | null
   if (isRecord(row.theme)) {
     layout.theme = Object.fromEntries(Object.entries(row.theme).filter((entry): entry is [string, string] => typeof entry[1] === 'string'))
   }
-  if (isRecord(row.alertConfig)) layout.alertConfig = row.alertConfig
   // The renderer reads each cell defensively (lapReviewCells); only the shape is checked here.
   if (isRecord(row.lapReview) && Array.isArray(row.lapReview.cells)) layout.lapReview = { cells: row.lapReview.cells.filter((cell): cell is string => typeof cell === 'string') }
   if (isRecord(row.pitLimiter)) layout.pitLimiter = parsePitLimiter(row.pitLimiter)
@@ -200,37 +198,20 @@ export type DashWidgetDefinition = { type: DashWidgetType; name: string; idleCap
 
 const NO_CONFIG: readonly DashConfigField[] = []
 
+/** Static text, or who drives and where (`TEXT_BINDINGS` in the renderer); live values have widgets of their own. */
 const TEXT_CONFIG: readonly DashConfigField[] = [
   { key: 'content', label: 'Text', kind: 'text', default: '', options: [] },
   {
     key: 'binding',
-    label: 'Live value',
+    label: 'Shows instead',
     kind: 'select',
     default: '',
     options: [
-      { value: '', label: 'None (static text)' },
+      { value: '', label: 'Nothing (the text)' },
       { value: 'profile.driverName', label: 'Driver name' },
       { value: 'profile.driverNumber', label: 'Driver number' },
       { value: 'session.track', label: 'Track' },
       { value: 'session.car', label: 'Car' },
-      { value: 'car.speed', label: 'Speed' },
-      { value: 'car.gear', label: 'Gear' },
-      { value: 'lap.current', label: 'Current lap time' },
-      { value: 'lap.delta', label: 'Delta' },
-    ],
-  },
-]
-
-const ALIGN_CONFIG: readonly DashConfigField[] = [
-  {
-    key: 'align',
-    label: 'Alignment',
-    kind: 'select',
-    default: 'center',
-    options: [
-      { value: 'center', label: 'Centre' },
-      { value: 'left', label: 'Left' },
-      { value: 'right', label: 'Right' },
     ],
   },
 ]
@@ -261,7 +242,7 @@ const TYRE_CONFIG: readonly DashConfigField[] = [
 const WIDGET_CATALOG: Readonly<Record<DashWidgetType, DashWidgetDefinition>> = {
   text: { type: 'text', name: 'Text', idleCapable: true, config: TEXT_CONFIG },
   gear: { type: 'gear', name: 'Gear', idleCapable: true, config: GEAR_CONFIG },
-  gear_speed: { type: 'gear_speed', name: 'Gear + Speed', idleCapable: true, config: ALIGN_CONFIG },
+  gear_speed: { type: 'gear_speed', name: 'Gear + Speed', idleCapable: true, config: NO_CONFIG },
   input_trace: { type: 'input_trace', name: 'Input Trace', idleCapable: false, config: NO_CONFIG },
   current_lap: { type: 'current_lap', name: 'Current Lap', idleCapable: false, config: NO_CONFIG },
   last_lap: { type: 'last_lap', name: 'Last Lap', idleCapable: false, config: NO_CONFIG },

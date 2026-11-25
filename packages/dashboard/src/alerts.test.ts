@@ -34,18 +34,18 @@ test("a named color token resolves to that theme preset's swatch, overriding the
   assert.equal(alertPopup(previewAlertBanner(layout([]), flag, defaultDashPalette, 'Metric')).color, defaultDashPalette.raceControlYellow, 'a signal keeps its own colour')
 })
 
-test("an alert's own displayMode wins over the layout's", () => {
+test('an alert shows full screen unless it picks its own display mode', () => {
   const boxed = alert({ displayMode: 'center' })
-  const centered = alertPopup(previewAlertBanner(layout([boxed], { alertConfig: { displayMode: 'full' } }), boxed, defaultDashPalette, 'Metric'))
+  const centered = alertPopup(previewAlertBanner(layout([boxed]), boxed, defaultDashPalette, 'Metric'))
   assert.equal(centered.displayMode, 'center')
   if (centered.displayMode === 'center') assert.deepEqual([centered.col, centered.row, centered.colSpan, centered.rowSpan, centered.gridCols], [6, 3, 8, 6, 20])
-  const full = alert({ displayMode: 'full' })
-  assert.equal(alertPopup(previewAlertBanner(layout([full], { alertConfig: { displayMode: 'strip' } }), full, defaultDashPalette, 'Metric')).displayMode, 'full')
+  const plain = alert()
+  assert.equal(alertPopup(previewAlertBanner(layout([plain]), plain, defaultDashPalette, 'Metric')).displayMode, 'full')
 })
 
 test('the preview wears the same look a real alert would, for every type at either size', () => {
-  const own = alert({ colorToken: 'ember', invertColors: true })
-  const banner = alertPopup(previewAlertBanner(layout([own], { alertConfig: { displayMode: 'strip' } }), own, defaultDashPalette, 'Metric'))
+  const own = alert({ colorToken: 'ember', invertColors: true, displayMode: 'strip' })
+  const banner = alertPopup(previewAlertBanner(layout([own]), own, defaultDashPalette, 'Metric'))
   assert.deepEqual([banner.title, banner.value, banner.detail, banner.displayMode, banner.invertColors], ['TC', '5', 'WAS 4', 'strip', true], 'never the maximum')
   const ember = findPresetByAlertColorToken('ember')
   assertDefined(ember)

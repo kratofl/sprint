@@ -1229,15 +1229,7 @@ fn sector_time(b: &mut Builder, w: &WidgetContext) {
     big_value(b, &text, "S0 000.000", w.width, w.height, color, 0.8);
 }
 
-/// The `align` config: where a widget anchors its text horizontally.
-fn horizontal_anchor(widget: &DashWidget, width: f64) -> (f64, TextAlign) {
-    match widget.config_string("align") {
-        Some("left") => (width * 0.06, TextAlign::Start),
-        Some("right") => (width * 0.94, TextAlign::End),
-        _ => (width / 2.0, TextAlign::Center),
-    }
-}
-
+/// The gear over the speed and its unit, centred: Sprint places it, not the dash (#274).
 fn gear_speed(b: &mut Builder, w: &WidgetContext) {
     // Its Small form (`widgetForms.json`) is the gear alone.
     if w.form > 0 {
@@ -1245,18 +1237,17 @@ fn gear_speed(b: &mut Builder, w: &WidgetContext) {
     }
     let car = &w.frame.car;
     let gear_color = w.gear_color(w.palette.neutral);
-    let (anchor_x, align) = horizontal_anchor(w.widget, w.width);
     let height = w.height;
     let gear = format_gear(car.gear);
     let units = w.units();
     let speed = format_speed(car.speed_ms, units);
     let base = TextLine {
         text: &gear,
-        left: anchor_x,
+        left: w.width / 2.0,
         top: height * 0.4,
         size: height * 0.6,
         color: gear_color,
-        align,
+        align: TextAlign::Center,
         max_width: Some(w.width * 0.9),
         weight: TextWeight::Value,
         sizing: TextSizing::Stable,
@@ -2018,11 +2009,16 @@ fn damage(b: &mut Builder, w: &WidgetContext) {
     }
 }
 
-/// Free text: the bound value when it prints as something, else the configured content, else
-/// the widget's id. A bound value is printed as `String(value)`, with no per-type formatting.
+/// What a text widget may show besides its own text: who drives and where, for the idle page.
+/// Live values have widgets of their own, drawn and coloured properly (#274), so any other
+/// binding a saved dash still carries is ignored.
+const TEXT_BINDINGS: [&str; 4] = ["profile.driverName", "profile.driverNumber", "session.track", "session.car"];
+
+/// Free text: the bound identity value when it prints as something, else the configured content,
+/// else the widget's id. A bound value is printed as `String(value)`, with no per-type formatting.
 fn text(b: &mut Builder, w: &WidgetContext) {
     let content = w.widget.config_string("content").unwrap_or("");
-    let resolved = match w.widget.config_string("binding").filter(|binding| !binding.is_empty()) {
+    let resolved = match w.widget.config_string("binding").filter(|binding| TEXT_BINDINGS.contains(binding)) {
         Some(binding) => resolve_binding(BindingContext { frame: w.frame, settings: w.settings, targets: w.targets }, binding).to_display(),
         None => String::new(),
     };
@@ -2171,12 +2167,14 @@ mod tests {
     const P: DashPaletteColors = DEFAULT_DASH_PALETTE;
 
     #[test]
-    fn text_prefers_its_binding_then_its_content_then_its_id() {
+    fn text_prefers_its_identity_binding_then_its_content_then_its_id() {
         let mut frame = TelemetryFrame::default();
-        frame.car.rpm = 7450.4;
+        frame.car.speed_ms = 50.0;
+        frame.session.track = "Le Mans".to_owned();
         let settings = DashSettings { driver_name: Some("A. Driver".to_owned()), ..DashSettings::default() };
         let shown = |config| text_of(&draw_with(&widget("text", config), &frame, 200.0, 80.0, None, Some(&settings)))[0].clone();
-        assert_eq!(shown(json!({ "binding": "car.rpm", "content": "unused" })), "7450");
+        assert_eq!(shown(json!({ "binding": "session.track", "content": "unused" })), "Le Mans");
+        assert_eq!(shown(json!({ "binding": "car.speed", "content": "SPEED" })), "SPEED", "a live value a saved dash still binds is static text");
         assert_eq!(shown(json!({ "binding": "profile.driverName" })), "A. Driver");
         assert_eq!(shown(json!({ "binding": "profile.driverNumber", "content": "HELLO" })), "HELLO");
         assert_eq!(shown(json!({ "content": "" })), "w");
@@ -2870,15 +2868,11 @@ mod tests {
     }
 
     #[test]
-    fn gear_speed_anchors_left_or_right_from_its_align_config() {
-        let fonts = Fonts::new();
+    fn gear_speed_centres_even_when_a_saved_dash_still_aligns_it() {
         let frame = TelemetryFrame::default();
+        let centred = draw(&widget("gear_speed", json!({})), &frame, 200.0, 300.0);
         let left = draw(&widget("gear_speed", json!({ "align": "left" })), &frame, 200.0, 300.0);
-        assert!(texts(&left).iter().all(|r| r.x == 12.0), "start-anchored at 6%");
-        let right = draw(&widget("gear_speed", json!({ "align": "right" })), &frame, 200.0, 300.0);
-        let gear = texts(&right)[0];
-        assert!((gear.x + gear.width(&fonts) - 188.0).abs() < 1e-9, "end-anchored at 94%");
-        assert_eq!(gear.text, "N");
+        assert_eq!(texts(&left), texts(&centred));
     }
 
     #[test]
