@@ -32,6 +32,13 @@ export function brakeHeat(celsius: number, limits: DashColourLimits): Heat {
   return 'ok'
 }
 
+/** Tread left (%): good, then low and critical under their marks; the renderer's `wear_color`. */
+export function wearHeat(treadPercent: number, limits: DashColourLimits): Exclude<Heat, 'cold'> {
+  if (treadPercent < limits.wearCriticalBelow) return 'hot'
+  if (treadPercent < limits.wearLowBelow) return 'warm'
+  return 'ok'
+}
+
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null
 
 const LIMIT_KEYS = Object.keys(defaultDashColours.limits).filter((key): key is keyof DashColourLimits => key in defaultDashColours.limits)

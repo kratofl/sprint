@@ -1,14 +1,14 @@
 import { useContext, useId } from 'react'
 import { DashColoursContext } from '@sprint/dashboard'
 import type { LinkSample } from '../../bridge'
-import type { CarDamage, PitWall, TyreCorner } from '../pitWallData'
-import { brakeHeat, tyreHeat } from '../../colours'
+import type { CarDamage, PitWall, TyreCorner, TyrePosition } from '../pitWallData'
+import { brakeHeat, tyreHeat, wearHeat } from '../../colours'
 import { damageRows, dentOf, pressureRange, PRESSURE_TARGET, ticksIn, worstZone } from '../carDomain'
 import { carAlongside } from '../stack'
 import { carNumber, playerOf } from '../timing'
 import { TileEmpty, TileFrame, type FrameProps, type TileData } from '../tileFrame'
 import { useSize } from '../useSize'
-import { SCHEMATIC_PARTS, SchematicCar } from './SchematicCar'
+import { SCHEMATIC_PARTS, SchematicCar, type Wheel } from './SchematicCar'
 import { titled } from './RaceTiles'
 
 const CORNER_NAME: Record<TyreCorner['position'], string> = { FrontLeft: 'FL', FrontRight: 'FR', RearLeft: 'RL', RearRight: 'RR' }
@@ -206,14 +206,19 @@ export function PressureTile({ data, frame }: { data: TileData; frame: FrameProp
   )
 }
 
-/** The car with each dent place in the damage colours, and the last hit pinned on the worst. */
-function DamageCar({ damage }: { damage: CarDamage }) {
+// Each tyre's place on the drawing.
+const WHEEL_AT: Record<TyrePosition, Wheel> = { FrontLeft: 'fl', FrontRight: 'fr', RearLeft: 'rl', RearRight: 'rr' }
+
+/** The car with each dent place in the damage colours, each wheel by the tread it has left, and the last hit pinned on the worst place. */
+function DamageCar({ damage, tyres }: { damage: CarDamage; tyres: readonly TyreCorner[] }) {
+  const { limits } = useContext(DashColoursContext)
   const worst = worstZone(damage)
   const pin = worst && damage.lastImpact ? SCHEMATIC_PARTS[worst].pin : null
   return (
     <SchematicCar
       label="Damage on the car"
       partClass={(zone) => `pw-dent s${dentOf(damage, zone)}`}
+      wheelClass={Object.fromEntries(tyres.map((tyre) => [WHEEL_AT[tyre.position], `pw-wear ${wearHeat(Math.min(100, Math.max(0, tyre.wearPercent)), limits)}`]))}
       extra={
         pin && (
           <g>
@@ -241,7 +246,7 @@ export function DamageTile({ data, frame }: { data: TileData; frame: FrameProps 
       ) : (
         <>
           <div className="pw-damage-car">
-            <DamageCar damage={damage} />
+            <DamageCar damage={damage} tyres={wall.car.tyres} />
           </div>
           <div className="pw-damage-list">
             {damageRows(damage).map((row) => (

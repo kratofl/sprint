@@ -1314,6 +1314,11 @@
   stroke: var(--red-500);
 }
 
+/* A wheel by the tread it has left, on the Colours setting's wear marks. */
+.pw-wear.ok { fill: var(--heat-good); }
+.pw-wear.warm { fill: var(--heat-warm); }
+.pw-wear.hot { fill: var(--heat-hot); }
+
 .pw-hit {
   fill: var(--label);
 }

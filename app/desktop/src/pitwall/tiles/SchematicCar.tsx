@@ -11,6 +11,7 @@ export const SCHEMATIC_WIDTH = 120
 export const SCHEMATIC_HEIGHT = 196
 
 export type Wheel = 'fl' | 'fr' | 'rl' | 'rr'
+const WHEELS: readonly Wheel[] = ['fl', 'fr', 'rl', 'rr']
 
 /** Each wheel's box. */
 export const SCHEMATIC_WHEELS: Readonly<Record<Wheel, { x: number; y: number; width: number; height: number }>> = {
@@ -58,28 +59,32 @@ export const SCHEMATIC_PARTS: Readonly<Record<DentZone, { d: string; pin: [numbe
 }
 
 /**
- * The car. `partClass` adds a class to each dent place's part (the damage tile colours them);
- * `wheels: false` leaves the wheels to `extra`, which is drawn on top of everything.
+ * The car. `partClass` adds a class to each dent place's part and `wheelClass` to a wheel (the
+ * damage tile colours both); `wheels: false` leaves the wheels to `extra`, which is drawn on top
+ * of everything.
  */
 export function SchematicCar({
   label,
   className,
   partClass,
+  wheelClass = {},
   wheels = true,
   extra,
 }: {
   label: string
   className?: string
   partClass?: (zone: DentZone) => string
+  wheelClass?: Partial<Record<Wheel, string>>
   wheels?: boolean
   extra?: ReactNode
 }) {
   return (
     <svg viewBox={`0 0 ${SCHEMATIC_WIDTH} ${SCHEMATIC_HEIGHT}`} className={className ? `schematic-car ${className}` : 'schematic-car'} role="img" aria-label={label}>
       {wheels &&
-        Object.entries(SCHEMATIC_WHEELS).map(([wheel, { x, y, width, height }]) => (
-          <rect key={wheel} x={x} y={y} width={width} height={height} rx={5} className="schematic-car-wheel" />
-        ))}
+        WHEELS.map((wheel) => {
+          const { x, y, width, height } = SCHEMATIC_WHEELS[wheel]
+          return <rect key={wheel} x={x} y={y} width={width} height={height} rx={5} className={`schematic-car-wheel ${wheelClass[wheel] ?? ''}`} />
+        })}
       {DENT_ZONES.map((zone) => (
         <path key={zone} d={SCHEMATIC_PARTS[zone].d} className={partClass ? `schematic-car-part ${partClass(zone)}` : 'schematic-car-part'} />
       ))}
