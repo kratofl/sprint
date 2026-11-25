@@ -727,7 +727,7 @@ mod tests {
 
     /// A TC change popup in `display_mode`.
     fn alert(display_mode: &str, invert: bool) -> serde_json::Value {
-        json!({ "kind": "alert", "alertType": "tc_change", "title": "TC", "value": "5", "detail": "WAS 4", "color": "#1F7FE6",
+        json!({ "kind": "alert", "alertType": "tc_change", "title": "TC", "value": "5", "detail": "WAS 4", "color": "#1A7CFF",
                 "invertColors": invert, "displayMode": display_mode })
     }
 
@@ -792,7 +792,7 @@ mod tests {
         frame.flags.yellow = true;
         let mut flag = alert("strip", false);
         (flag["alertType"], flag["title"], flag["value"], flag["detail"], flag["color"]) =
-            (json!("flag"), json!("FLAG"), json!("YELLOW"), json!(null), json!("#E0A30C"));
+            (json!("flag"), json!("FLAG"), json!("YELLOW"), json!(null), json!("#FFCC00"));
         let flag = parse_banner(flag.to_string().as_bytes()).expect("flag");
         let ops = draw_still(&scene("l"), &frame, Some(&flag));
         let bar = DrawOp::Rect { rect: PixelRect::new(0.0, 0.0, 800.0, 8.0), radii: Radii::ZERO, color: P.race_control_yellow };
@@ -807,7 +807,7 @@ mod tests {
         let mut strip = dial(false);
         strip["displayMode"] = json!("strip");
         let ops = banner_ops(strip.clone());
-        let colour = Rgba::hex("#E0A30C");
+        let colour = Rgba::hex("#FFCC00");
         assert_eq!(ops[1], DrawOp::Rect { rect: PixelRect::new(0.0, 160.0, 800.0, 160.0), radii: Radii::ZERO, color: P.background });
         assert_eq!((run(&ops, "MULTI").color, run(&ops, "TC2").color), (colour, colour));
         strip["inverted"] = json!(true);
@@ -875,13 +875,13 @@ mod tests {
     }
 
     fn dial(inverted: bool) -> serde_json::Value {
-        json!({ "kind": "multiDial", "caption": "MULTI", "label": "TC2", "color": "#E0A30C", "inverted": inverted })
+        json!({ "kind": "multiDial", "caption": "MULTI", "label": "TC2", "color": "#FFCC00", "inverted": inverted })
     }
 
     #[test]
     fn the_multi_dial_popup_names_the_position_big_under_its_caption_in_the_positions_colour() {
         let ops = banner_ops(dial(false));
-        let colour = Rgba::hex("#E0A30C");
+        let colour = Rgba::hex("#FFCC00");
         assert_eq!(ops[1], DrawOp::Rect { rect: PixelRect::new(0.0, 0.0, 800.0, 480.0), radii: Radii::ZERO, color: P.background });
         let (caption, label) = (run(&ops, "MULTI"), run(&ops, "TC2"));
         assert_eq!((caption.color, label.color), (colour, colour));

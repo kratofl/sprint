@@ -144,11 +144,11 @@ pub mod dash_color {
     pub const TEXT2: &str = "#A1A1AA";
     pub const TEXT3: &str = "#6F6F78";
     pub const ORANGE: &str = "#FF6A00";
-    pub const GREEN: &str = "#16B566";
-    pub const RED: &str = "#F02744";
-    pub const YELLOW: &str = "#E0A30C";
-    pub const BLUE: &str = "#1F7FE6";
-    pub const PURPLE: &str = "#A06BFF";
+    pub const GREEN: &str = "#00D64F";
+    pub const RED: &str = "#FF1E1E";
+    pub const YELLOW: &str = "#FFCC00";
+    pub const BLUE: &str = "#1A7CFF";
+    pub const PURPLE: &str = "#A64DFF";
     pub const SUZUKI_PRIMARY: &str = "#7C3AED";
     pub const SUZUKI_ACCENT: &str = "#B15CFF";
     pub const MONO_PRIMARY: &str = "#F6F6F6";
@@ -595,8 +595,8 @@ mod tests {
     fn the_default_palette_keeps_the_wheel_colors_the_hardware_output_was_tuned_with() {
         assert_eq!(DEFAULT_DASH_PALETTE.surface, Rgba::hex("#1B1B1E"));
         assert_eq!(DEFAULT_DASH_PALETTE.warning, Rgba::hex("#FF6A00"));
-        assert_eq!(DEFAULT_DASH_PALETTE.danger, Rgba::hex("#F02744"));
-        assert_eq!(DEFAULT_DASH_PALETTE.rpm_shift, Rgba::hex("#1F7FE6"));
+        assert_eq!(DEFAULT_DASH_PALETTE.danger, Rgba::hex("#FF1E1E"));
+        assert_eq!(DEFAULT_DASH_PALETTE.rpm_shift, Rgba::hex("#1A7CFF"));
     }
 
     #[test]
@@ -756,7 +756,7 @@ mod tests {
     #[test]
     fn match_theme_name_recognizes_an_exact_preset_and_returns_none_for_a_custom_theme() {
         assert_eq!(match_theme_name(Some(&theme(&[]))), Some("Graphite"));
-        assert_eq!(match_theme_name(Some(&theme(&[("primary", "#16B566"), ("accent", "#FF6A00")]))), Some("Viper"));
+        assert_eq!(match_theme_name(Some(&theme(&[("primary", "#00D64F"), ("accent", "#FF6A00")]))), Some("Viper"));
         assert_eq!(match_theme_name(Some(&theme(&[("primary", "#123456")]))), None);
     }
 

@@ -20,8 +20,8 @@ function assertDefined<T>(value: T | null | undefined): asserts value is T {
 test('the default palette keeps the wheel colors the hardware output was tuned with', () => {
   assert.equal(defaultDashPalette.surface, '#1B1B1E')
   assert.equal(defaultDashPalette.warning, '#FF6A00')
-  assert.equal(defaultDashPalette.danger, '#F02744')
-  assert.equal(defaultDashPalette.rpmShift, '#1F7FE6')
+  assert.equal(defaultDashPalette.danger, '#FF1E1E')
+  assert.equal(defaultDashPalette.rpmShift, '#1A7CFF')
 })
 
 test('a colour theme recolours only the scale’s cold and good, as the renderer does', () => {
@@ -90,7 +90,7 @@ test('presetSwatchColor falls back to the default foreground for the themeless p
 
 test('matchThemeName recognizes an exact preset and returns null for a custom theme', () => {
   assert.equal(matchThemeName({}), 'Graphite')
-  assert.equal(matchThemeName({ primary: '#16B566', accent: '#FF6A00' }), 'Viper')
+  assert.equal(matchThemeName({ primary: '#00D64F', accent: '#FF6A00' }), 'Viper')
   assert.equal(matchThemeName({ primary: '#123456' }), null)
 })
 

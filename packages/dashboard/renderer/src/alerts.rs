@@ -1921,7 +1921,7 @@ mod tests {
 
     #[test]
     fn banner_json_parses_exactly_what_the_typescript_union_serializes() {
-        let alert_json = r##"{"kind":"alert","alertType":"abs_change","title":"ABS","value":"3","detail":"WAS 4","color":"#E0A30C","invertColors":false,"displayMode":"center","col":6,"row":3,"colSpan":8,"rowSpan":6,"gridCols":20,"gridRows":12}"##;
+        let alert_json = r##"{"kind":"alert","alertType":"abs_change","title":"ABS","value":"3","detail":"WAS 4","color":"#FFCC00","invertColors":false,"displayMode":"center","col":6,"row":3,"colSpan":8,"rowSpan":6,"gridCols":20,"gridRows":12}"##;
         let parsed = popup(Some(&parse_banner(alert_json.as_bytes()).expect("alert")));
         assert_eq!((parsed.title.as_str(), parsed.detail.as_deref(), parsed.color), ("ABS", Some("WAS 4"), dash_setting_colors::ABS));
         assert_eq!(parsed.placement, AlertPlacement::Center(AlertSpan { col: 6.0, row: 3.0, col_span: 8.0, row_span: 6.0, grid_cols: 20.0, grid_rows: 12.0 }));
@@ -1959,13 +1959,13 @@ mod tests {
         assert_eq!(parse_banner(lap), Ok(DashAlertBanner::LapSummary(Box::new(summary))));
         assert!(parse_banner(&String::from_utf8_lossy(lap).replace("unrated", "blue").into_bytes()).is_err(), "only the known ratings");
 
-        let dial = br##"{"kind":"multiDial","caption":"MULTI","label":"TC2","color":"#E0A30C","inverted":false,"displayMode":"strip"}"##;
+        let dial = br##"{"kind":"multiDial","caption":"MULTI","label":"TC2","color":"#FFCC00","inverted":false,"displayMode":"strip"}"##;
         assert_eq!(
             parse_banner(dial),
             Ok(DashAlertBanner::MultiDial(DashMultiDialPopup {
                 caption: "MULTI".to_owned(),
                 label: "TC2".to_owned(),
-                color: Rgba::hex("#E0A30C"),
+                color: Rgba::hex("#FFCC00"),
                 inverted: false,
                 size: AlertSize::Strip,
             }))
@@ -1974,7 +1974,7 @@ mod tests {
         assert!(parse_banner(br#"{"kind":"toast"}"#).is_err());
         assert!(parse_banner(br#"{"kind":"alert","title":"TC"}"#).is_err(), "a popup needs all its fields");
         assert!(parse_banner(&String::from_utf8_lossy(strip).replace("strip", "corner").into_bytes()).is_err(), "only the known placements");
-        let named_color = alert_json.replace("#E0A30C", "yellow");
+        let named_color = alert_json.replace("#FFCC00", "yellow");
         assert!(parse_banner(named_color.as_bytes()).is_err(), "the TypeScript only ever writes hex colors there");
     }
 

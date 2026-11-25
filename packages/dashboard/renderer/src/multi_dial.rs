@@ -141,8 +141,8 @@ mod tests {
     use crate::model::parse_scene;
     use serde_json::json;
 
-    const DASH: Rgba = Rgba::hex("#1F7FE6");
-    const TC2: Rgba = Rgba::hex("#E0A30C");
+    const DASH: Rgba = Rgba::hex("#1A7CFF");
+    const TC2: Rgba = Rgba::hex("#FFCC00");
     const LOOK: DialLook = DialLook { size: AlertSize::Full, inverted: false, seconds: Some(1.5) };
 
     fn reading(position: Option<usize>, changes: u64) -> MultiDialReading {
@@ -216,7 +216,7 @@ mod tests {
 
     #[test]
     fn the_reading_parses_from_the_host_json() {
-        let json = br##"{"caption":"MULTI","position":null,"changes":0,"positions":[{"label":"DASH","color":"#1F7FE6"}],"invertPopup":true}"##;
+        let json = br##"{"caption":"MULTI","position":null,"changes":0,"positions":[{"label":"DASH","color":"#1A7CFF"}],"invertPopup":true}"##;
         assert_eq!(
             parse_multi_dial(json),
             Ok(MultiDialReading {
