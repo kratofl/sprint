@@ -3,9 +3,9 @@ import { DashColoursContext } from '@sprint/dashboard'
 import { Check, ChevronDown, ChevronLeft, Crosshair, GitCompareArrows, Maximize2, MoreHorizontal, Plus, X } from 'lucide-react'
 import type { SprintCommand } from '../bridge'
 import { tyreHeat } from '../colours'
-import { CarSvg } from '../pitwall/tiles/CarSvg'
+import { SCHEMATIC_WHEELS, SchematicCar, type Wheel } from '../pitwall/tiles/SchematicCar'
 import { CORNER_NAMES, carHere } from './AnalysisCar'
-import type { CornerHere } from './AnalysisCar'
+import type { Corner, CornerHere } from './AnalysisCar'
 import { buildAddLapNote, buildDeleteLapNote, buildUpdateLapNote, formatGap, formatLapSeconds, fuelText, tyreText } from './AnalysisDomain'
 import { CarName, TrackName } from './CarBadges'
 import type { CorpusLap, CorpusRun, CorpusSession, LapChannelTrace, LapNote, TraceGrid } from './AnalysisDomain'
@@ -563,8 +563,10 @@ function TrackMapCard({
   )
 }
 
-// The car drawing's own units (`CarSvg`, 200 wide): each tyre drawn large beside its corner.
-const TYRE = { width: 68, height: 96, band: 20, gap: 2, left: -62, right: 194, front: 44, rear: 288 }
+// The car drawing's own units (`SchematicCar`, 120 wide): each tyre drawn large over its wheel, growing
+// outward and evenly up and down, its three bands across the tread.
+const TYRE = { width: 40, height: 56, band: 12, gap: 1 }
+const WHEEL_OF: Record<Corner, Wheel> = { FL: 'fl', FR: 'fr', RL: 'rl', RR: 'rr' }
 
 /**
  * A tyre across its tread in the pit wall's heat colours, the inner side facing the car; under it,
@@ -573,12 +575,13 @@ const TYRE = { width: 68, height: 96, band: 20, gap: 2, left: -62, right: 194, f
 function TyreBands({ corner }: { corner: CornerHere }) {
   const { limits } = useContext(DashColoursContext)
   const left = corner.corner.endsWith('L')
-  const x = left ? TYRE.left : TYRE.right
-  const y = corner.corner.startsWith('F') ? TYRE.front : TYRE.rear
+  const wheel = SCHEMATIC_WHEELS[WHEEL_OF[corner.corner]]
+  const x = left ? wheel.x + wheel.width - TYRE.width : wheel.x
+  const y = wheel.y + (wheel.height - TYRE.height) / 2
   const across = left ? [corner.outer, corner.middle, corner.inner] : [corner.inner, corner.middle, corner.outer]
   return (
     <g>
-      <rect x={x} y={y - 2} width={TYRE.width} height={TYRE.height + 4} rx={9} className="analysis-car-tyre" />
+      <rect x={x} y={y - 2} width={TYRE.width} height={TYRE.height + 4} rx={5} className="analysis-car-tyre" />
       {across.map((celsius, index) => (
         <rect
           key={index}
@@ -586,12 +589,12 @@ function TyreBands({ corner }: { corner: CornerHere }) {
           y={y}
           width={TYRE.band}
           height={TYRE.height}
-          rx={index === 1 ? 0 : 7}
+          rx={index === 1 ? 0 : 4}
           className={celsius === null ? 'analysis-heat none' : `analysis-heat ${tyreHeat(celsius, 0, limits)}`}
         />
       ))}
       {corner.state && (
-        <text x={x + TYRE.width / 2} y={y + TYRE.height + 26} textAnchor="middle" className="analysis-car-state">
+        <text x={x + TYRE.width / 2} y={y + TYRE.height + 15} textAnchor="middle" className="analysis-car-state">
           {corner.state}
         </text>
       )}
@@ -664,9 +667,9 @@ function CarCard({ car, position, place, layout, onLayout }: { car: TraceGrid | 
               )
             })}
             <div className="analysis-car-drawing">
-              <CarSvg
+              <SchematicCar
                 label="The car from above, nose up"
-                wheelClass={{ fl: 'analysis-car-wheel', fr: 'analysis-car-wheel', rl: 'analysis-car-wheel', rr: 'analysis-car-wheel' }}
+                wheels={false}
                 extra={reading.corners.map((corner) => (
                   <TyreBands key={corner.corner} corner={corner} />
                 ))}

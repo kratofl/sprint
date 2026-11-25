@@ -567,12 +567,8 @@
   margin: 0 30px;
 }
 
-.analysis-car-drawing .pw-carsvg {
+.analysis-car-drawing .schematic-car {
   overflow: visible;
-}
-
-.analysis-car-wheel {
-  display: none;
 }
 
 .analysis-car-tyre {
@@ -583,7 +579,7 @@
 
 .analysis-car-state {
   fill: var(--label-secondary);
-  font-size: 24px;
+  font-size: 14px;
   font-weight: 600;
 }
 

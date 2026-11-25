@@ -3,12 +3,12 @@ import { DashColoursContext } from '@sprint/dashboard'
 import type { LinkSample } from '../../bridge'
 import type { CarDamage, PitWall, TyreCorner } from '../pitWallData'
 import { brakeHeat, tyreHeat } from '../../colours'
-import { damageRows, dentOf, DENT_ZONES, pressureRange, PRESSURE_TARGET, ticksIn, worstZone, type DentZone } from '../carDomain'
+import { damageRows, dentOf, pressureRange, PRESSURE_TARGET, ticksIn, worstZone } from '../carDomain'
 import { carAlongside } from '../stack'
 import { carNumber, playerOf } from '../timing'
 import { TileEmpty, TileFrame, type FrameProps, type TileData } from '../tileFrame'
 import { useSize } from '../useSize'
-import { CarSvg } from './CarSvg'
+import { SCHEMATIC_PARTS, SchematicCar } from './SchematicCar'
 import { titled } from './RaceTiles'
 
 const CORNER_NAME: Record<TyreCorner['position'], string> = { FrontLeft: 'FL', FrontRight: 'FR', RearLeft: 'RL', RearRight: 'RR' }
@@ -103,7 +103,7 @@ export function TyresTile({ data, frame }: { data: TileData; frame: FrameProps }
           <div className="pw-tyres">
             <TyreDrawing tyre={tyres[0]} />
             <div className="pw-tyres-car">
-              <CarSvg label="The car" />
+              <SchematicCar label="The car" />
             </div>
             <TyreDrawing tyre={tyres[1]} />
             <TyreDrawing tyre={tyres[2]} />
@@ -206,38 +206,23 @@ export function PressureTile({ data, frame }: { data: TileData; frame: FrameProp
   )
 }
 
-/** Where each dent zone sits on the car drawing (200 × 424). */
-const ZONE_RECT: Record<DentZone, { x: number; y: number; w: number; h: number }> = {
-  frontLeft: { x: 0, y: 0, w: 70, h: 150 },
-  front: { x: 70, y: 0, w: 60, h: 150 },
-  frontRight: { x: 130, y: 0, w: 70, h: 150 },
-  right: { x: 140, y: 150, w: 60, h: 130 },
-  rearRight: { x: 130, y: 280, w: 70, h: 144 },
-  rear: { x: 70, y: 280, w: 60, h: 144 },
-  rearLeft: { x: 0, y: 280, w: 70, h: 144 },
-  left: { x: 0, y: 150, w: 60, h: 130 },
-}
-
+/** The car with each dent place in the damage colours, and the last hit pinned on the worst. */
 function DamageCar({ damage }: { damage: CarDamage }) {
   const worst = worstZone(damage)
-  const pin = worst ? ZONE_RECT[worst] : null
+  const pin = worst && damage.lastImpact ? SCHEMATIC_PARTS[worst].pin : null
   return (
-    <CarSvg
+    <SchematicCar
       label="Damage on the car"
-      zones={DENT_ZONES.map((zone) => {
-        const level = dentOf(damage, zone)
-        const rect = ZONE_RECT[zone]
-        return level > 0 ? <rect key={zone} x={rect.x} y={rect.y} width={rect.w} height={rect.h} className={`pw-dent l${level}`} /> : null
-      })}
+      partClass={(zone) => `pw-dent s${dentOf(damage, zone)}`}
       extra={
-        pin && damage.lastImpact ? (
+        pin && (
           <g>
-            <circle cx={pin.x + pin.w / 2} cy={pin.y + Math.min(46, pin.h / 2)} r={9} className="pw-hit" />
-            <text x={pin.x + pin.w / 2} y={pin.y + Math.min(46, pin.h / 2) + 4} className="pw-hit-num">
+            <circle cx={pin[0]} cy={pin[1]} r={7} className="pw-hit" />
+            <text x={pin[0]} y={pin[1] + 3.5} className="pw-hit-num">
               1
             </text>
           </g>
-        ) : null
+        )
       }
     />
   )
