@@ -1446,27 +1446,31 @@ svg.designer-node-stack {
   border-top: 1px solid var(--divider);
 }
 
-/* The scope strip: Device › Game › Class › Car → Dash, under the toolbar. */
+/* The scope strip: Device › Game › Class › Car → Dash, under the toolbar. Centred while it fits; in a
+   narrow window the pickers shrink (ellipsis) so the save status stays inside the window. */
 .designer-scope {
   position: absolute;
   top: 54px;
-  left: 50%;
+  right: 12px;
+  left: 12px;
   z-index: 2;
   display: flex;
   align-items: center;
   gap: 2px;
+  width: max-content;
   max-width: calc(100% - 24px);
   height: 40px;
+  margin: 0 auto;
   padding: 0 6px;
-  transform: translateX(-50%);
   white-space: nowrap;
 }
 
 .designer-scope-pick {
   position: relative;
   display: inline-flex;
-  flex: none;
+  flex: 0 1 auto;
   align-items: center;
+  min-width: 0;
   height: 28px;
   border-radius: var(--radius-control);
   color: var(--label);
@@ -1500,6 +1504,8 @@ svg.designer-node-stack {
   font: inherit;
   appearance: none;
   field-sizing: content;
+  min-width: 0;
+  text-overflow: ellipsis;
   cursor: pointer;
 }
 
