@@ -8,6 +8,7 @@ import type { LapChartId, LapLayout } from './AnalysisLapLayout'
 import { carSettingsChart } from './AnalysisLapMarks'
 import type { CarSettingsChart } from './AnalysisLapMarks'
 import { timeGained } from './OnTrackLaps'
+import type { TrackTurn } from './trackTurns'
 
 /**
  * The lap page's charts, from the layout and the lap's trace (plus, when comparing, the other
@@ -250,10 +251,43 @@ export function buildLapCharts(layout: LapLayout, lap: ComparedLap, compared: Co
   return out
 }
 
-/** The corners of a lap: where the speed bottoms out after a real drop, numbered from the line. */
+/** How close a turn's apex follows the one before for both to read as one place, "T1–2": a chicane. */
+export const TURN_GROUP_METERS = 100
+
+/**
+ * The corners of a lap, labelled by turn. With the track's real turns (`trackTurns`) they are
+ * those, numbered as the track numbers them, a chicane's turns as one ("T1–2"); without, they are
+ * where the speed bottoms out after a real drop, numbered from the line.
+ */
+export function lapCorners(trace: LapChannelTrace, turns: readonly TrackTurn[] | null, samples: number = 600): ChartMark[] {
+  return turns ? realTurns(turns, trace.trackLengthMeters) : slowestPoints(trace, samples)
+}
+
+function realTurns(turns: readonly TrackTurn[], length: number | null): ChartMark[] {
+  const near = length && length > 0 ? TURN_GROUP_METERS / length : 0.015
+  const groups: TrackTurn[][] = []
+  for (const turn of turns) {
+    const group = groups[groups.length - 1]
+    const previous = group?.[group.length - 1]
+    // A turn placed before the one it follows is a slip in the data: there is no telling where it is.
+    if (previous && turn.at < previous.at) continue
+    if (previous && turn.at - previous.at <= near) group.push(turn)
+    else groups.push([turn])
+  }
+  return groups.map((group) => {
+    const first = group[0].number
+    const last = group[group.length - 1].number
+    return {
+      position: group.reduce((sum, turn) => sum + turn.at, 0) / group.length,
+      label: first === last ? `T${first}` : `T${first}–${last}`,
+    }
+  })
+}
+
+/** Where the speed bottoms out by at least this much, without the track's real turns, is a corner. */
 export const CORNER_DROP_KPH = 25
 
-export function lapCorners(trace: LapChannelTrace, samples: number = 600): ChartMark[] {
+function slowestPoints(trace: LapChannelTrace, samples: number): ChartMark[] {
   if (!('speedKph' in trace.channels)) return []
   const speed: number[] = []
   for (let index = 0; index < samples; index++) speed.push(traceValueAt(trace, 'speedKph', index / (samples - 1)) ?? 0)
@@ -277,7 +311,7 @@ export function lapCorners(trace: LapChannelTrace, samples: number = 600): Chart
     if (!lowest || index - last <= reach) continue
     const before = Math.max(...smooth.slice(Math.max(0, index - reach * 4), index))
     if (before - value < CORNER_DROP_KPH) continue
-    marks.push({ position: index / (samples - 1), label: `C${marks.length + 1}` })
+    marks.push({ position: index / (samples - 1), label: `T${marks.length + 1}` })
     last = index
   }
   return marks

@@ -13,6 +13,7 @@ import {
   samplesInWindow,
   stepCursor,
   tickLabel,
+  uncrowded,
   wheelZoomFactor,
   windowTicks,
   zoomWindow,
@@ -150,4 +151,11 @@ test('the close-up map frames the stretch the charts show, with a margin, never 
   assert.deepEqual(mapFrame(xs, zs, 0.001, null), { minX: 0, maxX: 1000, minZ: 0, maxZ: 0 })
   // 200 m to 400 m, plus 30% across; the flat z still gets 120 m.
   assert.deepEqual(mapFrame(xs, zs, 0.001, { from: 0.2, to: 0.4 }), { minX: 170, maxX: 430, minZ: -60, maxZ: 60 })
+})
+
+test('a label that would touch one already kept is left out, in their order', () => {
+  const box = (x: number) => ({ left: x, right: x + 20, top: 0, bottom: 12 })
+  assert.deepEqual(uncrowded([0, 10, 26, 60], box), [0, 26, 60])
+  // A label clear above or below another keeps its place.
+  assert.deepEqual(uncrowded([0, 100], (y) => ({ left: 0, right: 20, top: y, bottom: y + 12 })), [0, 100])
 })

@@ -218,3 +218,24 @@ export function samplesInWindow<T extends { x: number }>(samples: T[], view: Lap
   while (last >= 0 && samples[last].x > view.to) last--
   return samples.slice(Math.max(0, first - 1), Math.min(samples.length, last + 2))
 }
+
+/** A label's box on the page, in the drawing's own units. */
+export type LabelBox = { left: number; right: number; top: number; bottom: number }
+
+/** A corner label's width per character, near enough: 11px semibold, as the map and the charts draw them. */
+export const LABEL_CHAR = 6.5
+
+/**
+ * The labels that fit, in their order: each one that would touch a label already kept, `gap` or
+ * nearer, is left out. Corner labels pass in lap order, so a tight chicane keeps its first turn's
+ * label; zooming in brings the others back.
+ */
+export function uncrowded<T>(labels: readonly T[], box: (label: T) => LabelBox, gap: number = 4): T[] {
+  const kept: LabelBox[] = []
+  return labels.filter((label) => {
+    const mine = box(label)
+    const clash = kept.some((other) => mine.left < other.right + gap && other.left < mine.right + gap && mine.top < other.bottom + gap && other.top < mine.bottom + gap)
+    if (!clash) kept.push(mine)
+    return !clash
+  })
+}

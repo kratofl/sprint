@@ -18,12 +18,13 @@ import type { LapChartId, LapLayout, MapView } from './AnalysisLapLayout'
 import { lapMeters, lapPins, placeLabel, settingChanges } from './AnalysisLapMarks'
 import { CarSettingsLanes, NoteBubble, NoteEditor, PinRows, pinLines, pinRowsHeight, popoverLeft } from './AnalysisLapPins'
 import type { PinRow } from './AnalysisLapPins'
-import { WHOLE_LAP, isZoomed, mapFrame } from './AnalysisPlot'
+import { LABEL_CHAR, WHOLE_LAP, isZoomed, mapFrame, uncrowded } from './AnalysisPlot'
 import type { LapWindow } from './AnalysisPlot'
 import { MenuLayer, type MenuAnchor } from '../shell/Menu'
 import { FriendBadge, shortDay } from './OnTrackPages'
 import { sameLap } from './OnTrackLaps'
 import { useLapTrace } from './useLapTrace'
+import { trackTurns } from './trackTurns'
 
 /**
  * Analysis's third page: one lap, on its own. Where it went on the track (the map) and the car
@@ -325,7 +326,7 @@ function LapBody({
   // The car card keeps showing the last place the cursor was once the pointer leaves the charts.
   const [here, setHere] = useState(0)
   const [view, setView] = useState<LapWindow>(WHOLE_LAP)
-  const marks = useMemo(() => lapCorners(trace), [trace])
+  const marks = useMemo(() => lapCorners(trace, trackTurns(lap.context.game, lap.context.trackCourse)), [trace, lap.context.game, lap.context.trackCourse])
   // While comparing, the map shows where this lap gains and loses on the other.
   const comparison = useMemo(() => (otherTrace ? lapMapComparison(trace, otherTrace, marks) : null), [trace, otherTrace, marks])
   const hasMap = 'worldX' in trace.channels && 'worldZ' in trace.channels
@@ -389,9 +390,6 @@ const MAP_VIEWS: readonly (readonly [MapView, string, string])[] = [
   ['track', 'Whole track', 'Always the whole lap'],
   ['corner', 'Corner', 'Close up on the stretch the charts are zoomed on'],
 ]
-
-// A corner label's width on the map, near enough: 11px semibold.
-const LABEL_CHAR = 6.5
 
 /**
  * The lap drawn on the track from the car's recorded position, seen from above: green where the
@@ -472,10 +470,34 @@ function TrackMapCard({
     }
   }
 
-  // Compared, each corner's label carries its gap: "C4 +0.31", red where this lap lost time there.
+  // Compared, each corner's label carries its gap: "T4 +0.31", red where this lap lost time there.
   const labels = compared
     ? compared.comparison.corners.map((corner) => ({ label: corner.label, position: corner.position, gap: cornerGapLabel(corner.seconds) }))
     : marks.map((mark) => ({ label: mark.label, position: mark.position, gap: null }))
+  // Each label sits just outside the line, away from the track's middle. One with its gap is wide:
+  // above or below the line it stands further off, and one that would run off the card sits inside
+  // the line instead. One that would land on another waits for the Corner view.
+  const placed = uncrowded(
+    labels.map((label) => {
+      const [x, y] = point(at(label.position))
+      const dx = x - centre[0]
+      const dy = y - centre[1]
+      const length = Math.hypot(dx, dy) || 1
+      const outward = dx / length > 0.35 ? 'start' : dx / length < -0.35 ? 'end' : 'middle'
+      const push = label.gap === null ? 12 : outward === 'middle' ? 20 : 14
+      const wide = (label.label.length + (label.gap === null ? 0 : label.gap.text.length + 1)) * LABEL_CHAR
+      const outX = x + (dx / length) * push
+      const inside = (outward === 'start' && outX + wide > MAP_WIDTH - 2) || (outward === 'end' && outX - wide < 2)
+      const side = inside ? -1 : 1
+      const anchor: 'start' | 'middle' | 'end' = inside ? (outward === 'start' ? 'end' : 'start') : outward
+      return { ...label, x: x + side * (dx / length) * push, y: y + side * (dy / length) * push + 4, anchor, wide }
+    }),
+    (label) => {
+      const left = label.anchor === 'start' ? label.x : label.anchor === 'end' ? label.x - label.wide : label.x - label.wide / 2
+      return { left, right: left + label.wide, top: label.y - 10, bottom: label.y + 2 }
+    },
+    2,
+  )
   const lineLabel = compared ? `The lap’s line on the track, coloured by where it gains or loses on ${compared.otherLabel}` : 'The lap’s line on the track'
 
   return (
@@ -498,32 +520,16 @@ function TrackMapCard({
           <path key={index} d={run.d} className={`analysis-map-line ${run.stroke}`} />
         ))}
         <circle cx={startX} cy={startY} r={4} className="analysis-map-start" />
-        {labels.map((label) => {
-          // Each label sits just outside the line, away from the track's middle. One with its gap is
-          // wide: above or below the line it stands further off, and one that would run off the card
-          // sits inside the line instead.
-          const [x, y] = point(at(label.position))
-          const dx = x - centre[0]
-          const dy = y - centre[1]
-          const length = Math.hypot(dx, dy) || 1
-          const outward = dx / length > 0.35 ? 'start' : dx / length < -0.35 ? 'end' : 'middle'
-          const push = label.gap === null ? 12 : outward === 'middle' ? 20 : 14
-          const wide = (label.label.length + (label.gap === null ? 0 : label.gap.text.length + 1)) * LABEL_CHAR
-          const outX = x + (dx / length) * push
-          const inside = (outward === 'start' && outX + wide > MAP_WIDTH - 2) || (outward === 'end' && outX - wide < 2)
-          const side = inside ? -1 : 1
-          const anchor = inside ? (outward === 'start' ? 'end' : 'start') : outward
-          return (
-            <text key={label.label} x={x + side * (dx / length) * push} y={y + side * (dy / length) * push + 4} textAnchor={anchor} className="analysis-map-label">
-              {label.label}
-              {label.gap !== null && (
-                <tspan dx={4} className={label.gap.tone ? `tabular ${label.gap.tone}` : 'tabular'}>
-                  {label.gap.text}
-                </tspan>
-              )}
-            </text>
-          )
-        })}
+        {placed.map((label) => (
+          <text key={label.label} x={label.x} y={label.y} textAnchor={label.anchor} className="analysis-map-label">
+            {label.label}
+            {label.gap !== null && (
+              <tspan dx={4} className={label.gap.tone ? `tabular ${label.gap.tone}` : 'tabular'}>
+                {label.gap.text}
+              </tspan>
+            )}
+          </text>
+        ))}
         {dot && <circle cx={dot[0]} cy={dot[1]} r={7} className="analysis-map-dot" />}
       </svg>
       <div className="analysis-map-keys">

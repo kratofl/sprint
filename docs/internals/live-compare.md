@@ -121,9 +121,12 @@ yours first, then shared ones. Laps from two cars or two tracks are never compar
 share a track position, which is also why cars are matched by their name ("LMP2 ELMS"), not their
 livery (see [session-planner.md](session-planner.md)). The lap page draws the line on a track map
 from `worldX/Z` when the trace has it, and the driver arranges its charts; the arrangement is a
-per-viewer preference in the renderer's local storage, not host state. Traces carry no corner names,
-so corners are found where smoothed speed dips by 25 km/h and are numbered from the start line
-(`AnalysisLapCharts.ts`).
+per-viewer preference in the renderer's local storage, not host state. Corners are the track's real
+turns ("T3"), from a bundled copy of Lovely Track Data (`app/desktop/src/assets/tracks/README.md`),
+because a speed dip misses flat-out turns (Monza's Curva Grande) and so misnumbers every turn after
+one. Its apexes are only two decimals of the lap, so turns within 100 m read as one ("T1–2"), and a
+label that would land on another waits for a zoom. A track the data lacks falls back to dips of
+25 km/h in smoothed speed, numbered from the line (`AnalysisLapCharts.ts`).
 
 The car's readings are off the page until asked for: a card shows the whole car at the charts'
 cursor, and a chart of one joins the others from "Add chart" or by a click on its value on the car.

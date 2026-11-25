@@ -1,0 +1,1360 @@
+{
+  "algarve international circuit": [
+    {
+      "number": 1,
+      "at": 0.09
+    },
+    {
+      "number": 2,
+      "at": 0.12
+    },
+    {
+      "number": 3,
+      "at": 0.16
+    },
+    {
+      "number": 4,
+      "at": 0.19
+    },
+    {
+      "number": 5,
+      "at": 0.31
+    },
+    {
+      "number": 6,
+      "at": 0.37
+    },
+    {
+      "number": 7,
+      "at": 0.42
+    },
+    {
+      "number": 8,
+      "at": 0.45
+    },
+    {
+      "number": 9,
+      "at": 0.53
+    },
+    {
+      "number": 10,
+      "at": 0.58
+    },
+    {
+      "number": 11,
+      "at": 0.6
+    },
+    {
+      "number": 12,
+      "at": 0.65
+    },
+    {
+      "number": 13,
+      "at": 0.69
+    },
+    {
+      "number": 14,
+      "at": 0.74
+    },
+    {
+      "number": 15,
+      "at": 0.83
+    }
+  ],
+  "autodromo enzo e dino ferrari": [
+    {
+      "number": 1,
+      "at": 0.01
+    },
+    {
+      "number": 2,
+      "at": 0.14
+    },
+    {
+      "number": 3,
+      "at": 0.15
+    },
+    {
+      "number": 4,
+      "at": 0.18
+    },
+    {
+      "number": 5,
+      "at": 0.27
+    },
+    {
+      "number": 6,
+      "at": 0.29
+    },
+    {
+      "number": 7,
+      "at": 0.34
+    },
+    {
+      "number": 8,
+      "at": 0.43
+    },
+    {
+      "number": 9,
+      "at": 0.47
+    },
+    {
+      "number": 10,
+      "at": 0.51
+    },
+    {
+      "number": 11,
+      "at": 0.55
+    },
+    {
+      "number": 12,
+      "at": 0.58
+    },
+    {
+      "number": 13,
+      "at": 0.59
+    },
+    {
+      "number": 14,
+      "at": 0.68
+    },
+    {
+      "number": 15,
+      "at": 0.69
+    },
+    {
+      "number": 16,
+      "at": 0.81
+    },
+    {
+      "number": 17,
+      "at": 0.84
+    },
+    {
+      "number": 18,
+      "at": 0.87
+    },
+    {
+      "number": 19,
+      "at": 0.94
+    }
+  ],
+  "autodromo nazionale monza": [
+    {
+      "number": 1,
+      "at": 0.16
+    },
+    {
+      "number": 2,
+      "at": 0.17
+    },
+    {
+      "number": 3,
+      "at": 0.24
+    },
+    {
+      "number": 4,
+      "at": 0.37
+    },
+    {
+      "number": 5,
+      "at": 0.38
+    },
+    {
+      "number": 6,
+      "at": 0.44
+    },
+    {
+      "number": 7,
+      "at": 0.49
+    },
+    {
+      "number": 8,
+      "at": 0.68
+    },
+    {
+      "number": 9,
+      "at": 0.69
+    },
+    {
+      "number": 10,
+      "at": 0.71
+    },
+    {
+      "number": 11,
+      "at": 0.9
+    }
+  ],
+  "autódromo josé carlos pace": [
+    {
+      "number": 1,
+      "at": 0.09
+    },
+    {
+      "number": 2,
+      "at": 0.11
+    },
+    {
+      "number": 3,
+      "at": 0.15
+    },
+    {
+      "number": 4,
+      "at": 0.33
+    },
+    {
+      "number": 5,
+      "at": 0.37
+    },
+    {
+      "number": 6,
+      "at": 0.48
+    },
+    {
+      "number": 7,
+      "at": 0.51
+    },
+    {
+      "number": 8,
+      "at": 0.55
+    },
+    {
+      "number": 9,
+      "at": 0.58
+    },
+    {
+      "number": 10,
+      "at": 0.64
+    },
+    {
+      "number": 11,
+      "at": 0.69
+    },
+    {
+      "number": 12,
+      "at": 0.76
+    },
+    {
+      "number": 13,
+      "at": 0.79
+    },
+    {
+      "number": 14,
+      "at": 0.86
+    },
+    {
+      "number": 15,
+      "at": 0.94
+    }
+  ],
+  "bahrain endurance circuit": [
+    {
+      "number": 1,
+      "at": 0.12
+    },
+    {
+      "number": 2,
+      "at": 0.13
+    },
+    {
+      "number": 3,
+      "at": 0.15
+    },
+    {
+      "number": 4,
+      "at": 0.24
+    },
+    {
+      "number": 5,
+      "at": 0.27
+    },
+    {
+      "number": 6,
+      "at": 0.31
+    },
+    {
+      "number": 7,
+      "at": 0.32
+    },
+    {
+      "number": 8,
+      "at": 0.33
+    },
+    {
+      "number": 9,
+      "at": 0.24
+    },
+    {
+      "number": 10,
+      "at": 0.35
+    },
+    {
+      "number": 11,
+      "at": 0.37
+    },
+    {
+      "number": 12,
+      "at": 0.39
+    },
+    {
+      "number": 13,
+      "at": 0.4
+    },
+    {
+      "number": 14,
+      "at": 0.42
+    },
+    {
+      "number": 15,
+      "at": 0.44
+    },
+    {
+      "number": 16,
+      "at": 0.46
+    },
+    {
+      "number": 17,
+      "at": 0.5
+    },
+    {
+      "number": 18,
+      "at": 0.56
+    },
+    {
+      "number": 19,
+      "at": 0.58
+    },
+    {
+      "number": 20,
+      "at": 0.69
+    },
+    {
+      "number": 21,
+      "at": 0.75
+    },
+    {
+      "number": 22,
+      "at": 0.79
+    },
+    {
+      "number": 23,
+      "at": 0.92
+    },
+    {
+      "number": 24,
+      "at": 0.94
+    }
+  ],
+  "bahrain international circuit": [
+    {
+      "number": 1,
+      "at": 0.14
+    },
+    {
+      "number": 2,
+      "at": 0.16
+    },
+    {
+      "number": 3,
+      "at": 0.17
+    },
+    {
+      "number": 4,
+      "at": 0.28
+    },
+    {
+      "number": 5,
+      "at": 0.33
+    },
+    {
+      "number": 6,
+      "at": 0.36
+    },
+    {
+      "number": 7,
+      "at": 0.38
+    },
+    {
+      "number": 8,
+      "at": 0.42
+    },
+    {
+      "number": 9,
+      "at": 0.49
+    },
+    {
+      "number": 10,
+      "at": 0.51
+    },
+    {
+      "number": 11,
+      "at": 0.64
+    },
+    {
+      "number": 12,
+      "at": 0.7
+    },
+    {
+      "number": 13,
+      "at": 0.76
+    },
+    {
+      "number": 14,
+      "at": 0.91
+    },
+    {
+      "number": 15,
+      "at": 0.93
+    }
+  ],
+  "bahrain outer circuit": [
+    {
+      "number": 1,
+      "at": 0.2
+    },
+    {
+      "number": 2,
+      "at": 0.23
+    },
+    {
+      "number": 3,
+      "at": 0.27
+    },
+    {
+      "number": 4,
+      "at": 0.43
+    },
+    {
+      "number": 5,
+      "at": 0.46
+    },
+    {
+      "number": 6,
+      "at": 0.54
+    },
+    {
+      "number": 7,
+      "at": 0.57
+    },
+    {
+      "number": 8,
+      "at": 0.59
+    },
+    {
+      "number": 9,
+      "at": 0.65
+    },
+    {
+      "number": 10,
+      "at": 0.86
+    },
+    {
+      "number": 11,
+      "at": 0.88
+    }
+  ],
+  "bahrain paddock circuit": [
+    {
+      "number": 1,
+      "at": 0.19
+    },
+    {
+      "number": 2,
+      "at": 0.22
+    },
+    {
+      "number": 3,
+      "at": 0.24
+    },
+    {
+      "number": 4,
+      "at": 0.26
+    },
+    {
+      "number": 5,
+      "at": 0.29
+    },
+    {
+      "number": 6,
+      "at": 0.49
+    },
+    {
+      "number": 7,
+      "at": 0.59
+    },
+    {
+      "number": 8,
+      "at": 0.67
+    },
+    {
+      "number": 9,
+      "at": 0.87
+    },
+    {
+      "number": 10,
+      "at": 0.89
+    }
+  ],
+  "circuit de la sarthe": [
+    {
+      "number": 1,
+      "at": 0.05
+    },
+    {
+      "number": 2,
+      "at": 0.06
+    },
+    {
+      "number": 3,
+      "at": 0.07
+    },
+    {
+      "number": 4,
+      "at": 0.11
+    },
+    {
+      "number": 5,
+      "at": 0.12
+    },
+    {
+      "number": 6,
+      "at": 0.14
+    },
+    {
+      "number": 7,
+      "at": 0.3
+    },
+    {
+      "number": 8,
+      "at": 0.45
+    },
+    {
+      "number": 9,
+      "at": 0.57
+    },
+    {
+      "number": 10,
+      "at": 0.7
+    },
+    {
+      "number": 11,
+      "at": 0.72
+    },
+    {
+      "number": 12,
+      "at": 0.74
+    },
+    {
+      "number": 13,
+      "at": 0.82
+    },
+    {
+      "number": 14,
+      "at": 0.85
+    },
+    {
+      "number": 15,
+      "at": 0.87
+    },
+    {
+      "number": 16,
+      "at": 0.89
+    },
+    {
+      "number": 17,
+      "at": 0.91
+    },
+    {
+      "number": 18,
+      "at": 0.97
+    },
+    {
+      "number": 19,
+      "at": 0.98
+    },
+    {
+      "number": 20,
+      "at": 0.98
+    },
+    {
+      "number": 21,
+      "at": 0.99
+    }
+  ],
+  "circuit de la sarthe mulsanne": [
+    {
+      "number": 1,
+      "at": 0.04
+    },
+    {
+      "number": 2,
+      "at": 0.06
+    },
+    {
+      "number": 3,
+      "at": 0.06
+    },
+    {
+      "number": 4,
+      "at": 0.11
+    },
+    {
+      "number": 5,
+      "at": 0.12
+    },
+    {
+      "number": 6,
+      "at": 0.14
+    },
+    {
+      "number": 7,
+      "at": 0.56
+    },
+    {
+      "number": 8,
+      "at": 0.7
+    },
+    {
+      "number": 9,
+      "at": 0.72
+    },
+    {
+      "number": 10,
+      "at": 0.74
+    },
+    {
+      "number": 11,
+      "at": 0.82
+    },
+    {
+      "number": 12,
+      "at": 0.84
+    },
+    {
+      "number": 13,
+      "at": 0.87
+    },
+    {
+      "number": 14,
+      "at": 0.89
+    },
+    {
+      "number": 15,
+      "at": 0.91
+    },
+    {
+      "number": 16,
+      "at": 0.97
+    },
+    {
+      "number": 17,
+      "at": 0.98
+    },
+    {
+      "number": 18,
+      "at": 0.98
+    },
+    {
+      "number": 19,
+      "at": 0.99
+    }
+  ],
+  "circuit de spa-francorchamps": [
+    {
+      "number": 1,
+      "at": 0.04
+    },
+    {
+      "number": 2,
+      "at": 0.08
+    },
+    {
+      "number": 3,
+      "at": 0.13
+    },
+    {
+      "number": 4,
+      "at": 0.15
+    },
+    {
+      "number": 5,
+      "at": 0.17
+    },
+    {
+      "number": 6,
+      "at": 0.21
+    },
+    {
+      "number": 7,
+      "at": 0.33
+    },
+    {
+      "number": 8,
+      "at": 0.34
+    },
+    {
+      "number": 9,
+      "at": 0.36
+    },
+    {
+      "number": 10,
+      "at": 0.42
+    },
+    {
+      "number": 11,
+      "at": 0.45
+    },
+    {
+      "number": 12,
+      "at": 0.54
+    },
+    {
+      "number": 13,
+      "at": 0.63
+    },
+    {
+      "number": 14,
+      "at": 0.65
+    },
+    {
+      "number": 15,
+      "at": 0.69
+    },
+    {
+      "number": 16,
+      "at": 0.72
+    },
+    {
+      "number": 17,
+      "at": 0.82
+    },
+    {
+      "number": 18,
+      "at": 0.86
+    },
+    {
+      "number": 19,
+      "at": 0.95
+    },
+    {
+      "number": 20,
+      "at": 0.96
+    }
+  ],
+  "circuit de spa-francorchamps endurance": [
+    {
+      "number": 1,
+      "at": 0.04
+    },
+    {
+      "number": 2,
+      "at": 0.08
+    },
+    {
+      "number": 3,
+      "at": 0.13
+    },
+    {
+      "number": 4,
+      "at": 0.15
+    },
+    {
+      "number": 5,
+      "at": 0.17
+    },
+    {
+      "number": 6,
+      "at": 0.21
+    },
+    {
+      "number": 7,
+      "at": 0.33
+    },
+    {
+      "number": 8,
+      "at": 0.34
+    },
+    {
+      "number": 9,
+      "at": 0.36
+    },
+    {
+      "number": 10,
+      "at": 0.42
+    },
+    {
+      "number": 11,
+      "at": 0.45
+    },
+    {
+      "number": 12,
+      "at": 0.54
+    },
+    {
+      "number": 13,
+      "at": 0.63
+    },
+    {
+      "number": 14,
+      "at": 0.65
+    },
+    {
+      "number": 15,
+      "at": 0.69
+    },
+    {
+      "number": 16,
+      "at": 0.72
+    },
+    {
+      "number": 17,
+      "at": 0.82
+    },
+    {
+      "number": 18,
+      "at": 0.86
+    },
+    {
+      "number": 19,
+      "at": 0.95
+    },
+    {
+      "number": 20,
+      "at": 0.96
+    }
+  ],
+  "circuit of the americas": [
+    {
+      "number": 1,
+      "at": 0.12
+    },
+    {
+      "number": 2,
+      "at": 0.16
+    },
+    {
+      "number": 3,
+      "at": 0.21
+    },
+    {
+      "number": 4,
+      "at": 0.23
+    },
+    {
+      "number": 5,
+      "at": 0.25
+    },
+    {
+      "number": 6,
+      "at": 0.27
+    },
+    {
+      "number": 7,
+      "at": 0.31
+    },
+    {
+      "number": 8,
+      "at": 0.34
+    },
+    {
+      "number": 9,
+      "at": 0.36
+    },
+    {
+      "number": 10,
+      "at": 0.39
+    },
+    {
+      "number": 11,
+      "at": 0.47
+    },
+    {
+      "number": 12,
+      "at": 0.69
+    },
+    {
+      "number": 13,
+      "at": 0.72
+    },
+    {
+      "number": 14,
+      "at": 0.74
+    },
+    {
+      "number": 15,
+      "at": 0.76
+    },
+    {
+      "number": 16,
+      "at": 0.78
+    },
+    {
+      "number": 17,
+      "at": 0.81
+    },
+    {
+      "number": 18,
+      "at": 0.86
+    },
+    {
+      "number": 19,
+      "at": 0.91
+    },
+    {
+      "number": 20,
+      "at": 0.96
+    }
+  ],
+  "cota national circuit": [
+    {
+      "number": 1,
+      "at": 0.17
+    },
+    {
+      "number": 2,
+      "at": 0.24
+    },
+    {
+      "number": 3,
+      "at": 0.31
+    },
+    {
+      "number": 4,
+      "at": 0.34
+    },
+    {
+      "number": 5,
+      "at": 0.36
+    },
+    {
+      "number": 6,
+      "at": 0.39
+    },
+    {
+      "number": 7,
+      "at": 0.41
+    },
+    {
+      "number": 8,
+      "at": 0.44
+    },
+    {
+      "number": 9,
+      "at": 0.45
+    },
+    {
+      "number": 10,
+      "at": 0.46
+    },
+    {
+      "number": 11,
+      "at": 0.53
+    },
+    {
+      "number": 12,
+      "at": 0.59
+    },
+    {
+      "number": 13,
+      "at": 0.62
+    },
+    {
+      "number": 14,
+      "at": 0.65
+    },
+    {
+      "number": 15,
+      "at": 0.68
+    },
+    {
+      "number": 16,
+      "at": 0.73
+    },
+    {
+      "number": 17,
+      "at": 0.75
+    },
+    {
+      "number": 18,
+      "at": 0.79
+    },
+    {
+      "number": 19,
+      "at": 0.87
+    },
+    {
+      "number": 20,
+      "at": 0.95
+    }
+  ],
+  "fuji speedway": [
+    {
+      "number": 1,
+      "at": 0.17
+    },
+    {
+      "number": 2,
+      "at": 0.2
+    },
+    {
+      "number": 3,
+      "at": 0.29
+    },
+    {
+      "number": 4,
+      "at": 0.34
+    },
+    {
+      "number": 5,
+      "at": 0.39
+    },
+    {
+      "number": 6,
+      "at": 0.44
+    },
+    {
+      "number": 7,
+      "at": 0.47
+    },
+    {
+      "number": 8,
+      "at": 0.52
+    },
+    {
+      "number": 9,
+      "at": 0.56
+    },
+    {
+      "number": 10,
+      "at": 0.63
+    },
+    {
+      "number": 11,
+      "at": 0.64
+    },
+    {
+      "number": 12,
+      "at": 0.66
+    },
+    {
+      "number": 13,
+      "at": 0.7
+    },
+    {
+      "number": 14,
+      "at": 0.72
+    },
+    {
+      "number": 15,
+      "at": 0.75
+    },
+    {
+      "number": 16,
+      "at": 0.82
+    }
+  ],
+  "fuji speedway classic": [
+    {
+      "number": 1,
+      "at": 0.17
+    },
+    {
+      "number": 2,
+      "at": 0.2
+    },
+    {
+      "number": 3,
+      "at": 0.29
+    },
+    {
+      "number": 4,
+      "at": 0.34
+    },
+    {
+      "number": 5,
+      "at": 0.39
+    },
+    {
+      "number": 6,
+      "at": 0.44
+    },
+    {
+      "number": 7,
+      "at": 0.47
+    },
+    {
+      "number": 8,
+      "at": 0.52
+    },
+    {
+      "number": 9,
+      "at": 0.56
+    },
+    {
+      "number": 10,
+      "at": 0.63
+    },
+    {
+      "number": 11,
+      "at": 0.69
+    },
+    {
+      "number": 12,
+      "at": 0.72
+    },
+    {
+      "number": 13,
+      "at": 0.75
+    },
+    {
+      "number": 14,
+      "at": 0.82
+    }
+  ],
+  "lusail international circuit": [
+    {
+      "number": 1,
+      "at": 0.15
+    },
+    {
+      "number": 2,
+      "at": 0.21
+    },
+    {
+      "number": 3,
+      "at": 0.25
+    },
+    {
+      "number": 4,
+      "at": 0.32
+    },
+    {
+      "number": 5,
+      "at": 0.35
+    },
+    {
+      "number": 6,
+      "at": 0.41
+    },
+    {
+      "number": 7,
+      "at": 0.49
+    },
+    {
+      "number": 8,
+      "at": 0.52
+    },
+    {
+      "number": 9,
+      "at": 0.55
+    },
+    {
+      "number": 10,
+      "at": 0.59
+    },
+    {
+      "number": 11,
+      "at": 0.63
+    },
+    {
+      "number": 12,
+      "at": 0.7
+    },
+    {
+      "number": 13,
+      "at": 0.74
+    },
+    {
+      "number": 14,
+      "at": 0.78
+    },
+    {
+      "number": 15,
+      "at": 0.84
+    },
+    {
+      "number": 16,
+      "at": 0.92
+    }
+  ],
+  "lusail short circuit": [
+    {
+      "number": 1,
+      "at": 0.22
+    },
+    {
+      "number": 2,
+      "at": 0.28
+    },
+    {
+      "number": 3,
+      "at": 0.33
+    },
+    {
+      "number": 4,
+      "at": 0.35
+    },
+    {
+      "number": 5,
+      "at": 0.38
+    },
+    {
+      "number": 6,
+      "at": 0.43
+    },
+    {
+      "number": 7,
+      "at": 0.57
+    },
+    {
+      "number": 8,
+      "at": 0.62
+    },
+    {
+      "number": 9,
+      "at": 0.68
+    },
+    {
+      "number": 10,
+      "at": 0.76
+    },
+    {
+      "number": 11,
+      "at": 0.69
+    }
+  ],
+  "monza curva grande circuit": [
+    {
+      "number": 1,
+      "at": 0.24
+    },
+    {
+      "number": 2,
+      "at": 0.37
+    },
+    {
+      "number": 3,
+      "at": 0.38
+    },
+    {
+      "number": 4,
+      "at": 0.44
+    },
+    {
+      "number": 5,
+      "at": 0.49
+    },
+    {
+      "number": 6,
+      "at": 0.68
+    },
+    {
+      "number": 7,
+      "at": 0.69
+    },
+    {
+      "number": 8,
+      "at": 0.71
+    },
+    {
+      "number": 9,
+      "at": 0.9
+    }
+  ],
+  "sebring international raceway": [
+    {
+      "number": 1,
+      "at": 0.09
+    },
+    {
+      "number": 2,
+      "at": 0.14
+    },
+    {
+      "number": 3,
+      "at": 0.16
+    },
+    {
+      "number": 4,
+      "at": 0.17
+    },
+    {
+      "number": 5,
+      "at": 0.19
+    },
+    {
+      "number": 6,
+      "at": 0.26
+    },
+    {
+      "number": 7,
+      "at": 0.34
+    },
+    {
+      "number": 8,
+      "at": 0.39
+    },
+    {
+      "number": 9,
+      "at": 0.42
+    },
+    {
+      "number": 10,
+      "at": 0.47
+    },
+    {
+      "number": 11,
+      "at": 0.51
+    },
+    {
+      "number": 12,
+      "at": 0.53
+    },
+    {
+      "number": 13,
+      "at": 0.56
+    },
+    {
+      "number": 14,
+      "at": 0.63
+    },
+    {
+      "number": 15,
+      "at": 0.69
+    },
+    {
+      "number": 16,
+      "at": 0.73
+    },
+    {
+      "number": 17,
+      "at": 0.93
+    }
+  ],
+  "sebring school circuit": [
+    {
+      "number": 1,
+      "at": 0.17
+    },
+    {
+      "number": 2,
+      "at": 0.26
+    },
+    {
+      "number": 3,
+      "at": 0.29
+    },
+    {
+      "number": 4,
+      "at": 0.41
+    },
+    {
+      "number": 5,
+      "at": 0.49
+    },
+    {
+      "number": 6,
+      "at": 0.86
+    }
+  ]
+}

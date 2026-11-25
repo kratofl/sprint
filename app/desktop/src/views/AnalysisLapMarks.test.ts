@@ -97,8 +97,8 @@ test('pins never overlap and never leave the plot', () => {
 })
 
 test('a place reads in km, with the corner when one is near', () => {
-  const corners = [{ position: 0.46, label: 'C3' }]
+  const corners = [{ position: 0.46, label: 'T3' }]
 
-  assert.equal(placeLabel(0.457, 7000, corners), '3.2 km · C3')
+  assert.equal(placeLabel(0.457, 7000, corners), '3.2 km · T3')
   assert.equal(placeLabel(0.2, 7000, corners), '1.4 km')
 })
