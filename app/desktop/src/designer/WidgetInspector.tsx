@@ -2,7 +2,7 @@ import { Eye, EyeOff, Trash2, X } from 'lucide-react'
 import { hasFrame, hasLabel, widgetForms } from '@sprint/dashboard'
 import type { DashLayout, DashWidget } from '@sprint/dashboard'
 import { Switch } from '../shell/Switch'
-import { blockedBy, holdsSmallestAt, setWidgetConfig, setWidgetLook, setWidgetSwitch, widgetDefinition, widgetFormAt, widgetName } from '../views/DashesDomain'
+import { blockedBy, configValue, holdsSmallestAt, setWidgetConfig, setWidgetLook, setWidgetSwitch, widgetDefinition, widgetFormAt, widgetName } from '../views/DashesDomain'
 import { GeometryFields, TextConfigField } from './controls'
 import { deleteNodes, setHidden, setNodeRect } from './groupOps'
 import type { Mutate } from './useDesignerDoc'
@@ -100,8 +100,7 @@ export function WidgetInspector({
         <div className="designer-group">
           <h3 className="designer-group-title">Properties</h3>
           {definition.config.map((field) => {
-            const raw = config[field.key]
-            const value = typeof raw === 'string' ? raw : field.default
+            const value = configValue(config, field)
             if (field.kind === 'switch') {
               const id = `widget-config-${field.key}`
               const set = (on: boolean) => apply((current) => setWidgetSwitch(current, pageId, widget.id, field, on))

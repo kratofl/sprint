@@ -11,10 +11,10 @@ import {
   holdsSmallestAt,
   widgetFormAt,
   buildDashCreate,
-  canPlaceNewWidget,
   dashCategoryNameProblem,
   dashSummary,
   dashesFilterOptions,
+  dropRect,
   fitScreenSize,
   groupDashes,
   initialScreenProfile,
@@ -52,29 +52,6 @@ function layout(page: DashPage, overrides: Partial<DashLayout> = {}): DashLayout
 function pageWithWidgets(...widgets: DashWidget[]): DashPage {
   return { id: 'page-1', name: 'Page 1', widgets }
 }
-
-// ── canPlaceNewWidget ────────────────────────────────────────────────────
-
-test('canPlaceNewWidget accepts a free in-bounds rect and rejects an overlapping one', () => {
-  const existing = widget('rpm', 0, 0, 20, 1)
-  const dash = layout(pageWithWidgets(existing))
-
-  assert.equal(canPlaceNewWidget(dash, 'page-1', 'text', { col: 0, row: 1, colSpan: 4, rowSpan: 2 }), true)
-  assert.equal(canPlaceNewWidget(dash, 'page-1', 'text', { col: 0, row: 0, colSpan: 4, rowSpan: 2 }), false, 'overlaps the RPM bar')
-})
-
-test('canPlaceNewWidget rejects a rect that runs off either grid edge', () => {
-  const dash = layout(pageWithWidgets())
-
-  assert.equal(canPlaceNewWidget(dash, 'page-1', 'text', { col: 18, row: 0, colSpan: 4, rowSpan: 2 }), false, 'colSpan runs past gridCols')
-  assert.equal(canPlaceNewWidget(dash, 'page-1', 'text', { col: 0, row: 11, colSpan: 4, rowSpan: 2 }), false, 'rowSpan runs past gridRows')
-  assert.equal(canPlaceNewWidget(dash, 'page-1', 'text', { col: -1, row: 0, colSpan: 4, rowSpan: 2 }), false, 'negative col')
-})
-
-test('canPlaceNewWidget returns false for an unknown page', () => {
-  const dash = layout(pageWithWidgets())
-  assert.equal(canPlaceNewWidget(dash, 'no-such-page', 'text', { col: 0, row: 0, colSpan: 4, rowSpan: 2 }), false)
-})
 
 // ── addWidgetAt ──────────────────────────────────────────────────────────
 
@@ -122,10 +99,9 @@ test('a new widget may share cells only with the other layers of the stack it go
     widgets: [{ ...widget('timing', 0, 0, 4, 2), group: 'stack' }],
     groups: [{ id: 'stack', name: 'Right column', mode: 'oneAtATime' }],
   })
-  const spot = { col: 0, row: 0, colSpan: 4, rowSpan: 2 }
 
-  assert.equal(canPlaceNewWidget(dash, 'page-1', 'text', spot), false, 'on the page')
-  assert.equal(canPlaceNewWidget(dash, 'page-1', 'text', spot, 'stack'), true, 'as a new layer of the stack')
+  assert.equal(dropRect(dash, 'page-1', 'text', 0, 0), null, 'on the page')
+  assert.ok(dropRect(dash, 'page-1', 'text', 0, 0, 'stack'), 'as a new layer of the stack')
   assert.equal(addWidgetAt(dash, 'page-1', 'text', 0, 0, 'stack')?.widget.group, 'stack')
 })
 

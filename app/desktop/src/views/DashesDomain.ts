@@ -191,8 +191,10 @@ export const fitScreenSize = (screen: Pick<ScreenProfile, 'width' | 'height'>, m
 // matching entry in `WIDGET_CATALOG` below by hand.
 
 export type DashConfigOption = { value: string; label: string }
-/** A config value the inspector edits: free text, a pick from `options`, or a switch (`on` / `off`). */
-/** A widget setting; `needs` names a switch that must be on for this one to change anything. */
+/**
+ * A widget setting the inspector edits: free text, a pick from `options`, or a switch (`on` / `off`);
+ * `needs` names a switch that must be on for this one to change anything.
+ */
 export type DashConfigField = { key: string; label: string; kind: 'text' | 'select' | 'switch'; default: string; options: readonly DashConfigOption[]; needs?: string }
 export type DashWidgetDefinition = { type: DashWidgetType; name: string; idleCapable: boolean; config: readonly DashConfigField[] }
 
@@ -592,12 +594,6 @@ export function addWidget(layout: DashLayout, pageId: string, type: DashWidgetTy
   return { layout: next, widget }
 }
 
-/** Non-mutating placement check for a not-yet-created widget of `type` (palette drag ghost) — mirrors `DashLayoutEditor.CanPlaceNewWidget`. */
-export function canPlaceNewWidget(layout: DashLayout, pageId: string, type: string, rect: GridRect, group: string | null = null): boolean {
-  const page = findPage(layout, pageId)
-  if (!page || !fitsLayout(layout, rect)) return false
-  return !pageOverlaps(page, rect, '', group)
-}
 
 /** Where a new widget of `type` dropped on cell (`col`, `row`) goes: the default size from that cell, pulled back inside the grid and grown to hold its smallest form. */
 export function newWidgetRect(layout: DashLayout, type: string, col: number, row: number): GridRect {
@@ -666,6 +662,8 @@ export function dropRect(layout: DashLayout, pageId: string, type: string, col: 
   const free = (rect: GridRect): boolean => fitsLayout(layout, rect) && !pageOverlaps(page, rect, '', group)
   const preferred = newWidgetRect(layout, type, col, row)
   if (free(preferred)) return preferred
+  // Every rect tried below holds the dropped cell: when the cell itself is taken, none is free.
+  if (!free({ col, row, colSpan: 1, rowSpan: 1 })) return null
   for (const { colSpan, rowSpan } of spansBySize(layout)) {
     for (let up = 0; up < rowSpan; up++) {
       for (let back = 0; back < colSpan; back++) {
