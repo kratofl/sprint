@@ -315,7 +315,8 @@ fn delta(b: &mut Builder, w: &WidgetContext) {
     big_value(b, &format_delta(lap.delta, 2), "-00.00", w.width, w.height, color, 0.82);
 }
 
-/// The gear: the digit alone, as big as its box allows, in the shift stage's color.
+/// The gear: the digit alone, in the bold value face like every other number, filling 80% of its
+/// box's height (the full height crowded the box), in the shift stage's color.
 fn gear(b: &mut Builder, w: &WidgetContext) {
     let (car, palette, width, height) = (&w.frame.car, w.palette, w.width, w.height);
     let ratio = if car.max_rpm > 0.0 { car.rpm / car.max_rpm } else { 0.0 };
@@ -332,11 +333,11 @@ fn gear(b: &mut Builder, w: &WidgetContext) {
             text: &format_gear(car.gear),
             left: width / 2.0,
             top: height * 0.5,
-            size: height * 0.92,
+            size: height * 0.8,
             color,
             align: TextAlign::Center,
             max_width: Some(width),
-            weight: TextWeight::ValueRegular,
+            weight: TextWeight::Value,
             sizing: TextSizing::Stable,
         },
     );
@@ -1116,7 +1117,7 @@ fn gear_speed(b: &mut Builder, w: &WidgetContext) {
         color: gear_color,
         align,
         max_width: Some(w.width * 0.9),
-        weight: TextWeight::ValueRegular,
+        weight: TextWeight::Value,
         sizing: TextSizing::Stable,
     };
     text_line(b, base);
@@ -2610,7 +2611,7 @@ mod tests {
         let text: Vec<&str> = runs.iter().map(|r| r.text.as_str()).collect();
         assert_eq!(text, ["4", "180", "km/h"]);
         assert_eq!(runs[0].color, DEFAULT_DASH_PALETTE.rpm_near_limit);
-        assert_eq!(runs[0].weight, TextWeight::ValueRegular);
+        assert_eq!(runs[0].weight, TextWeight::Value);
         assert_eq!(runs[0].size, 180.0);
         assert_eq!(runs[2].color, DEFAULT_DASH_PALETTE.muted);
 
@@ -2825,7 +2826,10 @@ mod tests {
         let unframed: std::collections::BTreeSet<&str> = offered
             .into_iter()
             .filter(|kind| {
-                matches!(widget_chrome(&widget(kind, json!({})), &frame, &DEFAULT_DASH_PALETTE, Units::Metric, LIFT_POINT), WidgetChrome::Bare | WidgetChrome::Split)
+                matches!(
+                    widget_chrome(&widget(kind, json!({})), &frame, &DEFAULT_DASH_PALETTE, Units::Metric, LIFT_POINT),
+                    WidgetChrome::Bare | WidgetChrome::Split
+                )
             })
             .collect();
         assert_eq!(listed, unframed);

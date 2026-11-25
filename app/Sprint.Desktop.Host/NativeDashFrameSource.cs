@@ -226,8 +226,10 @@ public sealed class DashSceneFeed
 /// Draws a wheel screen in-process with the Rust dash renderer (<see cref="DashRenderer"/>) and
 /// composes the result onto the panel's native RGB565 buffer through an
 /// <see cref="Rgb565Composer"/> — the same rotation/margin/offset pipeline desktop capture
-/// uses. Runs on its <see cref="ScreenPublisher"/>'s thread, which is the only thread that ever
-/// calls the renderer.
+/// uses, except that the dash is drawn at the margin's inset size and lands on the panel pixel
+/// for pixel: downscaling a full-size dash into the inset thickened every line and label. Runs on
+/// its <see cref="ScreenPublisher"/>'s thread, which is the only thread that ever calls the
+/// renderer.
 /// <para>
 /// Renders only when something changed: the telemetry frame (by reference — the engine hands out
 /// the same object until a new frame arrives), the scene, the wheel's multi-dial (a turn pops up
@@ -254,7 +256,6 @@ public sealed class NativeDashFrameSource : IDashFrameSource
     private readonly Rgb565Composer _composer;
     private readonly DashSceneFeed _scenes;
     private readonly JsonSerializerOptions _json;
-    private readonly DeviceOrientationTransform _transform;
     private readonly byte[] _bgra;
     private readonly byte[] _picture;
     private readonly ArrayBufferWriter<byte> _frameJson = new(16 * 1024);
@@ -287,15 +288,16 @@ public sealed class NativeDashFrameSource : IDashFrameSource
         this._json = json ?? throw new ArgumentNullException(nameof(json));
         this.Width = config.Width;
         this.Height = config.Height;
-        this._transform = DeviceOrientations.Transform(this.Width, this.Height, config.Orientation);
+        DeviceOrientationTransform transform = DeviceOrientations.Transform(this.Width, this.Height, config.Orientation);
         this._composer = new Rgb565Composer(
             this.Width,
             this.Height,
-            this._transform,
+            transform,
             config.Margin,
             config.OffsetX,
-            config.OffsetY);
-        this._bgra = new byte[checked(this._transform.LogicalWidth * this._transform.LogicalHeight * 4)];
+            config.OffsetY,
+            drawnForInset: true);
+        this._bgra = new byte[checked(this._composer.PictureWidth * this._composer.PictureHeight * 4)];
         this._picture = new byte[checked(this.Width * this.Height * 2)];
         this._frameWriter = new Utf8JsonWriter(this._frameJson);
         this._sceneWriter = new Utf8JsonWriter(this._sceneJson);
@@ -426,9 +428,9 @@ public sealed class NativeDashFrameSource : IDashFrameSource
         DashSceneContent content = scene.Content ?? throw new InvalidOperationException("A scene needs content.");
         this._sceneJson.ResetWrittenCount();
         this._sceneWriter.Reset(this._sceneJson);
-        // The scene's size is the logical size this source composes from, so the picture always
-        // fits the pixel transform.
-        content.WriteScene(this._sceneWriter, this._transform.LogicalWidth, this._transform.LogicalHeight, scene.PageId, scene.Idle, transparent: false);
+        // The scene's size is the picture size the composer takes (the margin's inset), so the
+        // picture always lands on the panel pixel for pixel.
+        content.WriteScene(this._sceneWriter, this._composer.PictureWidth, this._composer.PictureHeight, scene.PageId, scene.Idle, transparent: false);
         this._sceneWriter.Flush();
 
         try

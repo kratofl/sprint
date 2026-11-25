@@ -3,7 +3,7 @@ using System.Text.Json;
 namespace Sprint.Desktop.Features.Dashes;
 
 /// <summary>
-/// Sprint draws one look on every dash: a 2-px edge with the label cut into it, and one group
+/// Sprint draws one look on every dash: a 1-px edge with the label centred in it, and one group
 /// frame. A widget may only turn its label or its frame off; a group's frame is on or off. Older
 /// dashes chose their own look: a frame style (<c>dashStyle</c>), corners, edges and label spot
 /// (<c>chrome</c>), per-widget colours, edges and label spots, and group frames with their own

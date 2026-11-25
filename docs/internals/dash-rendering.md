@@ -76,8 +76,8 @@ never also takes a condition color: its value only ever wears its identity, or i
 
 ## One look
 
-Sprint draws one look on every dash: a 2-px edge with 6-px corners, the label cut into the top
-edge, and one group frame (the driver's call, 2026-11-22 and 2026-11-23, issue #274: Sprint is
+Sprint draws one look on every dash: a 1-px edge with 6-px corners, the label centred in the
+top edge, and one group frame (the driver's call, 2026-11-22 and 2026-11-23, issue #274: Sprint is
 opinionated, not a second SimHub; frame styles, corners, edges, label spots and per-widget
 colours made too many combinations that looked bad on the wheel). The driver decides what is
 shown and where; Sprint decides how. A widget may only turn its frame or its label off

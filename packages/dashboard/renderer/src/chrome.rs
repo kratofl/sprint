@@ -1,5 +1,5 @@
-// Widget chrome: the frame and label a widget wears. Sprint draws one look on every dash: a 2-px
-// edge with 6-px corners and the label cut into the top edge. A widget may only go without its
+// Widget chrome: the frame and label a widget wears. Sprint draws one look on every dash: a 1-px
+// edge with 6-px corners and the label centred in the top edge. A widget may only go without its
 // frame or its label (`Look`). Widgets draw only their values; the frame, the label and the knob
 // colour come from here.
 //
@@ -14,7 +14,7 @@ use crate::text::TextWeight;
 
 /// Sprint's frame: its corner radius and edge weight, at 800x480.
 pub const RADIUS: f64 = 6.0;
-const EDGE: f64 = 2.0;
+const EDGE: f64 = 1.0;
 
 /// How one widget wears Sprint's look: with or without its frame, with or without its label.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -169,8 +169,10 @@ pub fn widget_frame(b: &mut Builder, frame: WidgetFrame, children: impl FnOnce(&
     // The box's inner edges.
     let (inner_left, inner_right) = (box_.left + edge + pad, box_.left + box_.width - edge - pad);
     let label_size = if notched { 10.0 * s } else { 11.0 * s };
+    // A label in the edge keeps clear of the corners, with a 6-px gap in the edge either side.
+    let notch_room = (box_.width - (radius.max(6.0 * s) + 8.0 * s) * 2.0).max(0.0);
     let title = title.filter(|_| labelled).map(|title| {
-        let room = if notched { box_.width - (radius.max(6.0 * s) + 4.0 * s) * 2.0 } else { inner_right - inner_left };
+        let room = if notched { notch_room } else { inner_right - inner_left };
         fitted_title(b, title, label_size, room)
     });
 
@@ -183,8 +185,8 @@ pub fn widget_frame(b: &mut Builder, frame: WidgetFrame, children: impl FnOnce(&
         }
         if notched && let Some(title) = title {
             let size = label_size;
-            let left = box_.left + radius.max(6.0 * s) + 4.0 * s;
-            let width = b.text_width(title, size, TextWeight::LabelBold).min((box_.width - (left - box_.left) * 2.0).max(0.0));
+            let width = b.text_width(title, size, TextWeight::LabelBold).min(notch_room);
+            let left = box_.left + (box_.width - width) / 2.0;
             // On a filled box the label sits on a round dark pill across the edge, so it never
             // sits on its fill; otherwise the notch only breaks the edge.
             if fill.is_some() {
@@ -192,7 +194,7 @@ pub fn widget_frame(b: &mut Builder, frame: WidgetFrame, children: impl FnOnce(&
                 let pill = PixelRect::new(left - 5.0 * s, box_.top + edge / 2.0 - height / 2.0, width + 10.0 * s, height);
                 b.rect(pill, Radii::all(height / 2.0), palette.background);
             } else {
-                b.rect(PixelRect::new(left - 4.0 * s, box_.top - 1.0, width + 8.0 * s, edge + 2.0), Radii::ZERO, palette.background);
+                b.rect(PixelRect::new(left - 6.0 * s, box_.top - 1.0, width + 12.0 * s, edge + 2.0), Radii::ZERO, palette.background);
             }
             let color = fill.or(accent).unwrap_or(palette.secondary);
             text_line(
