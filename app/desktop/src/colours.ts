@@ -3,7 +3,8 @@ import type { DashColourLimits, DashColours } from '@sprint/dashboard'
 
 /**
  * The app-wide Colours setting (`AppSettings.Colours`, `ColourSettings` in Core): which theme
- * colours the cold–good–warm–hot scale and where values move along it. The wheel dash reads it in
+ * colours the cold–good–warm–hot scale, where values move along it, and whether the dash's gear
+ * shows the redline. The wheel dash reads it in
  * its scene settings (`DashColoursContext`); the pit wall and Analysis colour by the same marks
  * here, in the theme's colours (`--heat-*` in styles.css, picked by `<html data-colours>`).
  */
@@ -45,5 +46,6 @@ export function parseColours(value: unknown): DashColours {
     const number = raw[key]
     if (typeof number === 'number' && Number.isFinite(number)) limits[key] = number
   }
-  return { theme, limits }
+  const gearRedline = typeof value.gearRedline === 'boolean' ? value.gearRedline : defaultDashColours.gearRedline
+  return { theme, gearRedline, limits }
 }

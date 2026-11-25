@@ -233,7 +233,7 @@ export function LayoutSection({
   const addAndSelect = (type: DashWidgetType, cell: { col: number; row: number } | null): void => {
     const result = cell ? addWidgetAt(layout, pageId, type, cell.col, cell.row, target.group) : addWidget(layout, pageId, type, target)
     if (!result || !apply(() => result.layout)) {
-      flashValidation(cell ? 'That cell is occupied — drop onto free space.' : 'There is no free space on this page for another widget.')
+      flashValidation(cell ? "It doesn't fit there — drop it onto free space big enough for it." : 'There is no free space on this page for another widget.')
       return
     }
     setSelection([result.widget.id])

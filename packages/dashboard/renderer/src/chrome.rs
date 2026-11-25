@@ -166,6 +166,8 @@ pub fn widget_frame(b: &mut Builder, frame: WidgetFrame, children: impl FnOnce(&
     };
     let content_palette = if fill.is_some() { ink_palette(&palette) } else { palette };
     let pad = if title.is_some() { 6.0 * s } else { 2.0 * s };
+    // An untitled frame (a bar) keeps the same 2 px on every side, so its meter sits evenly.
+    let bottom = if title.is_some() { 3.0 * s } else { pad };
     // The box's inner edges.
     let (inner_left, inner_right) = (box_.left + edge + pad, box_.left + box_.width - edge - pad);
     let label_size = if notched { 10.0 * s } else { 11.0 * s };
@@ -236,7 +238,7 @@ pub fn widget_frame(b: &mut Builder, frame: WidgetFrame, children: impl FnOnce(&
             );
         }
         let top = box_.top + edge + band_height + if labelled { 0.0 } else { 2.0 * s };
-        let content = PixelRect::new(inner_left, top, (inner_right - inner_left).max(0.0), (box_.top + box_.height - edge - 3.0 * s - top).max(0.0));
+        let content = PixelRect::new(inner_left, top, (inner_right - inner_left).max(0.0), (box_.top + box_.height - edge - bottom - top).max(0.0));
         b.translated(content.left, content.top, |b| children(b, content.width, content.height, &content_palette));
     });
 }

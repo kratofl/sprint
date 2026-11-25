@@ -19,7 +19,10 @@ test('the host’s colours are narrowed once; anything missing or unknown is the
   assert.deepEqual(parseColours(undefined), defaultDashColours)
   assert.deepEqual(parseColours({ theme: 'Calm', limits: { brakeHotAbove: 900, tyreColdBelow: 'x' } }), {
     theme: 'Calm',
+    gearRedline: true,
     limits: { ...limits, brakeHotAbove: 900 },
   })
+  assert.equal(parseColours({ gearRedline: false }).gearRedline, false)
+  assert.equal(parseColours({ gearRedline: 'no' }).gearRedline, true, 'on unless turned off')
   assert.equal(parseColours({ theme: 'calm' }).theme, 'Sprint', 'by name, as the host writes it')
 })

@@ -130,7 +130,7 @@ public sealed class RuntimeCoordinatorTests
     }
 
     [Fact]
-    public void SettingsColours_ChangeTheThemeAndLimitsAndPersist()
+    public void SettingsColours_ChangeTheThemeTheGearRedlineAndLimitsAndPersist()
     {
         RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
         try
@@ -143,6 +143,12 @@ public sealed class RuntimeCoordinatorTests
             Assert.Equal(ColourTheme.Calm, reloaded.Theme);
             Assert.Equal(850, reloaded.Limits.BrakeHotAbove);
             Assert.Equal(650, reloaded.Limits.BrakeWarmAbove);
+            Assert.True(reloaded.GearRedline, "on unless turned off");
+
+            Assert.True(coordinator.Execute(Command("""{"type":"settings.colours","gearRedline":false}"""), out error), error);
+            reloaded = new DesktopRuntime(dataRoot, PresetRoot).Settings.Colours;
+            Assert.False(reloaded.GearRedline);
+            Assert.Equal(ColourTheme.Calm, reloaded.Theme);
         }
         finally
         {
@@ -155,7 +161,8 @@ public sealed class RuntimeCoordinatorTests
     [InlineData("""{"type":"settings.colours","theme":"calm"}""", "theme must be Sprint, Calm or Strict")]
     [InlineData("""{"type":"settings.colours","wearLowBelow":120}""", "wearLowBelow must be a whole number from 5 to 95")]
     [InlineData("""{"type":"settings.colours","brakeWarmAbove":900}""", "brakeHotAbove must be over brakeWarmAbove")]
-    [InlineData("""{"type":"settings.colours","energyCriticalBelow":50}""", "energyCriticalBelow must be under energyLowBelow")]
+    [InlineData("""{"type":"settings.colours","wearCriticalBelow":70}""", "wearCriticalBelow must be under wearLowBelow")]
+    [InlineData("""{"type":"settings.colours","gearRedline":"off"}""", "gearRedline must be true or false")]
     [InlineData("""{"type":"settings.colours"}""", "no colour settings were provided")]
     public void SettingsColours_RefuseUnknownThemesAndLimitsOutOfRangeOrOrder(string json, string expected)
     {

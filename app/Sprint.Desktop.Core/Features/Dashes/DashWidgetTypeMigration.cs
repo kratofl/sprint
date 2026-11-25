@@ -76,6 +76,27 @@ public static class DashWidgetTypeMigration
             }, "show"),
             // "ahead", and "both".
             "gaps" => (ConfigString(widget, "side") == "behind" ? "gap_behind" : "gap_ahead", "side"),
+            // The one bar widget and its "Shows" pick became one widget per bar; the linear map
+            // became the relative bar.
+            "bar" => (ConfigString(widget, "channel") switch
+            {
+                "ve" => "ve_bar",
+                "soc" => "battery_bar",
+                "fuel_ve" => "fuel_ve_bar",
+                "delta" => "delta_bar",
+                "gap" => "gap_bar",
+                "class_gap" => "class_gap_bar",
+                "sectors" => "sector_bar",
+                "inputs" => "inputs_bar",
+                "throttle" => "throttle_bar",
+                "brake" => "brake_bar",
+                "clutch" => "clutch_bar",
+                "rpm" => "rpm_bar",
+                "spotter" => "spotter_bar",
+                "linear_map" => "relative_bar",
+                // "fuel", and a bar that never picked: fuel was its default.
+                _ => "fuel_bar",
+            }, "channel"),
             // The surface/core switch became two widgets.
             "tyre_temp" => (ConfigString(widget, "channel") == "core" ? "tyre_core_temp" : "tyre_temp", "channel"),
             _ => (null, null),

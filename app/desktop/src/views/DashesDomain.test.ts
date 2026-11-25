@@ -28,9 +28,11 @@ import {
   resolveDashesFilter,
   screenChoices,
   setWidgetLook,
+  setWidgetSwitch,
   swapWidgets,
   type GridRect,
   type ResizeHandle,
+  widgetDefinition,
   widgetName,
 } from './DashesDomain'
 
@@ -328,10 +330,26 @@ const trackedDash = (widgets: DashWidget[]): DashLayout => ({
 
 test('on a dash with its own tracks a new widget is two cells by one, anywhere free', () => {
   const dash = trackedDash([{ id: 'gear', type: 'gear', col: 4, row: 1, colSpan: 2, rowSpan: 3 }])
-  assert.deepEqual(addWidgetAt(dash, 'page-1', 'bar', 0, 4)?.widget, { id: 'bar', type: 'bar', col: 0, row: 4, colSpan: 2, rowSpan: 1 })
+  assert.deepEqual(addWidgetAt(dash, 'page-1', 'fuel_bar', 0, 4)?.widget, { id: 'fuel-bar', type: 'fuel_bar', col: 0, row: 4, colSpan: 2, rowSpan: 1 })
   assert.deepEqual(addWidgetAt(dash, 'page-1', 'last_lap', 9, 8)?.widget, { id: 'last-lap', type: 'last_lap', col: 8, row: 8, colSpan: 2, rowSpan: 1 }, 'pulled back inside')
   assert.equal(addWidgetAt(dash, 'page-1', 'last_lap', 4, 2), null, 'the gear')
   assert.deepEqual(addWidget(dash, 'page-1', 'last_lap')?.widget, { id: 'last-lap', type: 'last_lap', col: 0, row: 1, colSpan: 2, rowSpan: 1 }, 'the first spot that holds a lap time: the top row is too short')
+})
+
+const rectOf = (widget: DashWidget | undefined) => widget && { col: widget.col, row: widget.row, colSpan: widget.colSpan, rowSpan: widget.rowSpan }
+
+test('a new widget still goes into a gap smaller than its default size, clicked or dropped', () => {
+  // Everything taken but cell (3, 4); the side columns and the top row are too small for TC.
+  const dash = trackedDash([
+    { id: 'left', type: 'text', col: 1, row: 1, colSpan: 2, rowSpan: 8 },
+    { id: 'right', type: 'text', col: 4, row: 1, colSpan: 5, rowSpan: 8 },
+    { id: 'above', type: 'text', col: 3, row: 1, colSpan: 1, rowSpan: 3 },
+    { id: 'below', type: 'text', col: 3, row: 5, colSpan: 1, rowSpan: 4 },
+  ])
+  const gap = { col: 3, row: 4, colSpan: 1, rowSpan: 1 }
+  assert.deepEqual(rectOf(addWidget(dash, 'page-1', 'tc')?.widget), gap)
+  assert.deepEqual(rectOf(addWidgetAt(dash, 'page-1', 'tc', 3, 4)?.widget), gap, 'its default two cells would run into the widget beside it')
+  assert.equal(addWidgetAt(dash, 'page-1', 'last_lap', 3, 4), null, 'a lap time needs more than one cell')
 })
 
 test('a widget never gets smaller than its smallest form, and grows toward the side it is dragged from', () => {
@@ -357,7 +375,7 @@ test('two widgets swap places when each fits the other\'s, and not otherwise', (
   const dash = trackedDash([
     { id: 'tc', type: 'tc', col: 1, row: 1, colSpan: 2, rowSpan: 2 },
     { id: 'last', type: 'last_lap', col: 5, row: 4, colSpan: 1, rowSpan: 1 },
-    { id: 'fuel', type: 'bar', col: 9, row: 0, colSpan: 1, rowSpan: 9 },
+    { id: 'fuel', type: 'fuel_bar', col: 9, row: 0, colSpan: 1, rowSpan: 9 },
     { id: 'pos', type: 'position', col: 0, row: 8, colSpan: 1, rowSpan: 1 },
   ])
   const swapped = swapWidgets(dash, 'page-1', 'tc', 'last')
@@ -381,10 +399,19 @@ test('a widget turns its label and frame off and on, and writes nothing while bo
 
 test('a placed widget is named by what it shows when its type alone is ambiguous', () => {
   const widget = (type: string, config?: Record<string, unknown>): DashWidget => ({ id: 'w', type, col: 0, row: 0, colSpan: 1, rowSpan: 1, config })
-  assert.equal(widgetName(widget('bar', { channel: 've' })), 'Virtual energy bar')
-  assert.equal(widgetName(widget('bar')), 'Fuel bar', 'an unset channel is the default one')
   assert.equal(widgetName(widget('tyre', { corner: 'rl' })), 'Rear left tyre')
   assert.equal(widgetName(widget('session_best')), 'Session Best')
   assert.equal(widgetName(widget('gap_behind')), 'Gap Behind')
   assert.equal(widgetName(widget('tc2')), 'TC 2')
+})
+
+test('a gear switch writes only what differs from its default', () => {
+  const dash = trackedDash([{ id: 'gear', type: 'gear', col: 4, row: 1, colSpan: 2, rowSpan: 3 }])
+  const fields = widgetDefinition('gear')?.config ?? []
+  const field = (key: string) => fields.find((candidate) => candidate.key === key) ?? assert.fail(key)
+  const noInputs = setWidgetSwitch(dash, 'page-1', 'gear', field('inputs'), false)
+  const flipped = noInputs && setWidgetSwitch(noInputs, 'page-1', 'gear', field('flip'), true)
+  assert.deepEqual(flipped?.pages[0]?.widgets[0]?.config, { inputs: 'off', flip: 'on' })
+  const back = flipped && setWidgetSwitch(flipped, 'page-1', 'gear', field('inputs'), true)
+  assert.deepEqual(back?.pages[0]?.widgets[0]?.config, { flip: 'on' }, 'on is the default and not written')
 })

@@ -20,13 +20,13 @@ test("the Layout tools edit the pit limiter's own widgets and never the page und
 
 test("nothing goes on the page's gear; the box also keeps its frame, the gear style lets widgets in", () => {
   assert.equal(add('speed', 4, 2)(dash('gear')), null, 'the gear')
-  assert.equal(add('bar', 0, 4)(dash('box')), null, 'the first column')
+  assert.equal(add('fuel_bar', 0, 4)(dash('box')), null, 'the first column')
   assert.equal(add('laps', 3, 0)(dash('box')), null, 'the top row')
-  assert.deepEqual(add('bar', 0, 4)(dash('gear'))?.pitLimiter?.widgets.map((widget) => [widget.col, widget.row, widget.colSpan, widget.rowSpan]), [[0, 4, 2, 1]])
+  assert.deepEqual(add('fuel_bar', 0, 4)(dash('gear'))?.pitLimiter?.widgets.map((widget) => [widget.col, widget.row, widget.colSpan, widget.rowSpan]), [[0, 4, 2, 1]])
 })
 
 test('widgets placed in the frame under the gear style stay put, out of the way, once the box covers them', () => {
-  const bar = { id: 'bar', type: 'bar', col: 0, row: 1, colSpan: 1, rowSpan: 8 }
+  const bar = { id: 'bar', type: 'fuel_bar', col: 0, row: 1, colSpan: 1, rowSpan: 8 }
   const boxed: DashLayout = { ...dash('box'), pitLimiter: { style: 'box', widgets: [bar] } }
   assert.deepEqual(add('speed', 4, 4)(boxed)?.pitLimiter?.widgets.map((widget) => widget.id), ['bar', 'speed'], 'the edit goes through and the bar is kept')
   // An edit that takes the kept widget's id gives the kept one a fresh id, never two of one.

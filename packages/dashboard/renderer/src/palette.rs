@@ -170,6 +170,18 @@ pub mod dash_setting_colors {
     pub const ARB: Rgba = Rgba::hex(dash_color::ORANGE);
 }
 
+/// The energy bars' own colours (the driver's call, 2026-11, after LMU's): identity, not a
+/// condition. A bar never changes colour with its level; its red zone under the critical mark
+/// says it is running out.
+pub mod dash_bar_colors {
+    use super::{Rgba, dash_color};
+    /// A light red.
+    pub const FUEL: Rgba = Rgba::hex("#FF7A70");
+    /// A light blue.
+    pub const VIRTUAL_ENERGY: Rgba = Rgba::hex("#6CB8FF");
+    pub const BATTERY: Rgba = Rgba::hex(dash_color::GREEN);
+}
+
 /// A racing class's colour on the dash, as the app's class tags wear it (`views/CarBadges.css`:
 /// Hypercar red, LMP2 blue, LMP3 purple, GT3 green, GTE orange), from the class in any spelling
 /// LMU uses (`CarNames.ClassOf` in Core); `None` for a class it does not know. The relative's
@@ -338,8 +350,7 @@ pub struct ColourLimits {
     /// Tread left, percent.
     pub wear_low_below: f64,
     pub wear_critical_below: f64,
-    /// A fuel, battery or virtual-energy bar's level, percent.
-    pub energy_low_below: f64,
+    /// Where the battery bar's red zone ends, percent of the charge.
     pub energy_critical_below: f64,
 }
 
@@ -354,8 +365,7 @@ impl Default for ColourLimits {
             brake_hot_above: 800.0,
             wear_low_below: 60.0,
             wear_critical_below: 30.0,
-            energy_low_below: 50.0,
-            energy_critical_below: 20.0,
+            energy_critical_below: 30.0,
         }
     }
 }
@@ -375,17 +385,25 @@ impl ColourLimits {
             brake_hot_above: num("brakeHotAbove", d.brake_hot_above),
             wear_low_below: num("wearLowBelow", d.wear_low_below),
             wear_critical_below: num("wearCriticalBelow", d.wear_critical_below),
-            energy_low_below: num("energyLowBelow", d.energy_low_below),
             energy_critical_below: num("energyCriticalBelow", d.energy_critical_below),
         }
     }
 }
 
-/// The app-wide colours a scene's settings carry (`colours`): the theme and the limits.
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+/// The app-wide colours a scene's settings carry (`colours`): the theme, the limits, and whether
+/// the gear turns red near the limit and blue at the shift point (`gear_redline`, on unless the
+/// driver turns it off: some read the shift from their wheel's own lights instead).
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Colours {
     pub theme: ColourTheme,
     pub limits: ColourLimits,
+    pub gear_redline: bool,
+}
+
+impl Default for Colours {
+    fn default() -> Colours {
+        Colours { theme: ColourTheme::default(), limits: ColourLimits::default(), gear_redline: true }
+    }
 }
 
 impl Colours {
@@ -395,6 +413,7 @@ impl Colours {
         Colours {
             theme: ColourTheme::parse(raw.and_then(|r| r.get("theme")).and_then(Value::as_str)),
             limits: ColourLimits::parse(raw.and_then(|r| r.get("limits")).and_then(Value::as_object)),
+            gear_redline: raw.and_then(|r| r.get("gearRedline")).and_then(Value::as_bool).unwrap_or(true),
         }
     }
 }
@@ -696,6 +715,8 @@ mod tests {
         let colours = Colours::parse(Some(&raw));
         assert_eq!(colours.theme, ColourTheme::Strict);
         assert_eq!(colours.limits, ColourLimits { brake_hot_above: 900.0, ..ColourLimits::default() });
+        assert!(colours.gear_redline, "the gear redline is on unless turned off");
+        assert!(!Colours::parse(Some(&serde_json::json!({ "gearRedline": false }))).gear_redline);
         assert_eq!(Colours::parse(None), Colours::default());
         assert_eq!(ColourTheme::parse(Some("calm")), ColourTheme::Sprint, "by name, as the host writes it");
     }

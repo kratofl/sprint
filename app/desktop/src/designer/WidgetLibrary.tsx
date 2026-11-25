@@ -106,6 +106,10 @@ export function WidgetLibrary({
                   onPointerDown={(event) => onPointerDown(type, event)}
                   onPointerMove={onPointerMove}
                   onPointerUp={onPointerUp}
+                  // The browser took the pointer away: drop the drag, adding nothing.
+                  onPointerCancel={() => {
+                    if (dragState.kind === 'placing') setDragState({ kind: 'idle' })
+                  }}
                   // A pointer is handled by the sequence above; a keyboard activation (Enter/Space)
                   // fires a `click` with `detail === 0`, which never comes from a mouse.
                   onClick={(event) => {

@@ -209,17 +209,18 @@ public sealed class NativeDashFrameSourceTests
     }
 
     [Fact]
-    public void TheSceneCarriesTheColoursThemeByNameAndTheLimitsSoChangingThemIsANewScene()
+    public void TheSceneCarriesTheColoursThemeByNameTheGearRedlineAndTheLimitsSoChangingThemIsANewScene()
     {
         DashLayout layout = TestDash.Layout("dash");
         DashSceneContent sprint = DashSceneContent.Build(layout, "Driver", "22", UnitSystem.Metric, new ColourSettings(), DashTargets.None, Json);
-        ColourSettings calm = new() { Theme = ColourTheme.Calm, Limits = new ColourLimits { BrakeHotAbove = 900 } };
+        ColourSettings calm = new() { Theme = ColourTheme.Calm, GearRedline = false, Limits = new ColourLimits { BrakeHotAbove = 900 } };
         DashSceneContent changed = DashSceneContent.Build(layout, "Driver", "22", UnitSystem.Metric, calm, DashTargets.None, Json);
 
         using JsonDocument settings = JsonDocument.Parse(changed.Settings);
         JsonElement colours = settings.RootElement.GetProperty("colours");
         Assert.Equal("Calm", colours.GetProperty("theme").GetString());
         Assert.Equal(900, colours.GetProperty("limits").GetProperty("brakeHotAbove").GetInt32());
+        Assert.False(colours.GetProperty("gearRedline").GetBoolean(), "the renderer reads it by this name");
         Assert.False(changed.HasSameBytes(sprint));
     }
 

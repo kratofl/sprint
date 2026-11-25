@@ -57,10 +57,9 @@ export const COLOUR_LIMIT_ROWS: readonly ColourLimitRow[] = [
   },
   {
     id: 'energy',
-    label: 'Fuel and energy',
-    detail: 'Fuel, battery and virtual-energy bars',
+    label: 'Battery',
+    detail: 'Battery bar, red below the mark',
     marks: [
-      { key: 'energyLowBelow', heat: 'warm', label: 'Low under' },
       { key: 'energyCriticalBelow', heat: 'hot', label: 'Critical under' },
     ],
   },
@@ -76,7 +75,6 @@ const RANGE: Record<LimitKey, { min: number; max: number; step: number }> = {
   brakeHotAbove: { min: 150, max: 1200, step: 25 },
   wearLowBelow: { min: 5, max: 95, step: 5 },
   wearCriticalBelow: { min: 1, max: 90, step: 5 },
-  energyLowBelow: { min: 5, max: 95, step: 5 },
   energyCriticalBelow: { min: 1, max: 90, step: 5 },
 }
 
@@ -85,8 +83,7 @@ const inOrder = (l: DashColourLimits): boolean =>
   l.tyreHotAbove > l.tyreWarmAbove &&
   l.brakeWarmAbove > l.brakeColdBelow &&
   l.brakeHotAbove > l.brakeWarmAbove &&
-  l.wearCriticalBelow < l.wearLowBelow &&
-  l.energyCriticalBelow < l.energyLowBelow
+  l.wearCriticalBelow < l.wearLowBelow
 
 /** The limit one step down or up, or null where that leaves its range or crosses its neighbour. */
 export function stepColourLimit(limits: DashColourLimits, key: LimitKey, step: -1 | 1): number | null {

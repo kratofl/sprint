@@ -310,7 +310,7 @@ mod tests {
             "pitLimiter": { "style": style, "widgets": [
                 { "id": "s", "type": "speed", "col": 5, "row": 4, "colSpan": 1, "rowSpan": 1 },
                 { "id": "g", "type": "laps", "col": 5, "row": 3, "colSpan": 1, "rowSpan": 1 },
-                { "id": "b", "type": "bar", "col": 0, "row": 0, "colSpan": 1, "rowSpan": 9 }
+                { "id": "b", "type": "fuel_bar", "col": 0, "row": 0, "colSpan": 1, "rowSpan": 9 }
             ] } })
     }
 
@@ -491,8 +491,7 @@ mod tests {
     #[test]
     fn a_widget_may_go_without_its_frame_and_a_saved_dash_look_is_gone() {
         let edges = |style: serde_json::Value, chrome: serde_json::Value| {
-            let mut l =
-                layout(json!([{ "id": "b", "type": "bar", "col": 0, "row": 0, "colSpan": 1, "rowSpan": 12, "config": { "channel": "fuel" }, "style": style }]));
+            let mut l = layout(json!([{ "id": "b", "type": "fuel_bar", "col": 0, "row": 0, "colSpan": 1, "rowSpan": 12, "style": style }]));
             l["chrome"] = chrome;
             ops_for(&scene(l), &TelemetryFrame::default()).iter().filter(|op| matches!(op, DrawOp::Border { .. })).count()
         };

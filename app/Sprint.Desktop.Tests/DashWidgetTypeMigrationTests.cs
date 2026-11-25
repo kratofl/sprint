@@ -59,6 +59,9 @@ public class DashWidgetTypeMigrationTests
                 Widget("core", "tyre_temp", ("channel", "core")),
                 Widget("soc", "soc"),
                 Widget("header", "header"),
+                Widget("ve-bar", "bar", ("channel", "ve")),
+                Widget("map", "bar", ("channel", "linear_map")),
+                Widget("fuel-bar", "bar"),
             ],
         };
         DashLayout layout = new DashLayout { Pages = [page] };
@@ -66,7 +69,7 @@ public class DashWidgetTypeMigrationTests
         Assert.True(DashWidgetTypeMigration.Apply(layout));
 
         Assert.Equal(
-            ["last_lap", "current_lap", "class_best", "gap_behind", "gap_ahead", "ve_percent", "tyre_core_temp", "battery"],
+            ["last_lap", "current_lap", "class_best", "gap_behind", "gap_ahead", "ve_percent", "tyre_core_temp", "battery", "ve_bar", "relative_bar", "fuel_bar"],
             page.Widgets.Select(widget => widget.Type).ToArray());
         Assert.All(page.Widgets, widget => Assert.Null(widget.Config));
     }

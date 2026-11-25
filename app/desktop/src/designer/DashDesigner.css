@@ -943,16 +943,13 @@ svg.designer-node-stack {
   box-sizing: border-box;
 }
 
-/* A free cell: a dot at its centre. */
-.designer-free-cell::before {
-  position: absolute;
-  top: calc(50% - 2px);
-  left: calc(50% - 2px);
+/* A free cell's corner: a dot where its grid lines cross. */
+.designer-free-corner {
   width: 4px;
   height: 4px;
+  margin: -2px 0 0 -2px;
   border-radius: 50%;
   background: var(--label-tertiary);
-  content: "";
 }
 
 /* Outline: hairline regions on the window colour, in place of the dash. */
@@ -1135,6 +1132,9 @@ svg.designer-node-stack {
 .designer-canvas {
   position: relative;
   touch-action: none;
+  /* A drag must never select the widgets' text: the browser would then drag that text and the
+     widget would follow the pointer after release. */
+  user-select: none;
 }
 
 .designer-grid-overlay {

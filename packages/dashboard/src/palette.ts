@@ -127,8 +127,8 @@ export const colourThemes: readonly ColourTheme[] = ['Sprint', 'Calm', 'Strict']
 /**
  * Where values change colour (`ColourLimits` in Core), °C and percent. Tyres against the
  * compound's ideal: cold more than `tyreColdBelow` under it, warm and hot more than
- * `tyreWarmAbove` and `tyreHotAbove` over it. Brakes in plain °C; tyre wear (tread left) and fuel
- * and energy bars turn low, then critical, under their marks.
+ * `tyreWarmAbove` and `tyreHotAbove` over it. Brakes in plain °C; tyre wear (tread left) turns low,
+ * then critical, under its marks, and the battery bar is red under `energyCriticalBelow`.
  */
 export interface DashColourLimits {
   tyreColdBelow: number
@@ -139,24 +139,28 @@ export interface DashColourLimits {
   brakeHotAbove: number
   wearLowBelow: number
   wearCriticalBelow: number
-  energyLowBelow: number
   energyCriticalBelow: number
 }
 
-/** The app-wide Colours setting: what colours mean (the theme) and where values change colour. */
+/**
+ * The app-wide Colours setting: what colours mean (the theme), where values change colour, and
+ * whether the gear turns red near the limit and blue at the shift point (`gearRedline`).
+ */
 export interface DashColours {
   theme: ColourTheme
+  gearRedline: boolean
   limits: DashColourLimits
 }
 
 /** The Colours setting a fresh install has (`ColourSettings` in Core). */
 export const defaultDashColours: DashColours = {
   theme: 'Sprint',
+  gearRedline: true,
   limits: {
     tyreColdBelow: 10, tyreWarmAbove: 10, tyreHotAbove: 20,
     brakeColdBelow: 300, brakeWarmAbove: 650, brakeHotAbove: 800,
     wearLowBelow: 60, wearCriticalBelow: 30,
-    energyLowBelow: 50, energyCriticalBelow: 20,
+    energyCriticalBelow: 30,
   },
 }
 

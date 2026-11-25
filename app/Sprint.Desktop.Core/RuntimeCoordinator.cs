@@ -954,8 +954,9 @@ public sealed class RuntimeCoordinator
         value.Length == 7 && value[0] == '#' && value.Skip(1).All(Uri.IsHexDigit);
 
     /// <summary>
-    /// The app-wide colours: <c>theme</c> by name and any colour limits by their wire names
-    /// (<see cref="ColourLimits.Fields"/>), checked whole so the marks stay in order.
+    /// The app-wide colours: <c>theme</c> by name, <c>gearRedline</c> on or off, and any colour
+    /// limits by their wire names (<see cref="ColourLimits.Fields"/>), checked whole so the marks
+    /// stay in order.
     /// </summary>
     private bool UpdateColours(JsonElement command, out string error)
     {
@@ -971,6 +972,18 @@ public sealed class RuntimeCoordinator
             }
 
             theme = parsed;
+        }
+
+        bool? gearRedline = null;
+        if (command.TryGetProperty("gearRedline", out _))
+        {
+            if (!TryBool(command, "gearRedline", out bool redline))
+            {
+                error = "gearRedline must be true or false";
+                return false;
+            }
+
+            gearRedline = redline;
         }
 
         List<(string Name, int Value)> changes = [];
@@ -990,7 +1003,7 @@ public sealed class RuntimeCoordinator
             changes.Add((field.Name, value));
         }
 
-        if (theme is null && changes.Count == 0)
+        if (theme is null && gearRedline is null && changes.Count == 0)
         {
             error = "no colour settings were provided";
             return false;
@@ -1011,7 +1024,7 @@ public sealed class RuntimeCoordinator
                 return false;
             }
 
-            this._runtime.Settings.Colours = current with { Theme = theme ?? current.Theme, Limits = limits };
+            this._runtime.Settings.Colours = current with { Theme = theme ?? current.Theme, GearRedline = gearRedline ?? current.GearRedline, Limits = limits };
             this._runtime.SaveSettings();
         }
 

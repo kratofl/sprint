@@ -29,7 +29,7 @@ public sealed class DashTracksTests
     {
         DashLayout layout = Layout();
         layout.Pages[0].Widgets.Add(new DashWidget { Id = "last", Type = "last_lap", Col = 0, Row = 0, ColSpan = 3, RowSpan = 1 });
-        layout.Pages[0].Widgets.Add(new DashWidget { Id = "fuel", Type = "bar", Col = 9, Row = 0, ColSpan = 1, RowSpan = 9 });
+        layout.Pages[0].Widgets.Add(new DashWidget { Id = "fuel", Type = "fuel_bar", Col = 9, Row = 0, ColSpan = 1, RowSpan = 9 });
 
         Assert.True(DashLayoutValidator.IsValid(layout));
     }
@@ -41,10 +41,10 @@ public sealed class DashTracksTests
             { "id": "z", "name": "Z", "zoned": true, "gridCols": 11, "gridRows": 9,
               "pages": [
                 { "id": "both", "name": "Both", "widgets": [
-                  { "id": "fuel", "type": "bar", "col": 0, "row": 0, "colSpan": 1, "rowSpan": 9 },
+                  { "id": "fuel", "type": "fuel_bar", "col": 0, "row": 0, "colSpan": 1, "rowSpan": 9 },
                   { "id": "rpm", "type": "rpm_bar", "col": 1, "row": 0, "colSpan": 9, "rowSpan": 1 } ] },
                 { "id": "top", "name": "Top", "bars": "top", "widgets": [
-                  { "id": "fuel", "type": "bar", "col": 0, "row": 0, "colSpan": 1, "rowSpan": 9 },
+                  { "id": "fuel", "type": "fuel_bar", "col": 0, "row": 0, "colSpan": 1, "rowSpan": 9 },
                   { "id": "rpm", "type": "rpm_bar", "col": 1, "row": 0, "colSpan": 9, "rowSpan": 1 },
                   { "id": "gear", "type": "tc", "col": 1, "row": 1, "colSpan": 1, "rowSpan": 1 } ] }
               ] }

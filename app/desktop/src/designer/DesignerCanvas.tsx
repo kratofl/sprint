@@ -4,7 +4,7 @@ import { DashCanvas, cellAt, drawnWidgets, gridLines, layoutRect, pageTree } fro
 import type { DashGroupNode, DashLayout, DashNode, DashPage, DashWidget, DashWidgetType, GridSpan, LayoutGrid, PixelRect } from '@sprint/dashboard'
 import type { TelemetryFrame } from '@sprint/types'
 import {
-  canPlaceNewWidget,
+  dropRect,
   growToSmallest,
   newWidgetRect,
   previewMoveRect,
@@ -284,6 +284,14 @@ export function DesignerCanvas({
     if (dragState.kind !== 'idle') setDragState({ kind: 'idle' })
   }
 
+  /**
+   * The browser took the pointer away (it started its own drag, or the window lost it): drop the
+   * drag without an edit, or the widget would follow the pointer with the button already up.
+   */
+  const cancelDrag = (): void => {
+    if (dragState.kind === 'moving' || dragState.kind === 'resizing') setDragState({ kind: 'idle' })
+  }
+
   let ghost: { rect: GridRect; valid: boolean; label?: 'Stack here' | 'Swap'; tag?: string | null; was?: GridRect } | null = null
   const moving = movingWidget(dragState)
   const onto = dropTarget(dragState)
@@ -303,8 +311,10 @@ export function DesignerCanvas({
     }
   } else if (dragState.kind === 'placing' && dragState.pointer) {
     const cell = cellOf(dragState.pointer)
-    const rect = newWidgetRect(layout, dragState.widgetType, cell.col, cell.row)
-    ghost = { rect, valid: !covered.some((span) => rectsIntersect(span, rect)) && canPlaceNewWidget(layout, page.id, dragState.widgetType, rect, placeGroup) }
+    // Where the drop would land; with nowhere there, the default size shows red.
+    const landing = dropRect(layout, page.id, dragState.widgetType, cell.col, cell.row, placeGroup)
+    const rect = landing ?? newWidgetRect(layout, dragState.widgetType, cell.col, cell.row)
+    ghost = { rect, valid: landing !== null && !covered.some((span) => rectsIntersect(span, rect)) }
   }
   const dragging = dragState.kind === 'moving' || dragState.kind === 'resizing'
 
@@ -319,6 +329,9 @@ export function DesignerCanvas({
       style={{ width, height }}
       onPointerMove={continueDrag}
       onPointerUp={endDrag}
+      onPointerCancel={cancelDrag}
+      onLostPointerCapture={cancelDrag}
+      onDragStart={(event) => event.preventDefault()}
       onPointerDown={(event) => {
         if (event.target === event.currentTarget) onSelect([])
       }}

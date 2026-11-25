@@ -16,7 +16,6 @@ test('a mark steps by its own size and stops at the end of its range', () => {
 test('a mark never steps onto or past its neighbour', () => {
   assert.equal(stepColourLimit({ ...limits, tyreWarmAbove: 19 }, 'tyreWarmAbove', 1), null)
   assert.equal(stepColourLimit({ ...limits, brakeWarmAbove: 775 }, 'brakeHotAbove', -1), null)
-  assert.equal(stepColourLimit({ ...limits, energyCriticalBelow: 45 }, 'energyLowBelow', -1), null)
   assert.equal(stepColourLimit({ ...limits, wearCriticalBelow: 55 }, 'wearCriticalBelow', 1), null)
 })
 
@@ -25,5 +24,5 @@ test('limits read in the driver’s units: tyres against the ideal, brakes in de
   assert.equal(colourLimitText('tyreHotAbove', 20, 'Imperial'), 'ideal +36°')
   assert.equal(colourLimitText('brakeWarmAbove', 650, 'Metric'), '650°')
   assert.equal(colourLimitText('brakeWarmAbove', 650, 'Imperial'), '1202°')
-  assert.equal(colourLimitText('energyLowBelow', 50, 'Imperial'), '50 %')
+  assert.equal(colourLimitText('energyCriticalBelow', 30, 'Imperial'), '30 %')
 })

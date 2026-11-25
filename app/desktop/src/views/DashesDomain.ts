@@ -191,7 +191,8 @@ export const fitScreenSize = (screen: Pick<ScreenProfile, 'width' | 'height'>, m
 // matching entry in `WIDGET_CATALOG` below by hand.
 
 export type DashConfigOption = { value: string; label: string }
-export type DashConfigField = { key: string; label: string; kind: 'text' | 'select'; default: string; options: readonly DashConfigOption[] }
+/** A config value the inspector edits: free text, a pick from `options`, or a switch (`on` / `off`). */
+export type DashConfigField = { key: string; label: string; kind: 'text' | 'select' | 'switch'; default: string; options: readonly DashConfigOption[] }
 export type DashWidgetDefinition = { type: DashWidgetType; name: string; idleCapable: boolean; config: readonly DashConfigField[] }
 
 const NO_CONFIG: readonly DashConfigField[] = []
@@ -231,30 +232,11 @@ const ALIGN_CONFIG: readonly DashConfigField[] = [
   },
 ]
 
-const BAR_CONFIG: readonly DashConfigField[] = [
-  {
-    key: 'channel',
-    label: 'Shows',
-    kind: 'select',
-    default: 'fuel',
-    options: [
-      { value: 'fuel', label: 'Fuel' },
-      { value: 've', label: 'Virtual energy' },
-      { value: 'soc', label: 'Battery charge' },
-      { value: 'delta', label: 'Delta' },
-      { value: 'sectors', label: 'Sectors' },
-      { value: 'inputs', label: 'Throttle and brake' },
-      { value: 'throttle', label: 'Throttle' },
-      { value: 'brake', label: 'Brake' },
-      { value: 'clutch', label: 'Clutch' },
-      { value: 'rpm', label: 'RPM' },
-      { value: 'gap', label: 'Track gaps' },
-      { value: 'class_gap', label: 'Class gaps' },
-      { value: 'fuel_ve', label: 'Fuel and virtual energy' },
-      { value: 'spotter', label: 'Spotter' },
-      { value: 'linear_map', label: 'Linear map' },
-    ],
-  },
+/** The gear's parts round its digit (`GearParts` in the renderer): inputs and the revs and speed on, swapped off. */
+const GEAR_CONFIG: readonly DashConfigField[] = [
+  { key: 'inputs', label: 'Throttle, brake and clutch', kind: 'switch', default: 'on', options: [] },
+  { key: 'readouts', label: 'RPM and speed', kind: 'switch', default: 'on', options: [] },
+  { key: 'flip', label: 'Speed above, RPM below', kind: 'switch', default: 'off', options: [] },
 ]
 
 const TYRE_CONFIG: readonly DashConfigField[] = [
@@ -275,8 +257,7 @@ const TYRE_CONFIG: readonly DashConfigField[] = [
 /** UI metadata in catalog order (DashWidgetCatalog.cs — see the section comment above). `idleCapable` hides live-telemetry widgets from the idle-page palette. */
 const WIDGET_CATALOG: Readonly<Record<DashWidgetType, DashWidgetDefinition>> = {
   text: { type: 'text', name: 'Text', idleCapable: true, config: TEXT_CONFIG },
-  rpm_bar: { type: 'rpm_bar', name: 'RPM Bar', idleCapable: false, config: NO_CONFIG },
-  gear: { type: 'gear', name: 'Gear', idleCapable: true, config: NO_CONFIG },
+  gear: { type: 'gear', name: 'Gear', idleCapable: true, config: GEAR_CONFIG },
   gear_speed: { type: 'gear_speed', name: 'Gear + Speed', idleCapable: true, config: ALIGN_CONFIG },
   input_trace: { type: 'input_trace', name: 'Input Trace', idleCapable: false, config: NO_CONFIG },
   current_lap: { type: 'current_lap', name: 'Current Lap', idleCapable: false, config: NO_CONFIG },
@@ -323,6 +304,9 @@ const WIDGET_CATALOG: Readonly<Record<DashWidgetType, DashWidgetDefinition>> = {
   tyre_core_temp: { type: 'tyre_core_temp', name: 'Tyre Core Temperature', idleCapable: true, config: NO_CONFIG },
   tyre_avg: { type: 'tyre_avg', name: 'Tyre Average Temperature', idleCapable: false, config: NO_CONFIG },
   brake_temp: { type: 'brake_temp', name: 'Brake Temperature', idleCapable: true, config: NO_CONFIG },
+  tyre_temp_numbers: { type: 'tyre_temp_numbers', name: 'Tyre Temp Numbers', idleCapable: true, config: NO_CONFIG },
+  brake_temp_numbers: { type: 'brake_temp_numbers', name: 'Brake Temp Numbers', idleCapable: true, config: NO_CONFIG },
+  tyre_brake_temp_numbers: { type: 'tyre_brake_temp_numbers', name: 'Tyre + Brake Numbers', idleCapable: true, config: NO_CONFIG },
   tyre_wear_lap: { type: 'tyre_wear_lap', name: 'Wear Per Lap', idleCapable: false, config: NO_CONFIG },
   tyre_laps_left: { type: 'tyre_laps_left', name: 'Tyre Laps Left', idleCapable: false, config: NO_CONFIG },
   ve_percent: { type: 've_percent', name: 'Virtual Energy', idleCapable: false, config: NO_CONFIG },
@@ -337,7 +321,21 @@ const WIDGET_CATALOG: Readonly<Record<DashWidgetType, DashWidgetDefinition>> = {
   lift_coast: { type: 'lift_coast', name: 'Lift & Coast', idleCapable: false, config: NO_CONFIG },
   relative: { type: 'relative', name: 'Relative', idleCapable: false, config: NO_CONFIG },
   damage: { type: 'damage', name: 'Damage', idleCapable: false, config: NO_CONFIG },
-  bar: { type: 'bar', name: 'Bar', idleCapable: false, config: BAR_CONFIG },
+  fuel_bar: { type: 'fuel_bar', name: 'Fuel Bar', idleCapable: false, config: NO_CONFIG },
+  ve_bar: { type: 've_bar', name: 'VE Bar', idleCapable: false, config: NO_CONFIG },
+  battery_bar: { type: 'battery_bar', name: 'Battery Bar', idleCapable: false, config: NO_CONFIG },
+  fuel_ve_bar: { type: 'fuel_ve_bar', name: 'Fuel + VE Bar', idleCapable: false, config: NO_CONFIG },
+  delta_bar: { type: 'delta_bar', name: 'Delta Bar', idleCapable: false, config: NO_CONFIG },
+  gap_bar: { type: 'gap_bar', name: 'Gap Bar', idleCapable: false, config: NO_CONFIG },
+  class_gap_bar: { type: 'class_gap_bar', name: 'Class Gap Bar', idleCapable: false, config: NO_CONFIG },
+  sector_bar: { type: 'sector_bar', name: 'Sector Bar', idleCapable: false, config: NO_CONFIG },
+  inputs_bar: { type: 'inputs_bar', name: 'Inputs Bar', idleCapable: false, config: NO_CONFIG },
+  throttle_bar: { type: 'throttle_bar', name: 'Throttle Bar', idleCapable: false, config: NO_CONFIG },
+  brake_bar: { type: 'brake_bar', name: 'Brake Bar', idleCapable: false, config: NO_CONFIG },
+  clutch_bar: { type: 'clutch_bar', name: 'Clutch Bar', idleCapable: false, config: NO_CONFIG },
+  rpm_bar: { type: 'rpm_bar', name: 'RPM Bar', idleCapable: false, config: NO_CONFIG },
+  spotter_bar: { type: 'spotter_bar', name: 'Spotter', idleCapable: false, config: NO_CONFIG },
+  relative_bar: { type: 'relative_bar', name: 'Relative Bar', idleCapable: false, config: NO_CONFIG },
   tyre: { type: 'tyre', name: 'Tyre', idleCapable: true, config: TYRE_CONFIG },
   sectors: { type: 'sectors', name: 'Sectors', idleCapable: false, config: NO_CONFIG },
   speed: { type: 'speed', name: 'Speed', idleCapable: true, config: NO_CONFIG },
@@ -390,16 +388,11 @@ function chosenOptionLabel(widget: DashWidget, key: string): string | null {
 
 /**
  * What one placed widget is called in the designer (sidebar, canvas tag, inspector): its catalog
- * name, or what it shows when its config makes the catalog name ambiguous ("Fuel bar", "Front
- * left tyre").
+ * name, or what it shows when its config makes the catalog name ambiguous ("Front left tyre").
  */
 export function widgetName(widget: DashWidget): string {
   const name = widgetDisplayName(widget.type)
   switch (widget.type) {
-    case 'bar': {
-      const channel = chosenOptionLabel(widget, 'channel')
-      return channel ? `${channel} bar` : name
-    }
     case 'tyre': {
       const corner = chosenOptionLabel(widget, 'corner')
       return corner ? `${corner} tyre` : name
@@ -583,12 +576,14 @@ export function addWidget(layout: DashLayout, pageId: string, type: DashWidgetTy
   const page = findPage(next, pageId)
   if (!page) return null
 
-  // The first free spot that holds the widget's smallest form, at the size it needs inside the dash.
+  // The first free spot that holds the widget's smallest form: at the size it needs inside the
+  // dash, else at any smaller-to-larger size, so a gap smaller than the default still takes it.
   const occupied = (candidate: GridRect): boolean => pageOverlaps(page, candidate, '', target.group) || !holdsSmallestAt(next, type, candidate)
   const inside = { col: Math.min(1, next.gridCols - 1), row: Math.min(1, next.gridRows - 1), ...newWidgetSpan(next) }
-  const { colSpan, rowSpan } = growToSmallest(next, type, inside, { hx: 1, hy: 1 })
-  const rect =
-    (target.within && firstFit(next.gridCols, next.gridRows, colSpan, rowSpan, occupied, target.within)) || firstFit(next.gridCols, next.gridRows, colSpan, rowSpan, occupied)
+  const spans = [growToSmallest(next, type, inside, { hx: 1, hy: 1 }), ...spansBySize(next)]
+  const search = (within?: GridRect): GridRect | null =>
+    spans.reduce<GridRect | null>((found, span) => found ?? firstFit(next.gridCols, next.gridRows, span.colSpan, span.rowSpan, occupied, within), null)
+  const rect = (target.within && search(target.within)) || search()
   if (!rect) return null
 
   const widget = newWidget(page, type, rect, target.group)
@@ -649,14 +644,44 @@ export function growToSmallest(layout: DashLayout, type: string, rect: GridRect,
 /** Whether `rect` holds the smallest form of a widget of `type`. */
 export const holdsSmallestAt = (layout: DashLayout, type: string, rect: GridRect): boolean => holdsSmallest(type, widgetBox(layout, rect))
 
-/** Adds a widget at an explicit grid cell (drag-drop placement) — mirrors `DashLayoutEditor.TryAddWidgetAt`. The requested cell is clamped in-bounds; placement is rejected (no fallback) if it would overlap, so a drop onto an occupied cell fails rather than silently jumping. */
+/** Every span a widget could take on `layout`'s grid, smallest first (the wider of two the same size first). */
+function spansBySize(layout: LayoutGrid): Array<{ colSpan: number; rowSpan: number }> {
+  const spans: Array<{ colSpan: number; rowSpan: number }> = []
+  for (let colSpan = 1; colSpan <= layout.gridCols; colSpan++) {
+    for (let rowSpan = 1; rowSpan <= layout.gridRows; rowSpan++) spans.push({ colSpan, rowSpan })
+  }
+  return spans.sort((a, b) => a.colSpan * a.rowSpan - b.colSpan * b.rowSpan || a.rowSpan - b.rowSpan)
+}
+
+/**
+ * Where a new widget of `type` dropped on cell (`col`, `row`) lands: its default size from that
+ * cell (`newWidgetRect`) when that is free, else the smallest free rect over the cell that holds its
+ * smallest form, so a drop into a gap smaller than the default still takes. Null when the cell is
+ * taken or no free rect over it holds the widget: a drop never jumps somewhere else.
+ */
+export function dropRect(layout: DashLayout, pageId: string, type: string, col: number, row: number, group: string | null = null): GridRect | null {
+  const page = findPage(layout, pageId)
+  if (!page) return null
+  const free = (rect: GridRect): boolean => fitsLayout(layout, rect) && !pageOverlaps(page, rect, '', group)
+  const preferred = newWidgetRect(layout, type, col, row)
+  if (free(preferred)) return preferred
+  for (const { colSpan, rowSpan } of spansBySize(layout)) {
+    for (let up = 0; up < rowSpan; up++) {
+      for (let back = 0; back < colSpan; back++) {
+        const rect = { col: col - back, row: row - up, colSpan, rowSpan }
+        if (free(rect) && holdsSmallestAt(layout, type, rect)) return rect
+      }
+    }
+  }
+  return null
+}
+
+/** Adds a widget dropped on a grid cell (drag-drop placement) where `dropRect` puts it; null when it does not fit there. */
 export function addWidgetAt(layout: DashLayout, pageId: string, type: DashWidgetType, col: number, row: number, group: string | null = null): { layout: DashLayout; widget: DashWidget } | null {
   const next = cloneLayout(layout)
   const page = findPage(next, pageId)
-  if (!page) return null
-
-  const rect = newWidgetRect(next, type, col, row)
-  if (pageOverlaps(page, rect, '', group)) return null
+  const rect = dropRect(next, pageId, type, col, row, group)
+  if (!page || !rect) return null
 
   const widget = newWidget(page, type, rect, group)
   page.widgets.push(widget)
@@ -743,6 +768,12 @@ export function setWidgetConfig(layout: DashLayout, pageId: string, widgetId: st
     else config[key] = value
     widget.config = Object.keys(config).length > 0 ? config : undefined
   })
+}
+
+/** Sets a switch config field on or off; the field's default is not written (switching back clears it). */
+export function setWidgetSwitch(layout: DashLayout, pageId: string, widgetId: string, field: DashConfigField, on: boolean): DashLayout | null {
+  const value = on ? 'on' : 'off'
+  return setWidgetConfig(layout, pageId, widgetId, field.key, value === field.default ? '' : value)
 }
 
 /**
