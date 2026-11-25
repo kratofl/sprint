@@ -1094,7 +1094,7 @@ public sealed class RuntimeCoordinatorTests
         }
     }
 
-    /// <summary>The dash seeded from the default preset (the presets seed it and Hypercar).</summary>
+    /// <summary>The dash seeded from the default preset (the presets seed it, Endurance and Hypercar).</summary>
     private static DashLayout DefaultDash(DesktopRuntime runtime) => runtime.DashLayouts.Single(dash => dash.Id == "default");
 
     [Fact]
@@ -1185,7 +1185,7 @@ public sealed class RuntimeCoordinatorTests
 
             Assert.False(ok);
             Assert.Equal(expected, error);
-            Assert.Equal(["default", "hypercar"], runtime.DashLayouts.Select(dash => dash.Id).Order());
+            Assert.Equal(["default", "endurance", "hypercar"], runtime.DashLayouts.Select(dash => dash.Id).Order());
         }
         finally
         {

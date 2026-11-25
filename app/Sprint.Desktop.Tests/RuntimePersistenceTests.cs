@@ -828,8 +828,8 @@ public sealed class RuntimePersistenceTests
 
             DesktopRuntime reloaded = new DesktopRuntime(dataRoot, TestEnv.PresetRoot, legacyRoot);
             Assert.Single(reloaded.Devices);
-            // Migrated once; the default stays out (the dashes were not empty), the hypercar preset arrives beside it.
-            Assert.Equal(["hypercar", "legacy-main"], reloaded.DashLayouts.Select(dash => dash.Id).Order(StringComparer.Ordinal).ToArray());
+            // Migrated once; the default stays out (the dashes were not empty), the later presets arrive beside it.
+            Assert.Equal(["endurance", "hypercar", "legacy-main"], reloaded.DashLayouts.Select(dash => dash.Id).Order(StringComparer.Ordinal).ToArray());
         }
         finally
         {

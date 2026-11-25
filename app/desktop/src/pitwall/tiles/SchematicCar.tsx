@@ -5,7 +5,8 @@ import './SchematicCar.css'
 // The car as LMU draws it itself, the same for every car, nose up, in 120 × 196: four wheels,
 // the nose and the tail each an arc in three parts, and a line down either side between the
 // wheels. Those eight parts are LMU's eight dent places. The pit wall's damage and tyre tiles and
-// Analysis's car card draw it.
+// Analysis's car card draw it; the wheel dash's Damage widget draws the same car (`damage` in the
+// renderer's widgets.rs), so a change here is a change there.
 
 export const SCHEMATIC_WIDTH = 120
 export const SCHEMATIC_HEIGHT = 196

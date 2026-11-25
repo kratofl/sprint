@@ -1950,23 +1950,76 @@ fn relative(b: &mut Builder, w: &WidgetContext) {
     }
 }
 
-/// LMU's eight dent places (`Damage::dents`) as cells of a 3x3 grid over the car, front up:
-/// (column, row), clockwise from front left. The middle cell is the cockpit.
-const DENT_CELLS: [(usize, usize); 8] = [(0, 0), (1, 0), (2, 0), (2, 1), (2, 2), (1, 2), (0, 2), (0, 1)];
+/// LMU's own simple car, the one every car drawing in Sprint is (the app's `SchematicCar.tsx`):
+/// nose up in a 120 x 196 box, four 22 x 40 wheels with 5 corners, and its eight dent places as
+/// strokes 5 wide.
+const SCHEMATIC_SIZE: (f64, f64) = (120.0, 196.0);
+const SCHEMATIC_WHEELS: [(f64, f64); 4] = [(6.0, 44.0), (92.0, 44.0), (6.0, 130.0), (92.0, 130.0)];
+const SCHEMATIC_WHEEL: (f64, f64, f64) = (22.0, 40.0, 5.0);
+const SCHEMATIC_STROKE: f64 = 5.0;
 
-/// The car from above, front up, each of its eight dent places in warning (some) or critical
-/// (more), and beside it the verdict: the body's worst dent, then a part off or the engine
-/// overheating when either is so. No damage report draws the car muted, with no verdict.
+/// The ellipse an arc part lies on: centre, radii, and a negative `ry` bending it below the centre.
+#[derive(Clone, Copy)]
+struct Ellipse {
+    cx: f64,
+    cy: f64,
+    rx: f64,
+    ry: f64,
+}
+
+const NOSE: Ellipse = Ellipse { cx: 60.0, cy: 44.0, rx: 28.0, ry: 26.0 };
+const TAIL: Ellipse = Ellipse { cx: 60.0, cy: 170.0, rx: 28.0, ry: -16.0 };
+
+/// One dent place's part: a third of the nose's or the tail's arc (from one angle to a smaller
+/// one, degrees, 0 = right; the small gaps between thirds are LMU's), or a line down a side.
+#[derive(Clone, Copy)]
+enum DentPart {
+    Arc(Ellipse, f64, f64),
+    Side { x: f64, top: f64, bottom: f64 },
+}
+
+/// The eight dent places in `Damage::dents` order, clockwise from front left (the app's `DENT_ZONES`).
+const DENT_PARTS: [DentPart; 8] = [
+    DentPart::Arc(NOSE, 180.0, 123.0),
+    DentPart::Arc(NOSE, 117.0, 63.0),
+    DentPart::Arc(NOSE, 57.0, 0.0),
+    DentPart::Side { x: 88.0, top: 92.0, bottom: 122.0 },
+    DentPart::Arc(TAIL, 57.0, 0.0),
+    DentPart::Arc(TAIL, 117.0, 63.0),
+    DentPart::Arc(TAIL, 180.0, 123.0),
+    DentPart::Side { x: 32.0, top: 92.0, bottom: 122.0 },
+];
+
+/// How far apart, in degrees, the dots that draw an arc sit: the Builder strokes no paths, so an
+/// arc is a row of overlapping round dots one stroke wide (which also gives it round ends).
+const ARC_DOT_STEP: f64 = 3.0;
+
+/// Draws one dent place's part `stroke` wide, the schematic at `scale` from (`x`, `y`).
+fn dent_part(b: &mut Builder, part: DentPart, (x, y, scale): (f64, f64, f64), stroke: f64, color: Rgba) {
+    match part {
+        DentPart::Arc(e, from, to) => {
+            let steps = ((from - to) / ARC_DOT_STEP).ceil();
+            for i in 0..=steps as usize {
+                let angle = (from - (from - to) * i as f64 / steps).to_radians();
+                dot(b, x + (e.cx + e.rx * angle.cos()) * scale, y + (e.cy - e.ry * angle.sin()) * scale, stroke / 2.0, color);
+            }
+        }
+        DentPart::Side { x: at, top, bottom } => {
+            let rect = PixelRect::new(x + at * scale - stroke / 2.0, y + top * scale - stroke / 2.0, stroke, (bottom - top) * scale + stroke);
+            b.rect(rect, Radii::all(stroke / 2.0), color);
+        }
+    }
+}
+
+/// The car from above (LMU's schematic), nose up, each of its eight dent places in warning (some)
+/// or critical (more), and beside it the verdict: the body's worst dent, then a part off or the
+/// engine overheating when either is so. No damage report draws the car muted, with no verdict.
 fn damage(b: &mut Builder, w: &WidgetContext) {
     let (width, height, p) = (w.width, w.height, w.palette);
-    let car_w = (width * 0.4).min(height / 2.0);
-    let car_h = car_w * 2.0;
-    let (x, y) = ((width * 0.4 - car_w) / 2.0, (height - car_h) / 2.0);
-    let edge = car_w * 0.3;
-    let gap = 2.0;
-    let spans = |extent: f64| [(0.0, edge), (edge, extent - edge * 2.0), (extent - edge, edge)];
-    let (cols, rows) = (spans(car_w), spans(car_h));
-    let cell = |(col, row): (usize, usize)| PixelRect::new(x + cols[col].0 + gap / 2.0, y + rows[row].0 + gap / 2.0, cols[col].1 - gap, rows[row].1 - gap);
+    let scale = (width * 0.4 / SCHEMATIC_SIZE.0).min(height / SCHEMATIC_SIZE.1);
+    let at = ((width * 0.4 - SCHEMATIC_SIZE.0 * scale) / 2.0, (height - SCHEMATIC_SIZE.1 * scale) / 2.0, scale);
+    // A whole-pixel stroke keeps every dot the same size once snapped to the pixel grid.
+    let stroke = (SCHEMATIC_STROKE * scale).round().max(2.0);
     let report = w.frame.damage.as_ref();
     let severity_color = |level: f64| {
         if level >= 2.0 {
@@ -1977,10 +2030,13 @@ fn damage(b: &mut Builder, w: &WidgetContext) {
             p.muted
         }
     };
-    b.rect(cell((1, 1)), Radii::all(2.0), p.border);
-    for (place, at) in DENT_CELLS.into_iter().enumerate() {
-        let color = report.map_or(p.border, |d| severity_color(d.dents[place]));
-        b.rect(cell(at), Radii::all(2.0), color);
+    let (wheel_w, wheel_h, wheel_r) = SCHEMATIC_WHEEL;
+    for (wx, wy) in SCHEMATIC_WHEELS {
+        b.rect(PixelRect::new(at.0 + wx * scale, at.1 + wy * scale, wheel_w * scale, wheel_h * scale), Radii::all(wheel_r * scale), p.border);
+    }
+    for (place, part) in DENT_PARTS.into_iter().enumerate() {
+        let color = report.map_or(p.muted, |d| severity_color(d.dents[place]));
+        dent_part(b, part, at, stroke, color);
     }
 
     let Some(report) = report else {
@@ -3243,18 +3299,30 @@ mod tests {
     }
 
     #[test]
-    fn damage_colours_each_dent_place_and_names_what_is_wrong() {
+    fn damage_draws_lmus_car_with_each_dent_place_coloured_and_names_what_is_wrong() {
         let mut frame = TelemetryFrame::default();
         let blank = draw(&widget("damage", json!({})), &frame, 300.0, 120.0);
         assert!(text_of(&blank).is_empty(), "no report, no verdict");
-        assert!(rects(&blank).iter().all(|(_, color)| *color == P.border));
+        let blank_rects: Vec<Rgba> = rects(&blank).into_iter().map(|(_, color)| color).collect();
+        // The four wheels, then the right and the left side.
+        assert_eq!(blank_rects, [P.border, P.border, P.border, P.border, P.muted, P.muted]);
+        // The nose's and the tail's arcs in thirds, drawn dot by dot.
+        assert!(!ovals(&blank).is_empty() && ovals(&blank).iter().all(|(_, color)| *color == P.muted));
 
-        frame.damage = Some(Damage { dents: [0.0, 2.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0], overheating: true, detached_parts: false });
+        // Front heavy, right side and rear left light.
+        frame.damage = Some(Damage { dents: [0.0, 2.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0], overheating: true, detached_parts: false });
         let ops = draw(&widget("damage", json!({})), &frame, 300.0, 120.0);
         assert_eq!(text_of(&ops), ["BODY HEAVY", "OVERHEAT"]);
-        let colors: Vec<Rgba> = rects(&ops).into_iter().map(|(_, color)| color).collect();
-        // The cockpit, then the eight places clockwise from front left.
-        assert_eq!(colors, [P.border, P.muted, P.critical, P.muted, P.warning, P.muted, P.muted, P.muted, P.muted]);
+        let (mid, scale) = (300.0 * 0.4 / 2.0, 120.0 / 196.0);
+        let centre = |rect: &PixelRect| (rect.left + rect.width / 2.0, rect.top + rect.height / 2.0);
+        let in_color = |color: Rgba| ovals(&ops).into_iter().filter(move |(_, c)| *c == color).map(|(rect, _)| centre(&rect)).collect::<Vec<_>>();
+        let front = in_color(P.critical);
+        assert!(!front.is_empty() && front.iter().all(|&(x, y)| (x - mid).abs() < 20.0 * scale && y < 44.0 * scale), "the nose's middle third: {front:?}");
+        let rear_left = in_color(P.warning);
+        assert!(!rear_left.is_empty() && rear_left.iter().all(|&(x, y)| x < mid && y > 150.0 * scale), "the tail's left third: {rear_left:?}");
+        let sides: Vec<(PixelRect, Rgba)> = rects(&ops).into_iter().skip(4).collect();
+        assert_eq!(sides.iter().map(|(_, color)| *color).collect::<Vec<_>>(), [P.warning, P.muted]);
+        assert!(centre(&sides[0].0).0 > mid, "the right side is lit");
     }
 
     #[test]

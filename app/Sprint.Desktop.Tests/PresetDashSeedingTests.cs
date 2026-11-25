@@ -35,13 +35,13 @@ public sealed class PresetDashSeedingTests
         try
         {
             // What an older Sprint left: the empty marker from when "default" was the only preset,
-            // and that dash since deleted. The default stays gone; the hypercar arrives.
+            // and that dash since deleted. The default stays gone; the later presets arrive.
             string layouts = Path.Combine(dataRoot, "dash-layouts");
             Directory.CreateDirectory(layouts);
             File.WriteAllText(Path.Combine(layouts, ".preset-seeded"), "");
 
             DesktopRuntime runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
-            Assert.Equal(["hypercar"], runtime.DashLayouts.Select(layout => layout.Id).ToArray());
+            Assert.Equal(["endurance", "hypercar"], runtime.DashLayouts.Select(layout => layout.Id).ToArray());
         }
         finally
         {
