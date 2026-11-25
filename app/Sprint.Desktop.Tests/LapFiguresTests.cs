@@ -1,6 +1,7 @@
 using Sprint.Desktop.Api.Telemetry;
 using Sprint.Desktop.Features.Live;
 using Sprint.Desktop.Features.SessionPlanning;
+using Sprint.Games;
 using Xunit;
 
 namespace Sprint.Desktop.Tests;
@@ -204,6 +205,30 @@ public sealed class LapFiguresTests
         {
             Session = new SessionInfo { Track = "Spa", SessionType = SessionType.Race, SessionTime = time, TrackLengthMeters = 1000 },
             Field = [new FieldCar { Id = 1, CarClass = "Hyper", IsPlayer = true, LapDistanceMeters = lapDistance, InPitLane = inPit, PitState = state, BestLapTime = 100 }],
+        });
+    }
+
+    [Fact]
+    public void UntilAStopIsMeasuredThePitLossIsTheTracksTypicalForTheClass()
+    {
+        PitLossTracker tracker = new();
+        TypicalPitLoss typical = Assert.IsType<TypicalPitLoss>(GamePitLossCatalog.Typical("LeMansUltimate", "Circuit de la Sarthe", "GT3"));
+
+        TelemetryFrame frame = Stop(90, 850, inPit: false, PitState.None);
+        Assert.Equal(typical.Lane + typical.Standing, frame.Lap.PitLossSeconds);
+
+        // The same stop as above: once it is measured, its 35 s takes over.
+        Stop(100, 900, inPit: true, PitState.Entering);
+        Stop(110, 950, inPit: true, PitState.Stopped);
+        Stop(135, 950, inPit: true, PitState.Exiting);
+        frame = Stop(150, 50, inPit: false, PitState.None);
+
+        Assert.Equal(35.0, frame.Lap.PitLossSeconds);
+
+        TelemetryFrame Stop(double time, double lapDistance, bool inPit, PitState state) => tracker.Augment(new TelemetryFrame
+        {
+            Session = new SessionInfo { Game = "LeMansUltimate", Track = "Circuit de la Sarthe", SessionType = SessionType.Race, SessionTime = time, TrackLengthMeters = 1000 },
+            Field = [new FieldCar { Id = 1, CarClass = "GT3", IsPlayer = true, LapDistanceMeters = lapDistance, InPitLane = inPit, PitState = state, BestLapTime = 100 }],
         });
     }
 

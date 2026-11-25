@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Sprint.Desktop.Api.Telemetry;
 using Sprint.Desktop.Features.SessionPlanning;
+using Sprint.Games;
 
 namespace Sprint.Desktop.Features.PitWall;
 
@@ -12,6 +13,9 @@ namespace Sprint.Desktop.Features.PitWall;
 /// <summary>The session as the pit wall header shows it. Temperatures °C; wetness, rain and grip 0..1; times seconds.</summary>
 public sealed record PitWallSession
 {
+    /// <summary>The game, as the telemetry names it; empty from a driver's desktop that predates it.</summary>
+    public string Game { get; init; } = "";
+
     public string Track { get; init; } = "";
 
     public double? TrackLengthMeters { get; init; }
@@ -227,7 +231,22 @@ public sealed record PitWallEvent(double Time, PitWallEventKind Kind, int? CarId
 /// car's stops), <paramref name="Standing"/> the time stood in the box — from our car's stops, or
 /// the class's until ours has made one (<paramref name="StandingFromOwn"/>). Seconds; null until seen.
 /// </summary>
-public sealed record PitWallPitLoss(double? Lane, int LaneStops, double? Standing, int StandingStops, bool StandingFromOwn);
+public sealed record PitWallPitLoss(double? Lane, int LaneStops, double? Standing, int StandingStops, bool StandingFromOwn)
+{
+    /// <summary>
+    /// The track's typical loss for our class (<see cref="GamePitLossCatalog"/>), while the lane or
+    /// the standing time is still unmeasured; null once both are, or when the data has none.
+    /// </summary>
+    public TypicalPitLoss? Typical { get; init; }
+
+    /// <summary>
+    /// What a stop costs, lane plus standing to a tenth: the measured figure once both are known,
+    /// else the typical one; null without either. Derived, never read back.
+    /// </summary>
+    public double? Seconds => this.Lane is { } lane && this.Standing is { } standing
+        ? Math.Round(lane + standing, 1)
+        : this.Typical is { } typical ? Math.Round(typical.Lane + typical.Standing, 1) : null;
+}
 
 /// <summary>What the driver's desktop sends twice a second as the <c>board</c> blob.</summary>
 public sealed record PitWallBoard(PitWallSession Session, IReadOnlyList<PitWallCar> Field, PitWallCarStatus Car);

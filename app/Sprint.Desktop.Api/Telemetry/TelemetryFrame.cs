@@ -564,7 +564,8 @@ public sealed record LapState
     /// <summary>
     /// What a pit stop costs, seconds: the time lost driving through the lane plus the time stood
     /// in the box, as the race engineer's pit wall measures it from the stops seen this session.
-    /// Null until both are known.
+    /// Until both are measured, the track's typical loss for the player's class; null when there is
+    /// neither.
     /// </summary>
     public double? PitLossSeconds { get; init; }
 

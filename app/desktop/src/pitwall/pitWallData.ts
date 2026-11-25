@@ -134,9 +134,22 @@ export type RaceEvent = {
 /**
  * What a stop costs, measured from the stops the engineer's desktop saw (seconds, null until
  * seen): the lane against driving past it (every car's stops), and the time stood in the box
- * (ours, or the class's until ours has stopped).
+ * (ours, or the class's until ours has stopped). `typical` is the track's typical stop for our
+ * class (Lovely Track Data), sent only while lane or standing is unmeasured; `seconds` is the
+ * figure the wall works with: measured lane plus standing, else the typical, else null.
  */
-export type PitLoss = { lane: number | null; laneStops: number; standing: number | null; standingStops: number; standingFromOwn: boolean }
+export type PitLoss = {
+  lane: number | null
+  laneStops: number
+  standing: number | null
+  standingStops: number
+  standingFromOwn: boolean
+  typical: TypicalPitLoss | null
+  seconds: number | null
+}
+
+/** A track's typical stop for a class, in the measured figure's two parts (seconds). */
+export type TypicalPitLoss = { lane: number; standing: number }
 
 /** One tyre: surface inner/middle/outer, carcass core and brake (°C), pressure and tread. */
 export type TyreCorner = {
@@ -311,7 +324,16 @@ const parsePitLoss = (value: unknown): PitLoss => {
     standing: optional(row.standing),
     standingStops: finite(row.standingStops),
     standingFromOwn: row.standingFromOwn === true,
+    typical: parseTypicalPitLoss(row.typical),
+    seconds: optional(row.seconds),
   }
+}
+
+const parseTypicalPitLoss = (value: unknown): TypicalPitLoss | null => {
+  if (!isRecord(value)) return null
+  const lane = optional(value.lane)
+  const standing = optional(value.standing)
+  return lane !== null && standing !== null ? { lane, standing } : null
 }
 
 const parseFieldEntry = (value: unknown): FieldEntry[] => {

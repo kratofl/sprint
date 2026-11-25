@@ -1,12 +1,9 @@
-import type { FieldEntry, PitLoss } from './pitWallData'
+import type { FieldEntry } from './pitWallData'
 import { isOut, playerOf, referenceLap } from './timing'
 
 // What a pit stop would do to our race: the measured loss, where the car rejoins, and who is round
 // it at the exit. The model is plain: every other car keeps its last lap's pace and nobody else
 // stops. Pure; the pit stop and track tiles only render it.
-
-/** Lane plus standing, seconds; null until both have been measured. */
-export const pitLossTotal = (loss: PitLoss): number | null => (loss.lane !== null && loss.standing !== null ? loss.lane + loss.standing : null)
 
 /** A car near the rejoin: `seconds` positive ahead of where we come out, negative behind. */
 export type Near = { entry: FieldEntry; seconds: number }

@@ -77,6 +77,9 @@ twice a second, radar ten times a second, and the shared plan and its target lap
   only when it was seen from its pit entry, and a full course yellow and a safety car stay one phase
   because LMU reports them as one. The order of LMU's `mSectorFlag` is read like `mSector`
   (sector 3 first); its own header is unsure, so check it the first time a yellow is live.
+  Until a stop is measured, the pit loss is the track's typical one for our class
+  (`GamePitLossCatalog`), looked up by the board's `game`: a driver build before that field sends
+  none, so its engineer gets no typical figure.
 
 ## The radio to the driver's wheel
 

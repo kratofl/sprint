@@ -359,7 +359,15 @@ test('a board from an older or newer driver’s desktop reads with no flags and 
   assert.equal(wall.session.phase, 'Unknown')
   assert.deepEqual([wall.field[0].finishStatus, wall.field[0].penalties, wall.field[0].stopped], ['None', 0, false])
   assert.deepEqual(wall.raceControl.map((entry) => entry.kind), ['Penalty'])
-  assert.equal(wall.pitLoss.lane, null)
+  assert.deepEqual([wall.pitLoss.lane, wall.pitLoss.typical, wall.pitLoss.seconds], [null, null, null])
+})
+
+test('until a stop is measured the pit loss reads as the track’s typical stop', () => {
+  const pitLoss = { lane: null, laneStops: 0, standing: null, standingStops: 0, standingFromOwn: false, typical: { lane: 23, standing: 55 }, seconds: 78 }
+  const wall = parsePitWall({ session: { track: 'Spa' }, field: [], car: {}, pitLoss })
+  assert.deepEqual([wall?.pitLoss.typical, wall?.pitLoss.seconds], [{ lane: 23, standing: 55 }, 78])
+  // Half a typical figure is none.
+  assert.equal(parsePitWall({ session: {}, field: [], car: {}, pitLoss: { ...pitLoss, typical: { lane: 23 } } })?.pitLoss.typical, null)
 })
 
 test('the target lap steps a tenth at a time inside what the host takes, and reads as the wheel shows it', () => {

@@ -11,4 +11,9 @@
   <ItemGroup>
     <ProjectReference Include="..\Sprint.Desktop.Api\Sprint.Desktop.Api.csproj" />
   </ItemGroup>
+
+  <ItemGroup>
+    <!-- Written by app/desktop/scripts/sync-track-data.mjs; read by GamePitLossCatalog. -->
+    <EmbeddedResource Include="LeMansUltimate\lmu-pit-loss.json" LogicalName="Sprint.Games.LeMansUltimate.lmu-pit-loss.json" />
+  </ItemGroup>
 </Project>

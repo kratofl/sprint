@@ -1,6 +1,6 @@
 import type { FieldEntry, PitWall } from '../pitWallData'
 import { strategy } from '../fuel'
-import { pitLossTotal, rejoin, trafficText, type Near } from '../pitStop'
+import { rejoin, trafficText, type Near } from '../pitStop'
 import { feedLines, flagState, stoppedCars, stoppedSummary, type FlagState } from '../raceControl'
 import { carNumber, classesOf, lapsLeft, playerOf, signed } from '../timing'
 import { TileEmpty, TileFrame, type FrameProps, type TileData } from '../tileFrame'
@@ -71,8 +71,9 @@ const between = (ahead: Near | null, behind: Near | null, name: (entry: FieldEnt
   [ahead && `${name(ahead.entry)} (${signed(ahead.seconds)} s)`, behind && `${name(behind.entry)} (${signed(behind.seconds)} s)`].filter(Boolean).join(' and ')
 
 /**
- * The pit stop: what one costs (the measured lane and standing time) and where our car rejoins
- * if it boxes this lap, next lap or on the lap the fuel says.
+ * The pit stop: what one costs (the measured lane and standing time, or the track's typical stop
+ * for our class until both are measured) and where our car rejoins if it boxes this lap, next lap
+ * or on the lap the fuel says.
  */
 export function PitStopTile({ data, frame }: { data: TileData; frame: FrameProps }) {
   const wall = data.pitWall
@@ -80,21 +81,20 @@ export function PitStopTile({ data, frame }: { data: TileData; frame: FrameProps
   if (!wall || !player) return <TileFrame frame={frame} title="Pit stop" />
   const title = `Pit stop · #${carNumber(player)}`
   const { pitLoss } = wall
-  const loss = pitLossTotal(pitLoss)
-  if (pitLoss.lane === null) {
-    return (
-      <TileFrame frame={frame} title={title}>
-        <TileEmpty title="No pit stop seen yet" text="The loss is measured from this session’s stops: the lane from every car’s, the standing time from ours." />
-      </TileFrame>
-    )
-  }
+  const loss = pitLoss.seconds
   if (loss === null) {
     return (
       <TileFrame frame={frame} title={title}>
-        <TileEmpty title={`Lane loss ${pitLoss.lane.toFixed(1)} s`} text={`The standing time needs a stop by us or another ${player.classTag || 'car of our class'}.`} />
+        {pitLoss.lane === null ? (
+          <TileEmpty title="No pit stop seen yet" text="The loss is measured from this session’s stops: the lane from every car’s, the standing time from ours." />
+        ) : (
+          <TileEmpty title={`Lane loss ${pitLoss.lane.toFixed(1)} s`} text={`The standing time needs a stop by us or another ${player.classTag || 'car of our class'}.`} />
+        )}
       </TileFrame>
     )
   }
+  // The measured parts once both are known, else the track's typical stop.
+  const parts = pitLoss.typical ?? { lane: pitLoss.lane ?? 0, standing: pitLoss.standing ?? 0 }
   const name = nameIn(player)
   const lap = player.lapsCompleted + 1
   const box = strategy(wall.car, player.lapsCompleted, lapsLeft(wall))?.boxLap ?? null
@@ -109,10 +109,10 @@ export function PitStopTile({ data, frame }: { data: TileData; frame: FrameProps
     <TileFrame frame={frame} title={title} bodyClass="pw-pitstop">
       <div className="pw-target-top">
         <div>
-          <span className="muted">Pit loss</span>
+          <span className="muted">{pitLoss.typical ? 'Typical pit loss' : 'Pit loss'}</span>
           <b className="pw-big tabular">{loss.toFixed(1)} s</b>
           <span className="muted tabular">
-            lane {pitLoss.lane.toFixed(1)} s + stop {(pitLoss.standing ?? 0).toFixed(1)} s
+            lane {parts.lane.toFixed(1)} s + stop {parts.standing.toFixed(1)} s
           </span>
         </div>
         {now && (
@@ -143,10 +143,16 @@ export function PitStopTile({ data, frame }: { data: TileData; frame: FrameProps
           )
         })}
       </div>
-      <span className="muted pw-note">
-        Lane loss from {pitLoss.laneStops} {pitLoss.laneStops === 1 ? 'stop' : 'stops'} this session · stop time from{' '}
-        {pitLoss.standingFromOwn ? `#${carNumber(player)}’s own ${pitLoss.standingStops === 1 ? 'stop' : 'stops'}` : `${pitLoss.standingStops} ${player.classTag} ${pitLoss.standingStops === 1 ? 'stop' : 'stops'}`}
-      </span>
+      {pitLoss.typical ? (
+        <span className="muted pw-note">
+          Typical {player.classTag || 'class'} stop at this track (Lovely Track Data) until this session’s stops measure it
+        </span>
+      ) : (
+        <span className="muted pw-note">
+          Lane loss from {pitLoss.laneStops} {pitLoss.laneStops === 1 ? 'stop' : 'stops'} this session · stop time from{' '}
+          {pitLoss.standingFromOwn ? `#${carNumber(player)}’s own ${pitLoss.standingStops === 1 ? 'stop' : 'stops'}` : `${pitLoss.standingStops} ${player.classTag} ${pitLoss.standingStops === 1 ? 'stop' : 'stops'}`}
+        </span>
+      )}
     </TileFrame>
   )
 }

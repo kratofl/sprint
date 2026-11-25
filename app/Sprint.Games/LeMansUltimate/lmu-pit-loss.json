@@ -1,0 +1,388 @@
+{
+  "algarve international circuit": {
+    "gt3": {
+      "dt": 28,
+      "pit": 82
+    },
+    "gte": {
+      "dt": 28,
+      "pit": 76
+    },
+    "hyp": {
+      "dt": 28,
+      "pit": 83
+    },
+    "lmp2": {
+      "dt": 28,
+      "pit": 86
+    }
+  },
+  "autodromo enzo e dino ferrari": {
+    "gt3": {
+      "dt": 33,
+      "pit": 87
+    },
+    "gte": {
+      "dt": 33,
+      "pit": 79
+    },
+    "hyp": {
+      "dt": 33,
+      "pit": 88
+    },
+    "lmp2": {
+      "dt": 33,
+      "pit": 91
+    }
+  },
+  "autodromo nazionale monza": {
+    "gt3": {
+      "dt": 19,
+      "pit": 62
+    },
+    "gte": {
+      "dt": 25,
+      "pit": 71
+    },
+    "hyp": {
+      "dt": 20,
+      "pit": 58
+    },
+    "lmp2": {
+      "dt": 25,
+      "pit": 83
+    }
+  },
+  "autódromo josé carlos pace": {
+    "gt3": {
+      "dt": 17,
+      "pit": 62
+    },
+    "gte": {
+      "dt": 23,
+      "pit": 69
+    },
+    "hyp": {
+      "dt": 23,
+      "pit": 78
+    },
+    "lmp2": {
+      "dt": 17,
+      "pit": 65
+    }
+  },
+  "bahrain endurance circuit": {
+    "gt3": {
+      "dt": 25,
+      "pit": 79
+    },
+    "gte": {
+      "dt": 25,
+      "pit": 71
+    },
+    "hyp": {
+      "dt": 25,
+      "pit": 80
+    },
+    "lmp2": {
+      "dt": 25,
+      "pit": 83
+    }
+  },
+  "bahrain international circuit": {
+    "gt3": {
+      "dt": 19,
+      "pit": 60
+    },
+    "gte": {
+      "dt": 25,
+      "pit": 71
+    },
+    "hyp": {
+      "dt": 20,
+      "pit": 65
+    },
+    "lmp2": {
+      "dt": 25,
+      "pit": 83
+    }
+  },
+  "bahrain outer circuit": {
+    "gt3": {
+      "dt": 25,
+      "pit": 79
+    },
+    "gte": {
+      "dt": 25,
+      "pit": 71
+    },
+    "hyp": {
+      "dt": 25,
+      "pit": 80
+    },
+    "lmp2": {
+      "dt": 25,
+      "pit": 83
+    }
+  },
+  "bahrain paddock circuit": {
+    "gt3": {
+      "dt": 25,
+      "pit": 79
+    },
+    "gte": {
+      "dt": 25,
+      "pit": 71
+    },
+    "hyp": {
+      "dt": 25,
+      "pit": 80
+    },
+    "lmp2": {
+      "dt": 25,
+      "pit": 83
+    },
+    "lmp3": {
+      "dt": 19,
+      "pit": 52
+    }
+  },
+  "circuit de la sarthe": {
+    "gt3": {
+      "dt": 21,
+      "pit": 82
+    },
+    "gte": {
+      "dt": 32,
+      "pit": 78
+    },
+    "hyp": {
+      "dt": 32,
+      "pit": 87
+    },
+    "lmp2": {
+      "dt": 32,
+      "pit": 97
+    }
+  },
+  "circuit de la sarthe mulsanne": {
+    "gt3": {
+      "dt": 32,
+      "pit": 86
+    },
+    "gte": {
+      "dt": 32,
+      "pit": 78
+    },
+    "hyp": {
+      "dt": 32,
+      "pit": 87
+    },
+    "lmp2": {
+      "dt": 32,
+      "pit": 97
+    }
+  },
+  "circuit de spa-francorchamps": {
+    "gt3": {
+      "dt": 15,
+      "pit": 70
+    },
+    "gte": {
+      "dt": 23,
+      "pit": 69
+    },
+    "hyp": {
+      "dt": 23,
+      "pit": 78
+    },
+    "lmp2": {
+      "dt": 23,
+      "pit": 81
+    }
+  },
+  "circuit de spa-francorchamps endurance": {
+    "gt3": {
+      "dt": 60,
+      "pit": 114
+    },
+    "gte": {
+      "dt": 60,
+      "pit": 106
+    },
+    "hyp": {
+      "dt": 60,
+      "pit": 115
+    },
+    "lmp2": {
+      "dt": 60,
+      "pit": 118
+    }
+  },
+  "circuit of the americas": {
+    "gt3": {
+      "dt": 25,
+      "pit": 79
+    },
+    "gte": {
+      "dt": 25,
+      "pit": 71
+    },
+    "hyp": {
+      "dt": 25,
+      "pit": 80
+    },
+    "lmp2": {
+      "dt": 18,
+      "pit": 54
+    }
+  },
+  "cota national circuit": {
+    "gt3": {
+      "dt": 25,
+      "pit": 79
+    },
+    "gte": {
+      "dt": 25,
+      "pit": 71
+    },
+    "hyp": {
+      "dt": 25,
+      "pit": 80
+    },
+    "lmp2": {
+      "dt": 25,
+      "pit": 83
+    }
+  },
+  "fuji speedway": {
+    "gt3": {
+      "dt": 23,
+      "pit": 64
+    },
+    "gte": {
+      "dt": 29,
+      "pit": 75
+    },
+    "hyp": {
+      "dt": 24,
+      "pit": 69
+    },
+    "lmp2": {
+      "dt": 29,
+      "pit": 87
+    }
+  },
+  "fuji speedway classic": {
+    "gt3": {
+      "dt": 29,
+      "pit": 83
+    },
+    "gte": {
+      "dt": 29,
+      "pit": 75
+    },
+    "hyp": {
+      "dt": 29,
+      "pit": 84
+    },
+    "lmp2": {
+      "dt": 29,
+      "pit": 87
+    }
+  },
+  "lusail international circuit": {
+    "gt3": {
+      "dt": 30,
+      "pit": 84
+    },
+    "gte": {
+      "dt": 30,
+      "pit": 76
+    },
+    "hyp": {
+      "dt": 30,
+      "pit": 85
+    },
+    "lmp2": {
+      "dt": 30,
+      "pit": 88
+    }
+  },
+  "lusail short circuit": {
+    "gt3": {
+      "dt": 30,
+      "pit": 84
+    },
+    "gte": {
+      "dt": 30,
+      "pit": 76
+    },
+    "hyp": {
+      "dt": 30,
+      "pit": 85
+    },
+    "lmp2": {
+      "dt": 30,
+      "pit": 88
+    }
+  },
+  "monza curva grande circuit": {
+    "gt3": {
+      "dt": 25,
+      "pit": 79
+    },
+    "gte": {
+      "dt": 25,
+      "pit": 71
+    },
+    "hyp": {
+      "dt": 25,
+      "pit": 80
+    },
+    "lmp2": {
+      "dt": 25,
+      "pit": 83
+    },
+    "lmp3": {
+      "dt": 19,
+      "pit": 41
+    }
+  },
+  "sebring international raceway": {
+    "gt3": {
+      "dt": 33,
+      "pit": 87
+    },
+    "gte": {
+      "dt": 33,
+      "pit": 79
+    },
+    "hyp": {
+      "dt": 33,
+      "pit": 88
+    },
+    "lmp2": {
+      "dt": 33,
+      "pit": 91
+    }
+  },
+  "sebring school circuit": {
+    "gt3": {
+      "dt": 21,
+      "pit": 62
+    },
+    "gte": {
+      "dt": 33,
+      "pit": 79
+    },
+    "hyp": {
+      "dt": 33,
+      "pit": 88
+    },
+    "lmp2": {
+      "dt": 33,
+      "pit": 91
+    }
+  }
+}

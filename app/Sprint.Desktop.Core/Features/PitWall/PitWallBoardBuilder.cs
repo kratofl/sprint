@@ -95,6 +95,7 @@ public sealed class PitWallBoardBuilder
         SessionConditions conditions = frame.Conditions;
         return new PitWallSession
         {
+            Game = frame.Session.Game,
             Track = frame.Session.Track,
             TrackLengthMeters = Round(length, 1),
             SessionType = frame.Session.SessionType,

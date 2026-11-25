@@ -66,7 +66,7 @@
 //   radio=none|showing    the engineer's radio: none sent yet (none); on the driver's side "Box now" on
 //                         the wheel (showing). Default: three sent, the newest on the wheel
 //                         pitwallRace=control: the Race page with Race control and Pit stop in view.
-//                         pitwallFlags=none: a quiet green race, no feed, no stop seen yet
+//                         pitwallFlags=none: a quiet green race, no feed, no stop seen yet (the track's typical pit loss)
 ;(() => {
   const params = new URLSearchParams(window.location.search)
 
@@ -223,9 +223,10 @@
       // As the driver's host shares it: the plan with its state.planFuel entry as raceFuel.
       plan: withPlan && plan ? { ...plan, status: 'Tracking', raceFuel: state.planFuel?.[plan.id] ?? null } : null,
       raceControl,
+      // Quiet: no stop seen yet, so Spa's typical Hypercar stop (Lovely Track Data: dt 23 s, pit 78 s).
       pitLoss: quiet
-        ? { lane: null, laneStops: 0, standing: null, standingStops: 0, standingFromOwn: false }
-        : { lane: 24.6, laneStops: 41, standing: 37.2, standingStops: 1, standingFromOwn: true },
+        ? { lane: null, laneStops: 0, standing: null, standingStops: 0, standingFromOwn: false, typical: { lane: 23, standing: 55 }, seconds: 78 }
+        : { lane: 24.6, laneStops: 41, standing: 37.2, standingStops: 1, standingFromOwn: true, typical: null, seconds: 61.8 },
       receivedAt: Date.now(),
     }
   }
