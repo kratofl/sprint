@@ -1,0 +1,6 @@
+# Orca workspace config. Orca reads this when it creates a worktree.
+scripts:
+  # A fresh worktree has no node_modules. pnpm links from its global store, so
+  # this is quick. One plain command, because Orca runs it through bash on macOS
+  # and cmd.exe on Windows.
+  setup: pnpm install
