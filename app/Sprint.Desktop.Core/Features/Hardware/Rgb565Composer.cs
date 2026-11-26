@@ -7,12 +7,15 @@ namespace Sprint.Desktop.Features.Hardware;
 
 /// <summary>
 /// Composes a screen's logical BGRA8888 picture onto its native RGB565 (little-endian) panel
-/// buffer: the orientation's rotation, a uniform margin inset (downscaled with the same
-/// most-visible sampling as <see cref="Rgb565.ApplyMargin"/>, so thin dash lines survive), and
-/// signed screen-space offsets (a negative one moves the image left or up; whatever is pushed off
-/// the panel is dropped). Build one per screen configuration and reuse it for every frame: the
-/// geometry is resolved once here, so <see cref="Compose"/> is a few tight loops and allocates
-/// nothing. Not thread-safe — a margin composes through scratch buffers the instance owns.
+/// buffer: the orientation's rotation, a uniform margin inset, and signed screen-space offsets (a
+/// negative one moves the image left or up; whatever is pushed off the panel is dropped). A
+/// picture drawn for the inset (the dash: see <see cref="PictureWidth"/>) lands in it pixel for
+/// pixel; a full-size one (a desktop capture) is downscaled into it with the same most-visible
+/// sampling as <see cref="Rgb565.ApplyMargin"/>, so thin lines survive. That sampling thickens
+/// every bright line and drops anti-aliasing, so never send it a picture you could draw at the
+/// inset's size. Build one per screen configuration and reuse it for every frame: the geometry is
+/// resolved once here, so <see cref="Compose"/> is a few tight loops and allocates nothing. Not
+/// thread-safe — a downscale composes through scratch buffers the instance owns.
 /// </summary>
 public sealed class Rgb565Composer
 {
@@ -22,7 +25,15 @@ public sealed class Rgb565Composer
     private readonly int _panelBytes;
     private readonly int _margin;
 
-    // Native pixel (x, y) of the rotated picture is source pixel base + x * xStep + y * yStep.
+    // True when a full-size picture is downscaled into the margin's inset.
+    private readonly bool _downscale;
+
+    // The native pixel the picture's first pixel lands on, along both axes: the margin for a
+    // picture drawn for the inset, else 0.
+    private readonly int _origin;
+
+    // Pixel (x, y) of the rotated picture is source pixel base + x * xStep + y * yStep; it lands
+    // on native pixel (origin + x, origin + y) before the offset.
     private readonly int _sourceBase;
     private readonly int _sourceXStep;
     private readonly int _sourceYStep;
@@ -39,7 +50,7 @@ public sealed class Rgb565Composer
     private readonly int _shiftX;
     private readonly int _shiftY;
 
-    // Margin only, see Inset. _columnSamples holds, sample by sample, the source offset
+    // Downscale only. _columnSamples holds, sample by sample, the source offset
     // (native x * xStep) each visible inset column reads; _rowStart/_rowEnd the native rows each
     // inset row covers. The rest is per-frame scratch.
     private readonly int[] _columnSamples = [];
@@ -49,13 +60,19 @@ public sealed class Rgb565Composer
     private readonly uint[] _across = [];
     private readonly uint[] _down = [];
 
+    /// <param name="drawnForInset">
+    /// True when the caller draws its picture at <see cref="PictureWidth"/> x
+    /// <see cref="PictureHeight"/> (the inset's logical size), false when it hands in the full
+    /// logical size and the margin downscales it.
+    /// </param>
     public Rgb565Composer(
         int nativeWidth,
         int nativeHeight,
         DeviceOrientationTransform transform,
         int margin,
         int offsetX,
-        int offsetY)
+        int offsetY,
+        bool drawnForInset = false)
     {
         if (nativeWidth <= 0)
         {
@@ -95,11 +112,18 @@ public sealed class Rgb565Composer
 
         this._nativeWidth = nativeWidth;
         this._nativeHeight = nativeHeight;
-        this._sourceBytes = checked(transform.LogicalWidth * transform.LogicalHeight * 4);
         this._panelBytes = checked(nativeWidth * nativeHeight * 2);
+        this._margin = Math.Max(0, margin);
+        this._downscale = this._margin > 0 && !drawnForInset;
+        this._origin = drawnForInset ? this._margin : 0;
 
-        int logicalWidth = transform.LogicalWidth;
-        int logicalHeight = transform.LogicalHeight;
+        // The margin is uniform, so the inset is 2 * margin smaller along both logical axes too. A
+        // margin that swallows the panel still asks for a one-pixel picture, which never lands.
+        int logicalWidth = drawnForInset ? (int)Math.Max(1L, transform.LogicalWidth - 2L * this._margin) : transform.LogicalWidth;
+        int logicalHeight = drawnForInset ? (int)Math.Max(1L, transform.LogicalHeight - 2L * this._margin) : transform.LogicalHeight;
+        this.PictureWidth = logicalWidth;
+        this.PictureHeight = logicalHeight;
+        this._sourceBytes = checked(logicalWidth * logicalHeight * 4);
         (this._sourceBase, this._sourceXStep, this._sourceYStep) = transform.PixelRotation switch
         {
             PixelRotation.Clockwise90 => ((logicalHeight - 1) * logicalWidth, -logicalWidth, 1),
@@ -118,7 +142,6 @@ public sealed class Rgb565Composer
             _ => ((long)offsetX, (long)offsetY),
         };
 
-        this._margin = Math.Max(0, margin);
         long innerWidth = nativeWidth - 2L * this._margin;
         long innerHeight = nativeHeight - 2L * this._margin;
         this._clear = this._margin > 0 || shiftX != 0 || shiftY != 0;
@@ -142,7 +165,7 @@ public sealed class Rgb565Composer
         this._endY = (int)endY;
         this._shiftX = (int)shiftX;
         this._shiftY = (int)shiftY;
-        if (this._margin == 0)
+        if (!this._downscale)
         {
             return;
         }
@@ -179,6 +202,12 @@ public sealed class Rgb565Composer
         this._down = new uint[visibleWidth];
     }
 
+    /// <summary>The width of the logical picture <see cref="Compose"/> takes, in pixels.</summary>
+    public int PictureWidth { get; }
+
+    /// <summary>The height of the logical picture <see cref="Compose"/> takes, in pixels.</summary>
+    public int PictureHeight { get; }
+
     /// <summary>
     /// Writes one frame. <paramref name="bgra"/> is the logical picture (B, G, R, A per pixel;
     /// alpha is ignored); <paramref name="destination"/> receives nativeWidth * nativeHeight * 2
@@ -214,7 +243,7 @@ public sealed class Rgb565Composer
             return;
         }
 
-        if (this._margin == 0)
+        if (!this._downscale)
         {
             this.Rotate(source, panel);
             return;
@@ -225,7 +254,7 @@ public sealed class Rgb565Composer
         this.ReduceDown(panel);
     }
 
-    // No margin: every visible native pixel is one source pixel, converted.
+    // No downscale: every visible native pixel is one source pixel, converted.
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private void Rotate(ReadOnlySpan<uint> source, Span<ushort> panel)
     {
@@ -235,7 +264,7 @@ public sealed class Rgb565Composer
             Span<ushort> row = panel.Slice(
                 (y + this._shiftY) * this._nativeWidth + this._firstX + this._shiftX,
                 this._endX - this._firstX);
-            int from = this._sourceBase + this._firstX * xStep + y * this._sourceYStep;
+            int from = this._sourceBase + (this._firstX - this._origin) * xStep + (y - this._origin) * this._sourceYStep;
             for (int x = 0; x < row.Length; x++)
             {
                 uint pixel = source[from];

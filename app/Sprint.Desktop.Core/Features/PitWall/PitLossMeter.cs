@@ -1,4 +1,5 @@
 using Sprint.Desktop.Api.Telemetry;
+using Sprint.Games;
 
 namespace Sprint.Desktop.Features.PitWall;
 
@@ -77,19 +78,19 @@ public sealed class PitLossMeter
     /// <summary>
     /// The median lane loss of every stop seen; the standing time from the stops of the car
     /// <paramref name="ownId"/> (their mean), else the median of its class's. Seconds to a tenth;
-    /// null until seen.
+    /// null until seen. <paramref name="typical"/>, the track's typical loss for the class, stands
+    /// in until both are measured.
     /// </summary>
-    public PitWallPitLoss Loss(int? ownId, string? ownClass)
+    public PitWallPitLoss Loss(int? ownId, string? ownClass, TypicalPitLoss? typical)
     {
         List<double> ours = [.. this._standings.Where(stop => ownId is not null && stop.CarId == ownId).Select(stop => stop.Seconds)];
         List<double> theirs = [.. this._standings.Where(stop => ownClass is not null && stop.CarClass == ownClass).Select(stop => stop.Seconds)];
-        double? standing = ours.Count > 0 ? ours.Average() : Median(theirs);
-        return new PitWallPitLoss(
-            Round(Median(this._laneLosses)),
-            this._laneLosses.Count,
-            Round(standing),
-            ours.Count > 0 ? ours.Count : theirs.Count,
-            ours.Count > 0);
+        double? standing = Round(ours.Count > 0 ? ours.Average() : Median(theirs));
+        double? lane = Round(Median(this._laneLosses));
+        return new PitWallPitLoss(lane, this._laneLosses.Count, standing, ours.Count > 0 ? ours.Count : theirs.Count, ours.Count > 0)
+        {
+            Typical = lane is null || standing is null ? typical : null,
+        };
     }
 
     private static double? Median(List<double> values)

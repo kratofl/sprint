@@ -1,4 +1,4 @@
-// Low-level pieces shared by every widget: text, a horizontal bar, a vertical segment bar, a
+// Low-level pieces shared by every widget: text, a horizontal bar, a
 // dot, and sized values. Ported from the retired React renderer's `primitives.tsx`. Each takes
 // explicit pixel geometry (local to the builder's origin); no telemetry knowledge lives here.
 //
@@ -166,28 +166,6 @@ pub fn h_bar(b: &mut Builder, rect: PixelRect, pct: f64, color: Rgba, centered: 
         }
     } else if clamped > 0.0 {
         b.rect(PixelRect::new(x, y, clamped * w, h), radius, color);
-    }
-}
-
-/// A 20-segment vertical ladder filled bottom-up: lit segments in `stage_color`'s phase color,
-/// unlit ones a dimmed version of the same color.
-pub fn vertical_seg_bar(b: &mut Builder, rect: PixelRect, pct: f64, stage_color: impl Fn(f64) -> Rgba) {
-    let clamped = pct.clamp(0.0, 1.0);
-    const SEGMENTS: usize = 20;
-    let inner_x = rect.left + 3.0;
-    let inner_w = rect.width - 6.0;
-    let top = rect.top + 6.0;
-    let usable_h = rect.height - 12.0;
-    if inner_w <= 0.0 || usable_h <= 0.0 {
-        return;
-    }
-    let seg_h = usable_h / SEGMENTS as f64;
-    let filled = (SEGMENTS as f64 * clamped).floor() as usize;
-    for i in 0..SEGMENTS {
-        let base = stage_color(i as f64 / SEGMENTS as f64);
-        let color = if i < filled { base } else { dimmed(b, base, 0.15) };
-        let sy = top + usable_h - (i + 1) as f64 * seg_h;
-        b.rect(PixelRect::new(inner_x, sy + 1.0, inner_w, (seg_h - 2.0).max(0.0)), Radii::all(2.0), color);
     }
 }
 

@@ -226,6 +226,53 @@ public sealed class Rgb565Tests
         }
     }
 
+    // The dash is drawn at the inset's size so the margin never resamples it: resampling thickened
+    // every line and label on the wheel.
+    [Fact]
+    public void APictureDrawnForTheInsetLandsInItPixelForPixel()
+    {
+        (int Width, int Height)[] nativeSizes = [(9, 5), (5, 9), (64, 37)];
+        foreach ((int Width, int Height) native in nativeSizes)
+        {
+            foreach (DeviceOrientation orientation in Enum.GetValues<DeviceOrientation>())
+            {
+                foreach (int margin in new[] { 0, 1, 2 })
+                {
+                    int innerWidth = native.Width - 2 * margin;
+                    int innerHeight = native.Height - 2 * margin;
+                    DeviceOrientationTransform inset = DeviceOrientations.Transform(innerWidth, innerHeight, orientation);
+                    Rgb565Composer composer = new(
+                        native.Width,
+                        native.Height,
+                        DeviceOrientations.Transform(native.Width, native.Height, orientation),
+                        margin,
+                        offsetX: 0,
+                        offsetY: 0,
+                        drawnForInset: true);
+                    Assert.Equal((inset.LogicalWidth, inset.LogicalHeight), (composer.PictureWidth, composer.PictureHeight));
+
+                    byte[] bgra = Noise(inset.LogicalWidth, inset.LogicalHeight, seed: 5);
+                    byte[] panel = new byte[native.Width * native.Height * 2];
+                    composer.Compose(bgra, panel);
+                    byte[] alone = new byte[innerWidth * innerHeight * 2];
+                    new Rgb565Composer(innerWidth, innerHeight, inset, margin: 0, offsetX: 0, offsetY: 0).Compose(bgra, alone);
+
+                    for (int y = 0; y < native.Height; y++)
+                    {
+                        for (int x = 0; x < native.Width; x++)
+                        {
+                            bool inside = x >= margin && y >= margin && x < margin + innerWidth && y < margin + innerHeight;
+                            int at = (y * native.Width + x) * 2;
+                            int from = ((y - margin) * innerWidth + x - margin) * 2;
+                            Assert.Equal(inside ? alone[from] : (byte)0, panel[at]);
+                            Assert.Equal(inside ? alone[from + 1] : (byte)0, panel[at + 1]);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     [Fact]
     public void AbsurdMarginsAndOffsetsGiveABlackPanel()
     {
@@ -238,15 +285,18 @@ public sealed class Rgb565Tests
 
         foreach ((int Margin, int OffsetX, int OffsetY) setting in cases)
         {
-            // Two bytes past the panel must survive: Compose writes width * height * 2 bytes only.
-            byte[] destination = new byte[width * height * 2 + 2];
-            Array.Fill(destination, (byte)0xA5);
+            foreach (bool drawnForInset in new[] { false, true })
+            {
+                // Two bytes past the panel must survive: Compose writes width * height * 2 bytes only.
+                byte[] destination = new byte[width * height * 2 + 2];
+                Array.Fill(destination, (byte)0xA5);
 
-            new Rgb565Composer(width, height, transform, setting.Margin, setting.OffsetX, setting.OffsetY)
-                .Compose(bgra, destination);
+                new Rgb565Composer(width, height, transform, setting.Margin, setting.OffsetX, setting.OffsetY, drawnForInset)
+                    .Compose(bgra, destination);
 
-            Assert.All(destination[..^2], value => Assert.Equal(0, value));
-            Assert.Equal(new byte[] { 0xA5, 0xA5 }, destination[^2..]);
+                Assert.All(destination[..^2], value => Assert.Equal(0, value));
+                Assert.Equal(new byte[] { 0xA5, 0xA5 }, destination[^2..]);
+            }
         }
     }
 

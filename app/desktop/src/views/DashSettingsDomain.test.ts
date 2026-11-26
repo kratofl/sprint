@@ -112,11 +112,10 @@ test('Acknowledge lists each device with buttons that offers it, with its button
   ])
 })
 
-test('a stamped dash carries the app-wide alerts and none of its own look, and the dash itself is untouched', () => {
-  const own = dash('d', { alerts: [{ id: 'old', type: 'tc_change', enabled: false, col: 1, row: 1, colSpan: 4, rowSpan: 4 }], alertConfig: { displayMode: 'center' } })
+test('a stamped dash carries the app-wide alerts, and the dash itself is untouched', () => {
+  const own = dash('d', { alerts: [{ id: 'old', type: 'tc_change', enabled: false, col: 1, row: 1, colSpan: 4, rowSpan: 4 }] })
   const stamped = stampDashAlerts(own, dashAlertDefaults)
   assert.equal(stamped.alerts.length, dashAlertTypes.length)
   assert.deepEqual(stamped.alerts[0], { id: 'tc_change', type: 'tc_change', enabled: true, col: 0, row: 0, colSpan: 1, rowSpan: 1, displayMode: 'full', invertColors: false, durationSeconds: 2, untilAck: false })
-  assert.equal(stamped.alertConfig, undefined)
   assert.equal(own.alerts[0]?.id, 'old')
 })

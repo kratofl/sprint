@@ -6,10 +6,13 @@ namespace Sprint.Desktop.Features.Dashes;
 /// <summary>
 /// Rewrites retired widget types on saved layouts so older dashes keep working after the catalog
 /// drops them: each becomes the single-value widget that shows what its old setting picked (a
-/// <c>lap_time</c> showing the last lap becomes <c>last_lap</c>), and the setting goes. Runs before
-/// <see cref="DashLayoutValidator"/> (which rejects unknown types, and so the whole dash) on every
-/// page, the idle page and the pit limiter's widgets, and reports whether anything changed so the
-/// caller can re-persist the upgrade.
+/// <c>lap_time</c> showing the last lap becomes <c>last_lap</c>), and the setting goes. Settings
+/// Sprint took back go too: the gear and speed's alignment (it always centres), and a text
+/// widget's binding to anything but who drives and where (live values have widgets of their own),
+/// which leaves it showing its own text. Runs before <see cref="DashLayoutValidator"/> (which
+/// rejects unknown types, and so the whole dash) on every page, the idle page and the pit
+/// limiter's widgets, and reports whether anything changed so the caller can re-persist the
+/// upgrade.
 /// </summary>
 public static class DashWidgetTypeMigration
 {
@@ -76,8 +79,31 @@ public static class DashWidgetTypeMigration
             }, "show"),
             // "ahead", and "both".
             "gaps" => (ConfigString(widget, "side") == "behind" ? "gap_behind" : "gap_ahead", "side"),
+            // The one bar widget and its "Shows" pick became one widget per bar; the linear map
+            // became the relative bar.
+            "bar" => (ConfigString(widget, "channel") switch
+            {
+                "ve" => "ve_bar",
+                "soc" => "battery_bar",
+                "fuel_ve" => "fuel_ve_bar",
+                "delta" => "delta_bar",
+                "gap" => "gap_bar",
+                "class_gap" => "class_gap_bar",
+                "sectors" => "sector_bar",
+                "inputs" => "inputs_bar",
+                "throttle" => "throttle_bar",
+                "brake" => "brake_bar",
+                "clutch" => "clutch_bar",
+                "rpm" => "rpm_bar",
+                "spotter" => "spotter_bar",
+                "linear_map" => "relative_bar",
+                // "fuel", and a bar that never picked: fuel was its default.
+                _ => "fuel_bar",
+            }, "channel"),
             // The surface/core switch became two widgets.
             "tyre_temp" => (ConfigString(widget, "channel") == "core" ? "tyre_core_temp" : "tyre_temp", "channel"),
+            "gear_speed" => (null, "align"),
+            "text" => (null, ShowsIdentity(widget) ? null : "binding"),
             _ => (null, null),
         };
 
@@ -100,6 +126,15 @@ public static class DashWidgetTypeMigration
 
         return changed;
     }
+
+    /// <summary>What a text widget may still bind to (<c>TEXT_BINDINGS</c> in the renderer).</summary>
+    private static readonly string[] TextBindings = ["profile.driverName", "profile.driverNumber", "session.track", "session.car"];
+
+    private static bool ShowsIdentity(DashWidget widget) =>
+        widget.Config?.TryGetValue("binding", out JsonElement value) == true &&
+        value.ValueKind == JsonValueKind.String &&
+        value.GetString() is string binding &&
+        TextBindings.Contains(binding, StringComparer.Ordinal);
 
     private static string? ConfigString(DashWidget widget, string key) =>
         widget.Config?.TryGetValue(key, out JsonElement value) == true && value.ValueKind == JsonValueKind.String

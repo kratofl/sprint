@@ -57,15 +57,6 @@ public static class DashThemePresets
             string.Equals(preset.AlertColorToken, canonical, StringComparison.OrdinalIgnoreCase));
     }
 
-    /// <summary>The preset whose output matches the layout's effective color system, or null for a custom Styled theme.</summary>
-    public static string? MatchName(DashLayout layout)
-    {
-        ArgumentNullException.ThrowIfNull(layout);
-        return layout.EffectiveColorSystem == DashColorSystem.Functional
-            ? "Graphite"
-            : MatchName(layout.Theme);
-    }
-
     /// <summary>The name of the preset whose complete override set matches <paramref name="theme"/>, or null for a custom theme.</summary>
     public static string? MatchName(DashTheme? theme)
     {

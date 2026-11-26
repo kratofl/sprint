@@ -1312,16 +1312,22 @@
 .pw-damage-car {
   height: 100%;
   flex: none;
-  aspect-ratio: 200 / 424;
+  aspect-ratio: 120 / 196;
 }
 
-.pw-dent.l1 {
-  fill: color-mix(in srgb, var(--yellow-500) 22%, transparent);
+/* A dent place: quiet while whole, the damage colours of the list beside it once dented. */
+.pw-dent.s1 {
+  stroke: var(--yellow-500);
 }
 
-.pw-dent.l2 {
-  fill: color-mix(in srgb, var(--yellow-500) 50%, transparent);
+.pw-dent.s2 {
+  stroke: var(--red-500);
 }
+
+/* A wheel by the tread it has left, on the Colours setting's wear marks. */
+.pw-wear.ok { fill: var(--heat-good); }
+.pw-wear.warm { fill: var(--heat-warm); }
+.pw-wear.hot { fill: var(--heat-hot); }
 
 .pw-hit {
   fill: var(--label);
@@ -1329,7 +1335,7 @@
 
 .pw-hit-num {
   fill: var(--window);
-  font-size: 11px;
+  font-size: 9px;
   font-weight: 700;
   text-anchor: middle;
 }

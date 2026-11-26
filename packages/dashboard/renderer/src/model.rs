@@ -18,117 +18,6 @@ use crate::lap_summary::{LapReview, LapReviewField};
 use crate::palette::Colours;
 use crate::pit_limiter::{PitLimiter, PitLimiterStyle};
 
-/// A frame's edge weight (mockup v2), in pixels at 800x480.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
-pub enum BorderWeight {
-    None,
-    Thin,
-    #[default]
-    Normal,
-    Thick,
-}
-
-impl BorderWeight {
-    pub fn px(self) -> f64 {
-        match self {
-            BorderWeight::None => 0.0,
-            BorderWeight::Thin => 1.0,
-            BorderWeight::Normal => 2.0,
-            BorderWeight::Thick => 3.0,
-        }
-    }
-
-    fn parse(value: Option<&Value>) -> Option<BorderWeight> {
-        match value?.as_str()? {
-            "none" => Some(BorderWeight::None),
-            "thin" => Some(BorderWeight::Thin),
-            "normal" => Some(BorderWeight::Normal),
-            "thick" => Some(BorderWeight::Thick),
-            _ => None,
-        }
-    }
-}
-
-/// Where a widget's frame shows its label: not at all; `On`: top left, cut into the edge (small
-/// above the value when there is no edge); `Top`: centred above the value inside the box; `Left` /
-/// `Right`: beside the value, which then keeps the box's full height (a short box in a top strip);
-/// or in a band across the frame's top.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
-pub enum LabelMode {
-    Off,
-    #[default]
-    On,
-    Top,
-    Left,
-    Right,
-    Capsule,
-}
-
-impl LabelMode {
-    fn parse(value: Option<&Value>) -> Option<LabelMode> {
-        match value?.as_str()? {
-            "off" => Some(LabelMode::Off),
-            "on" => Some(LabelMode::On),
-            "top" => Some(LabelMode::Top),
-            "left" => Some(LabelMode::Left),
-            "right" => Some(LabelMode::Right),
-            "capsule" => Some(LabelMode::Capsule),
-            _ => None,
-        }
-    }
-}
-
-/// How a group's frame shows its name: not at all, set into the top edge, or in a pill.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
-pub enum GroupLabel {
-    #[default]
-    Off,
-    On,
-    Capsule,
-}
-
-impl GroupLabel {
-    fn parse(value: Option<&Value>) -> Option<GroupLabel> {
-        match value?.as_str()? {
-            "off" => Some(GroupLabel::Off),
-            "on" => Some(GroupLabel::On),
-            "capsule" => Some(GroupLabel::Capsule),
-            _ => None,
-        }
-    }
-}
-
-/// The flat chrome's dash-wide settings: corner radius in pixels at 800x480, the default edge and
-/// the default label. A dash without them gets the default look: radius 6, 2px edges, labels in
-/// the edge.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct DashChrome {
-    pub radius: f64,
-    pub border: BorderWeight,
-    pub label: LabelMode,
-}
-
-impl Default for DashChrome {
-    fn default() -> Self {
-        DashChrome { radius: 6.0, border: BorderWeight::Normal, label: LabelMode::On }
-    }
-}
-
-/// A group's own frame (mockup v2): an edge round all its widgets and its name as the label.
-#[derive(Clone, Copy, Debug, PartialEq, Default)]
-pub struct GroupStyle {
-    pub border: BorderWeight,
-    pub label: GroupLabel,
-    /// The name sits at the frame's centre instead of its left.
-    pub centered: bool,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ColorSystem {
-    Functional,
-    Styled,
-}
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum GroupMode {
     Together,
@@ -138,8 +27,10 @@ pub enum GroupMode {
 /// A layout's theme overrides: theme key -> CSS color string (only string entries survive).
 pub type DashTheme = BTreeMap<String, String>;
 
-/// One widget, in page grid coordinates. `label` is where it moves its own label to (else the
-/// dash's); `group` is the group it sits in; `hidden` keeps it off the wheel (it still holds its cells).
+/// One widget, in page grid coordinates. Sprint draws every widget's frame and label the same
+/// way (`chrome.rs`); a widget may only go without its label (`label_off`) or its frame
+/// (`frame_off`). `group` is the group it sits in; `hidden` keeps it off the wheel (it still
+/// holds its cells).
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct DashWidget {
     pub id: String,
@@ -149,7 +40,8 @@ pub struct DashWidget {
     pub col_span: f64,
     pub row_span: f64,
     pub config: Map<String, Value>,
-    pub label: Option<LabelMode>,
+    pub label_off: bool,
+    pub frame_off: bool,
     pub group: Option<String>,
     pub hidden: bool,
 }
@@ -169,7 +61,8 @@ pub struct DashWidgetGroup {
     pub mode: GroupMode,
     pub shown_first: Option<String>,
     pub hidden: bool,
-    pub style: Option<GroupStyle>,
+    /// Sprint's group frame round its widgets, its name in the top edge.
+    pub framed: bool,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -203,7 +96,6 @@ pub struct DashLayout {
     pub name: String,
     pub category: Option<String>,
     pub mode: String,
-    pub color_system: Option<ColorSystem>,
     pub screen_profile: Option<String>,
     pub grid_cols: f64,
     pub grid_rows: f64,
@@ -211,12 +103,10 @@ pub struct DashLayout {
     pub idle_page: Option<DashPage>,
     pub alerts: Vec<DashAlert>,
     pub theme: Option<DashTheme>,
-    pub alert_config: Option<Map<String, Value>>,
     /// What the lap review (`lap_summary`) shows in its six cells.
     pub lap_review: LapReview,
     /// What the dash shows over its page while the pit limiter is on (`pit_limiter.rs`).
     pub pit_limiter: PitLimiter,
-    pub chrome: DashChrome,
     /// The dash's own track sizes; `None` is an even `grid_cols` x `grid_rows` grid (older dashes).
     pub tracks: Option<Tracks>,
 }
@@ -345,11 +235,6 @@ fn parse_layout(raw: &Map<String, Value>) -> Result<DashLayout, String> {
         name: name.to_owned(),
         category: string_field(raw, "category"),
         mode: string_field(raw, "mode").unwrap_or_else(|| "basic".to_owned()),
-        color_system: match raw.get("colorSystem").and_then(Value::as_str) {
-            Some("functional") => Some(ColorSystem::Functional),
-            Some("styled") => Some(ColorSystem::Styled),
-            _ => None,
-        },
         screen_profile: string_field(raw, "screenProfile"),
         grid_cols,
         grid_rows,
@@ -360,18 +245,8 @@ fn parse_layout(raw: &Map<String, Value>) -> Result<DashLayout, String> {
             .get("theme")
             .and_then(Value::as_object)
             .map(|theme| theme.iter().filter_map(|(key, value)| value.as_str().map(|v| (key.clone(), v.to_owned()))).collect()),
-        alert_config: raw.get("alertConfig").and_then(Value::as_object).cloned(),
         lap_review: parse_lap_review(raw.get("lapReview")),
         pit_limiter: parse_pit_limiter(raw.get("pitLimiter")),
-        chrome: raw
-            .get("chrome")
-            .and_then(Value::as_object)
-            .map(|chrome| DashChrome {
-                radius: chrome.get("radius").and_then(Value::as_f64).unwrap_or(DashChrome::default().radius).max(0.0),
-                border: BorderWeight::parse(chrome.get("border")).unwrap_or(DashChrome::default().border),
-                label: LabelMode::parse(chrome.get("label")).unwrap_or(DashChrome::default().label),
-            })
-            .unwrap_or_default(),
         tracks: parse_tracks(raw),
     })
 }
@@ -409,11 +284,16 @@ fn parse_widget(value: &Value) -> Option<DashWidget> {
         col_span: number("colSpan")?,
         row_span: number("rowSpan")?,
         config: raw.get("config").and_then(Value::as_object).cloned().unwrap_or_default(),
-        // A widget moves its label to one of the spots beside its value; a band (`capsule`) is the dash's alone.
-        label: raw.get("style").and_then(Value::as_object).and_then(|style| LabelMode::parse(style.get("label"))).filter(|label| *label != LabelMode::Capsule),
+        label_off: style_off(raw, "label"),
+        frame_off: style_off(raw, "frame"),
         group: string_field(raw, "group"),
         hidden: raw.get("hidden") == Some(&Value::Bool(true)),
     })
+}
+
+/// Whether a widget's `style` turns `key` (its label or its frame) off: `"off"` is the only value it takes.
+fn style_off(raw: &Map<String, Value>, key: &str) -> bool {
+    raw.get("style").and_then(Value::as_object).and_then(|style| style.get(key)).and_then(Value::as_str) == Some("off")
 }
 
 fn parse_group(value: &Value) -> Option<DashWidgetGroup> {
@@ -433,11 +313,7 @@ fn parse_group(value: &Value) -> Option<DashWidgetGroup> {
         },
         shown_first: string_field(raw, "shownFirst"),
         hidden: raw.get("hidden") == Some(&Value::Bool(true)),
-        style: raw.get("style").and_then(Value::as_object).map(|style| GroupStyle {
-            border: BorderWeight::parse(style.get("border")).unwrap_or(BorderWeight::None),
-            label: GroupLabel::parse(style.get("label")).unwrap_or(GroupLabel::Off),
-            centered: style.get("align").and_then(Value::as_str) == Some("center"),
-        }),
+        framed: raw.get("framed") == Some(&Value::Bool(true)),
     })
 }
 
@@ -1319,7 +1195,7 @@ fn utc_time_of_day(timestamp: &str) -> Option<f64> {
 mod tests {
     use super::*;
 
-    const LAYOUT: &str = r#"{"id":"l1","name":"Layout","gridCols":20,"gridRows":12,"pages":[{"id":"p1","name":"P","widgets":[{"id":"w","type":"gear_speed","col":0,"row":0,"colSpan":4,"rowSpan":3,"config":{"align":"left"},"style":{"textColor":5}}]}]}"#;
+    const LAYOUT: &str = r#"{"id":"l1","name":"Layout","gridCols":20,"gridRows":12,"pages":[{"id":"p1","name":"P","widgets":[{"id":"w","type":"gear_speed","col":0,"row":0,"colSpan":4,"rowSpan":3,"config":{"corner":"rl"},"style":{"textColor":5}}]}]}"#;
 
     fn scene(extra: &str) -> Result<Scene, String> {
         parse_scene(format!(r#"{{"layout":{LAYOUT},"width":800,"height":480{extra}}}"#).as_bytes())
@@ -1333,8 +1209,8 @@ mod tests {
         assert!(s.idle);
         assert_eq!(s.targets, Some(DashTargets { lap_time_seconds: None, fuel_per_lap_liters: Some(2.5) }));
         let widget = &s.layout.pages[0].widgets[0];
-        assert_eq!(widget.config_string("align"), Some("left"));
-        assert_eq!(widget.label, None);
+        assert_eq!(widget.config_string("corner"), Some("rl"));
+        assert!(!widget.label_off && !widget.frame_off);
     }
 
     #[test]

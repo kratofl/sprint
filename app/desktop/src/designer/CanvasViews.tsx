@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'react'
-import { drawnWidgets, layoutRect, pageTree, type DashLayout, type DashPage, type GridSpan } from '@sprint/dashboard'
+import { drawnWidgets, gridLines, layoutRect, pageTree, type DashLayout, type DashPage, type GridSpan } from '@sprint/dashboard'
 import { widgetName } from '../views/DashesDomain'
 import { flattenTree, nodeRect } from './groupOps'
 import { emptyCells } from './layoutOps'
@@ -31,13 +31,20 @@ const isUpright = (layout: DashLayout, page: DashPage, width: number, height: nu
 
 
 
-/** Free cells as a dot at their centre, in every view, so free space shows. */
+/** Free space as a dot on every corner of each free cell, where its grid lines cross, in every view. */
 function FreeCells({ layout, page, width, height }: LayerProps) {
-  const box = boxOf(layout, page, width, height)
+  const lines = gridLines(layout, width, height)
+  // Neighbouring free cells share corners: one dot per crossing.
+  const corners = new Map<string, { x: number; y: number }>()
+  for (const cell of emptyCells(layout, page)) {
+    for (const col of [cell.col, cell.col + 1]) {
+      for (const row of [cell.row, cell.row + 1]) corners.set(`${col}:${row}`, { x: lines.cols[col] ?? 0, y: lines.rows[row] ?? 0 })
+    }
+  }
   return (
     <>
-      {emptyCells(layout, page).map((cell) => (
-        <span key={`${cell.col}:${cell.row}`} className="designer-free-cell" style={box(cell)} />
+      {[...corners].map(([key, corner]) => (
+        <span key={key} className="designer-free-corner" style={{ left: corner.x, top: corner.y }} />
       ))}
     </>
   )

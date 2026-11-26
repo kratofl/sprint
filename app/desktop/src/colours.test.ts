@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { defaultDashColours } from '@sprint/dashboard'
-import { brakeHeat, parseColours, tyreHeat } from './colours'
+import { brakeHeat, parseColours, tyreHeat, wearHeat } from './colours'
 
 const limits = defaultDashColours.limits
 
@@ -19,7 +19,14 @@ test('the host’s colours are narrowed once; anything missing or unknown is the
   assert.deepEqual(parseColours(undefined), defaultDashColours)
   assert.deepEqual(parseColours({ theme: 'Calm', limits: { brakeHotAbove: 900, tyreColdBelow: 'x' } }), {
     theme: 'Calm',
+    gearRedline: true,
     limits: { ...limits, brakeHotAbove: 900 },
   })
+  assert.equal(parseColours({ gearRedline: false }).gearRedline, false)
+  assert.equal(parseColours({ gearRedline: 'no' }).gearRedline, true, 'on unless turned off')
   assert.equal(parseColours({ theme: 'calm' }).theme, 'Sprint', 'by name, as the host writes it')
+})
+
+test('tread left is good, then low and critical under its marks', () => {
+  assert.deepEqual([90, 59, 29].map((tread) => wearHeat(tread, limits)), ['ok', 'warm', 'hot'])
 })

@@ -5,6 +5,7 @@ using Sprint.Desktop.Api.Telemetry;
 using Sprint.Desktop.Features.Peer;
 using Sprint.Desktop.Features.PitWall;
 using Sprint.Desktop.Features.SessionPlanning;
+using Sprint.Games;
 using Xunit;
 
 namespace Sprint.Desktop.Tests;
@@ -313,6 +314,30 @@ public sealed class PitWallTests
 
         // In the lane 49 s, 30 of them standing, and the 0.06 of a lap it covered takes 7.2 s on track.
         Assert.Equal(new PitWallPitLoss(11.8, 1, 30, 1, StandingFromOwn: false), Assert.IsType<PitWallState>(wall.State(T0)).PitLoss);
+    }
+
+    [Fact]
+    public void UntilAStopIsMeasuredTheWallHasTheTracksTypicalLossForOurClass()
+    {
+        PitWallAccumulator wall = new();
+        PitWallSession lmu = new() { Game = "LeMansUltimate", Track = "Circuit de la Sarthe", SessionType = SessionType.Race, TrackLengthMeters = 13626, Phase = SessionPhase.Green };
+        TypicalPitLoss typical = Assert.IsType<TypicalPitLoss>(GamePitLossCatalog.Typical("LeMansUltimate", "Circuit de la Sarthe", "LMP2"));
+        PitWallCar ours = Entry(1, 1) with { IsPlayer = true, CarClass = "LMP2", LapFraction = 0.5 };
+        PitWallCar theirs = Entry(7, 2) with { CarClass = "LMP2", BestLap = 120 };
+        void Send(double elapsed, PitWallCar car) => wall.Board(new PitWallBoard(lmu with { Elapsed = elapsed }, [ours, car], new PitWallCarStatus()), T0);
+
+        Send(1000, theirs with { LapFraction = 0.95 });
+        PitWallPitLoss before = Assert.IsType<PitWallState>(wall.State(T0)).PitLoss;
+        Assert.Equal((typical, typical.Lane + typical.Standing), (before.Typical, before.Seconds));
+
+        Send(1001, theirs with { LapFraction = 0.96, InPit = true, PitState = PitState.Entering });
+        Send(1010, theirs with { LapFraction = 0.98, InPit = true, PitState = PitState.Stopped });
+        Send(1040, theirs with { LapFraction = 0.98, InPit = true, PitState = PitState.Exiting });
+        Send(1050, theirs with { LapFraction = 0.02 });
+
+        // The stop measured above: 11.8 s in the lane and 30 s standing.
+        PitWallPitLoss after = Assert.IsType<PitWallState>(wall.State(T0)).PitLoss;
+        Assert.Equal((null, 41.8), (after.Typical, after.Seconds));
     }
 
     [Fact]

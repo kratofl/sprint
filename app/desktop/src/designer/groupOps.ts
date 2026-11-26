@@ -1,5 +1,5 @@
 import { nodeWidgets, pageTree, shownChild, type DashGroupNode, type DashNode } from '@sprint/dashboard'
-import type { DashGroupMode, DashGroupStyle, DashLayout, DashPage, DashWidget, DashWidgetGroup } from '@sprint/dashboard'
+import type { DashGroupMode, DashLayout, DashPage, DashWidget, DashWidgetGroup } from '@sprint/dashboard'
 import { findPage, isValidRect, nextId, nextName, pageFits, pageIdTaken, type GridRect, type WidgetTarget } from '../views/DashesDomain'
 
 /**
@@ -309,9 +309,17 @@ export function setGroupMode(layout: DashLayout, pageId: string, groupId: string
   return editTree(layout, pageId, (roots) => patchGroup(roots, groupId, (group) => ({ ...group, mode })))
 }
 
-/** A group's own frame round its widgets (flat style); null takes it away. */
-export function setGroupStyle(layout: DashLayout, pageId: string, groupId: string, style: DashGroupStyle | null): DashLayout | null {
-  return editTree(layout, pageId, (roots) => patchGroup(roots, groupId, (group) => ({ ...group, style: style ?? undefined })))
+/** Sprint's group frame round a group's widgets, on or off (off is not written); null when nothing changes. */
+export function setGroupFramed(layout: DashLayout, pageId: string, groupId: string, framed: boolean): DashLayout | null {
+  if ((findPage(layout, pageId)?.groups?.find((group) => group.id === groupId)?.framed === true) === framed) return null
+  return editTree(layout, pageId, (roots) =>
+    patchGroup(roots, groupId, (group) => {
+      const next = { ...group }
+      if (framed) next.framed = true
+      else delete next.framed
+      return next
+    }),
+  )
 }
 
 /** Which layer a stack shows on the wheel until a button switches it. */

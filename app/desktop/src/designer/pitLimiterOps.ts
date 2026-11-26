@@ -46,7 +46,7 @@ const underCover = (layout: DashLayout, gear: GridSpan | null) => {
 export function pitLimiterView(layout: DashLayout, gear: GridSpan | null): DashLayout {
   const pit = pitLimiterOf(layout)
   const covered = underCover(layout, gear)
-  const covers: DashWidget[] = coveredSpots(layout, gear).map((spot, index) => ({ id: `${COVER_PREFIX}${index}`, type: 'bar', ...spot, hidden: true }))
+  const covers: DashWidget[] = coveredSpots(layout, gear).map((spot, index) => ({ id: `${COVER_PREFIX}${index}`, type: 'fuel_bar', ...spot, hidden: true }))
   const page: DashPage = { id: PIT_LIMITER_PAGE_ID, name: 'Pit limiter', widgets: [...covers, ...pit.widgets.filter((widget) => !covered(widget))] }
   if (pit.groups && pit.groups.length > 0) page.groups = pit.groups
   return { ...layout, pages: [page], idlePage: null }

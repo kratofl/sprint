@@ -943,16 +943,13 @@ svg.designer-node-stack {
   box-sizing: border-box;
 }
 
-/* A free cell: a dot at its centre. */
-.designer-free-cell::before {
-  position: absolute;
-  top: calc(50% - 2px);
-  left: calc(50% - 2px);
+/* A free cell's corner: a dot where its grid lines cross. */
+.designer-free-corner {
   width: 4px;
   height: 4px;
+  margin: -2px 0 0 -2px;
   border-radius: 50%;
   background: var(--label-tertiary);
-  content: "";
 }
 
 /* Outline: hairline regions on the window colour, in place of the dash. */
@@ -1135,6 +1132,9 @@ svg.designer-node-stack {
 .designer-canvas {
   position: relative;
   touch-action: none;
+  /* A drag must never select the widgets' text: the browser would then drag that text and the
+     widget would follow the pointer after release. */
+  user-select: none;
 }
 
 .designer-grid-overlay {
@@ -1446,27 +1446,31 @@ svg.designer-node-stack {
   border-top: 1px solid var(--divider);
 }
 
-/* The scope strip: Device › Game › Class › Car → Dash, under the toolbar. */
+/* The scope strip: Device › Game › Class › Car → Dash, under the toolbar. Centred while it fits; in a
+   narrow window the pickers shrink (ellipsis) so the save status stays inside the window. */
 .designer-scope {
   position: absolute;
   top: 54px;
-  left: 50%;
+  right: 12px;
+  left: 12px;
   z-index: 2;
   display: flex;
   align-items: center;
   gap: 2px;
+  width: max-content;
   max-width: calc(100% - 24px);
   height: 40px;
+  margin: 0 auto;
   padding: 0 6px;
-  transform: translateX(-50%);
   white-space: nowrap;
 }
 
 .designer-scope-pick {
   position: relative;
   display: inline-flex;
-  flex: none;
+  flex: 0 1 auto;
   align-items: center;
+  min-width: 0;
   height: 28px;
   border-radius: var(--radius-control);
   color: var(--label);
@@ -1500,6 +1504,8 @@ svg.designer-node-stack {
   font: inherit;
   appearance: none;
   field-sizing: content;
+  min-width: 0;
+  text-overflow: ellipsis;
   cursor: pointer;
 }
 

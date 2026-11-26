@@ -409,8 +409,8 @@ public sealed class DesktopRuntime : IDesktopRuntime
 
     /// <summary>
     /// Creates a blank dash for <paramref name="profile"/>: flat, on the default tracks (<see cref="DashTracks"/>),
-    /// one page with nothing but the gear, the functional colour system, no idle page. The preset's alerts and alert settings come along so
-    /// alerts work out of the box. A blank <paramref name="name"/> becomes "New dash".
+    /// one page with nothing but the gear, no idle page. The preset's alerts come along so alerts work out of
+    /// the box. A blank <paramref name="name"/> becomes "New dash".
     /// </summary>
     public DashLayout CreateBlankDashLayout(ScreenProfile profile, string? name, string? category)
     {
@@ -422,14 +422,12 @@ public sealed class DesktopRuntime : IDesktopRuntime
             Name = string.IsNullOrWhiteSpace(name) ? "New dash" : name.Trim(),
             Category = category,
             Mode = NormalizeDashMode(this.Settings.NewDashDefaults.Mode),
-            ColorSystem = DashColorSystem.Functional,
             GridCols = DashTracks.Cols,
             GridRows = DashTracks.Rows,
             ColSizes = DashTracks.DefaultCols(),
             RowSizes = DashTracks.DefaultRows(),
             Pages = [new DashPage { Id = "page-1", Name = "Page 1", Widgets = [DashTracks.DefaultGear()] }],
             Alerts = Clone(preset.Alerts),
-            AlertConfig = Clone(preset.AlertConfig),
         };
         DashLayoutEditor.ApplyScreenProfile(layout, profile);
         this.DashLayouts.Add(layout);
@@ -940,11 +938,6 @@ public sealed class DesktopRuntime : IDesktopRuntime
                 if (DashLayoutValidator.IsValid(layout))
                 {
                     bool migrated = contentMigrated;
-                    if (layout.ColorSystem is null)
-                    {
-                        NormalizeLayoutColorSystem(layout);
-                        migrated = true;
-                    }
                     migrated |= layout.Theme?.NormalizeProtectedColors() == true;
                     // Dashes saved before categories had a per-PC "default" flag; it is gone.
                     migrated |= layout.ExtensionData?.Remove("default") == true;
@@ -996,7 +989,6 @@ public sealed class DesktopRuntime : IDesktopRuntime
         foreach (DashLayout layout in layouts)
         {
             NormalizeLayoutProfile(layout);
-            NormalizeLayoutColorSystem(layout);
         }
 
         return DashLayoutOrder.Sort(layouts);
@@ -1116,7 +1108,6 @@ public sealed class DesktopRuntime : IDesktopRuntime
             throw new InvalidOperationException($"Dash layout '{layout.Id}' is invalid and cannot be saved.");
         }
 
-        NormalizeLayoutColorSystem(layout);
         layout.Theme?.NormalizeProtectedColors();
         DashLooks.Flatten(layout);
         SaveJson(Path.Combine(this._layoutsPath, $"{layout.Id}.json"), layout);
@@ -1141,11 +1132,9 @@ public sealed class DesktopRuntime : IDesktopRuntime
         layout.ColSizes = preset.ColSizes is null ? null : [.. preset.ColSizes];
         layout.RowSizes = preset.RowSizes is null ? null : [.. preset.RowSizes];
         layout.Mode = preset.Mode;
-        layout.ColorSystem = preset.EffectiveColorSystem;
         layout.IdlePage = Clone(preset.IdlePage);
         layout.Pages = Clone(preset.Pages);
         layout.Alerts = Clone(preset.Alerts);
-        layout.AlertConfig = Clone(preset.AlertConfig);
         layout.Theme = Clone(preset.Theme);
         layout.ExtensionData = preset.ExtensionData is null ? null : Clone(preset.ExtensionData);
         layout.Id = id;
@@ -1156,9 +1145,6 @@ public sealed class DesktopRuntime : IDesktopRuntime
         this.SaveDashLayout(layout);
         this._log.Info($"Dash reset to preset content: id={layout.Id}.");
     }
-
-    private static void NormalizeLayoutColorSystem(DashLayout layout) =>
-        layout.ColorSystem ??= layout.EffectiveColorSystem;
 
     private static string NormalizeDashMode(string? mode) =>
         string.Equals(mode, "advanced", StringComparison.OrdinalIgnoreCase) ? "advanced" : "basic";

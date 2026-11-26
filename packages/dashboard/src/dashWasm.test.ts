@@ -51,7 +51,7 @@ test('acknowledging takes down an alert held until acknowledged', () => {
     JSON.stringify({ session: {}, car: {}, lap: {}, flags: {}, electronics: { tractionControl: tc, tractionControlMax: 9 }, race: {}, energy: {} })
   wasm.renderLive(frame(2), 0)
   assert.deepEqual(wasm.renderLive(frame(3), 100), { timeDependent: false }, 'held, it never runs out')
-  assert.deepEqual([...wasm.pixels().subarray(0, 3)], [0x1f, 0x7f, 0xe6], "the TC popup's blue")
+  assert.deepEqual([...wasm.pixels().subarray(0, 3)], [0x1a, 0x7c, 0xff], "the TC popup's blue")
   wasm.acknowledge()
   wasm.renderLive(frame(3), 200)
   assert.deepEqual([...wasm.pixels().subarray(0, 3)], [0x08, 0x08, 0x0a], 'the dash again')

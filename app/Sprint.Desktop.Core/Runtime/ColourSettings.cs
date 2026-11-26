@@ -14,6 +14,13 @@ public sealed record ColourSettings
     [JsonPropertyName("theme")]
     public ColourTheme Theme { get; init; } = ColourTheme.Sprint;
 
+    /// <summary>
+    /// Whether the dash's gear turns red near the limit and blue at the shift point. On unless the
+    /// driver turns it off, for one who reads the shift from the wheel's own lights.
+    /// </summary>
+    [JsonPropertyName("gearRedline")]
+    public bool GearRedline { get; init; } = true;
+
     [JsonPropertyName("limits")]
     public ColourLimits Limits { get; init; } = new();
 
@@ -75,11 +82,8 @@ public sealed record ColourLimits
     [JsonPropertyName("wearCriticalBelow")]
     public int WearCriticalBelow { get; init; } = 30;
 
-    [JsonPropertyName("energyLowBelow")]
-    public int EnergyLowBelow { get; init; } = 50;
-
     [JsonPropertyName("energyCriticalBelow")]
-    public int EnergyCriticalBelow { get; init; } = 20;
+    public int EnergyCriticalBelow { get; init; } = 30;
 
     /// <summary>Each limit by its wire name, with the whole numbers it accepts.</summary>
     public static readonly IReadOnlyList<ColourLimitField> Fields =
@@ -92,7 +96,6 @@ public sealed record ColourLimits
         new("brakeHotAbove", 150, 1200),
         new("wearLowBelow", 5, 95),
         new("wearCriticalBelow", 1, 90),
-        new("energyLowBelow", 5, 95),
         new("energyCriticalBelow", 1, 90),
     ];
 
@@ -107,7 +110,6 @@ public sealed record ColourLimits
         "brakeHotAbove" => this with { BrakeHotAbove = value },
         "wearLowBelow" => this with { WearLowBelow = value },
         "wearCriticalBelow" => this with { WearCriticalBelow = value },
-        "energyLowBelow" => this with { EnergyLowBelow = value },
         "energyCriticalBelow" => this with { EnergyCriticalBelow = value },
         _ => throw new ArgumentOutOfRangeException(nameof(name), name, "not a colour limit"),
     };
@@ -128,7 +130,6 @@ public sealed record ColourLimits
         if (limits.BrakeWarmAbove <= limits.BrakeColdBelow) return "brakeWarmAbove must be over brakeColdBelow";
         if (limits.BrakeHotAbove <= limits.BrakeWarmAbove) return "brakeHotAbove must be over brakeWarmAbove";
         if (limits.WearCriticalBelow >= limits.WearLowBelow) return "wearCriticalBelow must be under wearLowBelow";
-        if (limits.EnergyCriticalBelow >= limits.EnergyLowBelow) return "energyCriticalBelow must be under energyLowBelow";
         return null;
     }
 
@@ -142,7 +143,6 @@ public sealed record ColourLimits
         "brakeHotAbove" => this.BrakeHotAbove,
         "wearLowBelow" => this.WearLowBelow,
         "wearCriticalBelow" => this.WearCriticalBelow,
-        "energyLowBelow" => this.EnergyLowBelow,
         "energyCriticalBelow" => this.EnergyCriticalBelow,
         _ => throw new ArgumentOutOfRangeException(nameof(name), name, "not a colour limit"),
     };

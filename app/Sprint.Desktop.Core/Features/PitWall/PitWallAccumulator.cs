@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Sprint.Contracts;
 using Sprint.Desktop.Api.Telemetry;
+using Sprint.Games;
 
 namespace Sprint.Desktop.Features.PitWall;
 
@@ -368,11 +369,12 @@ public sealed class PitWallAccumulator
             this._events.RemoveAt(0);
     }
 
-    /// <summary>What a stop costs, as <see cref="PitLossMeter.Loss"/> works it out for our car.</summary>
+    /// <summary>What a stop costs, as <see cref="PitLossMeter.Loss"/> works it out for our car, with the track's typical loss for our class until it can.</summary>
     private PitWallPitLoss PitLoss(PitWallBoard board)
     {
         PitWallCar? own = board.Field.FirstOrDefault(car => car.IsPlayer);
-        return this._pitLoss.Loss(own?.Id, own?.CarClass);
+        TypicalPitLoss? typical = GamePitLossCatalog.Typical(board.Session.Game, board.Session.Track, own?.CarClass);
+        return this._pitLoss.Loss(own?.Id, own?.CarClass, typical);
     }
 
     /// <summary>How far apart two lap fractions are, either way round the lap.</summary>

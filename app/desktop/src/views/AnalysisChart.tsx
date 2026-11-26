@@ -10,7 +10,7 @@ import {
   formatTrackPositionCursor,
 } from './AnalysisDomain'
 import type { ChartCursorState, ChartPanel, ChartPanelReadout, ChartSeries, SeriesStroke, SeriesTone } from './AnalysisDomain'
-import { WHOLE_LAP, ZOOM_STEP, acrossWindow, dragDelta, inWindow, isZoomed, panWindow, positionInWindow, samplesInWindow, stepCursor, wheelZoomFactor, windowTicks, zoomWindow } from './AnalysisPlot'
+import { LABEL_CHAR, WHOLE_LAP, ZOOM_STEP, acrossWindow, dragDelta, inWindow, isZoomed, panWindow, positionInWindow, samplesInWindow, stepCursor, wheelZoomFactor, windowTicks, uncrowded, zoomWindow } from './AnalysisPlot'
 import type { LapWindow } from './AnalysisPlot'
 
 /**
@@ -323,12 +323,18 @@ export function PinLines({ lines, scaleX, top, bottom }: { lines: readonly Chart
 const cursorLabel = (fraction: number, trackLengthMeters: number | null): string =>
   trackLengthMeters === null ? formatTrackPositionCursor(fraction) : `${((fraction * trackLengthMeters) / 1000).toFixed(2)} km`
 
-/** The corner labels in view, once above the whole stack, over the marks every panel draws. */
+/** The corner labels in view, once above the whole stack, over the marks every panel draws; one too close to the last drawn waits for a zoom. */
 function MarkRow({ width, view, marks }: { width: number; view: LapWindow; marks: readonly ChartMark[] }) {
   const scaleX = scaleXFor(width, view)
   return (
     <svg viewBox={`0 0 ${width} ${MARK_HEIGHT}`} className="analysis-chart-mark-svg" style={{ height: MARK_HEIGHT }} role="presentation" aria-hidden="true">
-      {marks.filter((mark) => inWindow(view, mark.position)).map((mark) => (
+      {uncrowded(
+        marks.filter((mark) => inWindow(view, mark.position)),
+        (mark) => {
+          const half = (mark.label.length * LABEL_CHAR) / 2
+          return { left: scaleX(mark.position) - half, right: scaleX(mark.position) + half, top: 0, bottom: MARK_HEIGHT }
+        },
+      ).map((mark) => (
         <text key={mark.label} x={scaleX(mark.position)} y={MARK_HEIGHT / 2} className="analysis-chart-mark-label" textAnchor="middle" dominantBaseline="middle">
           {mark.label}
         </text>

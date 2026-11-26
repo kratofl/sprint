@@ -1,57 +1,109 @@
+using System.Text.Json;
+
 namespace Sprint.Desktop.Features.Dashes;
 
 /// <summary>
-/// A dash has one look: flat frames with its corners, edge and label spot in <c>chrome</c>, which
-/// the renderer reads straight from the JSON. Older dashes chose a frame style (<c>dashStyle</c>:
-/// panels, grid or label bars) and gave widgets their own colours and edges; they move to the flat
-/// look, each widget keeping only where its label sits (never the band, which is the dash's alone).
-/// Colours follow meaning in the renderer, not the widget.
+/// Sprint draws one look on every dash: a 1-px edge with the label centred in it, and one group
+/// frame. A widget may only turn its label or its frame off; a group's frame is on or off. Older
+/// dashes chose their own look: a frame style (<c>dashStyle</c>), corners, edges and label spot
+/// (<c>chrome</c>), per-widget colours, edges and label spots, group frames with their own edge,
+/// name style and alignment, and a colour system (<c>colorSystem</c>) and alert look
+/// (<c>alertConfig</c>) of their own. They all move to Sprint's look: a widget keeps only a label
+/// that was off, and a group that had any frame keeps Sprint's; colours and alerts are app-wide
+/// settings now.
 /// </summary>
 public static class DashLooks
 {
-    /// <summary>The label spots a widget may pick: off, in the edge, centred, left or right.</summary>
-    public static readonly IReadOnlySet<string> WidgetLabels = new HashSet<string>(StringComparer.Ordinal) { "off", "on", "top", "left", "right" };
+    /// <summary>The one value a widget's <see cref="DashWidgetStyle.Label"/> or <see cref="DashWidgetStyle.Frame"/> takes.</summary>
+    public const string Off = "off";
 
-    /// <summary>Drops a saved frame style and every widget's look but its label spot; true when anything changed.</summary>
+    /// <summary>The layout-wide looks older dashes carried; Core no longer models them, so they arrive as extension data.</summary>
+    private static readonly string[] RetiredLayoutLooks = ["dashStyle", "chrome", "colorSystem", "alertConfig"];
+
+    /// <summary>Drops every look Sprint no longer offers; true when anything changed.</summary>
     public static bool Flatten(DashLayout layout)
     {
-        bool changed = layout.ExtensionData?.Remove("dashStyle") == true;
+        bool changed = false;
+        foreach (string look in RetiredLayoutLooks)
+        {
+            changed |= layout.ExtensionData?.Remove(look) == true;
+        }
+
         if (layout.IdlePage is not null)
         {
-            changed |= FlattenWidgets(layout.IdlePage.Widgets);
+            changed |= FlattenPage(layout.IdlePage);
         }
 
         foreach (DashPage page in layout.Pages)
         {
-            changed |= FlattenWidgets(page.Widgets);
+            changed |= FlattenPage(page);
         }
 
         return changed;
     }
 
-    private static bool FlattenWidgets(List<DashWidget> widgets)
+    private static bool FlattenPage(DashPage page)
     {
         bool changed = false;
-        foreach (DashWidget widget in widgets)
+        foreach (DashWidget widget in page.Widgets)
         {
-            if (widget.Style is null)
-            {
-                continue;
-            }
+            changed |= FlattenWidget(widget);
+        }
 
-            // Colours and edges are not read into the style at all; a label that is no widget spot goes too.
-            if (widget.Style.Label is not null && !WidgetLabels.Contains(widget.Style.Label))
-            {
-                widget.Style.Label = null;
-            }
-
-            if (widget.Style.Label is null)
-            {
-                widget.Style = null;
-                changed = true;
-            }
+        foreach (DashWidgetGroup group in page.Groups)
+        {
+            changed |= FlattenGroup(group);
         }
 
         return changed;
+    }
+
+    private static bool FlattenWidget(DashWidget widget)
+    {
+        if (widget.Style is null)
+        {
+            return false;
+        }
+
+        // Colours and edge weights are not read into the style at all; a label spot or frame
+        // value that is not "off" is Sprint's to place.
+        bool changed = false;
+        if (widget.Style.Label is not null && widget.Style.Label != Off)
+        {
+            widget.Style.Label = null;
+            changed = true;
+        }
+
+        if (widget.Style.Frame is not null && widget.Style.Frame != Off)
+        {
+            widget.Style.Frame = null;
+            changed = true;
+        }
+
+        if (widget.Style.Label is null && widget.Style.Frame is null)
+        {
+            widget.Style = null;
+            changed = true;
+        }
+
+        return changed;
+    }
+
+    /// <summary>A group's own frame (<c>style: { border, label, align }</c>) becomes Sprint's when it drew anything.</summary>
+    private static bool FlattenGroup(DashWidgetGroup group)
+    {
+        if (group.ExtensionData is null || !group.ExtensionData.Remove("style", out JsonElement style))
+        {
+            return false;
+        }
+
+        if (style.ValueKind == JsonValueKind.Object)
+        {
+            bool edge = style.TryGetProperty("border", out JsonElement border) && border.ValueKind == JsonValueKind.String && border.GetString() != "none";
+            bool name = style.TryGetProperty("label", out JsonElement label) && label.ValueKind == JsonValueKind.String && label.GetString() != Off;
+            group.Framed |= edge || name;
+        }
+
+        return true;
     }
 }

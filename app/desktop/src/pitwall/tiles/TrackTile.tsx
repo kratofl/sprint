@@ -1,5 +1,5 @@
 import type { PitWall } from '../pitWallData'
-import { pitLossTotal, rejoin } from '../pitStop'
+import { rejoin } from '../pitStop'
 import { carNumber, classLabel, classMark, classesOf, isOut, playerOf, sectorStarts } from '../timing'
 import { TileFrame, type FrameProps, type TileData } from '../tileFrame'
 
@@ -60,10 +60,10 @@ export function TrackTile({ data, frame, legend = true }: { data: TileData; fram
   )
 }
 
-/** Where our car would rejoin if it boxed now: in a race, once a stop's loss is measured and while ours is on track. */
+/** Where our car would rejoin if it boxed now: in a race, once a stop's loss is known (measured or typical) and while ours is on track. */
 function ghostOf(wall: PitWall): number | null {
   const player = playerOf(wall.field)
-  const loss = pitLossTotal(wall.pitLoss)
+  const loss = wall.pitLoss.seconds
   if (wall.session.sessionType !== 'Race' || !player || player.inPit || loss === null) return null
   return rejoin(wall.field, loss)?.fraction ?? null
 }
@@ -73,6 +73,7 @@ function Ring({ wall, legend }: { wall: PitWall; legend: boolean }) {
   const starts = wall.sectorStarts ?? sectorStarts(wall.field)
   const yellows = wall.session.yellowSectors
   const ghost = ghostOf(wall)
+  const boxedNow = `if it boxed now${wall.pitLoss.typical ? ' (typical pit loss)' : ''}`
   const bounds: number[] = starts ? [0, starts[0], starts[1], 1] : [0, 1]
   const map = inner(wall)
   const classes = classesOf(wall.field)
@@ -125,7 +126,9 @@ function Ring({ wall, legend }: { wall: PitWall; legend: boolean }) {
         {ghost !== null && player && (
           <g>
             <circle cx={ringPoint(ghost)[0]} cy={ringPoint(ghost)[1]} r={6.5} className="pw-car ghost">
-              <title>#{carNumber(player)} if it boxed now</title>
+              <title>
+                #{carNumber(player)} {boxedNow}
+              </title>
             </circle>
             <text x={notePoint(ghost).x} y={notePoint(ghost).y} textAnchor={notePoint(ghost).anchor} className="pw-ring-note ghost">
               #{carNumber(player)} after a stop
@@ -162,7 +165,7 @@ function Ring({ wall, legend }: { wall: PitWall; legend: boolean }) {
           {ghost !== null && (
             <span>
               <i className="pw-dot ghost" />
-              {player ? `#${carNumber(player)}` : 'Our car'} if it boxed now
+              {player ? `#${carNumber(player)}` : 'Our car'} {boxedNow}
             </span>
           )}
           <span className="muted">Ring: the lap, every car by how far round it is. Inside: the track.</span>

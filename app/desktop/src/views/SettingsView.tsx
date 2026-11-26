@@ -252,7 +252,8 @@ function HeatDots() {
 /**
  * Settings › Colours, a page of its own: what colours mean on every dash, the pit wall and
  * Analysis. The theme (a select, with its scale and a small wheel and pit-wall preview drawn in
- * it) and, in its own list, where each value moves from cold to hot. Each mark steps within its range and never past its neighbour.
+ * it), the gear redline switch, and, in its own list, where each value moves from cold to hot.
+ * Each mark steps within its range and never past its neighbour.
  */
 function ColoursGroup({ colours, units, send }: { colours: DashColours; units: DashUnits; send: Send }) {
   const setTheme = (theme: ColourTheme) => {
@@ -297,6 +298,12 @@ function ColoursGroup({ colours, units, send }: { colours: DashColours; units: D
             <figcaption>Pit wall</figcaption>
           </figure>
         </div>
+      </SettingsList>
+
+      <SettingsList footer="Turn it off if your wheel’s own lights show the shift.">
+        <ListRow id="settings-colours-gear-redline" label="Redline on the gear" detail="The gear turns red near the limit and blue at the shift point">
+          {(labels) => <Switch {...labels} checked={colours.gearRedline} onChange={(next) => void send({ type: 'settings.colours', gearRedline: next })} />}
+        </ListRow>
       </SettingsList>
 
       <SettingsList title="When colours change" footer="Water, oil and fuel laps warn from their alert’s limits (Dashes › Settings).">

@@ -17,10 +17,8 @@ use crate::format::{
 };
 use crate::grid::PixelRect;
 use crate::model::{CarState, DashSettings, DashTargets, DashWidget, FieldCar, LapState, TelemetryFrame, TireState};
-use crate::palette::{ColourLimits, DashPaletteColors, Rgba, brake_heat, class_color, dash_color, dim_color, resolve_tyre_color};
-use crate::primitives::{
-    TextAlign, TextLine, TextSizing, VALUE_SHARE, ValueWithUnit, big_value, dot, h_bar, text_line, value_size, value_with_unit, vertical_seg_bar,
-};
+use crate::palette::{ColourLimits, DashPaletteColors, Rgba, brake_heat, class_color, dash_bar_colors, dash_color, dim_color, resolve_tyre_color};
+use crate::primitives::{TextAlign, TextLine, TextSizing, VALUE_SHARE, ValueWithUnit, big_value, dot, h_bar, text_line, value_size, value_with_unit};
 use crate::text::TextWeight;
 
 /// Everything a widget's content reads (`WidgetContentProps`).
@@ -50,6 +48,23 @@ impl WidgetContext<'_> {
     /// Where values change colour (the app-wide Colours setting).
     fn colour_limits(&self) -> ColourLimits {
         self.settings.map_or_else(ColourLimits::default, |s| s.colours.limits)
+    }
+
+    /// The gear's colour: the shift stage's (red near the limit, blue at the shift point) unless
+    /// the driver turned the redline off, then `plain` at any revs.
+    fn gear_color(&self, plain: Rgba) -> Rgba {
+        let car = &self.frame.car;
+        let ratio = if car.max_rpm > 0.0 { car.rpm / car.max_rpm } else { 0.0 };
+        let redline = self.settings.is_none_or(|s| s.colours.gear_redline);
+        if !redline {
+            plain
+        } else if ratio >= 0.96 {
+            self.palette.rpm_shift
+        } else if ratio >= 0.88 {
+            self.palette.rpm_near_limit
+        } else {
+            plain
+        }
     }
 }
 
@@ -179,7 +194,8 @@ pub fn widget_chrome(widget: &DashWidget, frame: &TelemetryFrame, palette: &Dash
         "penalty" => filled("PENALTY", (penalties_to_serve(frame) > 0.0).then_some(palette.critical)),
         "tyre_wear" => framed("WEAR"),
         "sector_time" => framed("SECTOR"),
-        "bar" | "rpm_bar" => WidgetChrome::Edged,
+        "tyre_temp_numbers" | "brake_temp_numbers" | "tyre_brake_temp_numbers" => WidgetChrome::Edged,
+        kind if bar_kind(kind).is_some() => WidgetChrome::Edged,
         _ => WidgetChrome::Bare,
     }
 }
@@ -259,42 +275,6 @@ fn motor_fill(f: &TelemetryFrame, palette: &DashPaletteColors) -> Option<Rgba> {
     }
 }
 
-fn rpm_stage_color(phase: f64, palette: &DashPaletteColors) -> Rgba {
-    if phase < 0.78 {
-        palette.rpm_normal
-    } else if phase < 0.93 {
-        palette.rpm_near_limit
-    } else {
-        palette.rpm_shift
-    }
-}
-
-fn rpm_bar(b: &mut Builder, w: &WidgetContext) {
-    let max = w.frame.car.max_rpm.max(1.0);
-    let pct = (w.frame.car.rpm / max).clamp(0.0, 1.0);
-    if w.width <= w.height * 2.0 {
-        vertical_seg_bar(b, PixelRect::new(0.0, 0.0, w.width, w.height), pct, |phase| rpm_stage_color(phase, w.palette));
-        return;
-    }
-    rpm_strip(b, w, pct);
-}
-
-/// The RPM across: a row of slim square segments, unlit ones a quiet track, in the shift stages'
-/// colors.
-fn rpm_strip(b: &mut Builder, w: &WidgetContext, pct: f64) {
-    const SEGMENTS: usize = 36;
-    let s = w.chrome.scale;
-    let gap = 4.0 * s;
-    let height = (w.height * 0.55).min(28.0 * s);
-    let top = (w.height - height) / 2.0;
-    let segment_width = (w.width - gap * (SEGMENTS - 1) as f64) / SEGMENTS as f64;
-    let active = (pct * SEGMENTS as f64).ceil() as usize;
-    for i in 0..SEGMENTS {
-        let color = if i < active { rpm_stage_color(i as f64 / (SEGMENTS - 1) as f64, w.palette) } else { w.palette.surface };
-        b.rect(PixelRect::new(i as f64 * (segment_width + gap), top, segment_width.max(0.0), height), Radii::ZERO, color);
-    }
-}
-
 /// The delta to the target lap: green while gaining, red while losing, white level; "NO TARGET"
 /// without one.
 fn delta(b: &mut Builder, w: &WidgetContext) {
@@ -315,57 +295,201 @@ fn delta(b: &mut Builder, w: &WidgetContext) {
     big_value(b, &format_delta(lap.delta, 2), "-00.00", w.width, w.height, color, 0.82);
 }
 
-/// The gear: the digit alone, as big as its box allows, in the shift stage's color.
-fn gear(b: &mut Builder, w: &WidgetContext) {
-    let (car, palette, width, height) = (&w.frame.car, w.palette, w.width, w.height);
-    let ratio = if car.max_rpm > 0.0 { car.rpm / car.max_rpm } else { 0.0 };
-    let color = if ratio >= 0.96 {
-        palette.rpm_shift
-    } else if ratio >= 0.88 {
-        palette.rpm_near_limit
-    } else {
-        palette.foreground
-    };
-    text_line(
-        b,
-        TextLine {
-            text: &format_gear(car.gear),
-            left: width / 2.0,
-            top: height * 0.5,
-            size: height * 0.92,
-            color,
-            align: TextAlign::Center,
-            max_width: Some(width),
-            weight: TextWeight::ValueRegular,
-            sizing: TextSizing::Stable,
-        },
-    );
+/// What a gear widget shows round its digit, each on unless the driver switches it off in the
+/// designer (`config`): `inputs`, and `readouts` (the revs and the speed), with `flip` putting the
+/// speed above and the revs below.
+#[derive(Clone, Copy)]
+struct GearParts {
+    inputs: bool,
+    readouts: bool,
+    flip: bool,
 }
 
-/// How many segments a bar has (ten a side, centre-out).
-const BAR_SEGMENTS: usize = 20;
-/// The gap between a bar's segments at scale 1, px.
+impl GearParts {
+    const DIGIT_ALONE: GearParts = GearParts { inputs: false, readouts: false, flip: false };
+
+    fn of(widget: &DashWidget) -> GearParts {
+        GearParts {
+            inputs: widget.config_string("inputs") != Some("off"),
+            readouts: widget.config_string("readouts") != Some("off"),
+            flip: widget.config_string("flip") == Some("on"),
+        }
+    }
+}
+
+/// How thick the gear's throttle and brake bars are: `GEAR_INPUT_SHARE` of its width, within these
+/// bounds (px at scale 1). The clutch's is half as thick.
+const GEAR_INPUT_LINE: (f64, f64) = (6.0, 16.0);
+const GEAR_INPUT_SHARE: f64 = 0.09;
+
+/// The gear widget (`GearParts` from its config).
+fn gear(b: &mut Builder, w: &WidgetContext) {
+    draw_gear(b, w, GearParts::of(w.widget));
+}
+
+/// The gear: the digit in the bold value face like every other number, in the shift stage's
+/// colour unless the driver turned the gear redline off (`gear_color`). With `inputs`, thin lines
+/// down its sides (the driver's call, 2026-11-25): the throttle left, the brake right with the
+/// clutch in blue inside it, each with a cap cut off at either end (`INPUT_CAP`): the bottom one
+/// lights as soon as the pedal is touched, the top one only with it all the way in. With
+/// `readouts`, the revs as a number above the digit and the speed (no unit) below, or the other way
+/// round with `flip`. Alone, the digit fills 80% of its box's height (the full height crowded the
+/// box).
+fn draw_gear(b: &mut Builder, w: &WidgetContext, parts: GearParts) {
+    let (car, p, s) = (&w.frame.car, w.palette, w.chrome.scale);
+    let (width, height) = (w.width, w.height);
+    let (pad, gap) = (BAR_INSET * s, BAR_INSET * s);
+    let line = (width * GEAR_INPUT_SHARE).clamp(GEAR_INPUT_LINE.0 * s, GEAR_INPUT_LINE.1 * s);
+    let clutch = line / 2.0;
+    // The room the lines take on each side, kept equal so the digit stays centred.
+    let side = if parts.inputs { pad + line + gap / 2.0 + clutch + gap } else { 0.0 };
+    let inner = (width - side * 2.0).max(0.0);
+    let color = w.gear_color(p.foreground);
+    let gear = format_gear(car.gear);
+    let digit = |centre: f64, size: f64| TextLine {
+        text: &gear,
+        left: width / 2.0,
+        top: centre,
+        size,
+        color,
+        align: TextAlign::Center,
+        max_width: Some(if parts.inputs { inner } else { width }),
+        weight: TextWeight::Value,
+        sizing: TextSizing::Stable,
+    };
+    if parts.readouts {
+        let (rpm_h, speed_h) = (height * 0.11, height * 0.17);
+        let (top_h, bottom_h) = if parts.flip { (speed_h, rpm_h) } else { (rpm_h, speed_h) };
+        let middle = height - pad * 2.0 - top_h - bottom_h - gap * 2.0;
+        text_line(b, digit(pad + top_h + gap + middle / 2.0, middle * 0.98));
+        let rpm = format!("{}", car.rpm.max(0.0).round());
+        let speed = format_speed(car.speed_ms, w.units());
+        let (top, bottom) = if parts.flip { (&speed, &rpm) } else { (&rpm, &speed) };
+        for (text, centre, size) in [(top, pad + top_h / 2.0, top_h), (bottom, height - pad - bottom_h / 2.0, bottom_h)] {
+            let readout = TextLine { text, top: centre, size: size * 0.95, color: p.foreground, max_width: Some(inner.max(1.0)), ..digit(0.0, 0.0) };
+            text_line(b, readout);
+        }
+    } else {
+        text_line(b, digit(height * 0.5, height * 0.8));
+    }
+    if parts.inputs {
+        let span = (height - pad * 2.0).max(0.0);
+        input_line(b, w, PixelRect::new(pad, pad, line, span), car.throttle, p.success);
+        input_line(b, w, PixelRect::new(width - pad - line, pad, line, span), car.brake, p.danger);
+        input_line(b, w, PixelRect::new(width - pad - line - gap / 2.0 - clutch, pad, clutch, span), car.clutch, p.accent);
+    }
+}
+
+/// How long the caps notched off both ends of the gear's input lines are, as a share of the pedal
+/// (the driver's call, 2026-11-25): the bottom one lights at a touch, the top one only flat out.
+const INPUT_CAP: f64 = 0.05;
+
+/// One of the gear's input lines: filled from the bottom to the pedal's share in its colour over a
+/// dim tint of it, with a dark notch `INPUT_CAP` in from each end.
+fn input_line(b: &mut Builder, w: &WidgetContext, track: PixelRect, share: f64, color: Rgba) {
+    let (p, s) = (w.palette, w.chrome.scale);
+    b.rect(track, meter_corners(track, true, s, true, true), unlit(color, p));
+    let share = share.clamp(0.0, 1.0);
+    if share > 0.0 {
+        let fill = meter_part(track, true, 0.0, share);
+        b.rect(fill, meter_corners(fill, true, s, true, true), color);
+    }
+    let half = METER_NOTCH * s / 2.0 / track.height.max(1.0);
+    for mark in [INPUT_CAP, 1.0 - INPUT_CAP] {
+        b.rect(meter_part(track, true, mark - half, mark + half), Radii::ZERO, p.background);
+    }
+}
+
+/// The gap between the lift-and-coast row's segments at scale 1, px.
 const BAR_SEGMENT_GAP: f64 = 2.0;
 
-/// How bright an unlit segment shows its colour: a dim tint, so the scale stays readable.
+/// How bright an unlit segment or a meter's empty part shows its colour: a dim tint.
 const BAR_UNLIT: f64 = 0.22;
 
-/// A segment's unlit tint of `color`.
+/// A segment's unlit tint of `color`, or a meter's empty part.
 fn unlit(color: Rgba, p: &DashPaletteColors) -> Rgba {
     dim_color(color, BAR_UNLIT).unwrap_or(p.surface)
 }
 
-/// A fuel or energy level's colour (0–1 share) against the driver's limits: good down to the low
-/// mark, amber under it, red under the critical mark.
-fn level_color(share: f64, p: &DashPaletteColors, limits: &ColourLimits) -> Rgba {
-    let percent = share * 100.0;
-    if percent >= limits.energy_low_below {
-        p.good_on_target
-    } else if percent >= limits.energy_critical_below {
-        p.warning
+/// The room between a bar's frame and its meter, the same on every side, and between two meters
+/// side by side (inputs, fuel and VE, the sectors, the spotter's sides), px at scale 1.
+const BAR_INSET: f64 = 4.0;
+/// A meter's corner radius at scale 1.
+const METER_RADIUS: f64 = 3.0;
+/// How thick the notches between a level meter's cells are, px at scale 1.
+const METER_NOTCH: f64 = 2.0;
+
+/// A bar's meter: its box less `BAR_INSET` on every side (less in a box so small the inset would
+/// swallow half its short side), and whether it stands up.
+fn bar_track(w: &WidgetContext) -> (PixelRect, bool) {
+    let inset = (BAR_INSET * w.chrome.scale).min(w.width.min(w.height) / 4.0);
+    let track = PixelRect::new(inset, inset, (w.width - inset * 2.0).max(0.0), (w.height - inset * 2.0).max(0.0));
+    (track, w.height > w.width)
+}
+
+/// The stretch of a meter from share `from` to `to` of its length: 0 at the bottom (standing up)
+/// or the left.
+fn meter_part(track: PixelRect, vertical: bool, from: f64, to: f64) -> PixelRect {
+    if vertical {
+        PixelRect::new(track.left, track.top + track.height * (1.0 - to), track.width, track.height * (to - from))
     } else {
-        p.critical
+        PixelRect::new(track.left + track.width * from, track.top, track.width * (to - from), track.height)
     }
+}
+
+/// A meter stretch's corners: rounded at its `low` end (the bottom, or the left) and its `high`
+/// end where those are the meter's own ends or a fill's tip, square where it meets another stretch
+/// or the centre line.
+fn meter_corners(part: PixelRect, vertical: bool, s: f64, low: bool, high: bool) -> Radii {
+    let r = (METER_RADIUS * s).min(part.width / 2.0).min(part.height / 2.0);
+    let (low, high) = (if low { r } else { 0.0 }, if high { r } else { 0.0 });
+    if vertical {
+        Radii { top_left: high, top_right: high, bottom_right: low, bottom_left: low }
+    } else {
+        Radii { top_left: low, top_right: high, bottom_right: high, bottom_left: low }
+    }
+}
+
+/// What a bar widget shows: one widget type each (`bar_kind`), drawn as a meter by `bar`.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum BarKind {
+    Fuel,
+    VirtualEnergy,
+    Battery,
+    FuelAndVirtualEnergy,
+    Delta,
+    Gap,
+    ClassGap,
+    Sectors,
+    Inputs,
+    Throttle,
+    Brake,
+    Clutch,
+    Rpm,
+    Spotter,
+    Relative,
+}
+
+/// The bar a widget type draws; `None` for a widget that is no bar.
+fn bar_kind(widget_type: &str) -> Option<BarKind> {
+    Some(match widget_type {
+        "fuel_bar" => BarKind::Fuel,
+        "ve_bar" => BarKind::VirtualEnergy,
+        "battery_bar" => BarKind::Battery,
+        "fuel_ve_bar" => BarKind::FuelAndVirtualEnergy,
+        "delta_bar" => BarKind::Delta,
+        "gap_bar" => BarKind::Gap,
+        "class_gap_bar" => BarKind::ClassGap,
+        "sector_bar" => BarKind::Sectors,
+        "inputs_bar" => BarKind::Inputs,
+        "throttle_bar" => BarKind::Throttle,
+        "brake_bar" => BarKind::Brake,
+        "clutch_bar" => BarKind::Clutch,
+        "rpm_bar" => BarKind::Rpm,
+        "spotter_bar" => BarKind::Spotter,
+        "relative_bar" => BarKind::Relative,
+        _ => return None,
+    })
 }
 
 /// How full the tank is, 0–1: against its size when the game says it, else `FUEL_BAR_LITERS`.
@@ -386,96 +510,129 @@ fn segment_rect(track: PixelRect, vertical: bool, count: usize, gap: f64, i: usi
     }
 }
 
-/// A level bar in segments, no label or value: as many lit from the bottom (left) as the share
-/// fills, rounded up so a drop left still shows. Each segment wears its zone's colour (`level_color`
-/// of the share it stands for: red under the critical mark, amber under the low one, good above), lit or as
-/// a dim tint, so the scale reads even when full; a track with its own colour (`fixed`) wears
-/// that instead.
-fn level_segments(b: &mut Builder, w: &WidgetContext, track: PixelRect, vertical: bool, share: f64, fixed: Option<Rgba>) {
-    let (p, limits) = (w.palette, w.colour_limits());
-    let lit = (share.clamp(0.0, 1.0) * BAR_SEGMENTS as f64).ceil() as usize;
-    for i in 0..BAR_SEGMENTS {
-        let zone = fixed.unwrap_or_else(|| level_color((i as f64 + 0.5) / BAR_SEGMENTS as f64, p, &limits));
-        let color = if i < lit { zone } else { unlit(zone, p) };
-        b.rect(segment_rect(track, vertical, BAR_SEGMENTS, BAR_SEGMENT_GAP * w.chrome.scale, i), Radii::ZERO, color);
+/// How many cells a level meter is split into by its notches, so the level reads at a glance.
+const METER_CELLS: usize = 10;
+
+/// A level meter, like the app's meters: one rounded fill from the bottom (the left) that moves
+/// smoothly with the share, in the bar's own colour over a dim tint of it, split into
+/// `METER_CELLS` cells by dark notches. Its colour never changes with the level; the battery's
+/// (`red_below`, a 0–1 share) is red under the driver's critical mark instead, filled or not, so
+/// the last of the charge stands out where it always is.
+fn level_meter(b: &mut Builder, w: &WidgetContext, track: PixelRect, vertical: bool, share: f64, color: Rgba, red_below: Option<f64>) {
+    let (p, s) = (w.palette, w.chrome.scale);
+    let share = share.clamp(0.0, 1.0);
+    let red = red_below.map_or(0.0, |mark| mark.clamp(0.0, 1.0));
+    // One stretch of the meter, from `from` to `to`, rounded only at the meter's own ends and the
+    // fill's tip.
+    let mut stretch = |from: f64, to: f64, tip: bool, color: Rgba| {
+        let part = meter_part(track, vertical, from, to);
+        b.rect(part, meter_corners(part, vertical, s, from == 0.0, tip || to >= 1.0), color);
+    };
+    stretch(red, 1.0, true, unlit(color, p));
+    if red > 0.0 {
+        stretch(0.0, red, false, unlit(p.critical, p));
+    }
+    if share > 0.0 && red > 0.0 {
+        stretch(0.0, share.min(red), share <= red, p.critical);
+    }
+    if share > red {
+        stretch(red, share, true, color);
+    }
+    let length = if vertical { track.height } else { track.width };
+    let half = METER_NOTCH * s / 2.0 / length.max(1.0);
+    for cell in 1..METER_CELLS {
+        let at = cell as f64 / METER_CELLS as f64;
+        b.rect(meter_part(track, vertical, at - half, at + half), Radii::ZERO, p.background);
     }
 }
 
-/// A centre-out bar in segments: `up` lights segments from the middle up (right, lying down) and
-/// `down` from the middle down (left), each a 0–1 share of its half in its colour; unlit ones show
-/// their side's colour as a dim tint.
-fn centre_segments(b: &mut Builder, w: &WidgetContext, track: PixelRect, vertical: bool, up: (f64, Rgba), down: (f64, Rgba)) {
-    let p = w.palette;
-    let half = BAR_SEGMENTS / 2;
-    let lit = |share: f64| (share.clamp(0.0, 1.0) * half as f64).ceil() as usize;
-    let (up_lit, down_lit) = (lit(up.0), lit(down.0));
-    for i in 0..BAR_SEGMENTS {
-        let color = if i >= half {
-            if i - half < up_lit { up.1 } else { unlit(up.1, p) }
-        } else if half - 1 - i < down_lit {
-            down.1
-        } else {
-            unlit(down.1, p)
-        };
-        b.rect(segment_rect(track, vertical, BAR_SEGMENTS, BAR_SEGMENT_GAP * w.chrome.scale, i), Radii::ZERO, color);
+/// A centre-out meter: `up` grows from the middle up (right, lying down) and `down` from the
+/// middle down (left), each a 0–1 share of its half in its colour, over a quiet track with a white
+/// line at the middle.
+fn centre_meter(b: &mut Builder, w: &WidgetContext, track: PixelRect, vertical: bool, up: (f64, Rgba), down: (f64, Rgba)) {
+    let (p, s) = (w.palette, w.chrome.scale);
+    b.rect(track, meter_corners(track, vertical, s, true, true), p.surface);
+    let (up_share, down_share) = (up.0.clamp(0.0, 1.0) / 2.0, down.0.clamp(0.0, 1.0) / 2.0);
+    if up_share > 0.0 {
+        let fill = meter_part(track, vertical, 0.5, 0.5 + up_share);
+        b.rect(fill, meter_corners(fill, vertical, s, false, true), up.1);
+    }
+    if down_share > 0.0 {
+        let fill = meter_part(track, vertical, 0.5 - down_share, 0.5);
+        b.rect(fill, meter_corners(fill, vertical, s, true, false), down.1);
+    }
+    let length = if vertical { track.height } else { track.width };
+    let half = s / length.max(1.0);
+    b.rect(meter_part(track, vertical, 0.5 - half, 0.5 + half), Radii::ZERO, p.foreground);
+}
+
+/// How many shift lights the RPM bar has: five green, five red, five blue.
+const RPM_SEGMENTS: usize = 15;
+/// The gap between the RPM bar's segments, px at scale 1.
+const RPM_SEGMENT_GAP: f64 = 4.0;
+
+/// The revs as a row of shift lights (the driver's call, 2026-11-25): `RPM_SEGMENTS` from the
+/// bottom (the left, lying down), the first third green, the next red, the last blue, each lit
+/// once the revs reach its share of the maximum, unlit ones a quiet track. One generic pattern for
+/// every car for now.
+fn rpm_segments(b: &mut Builder, w: &WidgetContext, track: PixelRect, vertical: bool, share: f64) {
+    let (p, s) = (w.palette, w.chrome.scale);
+    let lit = (share.clamp(0.0, 1.0) * RPM_SEGMENTS as f64).ceil() as usize;
+    let stages = [p.rpm_normal, p.rpm_near_limit, p.rpm_shift];
+    for i in 0..RPM_SEGMENTS {
+        let color = if i < lit { stages[i * stages.len() / RPM_SEGMENTS] } else { p.surface };
+        let part = segment_rect(track, vertical, RPM_SEGMENTS, RPM_SEGMENT_GAP * s, i);
+        b.rect(part, meter_corners(part, vertical, s, true, true), color);
     }
 }
 
-/// A bar: segments with no label or value, the shape and colour say it. `channel`: fuel, ve, soc
-/// and fuel_ve fill from the bottom (the left, lying down) in their level's colour; throttle, brake
-/// and clutch in their own; delta, gap (on the road) and class_gap grow from the middle; inputs are
-/// two tracks; sectors three segments; rpm the shift strip; spotter a car's place; linear_map the
-/// lap as a line with the cars on it.
-fn bar(b: &mut Builder, w: &WidgetContext) {
-    let f = w.frame;
-    let p = w.palette;
-    let s = w.chrome.scale;
-    let channel = w.widget.config_string("channel").unwrap_or("fuel");
-    if channel == "rpm" {
-        let pct = (f.car.rpm / f.car.max_rpm.max(1.0)).clamp(0.0, 1.0);
-        return rpm_strip(b, w, pct);
-    }
-    let vertical = w.height > w.width;
-    let radius = w.chrome.look.radius * s * 0.5;
-    let track =
-        if vertical { PixelRect::new(w.width * 0.15, 0.0, w.width * 0.7, w.height) } else { PixelRect::new(0.0, w.height * 0.15, w.width, w.height * 0.7) };
-    match channel {
-        "spotter" => spotter_bar(b, w, vertical, radius),
-        "gap" => gap_bar(b, w, track, vertical, (Some(f.race.gap_ahead), Some(f.race.gap_behind))),
-        "class_gap" => gap_bar(b, w, track, vertical, (f.race.class_gap_ahead, f.race.class_gap_behind)),
-        "sectors" => sector_bar(b, w, track, vertical),
-        "linear_map" => linear_map(b, w, vertical),
-        "throttle" => level_segments(b, w, track, vertical, f.car.throttle, Some(p.success)),
-        "brake" => level_segments(b, w, track, vertical, f.car.brake, Some(p.danger)),
-        "clutch" => level_segments(b, w, track, vertical, f.car.clutch, Some(p.accent)),
-        "fuel_ve" => twin_bar(b, w, vertical, [(fuel_share(&f.car), None), (virtual_energy_percent(f) / 100.0, None)]),
-        "inputs" => twin_bar(b, w, vertical, [(f.car.throttle, Some(p.success)), (f.car.brake, Some(p.danger))]),
-        "delta" => {
-            // Gaining grows up (right) in green, losing down (left); a second either way fills it.
-            centre_segments(b, w, track, vertical, (-f.lap.delta, p.timing_personal_best), (f.lap.delta, p.secondary));
-        }
-        "ve" => level_segments(b, w, track, vertical, virtual_energy_percent(f) / 100.0, None),
-        "soc" => level_segments(b, w, track, vertical, f.energy.soc, None),
-        _ => level_segments(b, w, track, vertical, fuel_share(&f.car), None),
+/// A bar: a meter with no label or value, its shape and colour say it, `BAR_INSET` inside its
+/// frame on every side. Fuel, VE and battery fill from the bottom (the left, lying down) in their
+/// own colours (`dash_bar_colors`), the battery with a red zone under the driver's critical mark;
+/// throttle, brake and clutch in theirs; delta and the gaps grow from the middle; the inputs and fuel + VE
+/// are two meters; sectors three parts; the revs light shift-light segments; the spotter shows
+/// a car alongside, the relative the cars close round ours.
+fn bar(b: &mut Builder, w: &WidgetContext, kind: BarKind) {
+    let (f, p) = (w.frame, w.palette);
+    let (track, vertical) = bar_track(w);
+    let battery_red = Some(w.colour_limits().energy_critical_below / 100.0);
+    let (fuel, ve, battery) = (fuel_share(&f.car), virtual_energy_percent(f) / 100.0, f.energy.soc);
+    match kind {
+        BarKind::Fuel => level_meter(b, w, track, vertical, fuel, dash_bar_colors::FUEL, None),
+        BarKind::VirtualEnergy => level_meter(b, w, track, vertical, ve, dash_bar_colors::VIRTUAL_ENERGY, None),
+        BarKind::Battery => level_meter(b, w, track, vertical, battery, dash_bar_colors::BATTERY, battery_red),
+        BarKind::FuelAndVirtualEnergy => twin_meter(b, w, track, vertical, [(fuel, dash_bar_colors::FUEL), (ve, dash_bar_colors::VIRTUAL_ENERGY)]),
+        BarKind::Throttle => level_meter(b, w, track, vertical, f.car.throttle, p.success, None),
+        BarKind::Brake => level_meter(b, w, track, vertical, f.car.brake, p.danger, None),
+        BarKind::Clutch => level_meter(b, w, track, vertical, f.car.clutch, p.accent, None),
+        BarKind::Inputs => twin_meter(b, w, track, vertical, [(f.car.throttle, p.success), (f.car.brake, p.danger)]),
+        // Gaining grows up (right) in green, losing down (left); a second either way fills it.
+        BarKind::Delta => centre_meter(b, w, track, vertical, (-f.lap.delta, p.timing_personal_best), (f.lap.delta, p.secondary)),
+        BarKind::Gap => gap_bar(b, w, track, vertical, (Some(f.race.gap_ahead), Some(f.race.gap_behind))),
+        BarKind::ClassGap => gap_bar(b, w, track, vertical, (f.race.class_gap_ahead, f.race.class_gap_behind)),
+        BarKind::Sectors => sector_bar(b, w, track, vertical),
+        BarKind::Rpm => rpm_segments(b, w, track, vertical, f.car.rpm / f.car.max_rpm.max(1.0)),
+        BarKind::Spotter => spotter_bar(b, w, track, vertical),
+        BarKind::Relative => relative_bar(b, w, track, vertical),
     }
 }
 
 /// What a full fuel bar holds, litres, when the game does not say the tank's size.
 const FUEL_BAR_LITERS: f64 = 100.0;
 
-/// Two segmented tracks side by side (stacked, lying down), each filled to its share: in its
-/// level's colour, or in its own (the inputs: throttle green, brake red).
-fn twin_bar(b: &mut Builder, w: &WidgetContext, vertical: bool, tracks: [(f64, Option<Rgba>); 2]) {
-    let half_gap = 2.0 * w.chrome.scale;
-    for (i, (share, color)) in tracks.into_iter().enumerate() {
-        let track = if vertical {
-            let width = w.width / 2.0 - half_gap;
-            PixelRect::new(i as f64 * (w.width / 2.0 + half_gap), 0.0, width, w.height)
+/// Two level meters side by side (stacked, lying down), `BAR_INSET` apart, each filled to its
+/// share in its colour (`level_meter`).
+fn twin_meter(b: &mut Builder, w: &WidgetContext, track: PixelRect, vertical: bool, meters: [(f64, Rgba); 2]) {
+    let gap = BAR_INSET * w.chrome.scale;
+    for (i, (share, color)) in meters.into_iter().enumerate() {
+        let part = if vertical {
+            let width = ((track.width - gap) / 2.0).max(0.0);
+            PixelRect::new(track.left + i as f64 * (width + gap), track.top, width, track.height)
         } else {
-            let height = w.height / 2.0 - half_gap;
-            PixelRect::new(0.0, i as f64 * (w.height / 2.0 + half_gap), w.width, height)
+            let height = ((track.height - gap) / 2.0).max(0.0);
+            PixelRect::new(track.left, track.top + i as f64 * (height + gap), track.width, height)
         };
-        level_segments(b, w, track, vertical, share, color);
+        level_meter(b, w, part, vertical, share, color, None);
     }
 }
 
@@ -489,60 +646,54 @@ fn closeness(gap: Option<f64>) -> f64 {
     }
 }
 
-/// Two gaps (ahead, behind; on the road or in the class) as one segmented bar from the middle: the
-/// car ahead lights green segments up (right, lying down) as the driver closes in, the car behind
-/// amber ones down (left) as it closes in.
+/// Two gaps (ahead, behind; on the road or in the class) as one meter from the middle: the car
+/// ahead grows a green fill up (right, lying down) as the driver closes in, the car behind an
+/// amber one down (left) as it closes in.
 fn gap_bar(b: &mut Builder, w: &WidgetContext, track: PixelRect, vertical: bool, (ahead, behind): (Option<f64>, Option<f64>)) {
-    centre_segments(b, w, track, vertical, (closeness(ahead), w.palette.success), (closeness(behind), w.palette.warning));
+    centre_meter(b, w, track, vertical, (closeness(ahead), w.palette.success), (closeness(behind), w.palette.warning));
 }
 
-/// The three sectors as three segments, the first at the bottom (the left, lying down), each done
-/// one in its comparison colour like the Sectors widget (white with nothing to compare), one not
-/// done yet a dim tint.
+/// The three sectors as three parts `BAR_INSET` apart, the first at the bottom (the left, lying
+/// down), each done one in its comparison colour like the Sectors widget (white with nothing to
+/// compare), one not done yet a dim tint.
 fn sector_bar(b: &mut Builder, w: &WidgetContext, track: PixelRect, vertical: bool) {
-    let (lap, p) = (&w.frame.lap, w.palette);
+    let (lap, p, s) = (&w.frame.lap, w.palette, w.chrome.scale);
     for (i, time) in shown_sectors(lap).into_iter().enumerate() {
         let color = match time {
             Some(time) => sector_color(sector_state(lap, i, time), p).unwrap_or(p.neutral),
             None => unlit(p.neutral, p),
         };
-        b.rect(segment_rect(track, vertical, 3, 4.0 * w.chrome.scale, i), Radii::ZERO, color);
+        let part = segment_rect(track, vertical, 3, BAR_INSET * s, i);
+        b.rect(part, meter_corners(part, vertical, s, true, true), color);
     }
 }
 
-/// The lap as a line, the start at the bottom (the left, lying down), with every car where it is on
-/// the lap as a dot in its class's colour (grey for a class the dash does not know); ours is larger,
-/// white and ringed, drawn over the rest. Without the track's length, the line alone.
-fn linear_map(b: &mut Builder, w: &WidgetContext, vertical: bool) {
-    let (f, p, s) = (w.frame, w.palette, w.chrome.scale);
-    let (length, across) = if vertical { (w.height, w.width) } else { (w.width, w.height) };
-    let ours_r = (across * 0.32).min(9.0 * s);
-    let car_r = ours_r * 0.62;
-    let thickness = (across * 0.12).clamp(1.0, 3.0 * s);
-    let mid = across / 2.0;
-    let line = if vertical {
-        PixelRect::new(mid - thickness / 2.0, ours_r, thickness, length - ours_r * 2.0)
-    } else {
-        PixelRect::new(ours_r, mid - thickness / 2.0, length - ours_r * 2.0, thickness)
+/// How far the relative bar looks either way on the road, seconds.
+const RELATIVE_BAR_SECONDS: f64 = 5.0;
+/// A car's length on the relative bar, px at scale 1 (at most a twelfth of the bar).
+const RELATIVE_BAR_CAR: f64 = 10.0;
+
+/// The cars close round ours on the road, timed like the Relative widget (`relative_rows`): each
+/// within `RELATIVE_BAR_SECONDS` a pill in its class's colour (grey for a class the dash does not
+/// know, dim a lap down), ahead up (right, lying down) and behind down (left) as far as its
+/// seconds; ours the white one in the middle.
+fn relative_bar(b: &mut Builder, w: &WidgetContext, track: PixelRect, vertical: bool) {
+    let (p, s) = (w.palette, w.chrome.scale);
+    b.rect(track, meter_corners(track, vertical, s, true, true), p.surface);
+    let length = if vertical { track.height } else { track.width };
+    let car = (RELATIVE_BAR_CAR * s / length.max(1.0)).min(1.0 / 12.0);
+    let mut place = |ahead_seconds: f64, color: Rgba| {
+        let from = (0.5 + ahead_seconds / RELATIVE_BAR_SECONDS / 2.0 - car / 2.0).clamp(0.0, 1.0 - car);
+        let part = meter_part(track, vertical, from, from + car);
+        b.rect(part, meter_corners(part, vertical, s, true, true), color);
     };
-    b.rect(line, Radii::all(thickness / 2.0), p.border);
-    let Some(track) = f.session.track_length_meters.filter(|m| *m > 0.0) else {
-        return;
-    };
-    // A car's centre: as far along the line as it is round the lap.
-    let at = |car: &FieldCar| {
-        let along = ours_r + (car.lap_distance_meters / track).rem_euclid(1.0) * (length - ours_r * 2.0);
-        if vertical { (mid, length - along) } else { (along, mid) }
-    };
-    for car in f.field.iter().filter(|car| !car.is_player) {
-        let (x, y) = at(car);
-        dot(b, x, y, car_r, class_color(&car.car_class).unwrap_or(p.secondary));
+    // Every car the Relative would list, however far: the bar keeps the close ones.
+    for row in relative_rows(w.frame, w.frame.field.len()).iter().filter(|row| !row.car.is_player && row.seconds.abs() <= RELATIVE_BAR_SECONDS) {
+        let color = class_color(&row.car.car_class).unwrap_or(p.secondary);
+        // A row's seconds are negative ahead.
+        place(-row.seconds, if row.laps < 0 { unlit(color, p) } else { color });
     }
-    if let Some(ours) = f.field.iter().find(|car| car.is_player) {
-        let (x, y) = at(ours);
-        dot(b, x, y, ours_r, p.background);
-        dot(b, x, y, ours_r - 1.5 * s, p.foreground);
-    }
+    place(0.0, p.foreground);
 }
 
 /// How far the spotter bar looks ahead and behind, metres: two car lengths each way.
@@ -554,28 +705,26 @@ const SPOTTER_CAR_METERS: f64 = 5.0;
 /// stretch from two car lengths behind (bottom) to two ahead (top) and the car is a block where it
 /// is; the driver's own car is the mark in the middle. A bar in the left spot (column 0) watches
 /// the left, any other standing bar the right; lying down (the top) it watches both, left half and
-/// right half.
-fn spotter_bar(b: &mut Builder, w: &WidgetContext, vertical: bool, radius: f64) {
+/// right half, `BAR_INSET` apart.
+fn spotter_bar(b: &mut Builder, w: &WidgetContext, track: PixelRect, vertical: bool) {
     let (p, s, race) = (w.palette, w.chrome.scale, &w.frame.race);
     if vertical {
         let ahead = if w.widget.col <= 0.0 { race.car_left } else { race.car_right };
-        let track = PixelRect::new(w.width * 0.2, 0.0, w.width * 0.6, w.height);
-        b.rect(track, Radii::all(radius), p.surface);
+        b.rect(track, meter_corners(track, true, s, true, true), p.surface);
         let mid = track.top + track.height / 2.0;
-        b.rect(PixelRect::new(track.left - 3.0 * s, mid - s, track.width + 6.0 * s, 2.0 * s), Radii::ZERO, p.muted);
+        b.rect(PixelRect::new(track.left, mid - s, track.width, 2.0 * s), Radii::ZERO, p.muted);
         if let Some(ahead) = ahead {
             let per_meter = track.height / (SPOTTER_RANGE_METERS * 2.0);
             let length = SPOTTER_CAR_METERS * per_meter;
             let center = mid - ahead.clamp(-SPOTTER_RANGE_METERS, SPOTTER_RANGE_METERS) * per_meter;
             let top = (center - length / 2.0).clamp(track.top, track.top + track.height - length);
-            b.rect(PixelRect::new(track.left, top, track.width, length), Radii::all(radius), p.warning);
+            let car = PixelRect::new(track.left, top, track.width, length);
+            b.rect(car, meter_corners(car, true, s, true, true), p.warning);
         }
     } else {
-        let gap = 6.0 * s;
-        let half = (w.width - gap) / 2.0;
         for (i, side) in [race.car_left, race.car_right].into_iter().enumerate() {
-            let track = PixelRect::new(i as f64 * (half + gap), w.height * 0.2, half, w.height * 0.6);
-            b.rect(track, Radii::all(radius), if side.is_some() { p.warning } else { p.surface });
+            let half = segment_rect(track, false, 2, BAR_INSET * s, i);
+            b.rect(half, meter_corners(half, false, s, true, true), if side.is_some() { p.warning } else { p.surface });
         }
     }
 }
@@ -715,7 +864,7 @@ fn tyre(b: &mut Builder, w: &WidgetContext) {
     let (width, height) = (w.width, w.height);
     let square_w = (height * 0.62).min(width * 0.36);
     let square_left = if left_side { 0.0 } else { width - square_w };
-    stripes(b, tire, PixelRect::new(square_left, 0.0, square_w, height), left_side, w.chrome.look.radius * s, w);
+    stripes(b, tire, PixelRect::new(square_left, 0.0, square_w, height), left_side, crate::chrome::RADIUS * s, w);
 
     let pill_h = (height * 0.24).min(20.0 * s);
     let pill_w = square_w * 0.84;
@@ -1080,43 +1229,27 @@ fn sector_time(b: &mut Builder, w: &WidgetContext) {
     big_value(b, &text, "S0 000.000", w.width, w.height, color, 0.8);
 }
 
-/// The `align` config: where a widget anchors its text horizontally.
-fn horizontal_anchor(widget: &DashWidget, width: f64) -> (f64, TextAlign) {
-    match widget.config_string("align") {
-        Some("left") => (width * 0.06, TextAlign::Start),
-        Some("right") => (width * 0.94, TextAlign::End),
-        _ => (width / 2.0, TextAlign::Center),
-    }
-}
-
+/// The gear over the speed and its unit, centred: Sprint places it, not the dash (#274).
 fn gear_speed(b: &mut Builder, w: &WidgetContext) {
     // Its Small form (`widgetForms.json`) is the gear alone.
     if w.form > 0 {
-        return gear(b, w);
+        return draw_gear(b, w, GearParts::DIGIT_ALONE);
     }
     let car = &w.frame.car;
-    let rpm_ratio = if car.max_rpm > 0.0 { car.rpm / car.max_rpm } else { 0.0 };
-    let gear_color = if rpm_ratio >= 0.96 {
-        w.palette.rpm_shift
-    } else if rpm_ratio >= 0.88 {
-        w.palette.rpm_near_limit
-    } else {
-        w.palette.neutral
-    };
-    let (anchor_x, align) = horizontal_anchor(w.widget, w.width);
+    let gear_color = w.gear_color(w.palette.neutral);
     let height = w.height;
     let gear = format_gear(car.gear);
     let units = w.units();
     let speed = format_speed(car.speed_ms, units);
     let base = TextLine {
         text: &gear,
-        left: anchor_x,
+        left: w.width / 2.0,
         top: height * 0.4,
         size: height * 0.6,
         color: gear_color,
-        align,
+        align: TextAlign::Center,
         max_width: Some(w.width * 0.9),
-        weight: TextWeight::ValueRegular,
+        weight: TextWeight::Value,
         sizing: TextSizing::Stable,
     };
     text_line(b, base);
@@ -1416,6 +1549,35 @@ fn tyre_corners(b: &mut Builder, w: &WidgetContext, title: &str, corner: impl Fn
         let rect = PixelRect::new((i % 2) as f64 * cell_w, (i / 2) as f64 * cell_h, cell_w, cell_h);
         let frame = WidgetFrame { ctx: w.chrome, rect, title: Some(&title), accent: None, fill, palette: *w.palette };
         widget_frame(b, frame, |b, width, height, palette| big_value(b, &value, template, width, height, palette.foreground, VALUE_SHARE));
+    }
+}
+
+/// The motorsport temperature numbers (the driver's call, 2026-11-25): the four corners in car
+/// order, two by two, each a bare whole number in the driver's unit (no degree sign, no label, no
+/// frame of its own) in its colour on the scale, "--" in grey while unknown: the tyres' tread
+/// (`tyre_temp_numbers`), the brakes (`brake_temp_numbers`), or each corner's tyre with its brake
+/// smaller below (`tyre_brake_temp_numbers`). A flat or detached tyre says so in red.
+fn temp_numbers(b: &mut Builder, w: &WidgetContext) {
+    let (p, units, limits) = (w.palette, w.units(), w.colour_limits());
+    let bare = |celsius: f64| if celsius > 0.0 { format_degrees(celsius, units).trim_end_matches('°').to_owned() } else { "--".to_owned() };
+    let brake_template = if units == Units::Imperial { "0000" } else { "000" };
+    let (cell_w, cell_h) = (w.width / 2.0, w.height / 2.0);
+    for (i, tire) in w.frame.tires.iter().take(TIRE_CORNERS.len()).enumerate() {
+        let tyre_temp = tyre_temperature(tire);
+        let (tyre_text, tyre_color) = match broken_tyre(tire) {
+            Some(state) => (state.to_owned(), p.critical),
+            None if tyre_temp > 0.0 => (bare(tyre_temp), resolve_tyre_color(tyre_temp, tire.optimal_temp, p, &limits)),
+            None => (bare(0.0), p.muted),
+        };
+        let (brake_text, brake_color) = (bare(tire.brake_temp), brake_color(tire.brake_temp, p, &limits).unwrap_or(p.muted));
+        b.translated((i % 2) as f64 * cell_w, (i / 2) as f64 * cell_h, |b| match w.widget.widget_type.as_str() {
+            "brake_temp_numbers" => big_value(b, &brake_text, brake_template, cell_w, cell_h, brake_color, 0.86),
+            "tyre_brake_temp_numbers" => {
+                big_value(b, &tyre_text, "000", cell_w, cell_h * 0.64, tyre_color, 0.86);
+                b.translated(0.0, cell_h * 0.6, |b| big_value(b, &brake_text, brake_template, cell_w, cell_h * 0.38, brake_color, 0.8));
+            }
+            _ => big_value(b, &tyre_text, "000", cell_w, cell_h, tyre_color, 0.86),
+        });
     }
 }
 
@@ -1788,23 +1950,76 @@ fn relative(b: &mut Builder, w: &WidgetContext) {
     }
 }
 
-/// LMU's eight dent places (`Damage::dents`) as cells of a 3x3 grid over the car, front up:
-/// (column, row), clockwise from front left. The middle cell is the cockpit.
-const DENT_CELLS: [(usize, usize); 8] = [(0, 0), (1, 0), (2, 0), (2, 1), (2, 2), (1, 2), (0, 2), (0, 1)];
+/// LMU's own simple car, the one every car drawing in Sprint is (the app's `SchematicCar.tsx`):
+/// nose up in a 120 x 196 box, four 22 x 40 wheels with 5 corners, and its eight dent places as
+/// strokes 5 wide.
+const SCHEMATIC_SIZE: (f64, f64) = (120.0, 196.0);
+const SCHEMATIC_WHEELS: [(f64, f64); 4] = [(6.0, 44.0), (92.0, 44.0), (6.0, 130.0), (92.0, 130.0)];
+const SCHEMATIC_WHEEL: (f64, f64, f64) = (22.0, 40.0, 5.0);
+const SCHEMATIC_STROKE: f64 = 5.0;
 
-/// The car from above, front up, each of its eight dent places in warning (some) or critical
-/// (more), and beside it the verdict: the body's worst dent, then a part off or the engine
-/// overheating when either is so. No damage report draws the car muted, with no verdict.
+/// The ellipse an arc part lies on: centre, radii, and a negative `ry` bending it below the centre.
+#[derive(Clone, Copy)]
+struct Ellipse {
+    cx: f64,
+    cy: f64,
+    rx: f64,
+    ry: f64,
+}
+
+const NOSE: Ellipse = Ellipse { cx: 60.0, cy: 44.0, rx: 28.0, ry: 26.0 };
+const TAIL: Ellipse = Ellipse { cx: 60.0, cy: 170.0, rx: 28.0, ry: -16.0 };
+
+/// One dent place's part: a third of the nose's or the tail's arc (from one angle to a smaller
+/// one, degrees, 0 = right; the small gaps between thirds are LMU's), or a line down a side.
+#[derive(Clone, Copy)]
+enum DentPart {
+    Arc(Ellipse, f64, f64),
+    Side { x: f64, top: f64, bottom: f64 },
+}
+
+/// The eight dent places in `Damage::dents` order, clockwise from front left (the app's `DENT_ZONES`).
+const DENT_PARTS: [DentPart; 8] = [
+    DentPart::Arc(NOSE, 180.0, 123.0),
+    DentPart::Arc(NOSE, 117.0, 63.0),
+    DentPart::Arc(NOSE, 57.0, 0.0),
+    DentPart::Side { x: 88.0, top: 92.0, bottom: 122.0 },
+    DentPart::Arc(TAIL, 57.0, 0.0),
+    DentPart::Arc(TAIL, 117.0, 63.0),
+    DentPart::Arc(TAIL, 180.0, 123.0),
+    DentPart::Side { x: 32.0, top: 92.0, bottom: 122.0 },
+];
+
+/// How far apart, in degrees, the dots that draw an arc sit: the Builder strokes no paths, so an
+/// arc is a row of overlapping round dots one stroke wide (which also gives it round ends).
+const ARC_DOT_STEP: f64 = 3.0;
+
+/// Draws one dent place's part `stroke` wide, the schematic at `scale` from (`x`, `y`).
+fn dent_part(b: &mut Builder, part: DentPart, (x, y, scale): (f64, f64, f64), stroke: f64, color: Rgba) {
+    match part {
+        DentPart::Arc(e, from, to) => {
+            let steps = ((from - to) / ARC_DOT_STEP).ceil();
+            for i in 0..=steps as usize {
+                let angle = (from - (from - to) * i as f64 / steps).to_radians();
+                dot(b, x + (e.cx + e.rx * angle.cos()) * scale, y + (e.cy - e.ry * angle.sin()) * scale, stroke / 2.0, color);
+            }
+        }
+        DentPart::Side { x: at, top, bottom } => {
+            let rect = PixelRect::new(x + at * scale - stroke / 2.0, y + top * scale - stroke / 2.0, stroke, (bottom - top) * scale + stroke);
+            b.rect(rect, Radii::all(stroke / 2.0), color);
+        }
+    }
+}
+
+/// The car from above (LMU's schematic), nose up, each of its eight dent places in warning (some)
+/// or critical (more), and beside it the verdict: the body's worst dent, then a part off or the
+/// engine overheating when either is so. No damage report draws the car muted, with no verdict.
 fn damage(b: &mut Builder, w: &WidgetContext) {
     let (width, height, p) = (w.width, w.height, w.palette);
-    let car_w = (width * 0.4).min(height / 2.0);
-    let car_h = car_w * 2.0;
-    let (x, y) = ((width * 0.4 - car_w) / 2.0, (height - car_h) / 2.0);
-    let edge = car_w * 0.3;
-    let gap = 2.0;
-    let spans = |extent: f64| [(0.0, edge), (edge, extent - edge * 2.0), (extent - edge, edge)];
-    let (cols, rows) = (spans(car_w), spans(car_h));
-    let cell = |(col, row): (usize, usize)| PixelRect::new(x + cols[col].0 + gap / 2.0, y + rows[row].0 + gap / 2.0, cols[col].1 - gap, rows[row].1 - gap);
+    let scale = (width * 0.4 / SCHEMATIC_SIZE.0).min(height / SCHEMATIC_SIZE.1);
+    let at = ((width * 0.4 - SCHEMATIC_SIZE.0 * scale) / 2.0, (height - SCHEMATIC_SIZE.1 * scale) / 2.0, scale);
+    // A whole-pixel stroke keeps every dot the same size once snapped to the pixel grid.
+    let stroke = (SCHEMATIC_STROKE * scale).round().max(2.0);
     let report = w.frame.damage.as_ref();
     let severity_color = |level: f64| {
         if level >= 2.0 {
@@ -1815,10 +2030,13 @@ fn damage(b: &mut Builder, w: &WidgetContext) {
             p.muted
         }
     };
-    b.rect(cell((1, 1)), Radii::all(2.0), p.border);
-    for (place, at) in DENT_CELLS.into_iter().enumerate() {
-        let color = report.map_or(p.border, |d| severity_color(d.dents[place]));
-        b.rect(cell(at), Radii::all(2.0), color);
+    let (wheel_w, wheel_h, wheel_r) = SCHEMATIC_WHEEL;
+    for (wx, wy) in SCHEMATIC_WHEELS {
+        b.rect(PixelRect::new(at.0 + wx * scale, at.1 + wy * scale, wheel_w * scale, wheel_h * scale), Radii::all(wheel_r * scale), p.border);
+    }
+    for (place, part) in DENT_PARTS.into_iter().enumerate() {
+        let color = report.map_or(p.muted, |d| severity_color(d.dents[place]));
+        dent_part(b, part, at, stroke, color);
     }
 
     let Some(report) = report else {
@@ -1847,11 +2065,16 @@ fn damage(b: &mut Builder, w: &WidgetContext) {
     }
 }
 
-/// Free text: the bound value when it prints as something, else the configured content, else
-/// the widget's id. A bound value is printed as `String(value)`, with no per-type formatting.
+/// What a text widget may show besides its own text: who drives and where, for the idle page.
+/// Live values have widgets of their own, drawn and coloured properly (#274), so any other
+/// binding a saved dash still carries is ignored.
+const TEXT_BINDINGS: [&str; 4] = ["profile.driverName", "profile.driverNumber", "session.track", "session.car"];
+
+/// Free text: the bound identity value when it prints as something, else the configured content,
+/// else the widget's id. A bound value is printed as `String(value)`, with no per-type formatting.
 fn text(b: &mut Builder, w: &WidgetContext) {
     let content = w.widget.config_string("content").unwrap_or("");
-    let resolved = match w.widget.config_string("binding").filter(|binding| !binding.is_empty()) {
+    let resolved = match w.widget.config_string("binding").filter(|binding| TEXT_BINDINGS.contains(binding)) {
         Some(binding) => resolve_binding(BindingContext { frame: w.frame, settings: w.settings, targets: w.targets }, binding).to_display(),
         None => String::new(),
     };
@@ -1887,14 +2110,14 @@ fn placeholder(b: &mut Builder, w: &WidgetContext) {
 pub fn widget_content(b: &mut Builder, w: &WidgetContext) {
     match w.widget.widget_type.as_str() {
         "text" => text(b, w),
-        "rpm_bar" => rpm_bar(b, w),
         "gear" => gear(b, w),
+        "tyre_temp_numbers" | "brake_temp_numbers" | "tyre_brake_temp_numbers" => temp_numbers(b, w),
         "gear_speed" => gear_speed(b, w),
         "input_trace" => input_trace(b, w),
         "current_lap" | "last_lap" | "best_lap" | "session_best" | "class_best" | "predictive_lap" | "optimal_lap" | "lap_avg_5" | "lap_avg_10"
         | "all_time_best" => lap_value(b, w),
         "delta" => delta(b, w),
-        "bar" => bar(b, w),
+        kind if let Some(kind) = bar_kind(kind) => bar(b, w, kind),
         "tyre" | "tyre_temp" | "tyre_core_temp" | "tyre_avg" | "brake_temp" | "tyre_pressure" | "tyre_wear" | "tyre_wear_lap" | "tyre_laps_left" => tyres(b, w),
         "sectors" => sectors(b, w),
         "speed" | "laps" | "time_left" | "laps_left" | "clock" | "penalty" | "session_name" | "session_time" | "pit_loss" => metric(b, w),
@@ -1976,7 +2199,7 @@ mod tests {
             height,
             targets,
             settings,
-            chrome: ChromeContext { scale: 1.0, look: Default::default() },
+            chrome: ChromeContext { scale: 1.0, look: crate::chrome::Look::SPRINT },
             limits: AlertLimits::default(),
             form: 0,
         };
@@ -2000,12 +2223,14 @@ mod tests {
     const P: DashPaletteColors = DEFAULT_DASH_PALETTE;
 
     #[test]
-    fn text_prefers_its_binding_then_its_content_then_its_id() {
+    fn text_prefers_its_identity_binding_then_its_content_then_its_id() {
         let mut frame = TelemetryFrame::default();
-        frame.car.rpm = 7450.4;
+        frame.car.speed_ms = 50.0;
+        frame.session.track = "Le Mans".to_owned();
         let settings = DashSettings { driver_name: Some("A. Driver".to_owned()), ..DashSettings::default() };
         let shown = |config| text_of(&draw_with(&widget("text", config), &frame, 200.0, 80.0, None, Some(&settings)))[0].clone();
-        assert_eq!(shown(json!({ "binding": "car.rpm", "content": "unused" })), "7450");
+        assert_eq!(shown(json!({ "binding": "session.track", "content": "unused" })), "Le Mans");
+        assert_eq!(shown(json!({ "binding": "car.speed", "content": "SPEED" })), "SPEED", "a live value a saved dash still binds is static text");
         assert_eq!(shown(json!({ "binding": "profile.driverName" })), "A. Driver");
         assert_eq!(shown(json!({ "binding": "profile.driverNumber", "content": "HELLO" })), "HELLO");
         assert_eq!(shown(json!({ "content": "" })), "w");
@@ -2247,7 +2472,7 @@ mod tests {
                 height: 120.0,
                 targets: None,
                 settings: None,
-                chrome: ChromeContext { scale: 1.0, look: Default::default() },
+                chrome: ChromeContext { scale: 1.0, look: crate::chrome::Look::SPRINT },
                 limits: AlertLimits::default(),
                 form,
             };
@@ -2354,7 +2579,7 @@ mod tests {
             height: 60.0,
             targets: None,
             settings: None,
-            chrome: ChromeContext { scale: 1.0, look: Default::default() },
+            chrome: ChromeContext { scale: 1.0, look: crate::chrome::Look::SPRINT },
             limits: AlertLimits { engine: limits, ..AlertLimits::default() },
             form: 0,
         };
@@ -2553,49 +2778,60 @@ mod tests {
         dim_color(color, BAR_UNLIT).expect("a palette colour dims")
     }
 
-    #[test]
-    fn a_level_bar_is_twenty_segments_in_their_zones_colours_with_no_label_or_value() {
-        let mut frame = TelemetryFrame::default();
-        frame.car.fuel = 31.5;
-        frame.car.fuel_capacity = Some(90.0);
-        let ops = draw(&widget("bar", json!({ "channel": "fuel" })), &frame, 30.0, 400.0);
-        assert!(texts(&ops).is_empty(), "no label or value");
-        let colors: Vec<Rgba> = rects(&ops).into_iter().map(|(_, color)| color).collect();
-        // 35% of the tank lights seven of twenty from the bottom: four in the red fifth, three amber.
-        let (red, amber, green) = (P.critical, P.warning, P.success);
-        let mut expected = vec![red; 4];
-        expected.extend([amber; 3]);
-        expected.extend([tint(amber); 3]);
-        expected.extend([tint(green); 10]);
-        assert_eq!(colors, expected);
-
-        // The bottom segment sits at the bottom: segment 0 is drawn first.
-        let first = rects(&ops)[0].0;
-        assert!((first.top + first.height - 400.0).abs() < 0.05, "{first:?}");
-
-        // Without the tank's size, 100 L is a full tank.
-        frame.car.fuel_capacity = None;
-        frame.car.fuel = 35.0;
-        assert_eq!(rects(&draw(&widget("bar", json!({ "channel": "fuel" })), &frame, 30.0, 400.0)).len(), 20);
-        assert_eq!(rects(&draw(&widget("bar", json!({ "channel": "fuel" })), &frame, 30.0, 400.0))[6].1, amber);
+    /// `rect` is (left, top, width, height), to a layout unit per term (box numbers are in 1/64 px).
+    fn at(rect: PixelRect, (left, top, width, height): (f64, f64, f64, f64)) -> bool {
+        [rect.left - left, rect.top - top, rect.width - width, rect.height - height].iter().all(|d| d.abs() < 2.0 / 64.0)
     }
 
     #[test]
-    fn the_delta_bar_grows_up_from_the_middle_while_gaining_and_down_while_losing() {
+    fn a_level_bar_fills_smoothly_in_its_own_colour_in_ten_cells_and_the_battery_over_a_red_zone() {
+        let mut frame = TelemetryFrame::default();
+        frame.energy.soc = 0.35;
+        let ops = draw(&widget("battery_bar", json!({})), &frame, 30.0, 400.0);
+        assert!(texts(&ops).is_empty(), "no label or value");
+        let parts = rects(&ops);
+        let colors: Vec<Rgba> = parts.iter().map(|(_, color)| *color).collect();
+        // 35% charge: the red zone (the critical mark, 30%) full, then the battery's own colour to
+        // 35%, over their tints; nine notches in the dash's background make ten cells.
+        let mut expected = vec![tint(dash_bar_colors::BATTERY), tint(P.critical), P.critical, dash_bar_colors::BATTERY];
+        expected.extend([P.background; 9]);
+        assert_eq!(colors, expected);
+        assert!(at(parts[0].0, (4.0, 4.0, 22.0, 392.0 * 0.7)), "4 px in from every side: {:?}", parts[0].0);
+        assert!(at(parts[1].0, (4.0, 4.0 + 392.0 * 0.7, 22.0, 392.0 * 0.3)), "the red zone at the bottom: {:?}", parts[1].0);
+        assert!(at(parts[3].0, (4.0, 4.0 + 392.0 * 0.65, 22.0, 392.0 * 0.05)), "not in tenths: {:?}", parts[3].0);
+        assert!(at(parts[4].0, (4.0, 4.0 + 392.0 * 0.9 - 1.0, 22.0, 2.0)), "the first notch, a tenth up: {:?}", parts[4].0);
+        frame.energy.soc = 0.15;
+        let low = rects(&draw(&widget("battery_bar", json!({})), &frame, 30.0, 400.0));
+        assert_eq!(low[2].1, P.critical);
+        assert!(at(low[2].0, (4.0, 4.0 + 392.0 * 0.85, 22.0, 392.0 * 0.15)), "half the red zone: {:?}", low[2].0);
+        assert_ne!(low[3].1, dash_bar_colors::BATTERY, "nothing above the red zone");
+
+        // Fuel and VE have no red zone: their own colour from the bottom, however low.
+        (frame.car.fuel, frame.car.fuel_capacity) = (13.5, Some(90.0));
+        let fuel = rects(&draw(&widget("fuel_bar", json!({})), &frame, 30.0, 400.0));
+        assert_eq!(fuel[..2].iter().map(|(_, c)| *c).collect::<Vec<_>>(), [tint(dash_bar_colors::FUEL), dash_bar_colors::FUEL]);
+        assert!(at(fuel[0].0, (4.0, 4.0, 22.0, 392.0)) && at(fuel[1].0, (4.0, 4.0 + 392.0 * 0.85, 22.0, 392.0 * 0.15)), "{fuel:?}");
+        // Without the tank's size, 100 L is a full tank.
+        frame.car.fuel_capacity = None;
+        assert!(at(rects(&draw(&widget("fuel_bar", json!({})), &frame, 30.0, 400.0))[1].0, (4.0, 4.0 + 392.0 * 0.865, 22.0, 392.0 * 0.135)));
+        assert_eq!(bar_colors("ve_bar", &frame, 30.0, 400.0)[..1], [tint(dash_bar_colors::VIRTUAL_ENERGY)]);
+        assert!(!bar_colors("fuel_ve_bar", &frame, 30.0, 400.0).contains(&tint(P.critical)));
+    }
+
+    #[test]
+    fn the_delta_bar_grows_up_from_the_white_middle_while_gaining_and_down_while_losing() {
         let mut frame = TelemetryFrame::default();
         frame.lap.delta = -0.42;
-        let colors = |frame: &TelemetryFrame| -> Vec<Rgba> {
-            rects(&draw(&widget("bar", json!({ "channel": "delta" })), frame, 30.0, 400.0)).into_iter().map(|(_, c)| c).collect()
-        };
+        let parts = |frame: &TelemetryFrame| rects(&draw(&widget("delta_bar", json!({})), frame, 30.0, 400.0));
         let (gain, lose) = (P.timing_personal_best, P.secondary);
-        let gaining = colors(&frame);
-        assert_eq!(gaining[..10], [tint(lose); 10], "nothing below the middle");
-        assert_eq!(gaining[10..15], [gain, gain, gain, gain, gain], "0.42 s of a second's ten segments rounds up to five");
-        assert_eq!(gaining[15..], [tint(gain); 5]);
+        let gaining = parts(&frame);
+        assert_eq!(gaining.iter().map(|(_, c)| *c).collect::<Vec<_>>(), [P.surface, gain, P.foreground]);
+        // 0.42 s fills 42% of the upper half, from the middle (200 px) up.
+        assert!(at(gaining[1].0, (4.0, 200.0 - 196.0 * 0.42, 22.0, 196.0 * 0.42)), "{:?}", gaining[1].0);
         frame.lap.delta = 0.05;
-        let losing = colors(&frame);
-        assert_eq!(losing[9], lose, "the segment next to the middle");
-        assert_eq!(losing[..9], [tint(lose); 9]);
+        let losing = parts(&frame);
+        assert_eq!(losing.iter().map(|(_, c)| *c).collect::<Vec<_>>(), [P.surface, lose, P.foreground]);
+        assert!(at(losing[1].0, (4.0, 200.0, 22.0, 196.0 * 0.05)), "{:?}", losing[1].0);
     }
 
     #[test]
@@ -2610,7 +2846,7 @@ mod tests {
         let text: Vec<&str> = runs.iter().map(|r| r.text.as_str()).collect();
         assert_eq!(text, ["4", "180", "km/h"]);
         assert_eq!(runs[0].color, DEFAULT_DASH_PALETTE.rpm_near_limit);
-        assert_eq!(runs[0].weight, TextWeight::ValueRegular);
+        assert_eq!(runs[0].weight, TextWeight::Value);
         assert_eq!(runs[0].size, 180.0);
         assert_eq!(runs[2].color, DEFAULT_DASH_PALETTE.muted);
 
@@ -2619,45 +2855,102 @@ mod tests {
     }
 
     #[test]
-    fn gear_speed_anchors_left_or_right_from_its_align_config() {
-        let fonts = Fonts::new();
+    fn the_gear_shows_its_inputs_and_the_revs_and_speed_unless_switched_off() {
+        let mut frame = TelemetryFrame::default();
+        (frame.car.gear, frame.car.rpm, frame.car.max_rpm, frame.car.speed_ms) = (4.0, 7450.4, 10000.0, 50.0);
+        (frame.car.throttle, frame.car.brake, frame.car.clutch) = (1.0, 0.5, 0.25);
+        let ops = draw(&widget("gear", json!({})), &frame, 176.0, 167.0);
+        assert_eq!(text_of(&ops), ["4", "7450", "180"], "the revs above, the speed below, no unit");
+        let runs = texts(&ops);
+        assert!(runs[1].baseline < runs[0].baseline && runs[0].baseline < runs[2].baseline, "revs, digit, speed top to bottom");
+
+        // Throttle, brake, then the clutch: each a tint, its fill and a notch 5% in from each end.
+        let parts = rects(&ops);
+        let lines: Vec<Rgba> = parts.iter().map(|(_, c)| *c).collect();
+        let line = |color: Rgba| [tint(color), color, P.background, P.background];
+        assert_eq!(lines, [line(P.success), line(P.danger), line(P.accent)].concat());
+        assert_eq!(parts[1].0, parts[0].0, "a full throttle fills its line");
+        assert!(at(parts[0].0, (4.0, 4.0, 176.0 * GEAR_INPUT_SHARE, 159.0)), "down the left edge, 4 px in: {:?}", parts[0].0);
+        assert!(at(parts[2].0, (4.0, 4.0 + 159.0 * 0.95 - 1.0, 176.0 * GEAR_INPUT_SHARE, 2.0)), "the bottom cap's notch at 5%: {:?}", parts[2].0);
+        assert!(at(parts[3].0, (4.0, 4.0 + 159.0 * 0.05 - 1.0, 176.0 * GEAR_INPUT_SHARE, 2.0)), "the top cap's notch at 95%: {:?}", parts[3].0);
+        assert!(at(parts[4].0, (172.0 - 176.0 * GEAR_INPUT_SHARE, 4.0, 176.0 * GEAR_INPUT_SHARE, 159.0)), "the brake down the right: {:?}", parts[4].0);
+        assert!(parts[8].0.left < parts[4].0.left && parts[8].0.width < parts[4].0.width, "the clutch thinner, inside the brake");
+
+        let flipped = draw(&widget("gear", json!({ "flip": "on" })), &frame, 176.0, 167.0);
+        assert_eq!(text_of(&flipped), ["4", "180", "7450"]);
+        assert!(texts(&flipped)[1].baseline < texts(&flipped)[0].baseline, "the speed above");
+
+        let alone = draw(&widget("gear", json!({ "inputs": "off", "readouts": "off" })), &frame, 176.0, 167.0);
+        assert_eq!(text_of(&alone), ["4"]);
+        assert!(rects(&alone).is_empty());
+        assert_eq!(texts(&alone)[0].size, 167.0 * 0.8, "the digit alone fills 80% of the box");
+    }
+
+    #[test]
+    fn the_temperature_numbers_are_bare_coloured_numbers_two_by_two_with_no_frames_of_their_own() {
+        let mut frame = TelemetryFrame::default();
+        for (tire, (temp, brake)) in frame.tires.iter_mut().zip([(60.0, 250.0), (85.0, 450.0), (105.0, 720.0), (0.0, 0.0)]) {
+            (tire.temp_surface, tire.brake_temp) = (temp, brake);
+        }
+        let shown = |t: &str, frame: &TelemetryFrame| -> Vec<(String, Rgba)> {
+            let ops = draw(&widget(t, json!({})), frame, 300.0, 200.0);
+            assert!(rects(&ops).is_empty(), "{t}: no boxes");
+            texts(&ops).into_iter().map(|run| (run.text.clone(), run.color)).collect()
+        };
+        let pair = |text: &str, color: Rgba| (text.to_owned(), color);
+        assert_eq!(shown("tyre_temp_numbers", &frame), [pair("60", P.cold_low), pair("85", P.good_on_target), pair("105", P.warning), pair("--", P.muted)]);
+        assert_eq!(shown("brake_temp_numbers", &frame), [pair("250", P.cold_low), pair("450", P.good_on_target), pair("720", P.warning), pair("--", P.muted)]);
+        let both: Vec<String> = shown("tyre_brake_temp_numbers", &frame).into_iter().map(|(text, _)| text).collect();
+        assert_eq!(both, ["60", "250", "85", "450", "105", "720", "--", "--"], "each corner's tyre over its brake");
+
+        frame.tires[1].flat = true;
+        assert_eq!(shown("tyre_temp_numbers", &frame)[1], pair("FLAT", P.critical));
+        let chrome = widget_chrome(&widget("tyre_brake_temp_numbers", json!({})), &frame, &DEFAULT_DASH_PALETTE, Units::Metric, LIFT_POINT);
+        assert_eq!(chrome, WidgetChrome::Edged, "one edge round all four, which the driver may turn off");
+    }
+
+    #[test]
+    fn with_the_gear_redline_off_the_gear_stays_white_at_any_revs() {
+        let mut frame = TelemetryFrame::default();
+        (frame.car.gear, frame.car.rpm, frame.car.max_rpm) = (4.0, 9700.0, 10000.0);
+        let off = DashSettings { colours: Colours { gear_redline: false, ..Colours::default() }, ..DashSettings::default() };
+        let gear = |t: &str, settings: Option<&DashSettings>| texts(&draw_with(&widget(t, json!({})), &frame, 200.0, 300.0, None, settings))[0].color;
+        assert_eq!(gear("gear", Some(&off)), P.foreground);
+        assert_eq!(gear("gear_speed", Some(&off)), P.neutral);
+        assert_eq!(gear("gear", Some(&DashSettings::default())), P.rpm_shift, "on by default");
+        // The RPM bar keeps its shift lights either way.
+        let lights = rects(&draw_with(&widget("rpm_bar", json!({})), &frame, 760.0, 40.0, None, Some(&off)));
+        assert_eq!(lights[14].1, P.rpm_shift);
+    }
+
+    #[test]
+    fn gear_speed_centres_even_when_a_saved_dash_still_aligns_it() {
         let frame = TelemetryFrame::default();
+        let centred = draw(&widget("gear_speed", json!({})), &frame, 200.0, 300.0);
         let left = draw(&widget("gear_speed", json!({ "align": "left" })), &frame, 200.0, 300.0);
-        assert!(texts(&left).iter().all(|r| r.x == 12.0), "start-anchored at 6%");
-        let right = draw(&widget("gear_speed", json!({ "align": "right" })), &frame, 200.0, 300.0);
-        let gear = texts(&right)[0];
-        assert!((gear.x + gear.width(&fonts) - 188.0).abs() < 1e-9, "end-anchored at 94%");
-        assert_eq!(gear.text, "N");
+        assert_eq!(texts(&left), texts(&centred));
     }
 
     #[test]
-    fn horizontal_rpm_bar_lights_segments_up_to_the_rpm_in_stage_colors() {
+    fn the_rpm_bar_is_fifteen_shift_lights_five_green_five_red_five_blue() {
         let mut frame = TelemetryFrame::default();
-        frame.car.rpm = 9500.0;
+        frame.car.rpm = 9200.0;
         frame.car.max_rpm = 10000.0;
-        let ops = draw(&widget("rpm_bar", json!({})), &frame, 760.0, 40.0);
-        let segments = rects(&ops);
-        assert_eq!(segments.len(), 36);
         let p = DEFAULT_DASH_PALETTE;
-        // ceil(0.95 * 36) = 35 lit; phase i/35: green below 0.78, red below 0.93, blue after.
-        assert_eq!(segments[0].1, p.rpm_normal);
-        assert_eq!(segments[30].1, p.rpm_near_limit);
-        assert_eq!(segments[34].1, p.rpm_shift);
-        assert_eq!(segments[35].1, p.surface);
-        // 4px gaps at 800x480; box numbers are in layout units (1/64 px), so allow one unit per term.
-        assert!((segments[1].0.left - (segments[0].0.width + 4.0)).abs() < 2.0 / 64.0);
-    }
+        // Across 760 px: 15 segments 4 px apart, 4 px in. A light comes on once the revs enter its
+        // fifteenth: 92% lights all but the last.
+        let parts = rects(&draw(&widget("rpm_bar", json!({})), &frame, 760.0, 40.0));
+        let colors: Vec<Rgba> = parts.iter().map(|(_, c)| *c).collect();
+        assert_eq!(colors, [vec![p.rpm_normal; 5], vec![p.rpm_near_limit; 5], vec![p.rpm_shift; 4], vec![p.surface]].concat());
+        let long = (752.0 - 14.0 * 4.0) / 15.0;
+        assert!(at(parts[0].0, (4.0, 4.0, long, 32.0)) && at(parts[14].0, (756.0 - long, 4.0, long, 32.0)), "{:?}", [parts[0].0, parts[14].0]);
 
-    #[test]
-    fn vertical_rpm_bar_fills_twenty_segments_bottom_up() {
-        let mut frame = TelemetryFrame::default();
+        // Standing up the same fifteen, lit from the bottom.
         frame.car.rpm = 5000.0;
-        frame.car.max_rpm = 10000.0;
-        let segments = rects(&draw(&widget("rpm_bar", json!({})), &frame, 40.0, 300.0));
-        assert_eq!(segments.len(), 20);
-        assert!(segments[0].0.top > segments[19].0.top, "segment 0 is the bottom one");
-        assert_eq!(segments[9].1, DEFAULT_DASH_PALETTE.rpm_normal);
-        assert_eq!(segments[10].1, crate::palette::dim_color(DEFAULT_DASH_PALETTE.rpm_normal, 0.15).unwrap());
+        let standing = rects(&draw(&widget("rpm_bar", json!({})), &frame, 40.0, 300.0));
+        let colors: Vec<Rgba> = standing.iter().map(|(_, c)| *c).collect();
+        assert_eq!(colors, [vec![p.rpm_normal; 5], vec![p.rpm_near_limit; 3], vec![p.surface; 7]].concat());
+        assert!(standing[0].0.top > standing[14].0.top, "the first segment at the bottom");
     }
 
     #[test]
@@ -2788,13 +3081,14 @@ mod tests {
     }
 
     /// The editor offers the widget types in `packages/dashboard/src/widgetTypes.ts`; this renderer
-    /// must draw exactly those (plus the `ers` alias and the two the host's purpose screens place),
-    /// or the editor offers a widget the wheel shows as a placeholder, or the wheel draws one
-    /// nobody can add.
+    /// must draw exactly those (the bars through `bar_kind`, plus the two the host's purpose screens
+    /// place), or the editor offers a widget the wheel shows as a placeholder, or the wheel draws
+    /// one nobody can add.
     #[test]
     fn the_editor_offers_exactly_the_widget_types_this_renderer_draws() {
         let offered = quoted_between(include_str!("../../src/widgetTypes.ts"), '\'', "export const dashboardWidgetTypes = [", "] as const");
         let mut drawn = quoted_between(include_str!("widgets.rs"), '"', "pub fn widget_content(", "_ => placeholder(b, w)");
+        drawn.extend(quoted_between(include_str!("widgets.rs"), '"', "fn bar_kind(", "_ => return None"));
         assert!(drawn.remove("flag") && drawn.remove("racelogic_lap_timer"), "the flag display's and the lap timer's (DevicePurposeLayouts.cs)");
         assert_eq!(offered, drawn);
     }
@@ -2813,6 +3107,25 @@ mod tests {
             })
             .collect();
         assert_eq!(listed, untitled);
+    }
+
+    /// The designer offers a frame switch only for a widget with a frame: `unframed` in
+    /// `widgetForms.json` lists exactly the offered widgets this renderer draws with no edge.
+    #[test]
+    fn the_designer_knows_which_widgets_draw_no_frame() {
+        let offered = quoted_between(include_str!("../../src/widgetTypes.ts"), '\'', "export const dashboardWidgetTypes = [", "] as const");
+        let listed = quoted_between(include_str!("../../src/widgetForms.json"), '"', "\"unframed\": [", "]");
+        let frame = TelemetryFrame::default();
+        let unframed: std::collections::BTreeSet<&str> = offered
+            .into_iter()
+            .filter(|kind| {
+                matches!(
+                    widget_chrome(&widget(kind, json!({})), &frame, &DEFAULT_DASH_PALETTE, Units::Metric, LIFT_POINT),
+                    WidgetChrome::Bare | WidgetChrome::Split
+                )
+            })
+            .collect();
+        assert_eq!(listed, unframed);
     }
 
     #[test]
@@ -2913,8 +3226,8 @@ mod tests {
         assert!(first.baseline < 28.0, "the top row is the first: {}", first.baseline);
     }
 
-    fn bar_colors(channel: &str, frame: &TelemetryFrame, width: f64, height: f64) -> Vec<Rgba> {
-        rects(&draw(&widget("bar", json!({ "channel": channel })), frame, width, height)).into_iter().map(|(_, color)| color).collect()
+    fn bar_colors(widget_type: &str, frame: &TelemetryFrame, width: f64, height: f64) -> Vec<Rgba> {
+        rects(&draw(&widget(widget_type, json!({})), frame, width, height)).into_iter().map(|(_, color)| color).collect()
     }
 
     #[test]
@@ -2923,9 +3236,9 @@ mod tests {
         frame.lap.current_lap_sectors_seconds = vec![67.9, 71.95];
         frame.lap.personal_best_sectors = vec![Some(68.0), Some(71.3), Some(69.8)];
         frame.lap.class_best_sectors = vec![Some(67.9), Some(71.1), Some(69.6)];
-        let colors = bar_colors("sectors", &frame, 30.0, 400.0);
+        let colors = bar_colors("sector_bar", &frame, 30.0, 400.0);
         assert_eq!(colors, [P.timing_fastest_overall, P.race_control_yellow, tint(P.neutral)]);
-        let ops = draw(&widget("bar", json!({ "channel": "sectors" })), &frame, 30.0, 400.0);
+        let ops = draw(&widget("sector_bar", json!({})), &frame, 30.0, 400.0);
         assert!(rects(&ops)[0].0.top > rects(&ops)[2].0.top, "the first sector at the bottom");
     }
 
@@ -2933,46 +3246,83 @@ mod tests {
     fn the_input_bars_fill_in_their_own_colours_and_the_class_gaps_grow_from_the_middle() {
         let mut frame = TelemetryFrame::default();
         (frame.car.throttle, frame.car.brake, frame.car.clutch) = (0.5, 0.25, 1.0);
-        let lit = |channel: &str, color: Rgba| bar_colors(channel, &frame, 30.0, 400.0).iter().filter(|c| **c == color).count();
-        assert_eq!((lit("throttle", P.success), lit("brake", P.danger), lit("clutch", P.accent)), (10, 5, 20));
+        let parts = |widget_type: &str, frame: &TelemetryFrame, width: f64, height: f64| rects(&draw(&widget(widget_type, json!({})), frame, width, height));
+        let throttle = parts("throttle_bar", &frame, 30.0, 400.0);
+        let mut expected = vec![tint(P.success), P.success];
+        expected.extend([P.background; 9]);
+        assert_eq!(throttle.iter().map(|(_, c)| *c).collect::<Vec<_>>(), expected, "ten cells, no red zone on an input");
+        assert!(at(throttle[1].0, (4.0, 200.0, 22.0, 196.0)));
+        assert_eq!(parts("brake_bar", &frame, 30.0, 400.0)[1].1, P.danger);
+        let clutch = parts("clutch_bar", &frame, 30.0, 400.0);
+        assert_eq!((clutch[1].1, clutch[1].0), (P.accent, clutch[0].0), "fully pressed fills the meter");
+
+        // Two meters side by side, 4 px apart: the brake's starts after the throttle's notches.
+        let inputs = parts("inputs_bar", &frame, 30.0, 400.0);
+        assert!(at(inputs[0].0, (4.0, 4.0, 9.0, 392.0)) && at(inputs[11].0, (17.0, 4.0, 9.0, 392.0)), "{inputs:?}");
+        assert_eq!(inputs[12].1, P.danger);
+
         (frame.race.class_gap_ahead, frame.race.class_gap_behind) = (Some(1.0), None);
-        let gaps = bar_colors("class_gap", &frame, 400.0, 30.0);
-        assert_eq!(gaps[10..15], [P.success; 5], "a second ahead lights half the upper side");
-        assert_eq!(gaps[..10], [tint(P.warning); 10], "no class car behind");
+        let gaps = parts("class_gap_bar", &frame, 400.0, 30.0);
+        assert_eq!(gaps.iter().map(|(_, c)| *c).collect::<Vec<_>>(), [P.surface, P.success, P.foreground], "no class car behind");
+        assert!(at(gaps[1].0, (200.0, 4.0, 98.0, 22.0)), "a second ahead fills half the right side: {:?}", gaps[1].0);
     }
 
     #[test]
-    fn the_linear_map_puts_every_car_on_the_line_in_its_class_colour_with_ours_on_top() {
+    fn the_relative_bar_places_the_close_cars_in_their_class_colours_round_ours() {
         let mut frame = TelemetryFrame {
-            field: vec![car("Me", 3.0, 5.0, 250.0), FieldCar { car_class: "GT3".to_owned(), ..car("Other", 4.0, 5.0, 750.0) }],
+            field: vec![
+                car("Me", 3.0, 5.0, 500.0),
+                FieldCar { car_class: "GT3".to_owned(), ..car("Ahead", 2.0, 5.0, 525.0) },
+                car("Behind", 4.0, 5.0, 460.0),
+                car("Far", 1.0, 5.0, 900.0),
+            ],
             ..TelemetryFrame::default()
         };
-        let line_only = draw(&widget("bar", json!({ "channel": "linear_map" })), &frame, 30.0, 400.0);
-        assert!(ovals(&line_only).is_empty(), "no track length, no cars");
+        frame.lap.best_lap_time = 100.0;
+        assert_eq!(bar_colors("relative_bar", &frame, 30.0, 400.0), [P.surface, P.foreground], "no track length, only ours");
+
+        // 1000 m in 100 s: ahead 2.5 s, behind 4 s, far 40 s (past the bar's 5 s).
         frame.session.track_length_meters = Some(1000.0);
-        let ops = draw(&widget("bar", json!({ "channel": "linear_map" })), &frame, 30.0, 400.0);
-        let dots = ovals(&ops);
+        let parts = rects(&draw(&widget("relative_bar", json!({})), &frame, 30.0, 400.0));
+        let colors: Vec<Rgba> = parts.iter().map(|(_, c)| *c).collect();
+        assert_eq!(colors.len(), 4, "the track, two close cars and ours: {colors:?}");
+        assert_eq!(colors[3], P.foreground, "ours drawn last");
         let centre = |rect: PixelRect| rect.top + rect.height / 2.0;
-        assert_eq!(dots[0].1, class_color("GT3").expect("GT3"));
-        assert_eq!(dots.last().map(|d| d.1), Some(P.foreground), "ours drawn last");
-        assert!(centre(dots[0].0) < centre(dots[2].0), "three quarters round is above a quarter round: the start is at the bottom");
-        let lying = ovals(&draw(&widget("bar", json!({ "channel": "linear_map" })), &frame, 400.0, 30.0));
-        assert!(lying[0].0.left > lying[2].0.left, "lying down it runs left to right");
+        let ahead = parts.iter().find(|(_, c)| Some(*c) == class_color("GT3")).expect("the GT3 ahead").0;
+        let behind = parts.iter().find(|(_, c)| Some(*c) == class_color("Hyper")).expect("the Hyper behind").0;
+        assert!((centre(ahead) - (4.0 + 392.0 * 0.25)).abs() < 0.5, "half of the 5 s ahead, up: {ahead:?}");
+        assert!((centre(parts[3].0) - 200.0).abs() < 0.5, "ours in the middle");
+        assert!((centre(behind) - (4.0 + 392.0 * 0.9)).abs() < 0.5, "4 s behind, down: {behind:?}");
+        let lying = rects(&draw(&widget("relative_bar", json!({})), &frame, 400.0, 30.0));
+        let ahead_lying = lying.iter().find(|(_, c)| Some(*c) == class_color("GT3")).expect("the GT3 ahead").0;
+        assert!(ahead_lying.left > 200.0, "lying down, ahead is to the right");
     }
 
     #[test]
-    fn damage_colours_each_dent_place_and_names_what_is_wrong() {
+    fn damage_draws_lmus_car_with_each_dent_place_coloured_and_names_what_is_wrong() {
         let mut frame = TelemetryFrame::default();
         let blank = draw(&widget("damage", json!({})), &frame, 300.0, 120.0);
         assert!(text_of(&blank).is_empty(), "no report, no verdict");
-        assert!(rects(&blank).iter().all(|(_, color)| *color == P.border));
+        let blank_rects: Vec<Rgba> = rects(&blank).into_iter().map(|(_, color)| color).collect();
+        // The four wheels, then the right and the left side.
+        assert_eq!(blank_rects, [P.border, P.border, P.border, P.border, P.muted, P.muted]);
+        // The nose's and the tail's arcs in thirds, drawn dot by dot.
+        assert!(!ovals(&blank).is_empty() && ovals(&blank).iter().all(|(_, color)| *color == P.muted));
 
-        frame.damage = Some(Damage { dents: [0.0, 2.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0], overheating: true, detached_parts: false });
+        // Front heavy, right side and rear left light.
+        frame.damage = Some(Damage { dents: [0.0, 2.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0], overheating: true, detached_parts: false });
         let ops = draw(&widget("damage", json!({})), &frame, 300.0, 120.0);
         assert_eq!(text_of(&ops), ["BODY HEAVY", "OVERHEAT"]);
-        let colors: Vec<Rgba> = rects(&ops).into_iter().map(|(_, color)| color).collect();
-        // The cockpit, then the eight places clockwise from front left.
-        assert_eq!(colors, [P.border, P.muted, P.critical, P.muted, P.warning, P.muted, P.muted, P.muted, P.muted]);
+        let (mid, scale) = (300.0 * 0.4 / 2.0, 120.0 / 196.0);
+        let centre = |rect: &PixelRect| (rect.left + rect.width / 2.0, rect.top + rect.height / 2.0);
+        let in_color = |color: Rgba| ovals(&ops).into_iter().filter(move |(_, c)| *c == color).map(|(rect, _)| centre(&rect)).collect::<Vec<_>>();
+        let front = in_color(P.critical);
+        assert!(!front.is_empty() && front.iter().all(|&(x, y)| (x - mid).abs() < 20.0 * scale && y < 44.0 * scale), "the nose's middle third: {front:?}");
+        let rear_left = in_color(P.warning);
+        assert!(!rear_left.is_empty() && rear_left.iter().all(|&(x, y)| x < mid && y > 150.0 * scale), "the tail's left third: {rear_left:?}");
+        let sides: Vec<(PixelRect, Rgba)> = rects(&ops).into_iter().skip(4).collect();
+        assert_eq!(sides.iter().map(|(_, color)| *color).collect::<Vec<_>>(), [P.warning, P.muted]);
+        assert!(centre(&sides[0].0).0 > mid, "the right side is lit");
     }
 
     #[test]

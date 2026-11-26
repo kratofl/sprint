@@ -190,9 +190,9 @@ export const previewSeconds = (alert: DashAlertSettings): number => (alert.until
 
 /**
  * The dash with the app-wide alerts on it, as the host hands it to a renderer (`AppDashAlerts.Stamp`):
- * a copy whose alerts are the settings and whose own alert look is gone. Never saved.
+ * a copy whose alerts are the settings. Never saved.
  */
-export const stampDashAlerts = (layout: DashLayout, alerts: readonly DashAlertSettings[]): DashLayout => ({ ...layout, alerts: alerts.map(dashAlertFromSettings), alertConfig: undefined })
+export const stampDashAlerts = (layout: DashLayout, alerts: readonly DashAlertSettings[]): DashLayout => ({ ...layout, alerts: alerts.map(dashAlertFromSettings) })
 
 /** The dash the preview plays alerts on, at the size it is drawn at, and the device it is on (null: none shows it). */
 export type PreviewDash = { layout: DashLayout; size: { width: number; height: number }; deviceName: string | null }

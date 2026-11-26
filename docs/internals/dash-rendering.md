@@ -47,11 +47,32 @@ Conditions are modeled separately from the colors that render them:
 - Fuel and energy running low colour the value instead (fuel, fuel and VE laps, range): amber
   within twice the app-wide fuel warning's laps (the `fuel_low` alert's `lapsLeft`, which the
   host stamps on every dash it shows), red at or under them.
-- Bar widgets carry no label and no value (the driver's call, 2026-11), but wear the dash's
-  edge like any box (the dash's edge "None" drops it): twenty segments, and
-  an energy bar's segments each wear their zone's color (red under the driver's critical mark,
-  amber under the low one, good above), lit or as a dim tint, so the scale reads at a glance even when full. The fuel
-  bar measures against the tank's size when the game reports it.
+- Each bar is its own widget type (`fuel_bar`, `ve_bar`, `rpm_bar`, …), not one bar with a
+  "shows" setting: the driver picks it from the list by name (the driver's call, 2026-11-25). A
+  saved `bar` becomes the type its channel named on load (`DashWidgetTypeMigration`); the old
+  linear map became the relative bar, the cars within 5 s on the road round ours.
+- Bars carry no label and no value (the driver's call, 2026-11), but wear the dash's edge like
+  any box. Inside it each draws a meter like the app's: one rounded fill, 4 px from the edge on
+  every side, that moves smoothly with the value, split into ten cells by dark notches so the
+  level reads at a glance. A level meter keeps one colour whatever the level (the driver's call,
+  2026-11-25): fuel light red, VE light blue, battery green, like LMU's, throttle, brake and
+  clutch theirs. Only the battery is red below the driver's critical mark instead (the driver's
+  call), lit or not, so the last of the charge is always in the same place. Centre-out meters
+  (delta, gaps) grow from a white middle line. The RPM bar stays shift lights, not a meter (the
+  driver's call): fifteen segments, five green, five red, five blue, one generic pattern for
+  now; copying the driven car's own lights is meant to come later, on unless the driver turns it
+  off. The fuel bar measures against the tank's size when the game reports it.
+- The gear turns red near the limit and blue at the shift point unless the driver turns the
+  Colours setting's gear redline off (`gearRedline`): some read the shift from their wheel's
+  own lights and want the gear to stay white. The RPM bar keeps its colours either way.
+- A dash can look like a modern web dashboard or like a motorsport wheel (the driver's idea,
+  2026-11-25), so some values come both ways as separate widgets: the tyre and brake temperatures
+  as labelled filled boxes, or as bare coloured numbers with no degree sign
+  (`tyre_temp_numbers`, `brake_temp_numbers`, `tyre_brake_temp_numbers`, each corner's tyre over
+  its brake). The gear widget carries the motorsport extras as switches, on unless turned off:
+  thin throttle, brake and clutch lines down its sides with a cap notched off each end (5%): the
+  bottom one lights at a touch of the pedal, the top one only flat out; and the revs above and
+  the speed below (no unit), which a third switch swaps.
 - A frame's edge is the text color, white by default (the driver's call, 2026-11, after a
   works team's wheel): a white outline separates values on a washed-out panel where a grey one
   disappears. The label goes where the dash (or the widget) says: cut into the top edge at the
@@ -76,14 +97,23 @@ never also takes a condition color: its value only ever wears its identity, or i
 
 ## One look
 
-A dash has one look (the driver's call, 2026-11-22: four frame styles, six label spots, edges and
-free colours per widget made too many combinations that looked bad on the wheel). Its `chrome`
-sets the corner radius, the edge and where labels sit; a widget may move only its own label
-(never into the band, which is the dash's), and colours follow meaning, never the widget. Older
-dashes' `dashStyle` (panels, grid, label bars) and widget colours and edges are dropped on load
-(`DashLooks.Flatten`); the renderer has no other style to draw. A widget's type says whether it
-is framed, bare (gear, text, RPM) or split into several frames of its own (the four tyres), and
-`chrome.rs` draws the frame and the label, so widgets render only their values.
+Sprint draws one look on every dash: a 1-px edge with 6-px corners, the label centred in the
+top edge, and one group frame (the driver's call, 2026-11-22 and 2026-11-23, issue #274: Sprint is
+opinionated, not a second SimHub; frame styles, corners, edges, label spots and per-widget
+colours made too many combinations that looked bad on the wheel). The driver decides what is
+shown and where; Sprint decides how. A widget may only turn its frame or its label off
+(`style: { frame: "off", label: "off" }`; a frameless widget's label sits small above its value),
+and a group's frame is on or off (`framed`). Older dashes' looks (`dashStyle`, `chrome`,
+`colorSystem`, `alertConfig`, label spots, widget colours and edges, group edges, name pills and
+alignment) are dropped on load (`DashLooks.Flatten`); the renderer has no other look to draw. Gear +
+Speed always centres (its old `align` goes on load), and a text widget shows its own text or who
+drives and where (`TEXT_BINDINGS` in `widgets.rs`: driver name and number, track, car), never a
+live value, which has a widget of its own; a saved text bound to one loses the binding on load and
+shows its text (`DashWidgetTypeMigration`). A widget's type says whether it
+is framed, bare (gear, text) or split into several frames of its own (the four tyres);
+`widgetForms.json` lists the types without a label (`unlabelled`) or a frame (`unframed`) for
+the designer, pinned by the renderer's tests. `chrome.rs` draws the frame and the label, so widgets
+render only their values.
 
 ## The driver's colours
 
@@ -102,8 +132,8 @@ Analysis read the same setting through `DashColoursContext`. It holds:
 
 Each surface draws a meaning in its own shade: the wheel's warning is orange, because yellow is
 race control's, while the app (`--heat-*` in `styles.css`) draws warm in its warning yellow. A
-layout's own `theme` and `colorSystem` are no longer read (#274 removes them); a dash looks the
-same on every wheel the driver owns.
+layout's own `theme` is no longer read (#274 removes it); a dash looks the same on every wheel the
+driver owns.
 
 ## Type
 
@@ -165,7 +195,7 @@ are not.
 - **Alerts are app-wide but the renderer reads only the layout.** The host stamps the driver's
   alert settings onto a copy of every layout it hands a renderer (`AppDashAlerts.Stamp` in
   `Sprint.Desktop.Core`, the app's previews `dashAlertFromSettings` in `src/alerts.ts`); a layout's
-  own `alerts`/`alertConfig` are never read, and a stamped copy is never saved. A
+  own `alerts` are never read, and a stamped copy is never saved. A
   `strip` is a band a third of the screen tall across its middle; under 100 logical px (a screen
   under 300 px tall) it is drawn full screen instead, decided at draw time (`overlays::strip_fits`),
   so a preview drawn smaller than its panel can fall back where the wheel shows the strip. Alerts
@@ -216,7 +246,7 @@ are not.
 of a layout at 800x480 against a fixed mid-race frame (`--page` and
 `--size` override; `--banner <banner.json>` draws an alert popup over it, `--alert penalty:full:invert`
 the app's preview of an alert type, `--level 35` puts fuel, virtual energy and charge at 35% for the
-bars' colors). Render the presets in
+bars' red zone). Render the presets in
 `app/Sprint.Desktop.Host/presets/dash/` at the panel size and look at the PNG: layout, alignment,
 clip direction, weights and color, not the telemetry values. There is no reference image set in the
 repo.

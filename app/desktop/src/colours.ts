@@ -3,7 +3,8 @@ import type { DashColourLimits, DashColours } from '@sprint/dashboard'
 
 /**
  * The app-wide Colours setting (`AppSettings.Colours`, `ColourSettings` in Core): which theme
- * colours the cold–good–warm–hot scale and where values move along it. The wheel dash reads it in
+ * colours the cold–good–warm–hot scale, where values move along it, and whether the dash's gear
+ * shows the redline. The wheel dash reads it in
  * its scene settings (`DashColoursContext`); the pit wall and Analysis colour by the same marks
  * here, in the theme's colours (`--heat-*` in styles.css, picked by `<html data-colours>`).
  */
@@ -31,6 +32,13 @@ export function brakeHeat(celsius: number, limits: DashColourLimits): Heat {
   return 'ok'
 }
 
+/** Tread left (%): good, then low and critical under their marks; the renderer's `wear_color`. */
+export function wearHeat(treadPercent: number, limits: DashColourLimits): Exclude<Heat, 'cold'> {
+  if (treadPercent < limits.wearCriticalBelow) return 'hot'
+  if (treadPercent < limits.wearLowBelow) return 'warm'
+  return 'ok'
+}
+
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null
 
 const LIMIT_KEYS = Object.keys(defaultDashColours.limits).filter((key): key is keyof DashColourLimits => key in defaultDashColours.limits)
@@ -45,5 +53,6 @@ export function parseColours(value: unknown): DashColours {
     const number = raw[key]
     if (typeof number === 'number' && Number.isFinite(number)) limits[key] = number
   }
-  return { theme, limits }
+  const gearRedline = typeof value.gearRedline === 'boolean' ? value.gearRedline : defaultDashColours.gearRedline
+  return { theme, gearRedline, limits }
 }

@@ -137,7 +137,6 @@ public sealed class BrowserDisplayServerTests
             Assert.Equal(
                 DashAlertTypes.Defaults.Select(alert => alert.Type),
                 layout.GetProperty("alerts").EnumerateArray().Select(alert => alert.GetProperty("type").GetString()));
-            Assert.Equal(JsonValueKind.Null, layout.GetProperty("alertConfig").ValueKind);
         }
 
         fixture.Acknowledgements.Acknowledge();

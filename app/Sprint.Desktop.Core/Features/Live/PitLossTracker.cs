@@ -1,13 +1,16 @@
 using Sprint.Desktop.Api.Telemetry;
 using Sprint.Desktop.Features.PitWall;
+using Sprint.Games;
 
 namespace Sprint.Desktop.Features.Live;
 
 /// <summary>
 /// What a pit stop costs the player, for the dash: the race engineer's figure
 /// (<see cref="PitLossMeter"/>, lane loss plus standing time) worked out on the driver's own
-/// desktop from the scored field, so it needs no engineer. Fills <see cref="LapState.PitLossSeconds"/>;
-/// a frame without a field passes unchanged. Starts over on a new session.
+/// desktop from the scored field, so it needs no engineer. Until both parts are measured it is the
+/// track's typical loss for the player's class (<see cref="GamePitLossCatalog"/>), when the data has
+/// one. Fills <see cref="LapState.PitLossSeconds"/>; a frame without a field passes unchanged.
+/// Starts over on a new session.
 /// </summary>
 /// <remarks>Not thread-safe: <see cref="TelemetryEngine"/> calls it from its reader thread only.</remarks>
 public sealed class PitLossTracker
@@ -46,8 +49,9 @@ public sealed class PitLossTracker
             }
 
             FieldCar? own = field.FirstOrDefault(car => car.IsPlayer);
-            PitWallPitLoss loss = this._meter.Loss(own?.Id, own?.CarClass);
-            this._loss = loss.Lane is { } lane && loss.Standing is { } standing ? Math.Round(lane + standing, 1) : null;
+            string? ownClass = own?.CarClass;
+            TypicalPitLoss? typical = GamePitLossCatalog.Typical(session.Game, session.Track, ownClass);
+            this._loss = this._meter.Loss(own?.Id, ownClass, typical).Seconds;
         }
 
         return frame with { Lap = frame.Lap with { PitLossSeconds = this._loss } };

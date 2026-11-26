@@ -12,7 +12,7 @@
 
 use serde_json::{Map, Value};
 
-use crate::model::{ColorSystem, DashLayout, DashTheme};
+use crate::model::DashTheme;
 
 /// How the TypeScript writes a color as a string. CSS paints every form the same way, but
 /// `dimColor`/`withAlpha` parse the string by hand: 8-digit hex alpha-first (`#AARRGGBB`, where
@@ -144,11 +144,11 @@ pub mod dash_color {
     pub const TEXT2: &str = "#A1A1AA";
     pub const TEXT3: &str = "#6F6F78";
     pub const ORANGE: &str = "#FF6A00";
-    pub const GREEN: &str = "#16B566";
-    pub const RED: &str = "#F02744";
-    pub const YELLOW: &str = "#E0A30C";
-    pub const BLUE: &str = "#1F7FE6";
-    pub const PURPLE: &str = "#A06BFF";
+    pub const GREEN: &str = "#00D64F";
+    pub const RED: &str = "#FF1E1E";
+    pub const YELLOW: &str = "#FFCC00";
+    pub const BLUE: &str = "#1A7CFF";
+    pub const PURPLE: &str = "#A64DFF";
     pub const SUZUKI_PRIMARY: &str = "#7C3AED";
     pub const SUZUKI_ACCENT: &str = "#B15CFF";
     pub const MONO_PRIMARY: &str = "#F6F6F6";
@@ -168,6 +168,18 @@ pub mod dash_setting_colors {
     pub const MIGRATION: Rgba = Rgba::hex(dash_color::RED);
     /// Both anti-roll bars.
     pub const ARB: Rgba = Rgba::hex(dash_color::ORANGE);
+}
+
+/// The energy bars' own colours (the driver's call, 2026-11, after LMU's): identity, not a
+/// condition. A bar never changes colour with its level; its red zone under the critical mark
+/// says it is running out.
+pub mod dash_bar_colors {
+    use super::{Rgba, dash_color};
+    /// A light red.
+    pub const FUEL: Rgba = Rgba::hex("#FF7A70");
+    /// A light blue.
+    pub const VIRTUAL_ENERGY: Rgba = Rgba::hex("#6CB8FF");
+    pub const BATTERY: Rgba = Rgba::hex(dash_color::GREEN);
 }
 
 /// A racing class's colour on the dash, as the app's class tags wear it (`views/CarBadges.css`:
@@ -262,12 +274,12 @@ fn hex(theme: &DashTheme, key: &str) -> Option<Rgba> {
 }
 
 /// Resolves a layout theme into a concrete palette: the default palette with each supplied hex
-/// override applied. Styled themes recolor the optical RPM endpoints while protected safety
-/// states (critical/fault/danger) stay functional regardless of the theme.
-pub fn resolve_dash_palette(theme: Option<&DashTheme>, color_system: ColorSystem) -> DashPaletteColors {
+/// override applied. A theme recolors the optical RPM endpoints while protected safety states
+/// (critical/fault/danger) stay functional regardless of the theme.
+pub fn resolve_dash_palette(theme: Option<&DashTheme>) -> DashPaletteColors {
     let d = DEFAULT_DASH_PALETTE;
     let t = match theme {
-        Some(t) if color_system == ColorSystem::Styled && !is_theme_empty(Some(t)) => t,
+        Some(t) if !is_theme_empty(Some(t)) => t,
         _ => return d,
     };
     DashPaletteColors {
@@ -338,8 +350,7 @@ pub struct ColourLimits {
     /// Tread left, percent.
     pub wear_low_below: f64,
     pub wear_critical_below: f64,
-    /// A fuel, battery or virtual-energy bar's level, percent.
-    pub energy_low_below: f64,
+    /// Where the battery bar's red zone ends, percent of the charge.
     pub energy_critical_below: f64,
 }
 
@@ -354,8 +365,7 @@ impl Default for ColourLimits {
             brake_hot_above: 800.0,
             wear_low_below: 60.0,
             wear_critical_below: 30.0,
-            energy_low_below: 50.0,
-            energy_critical_below: 20.0,
+            energy_critical_below: 30.0,
         }
     }
 }
@@ -375,17 +385,25 @@ impl ColourLimits {
             brake_hot_above: num("brakeHotAbove", d.brake_hot_above),
             wear_low_below: num("wearLowBelow", d.wear_low_below),
             wear_critical_below: num("wearCriticalBelow", d.wear_critical_below),
-            energy_low_below: num("energyLowBelow", d.energy_low_below),
             energy_critical_below: num("energyCriticalBelow", d.energy_critical_below),
         }
     }
 }
 
-/// The app-wide colours a scene's settings carry (`colours`): the theme and the limits.
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+/// The app-wide colours a scene's settings carry (`colours`): the theme, the limits, and whether
+/// the gear turns red near the limit and blue at the shift point (`gear_redline`, on unless the
+/// driver turns it off: some read the shift from their wheel's own lights instead).
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Colours {
     pub theme: ColourTheme,
     pub limits: ColourLimits,
+    pub gear_redline: bool,
+}
+
+impl Default for Colours {
+    fn default() -> Colours {
+        Colours { theme: ColourTheme::default(), limits: ColourLimits::default(), gear_redline: true }
+    }
 }
 
 impl Colours {
@@ -395,6 +413,7 @@ impl Colours {
         Colours {
             theme: ColourTheme::parse(raw.and_then(|r| r.get("theme")).and_then(Value::as_str)),
             limits: ColourLimits::parse(raw.and_then(|r| r.get("limits")).and_then(Value::as_object)),
+            gear_redline: raw.and_then(|r| r.get("gearRedline")).and_then(Value::as_bool).unwrap_or(true),
         }
     }
 }
@@ -569,16 +588,6 @@ pub fn match_theme_name(theme: Option<&DashTheme>) -> Option<&'static str> {
         .map(|preset| preset.name)
 }
 
-/// The layout's effective color system: an explicit choice, or styled whenever a theme override is set.
-pub fn effective_color_system(layout: &DashLayout) -> ColorSystem {
-    layout.color_system.unwrap_or(if is_theme_empty(layout.theme.as_ref()) { ColorSystem::Functional } else { ColorSystem::Styled })
-}
-
-/// The preset whose output matches the layout's effective color system, or `None` for a custom styled theme.
-pub fn match_layout_theme_name(layout: &DashLayout) -> Option<&'static str> {
-    if effective_color_system(layout) == ColorSystem::Functional { Some("Graphite") } else { match_theme_name(layout.theme.as_ref()) }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -587,33 +596,23 @@ mod tests {
         pairs.iter().map(|(k, v)| ((*k).to_owned(), (*v).to_owned())).collect()
     }
 
-    fn layout(color_system: Option<ColorSystem>, t: Option<DashTheme>) -> DashLayout {
-        DashLayout { color_system, theme: t, ..DashLayout::default() }
-    }
-
     #[test]
     fn the_default_palette_keeps_the_wheel_colors_the_hardware_output_was_tuned_with() {
         assert_eq!(DEFAULT_DASH_PALETTE.surface, Rgba::hex("#1B1B1E"));
         assert_eq!(DEFAULT_DASH_PALETTE.warning, Rgba::hex("#FF6A00"));
-        assert_eq!(DEFAULT_DASH_PALETTE.danger, Rgba::hex("#F02744"));
-        assert_eq!(DEFAULT_DASH_PALETTE.rpm_shift, Rgba::hex("#1F7FE6"));
-    }
-
-    #[test]
-    fn resolve_dash_palette_ignores_the_theme_under_the_functional_color_system() {
-        let t = theme(&[("primary", "#123456"), ("accent", "#654321")]);
-        assert_eq!(resolve_dash_palette(Some(&t), ColorSystem::Functional), DEFAULT_DASH_PALETTE);
+        assert_eq!(DEFAULT_DASH_PALETTE.danger, Rgba::hex("#FF1E1E"));
+        assert_eq!(DEFAULT_DASH_PALETTE.rpm_shift, Rgba::hex("#1A7CFF"));
     }
 
     #[test]
     fn resolve_dash_palette_returns_the_default_for_an_empty_or_missing_theme() {
-        assert_eq!(resolve_dash_palette(None, ColorSystem::Styled), DEFAULT_DASH_PALETTE);
-        assert_eq!(resolve_dash_palette(Some(&theme(&[])), ColorSystem::Styled), DEFAULT_DASH_PALETTE);
+        assert_eq!(resolve_dash_palette(None), DEFAULT_DASH_PALETTE);
+        assert_eq!(resolve_dash_palette(Some(&theme(&[]))), DEFAULT_DASH_PALETTE);
     }
 
     #[test]
     fn resolve_dash_palette_applies_valid_hex_overrides_and_ignores_unparseable_ones() {
-        let palette = resolve_dash_palette(Some(&theme(&[("primary", "#112233"), ("accent", "not-a-color")])), ColorSystem::Styled);
+        let palette = resolve_dash_palette(Some(&theme(&[("primary", "#112233"), ("accent", "not-a-color")])));
         assert_eq!(palette.primary, Rgba::hex("#112233"));
         assert_eq!(palette.rpm_normal, Rgba::hex("#112233"));
         assert_eq!(palette.accent, DEFAULT_DASH_PALETTE.accent);
@@ -621,7 +620,7 @@ mod tests {
 
     #[test]
     fn a_theme_may_override_each_settings_identity_color() {
-        let palette = resolve_dash_palette(Some(&theme(&[("settingAbs", "#123456")])), ColorSystem::Styled);
+        let palette = resolve_dash_palette(Some(&theme(&[("settingAbs", "#123456")])));
         assert_eq!(palette.setting_abs, Rgba::hex("#123456"));
         assert_eq!(palette.setting_tc, dash_setting_colors::TC, "the others keep their own");
         assert_eq!(DEFAULT_DASH_PALETTE.setting_arb, Rgba::hex(dash_color::ORANGE));
@@ -630,7 +629,7 @@ mod tests {
     #[test]
     fn resolve_dash_palette_pins_danger_critical_fault_and_rpm_near_limit_regardless_of_the_theme() {
         let t = theme(&[("danger", "#00FF00"), ("critical", "#00FF00"), ("fault", "#00FF00")]);
-        let palette = resolve_dash_palette(Some(&t), ColorSystem::Styled);
+        let palette = resolve_dash_palette(Some(&t));
         assert_eq!(palette.danger, DEFAULT_DASH_PALETTE.critical);
         assert_eq!(palette.critical, DEFAULT_DASH_PALETTE.critical);
         assert_eq!(palette.fault, DEFAULT_DASH_PALETTE.fault);
@@ -639,8 +638,8 @@ mod tests {
 
     #[test]
     fn resolve_dash_palette_falls_back_neutral_to_foreground_then_to_the_default() {
-        assert_eq!(resolve_dash_palette(Some(&theme(&[("foreground", "#AABBCC")])), ColorSystem::Styled).neutral, Rgba::hex("#AABBCC"));
-        assert_eq!(resolve_dash_palette(Some(&theme(&[("primary", "#112233")])), ColorSystem::Styled).neutral, DEFAULT_DASH_PALETTE.neutral);
+        assert_eq!(resolve_dash_palette(Some(&theme(&[("foreground", "#AABBCC")]))).neutral, Rgba::hex("#AABBCC"));
+        assert_eq!(resolve_dash_palette(Some(&theme(&[("primary", "#112233")]))).neutral, DEFAULT_DASH_PALETTE.neutral);
     }
 
     #[test]
@@ -696,6 +695,8 @@ mod tests {
         let colours = Colours::parse(Some(&raw));
         assert_eq!(colours.theme, ColourTheme::Strict);
         assert_eq!(colours.limits, ColourLimits { brake_hot_above: 900.0, ..ColourLimits::default() });
+        assert!(colours.gear_redline, "the gear redline is on unless turned off");
+        assert!(!Colours::parse(Some(&serde_json::json!({ "gearRedline": false }))).gear_redline);
         assert_eq!(Colours::parse(None), Colours::default());
         assert_eq!(ColourTheme::parse(Some("calm")), ColourTheme::Sprint, "by name, as the host writes it");
     }
@@ -756,20 +757,7 @@ mod tests {
     #[test]
     fn match_theme_name_recognizes_an_exact_preset_and_returns_none_for_a_custom_theme() {
         assert_eq!(match_theme_name(Some(&theme(&[]))), Some("Graphite"));
-        assert_eq!(match_theme_name(Some(&theme(&[("primary", "#16B566"), ("accent", "#FF6A00")]))), Some("Viper"));
+        assert_eq!(match_theme_name(Some(&theme(&[("primary", "#00D64F"), ("accent", "#FF6A00")]))), Some("Viper"));
         assert_eq!(match_theme_name(Some(&theme(&[("primary", "#123456")]))), None);
-    }
-
-    #[test]
-    fn effective_color_system_defaults_to_styled_only_when_a_theme_override_is_set() {
-        assert_eq!(effective_color_system(&layout(None, None)), ColorSystem::Functional);
-        assert_eq!(effective_color_system(&layout(None, Some(theme(&[("primary", "#112233")])))), ColorSystem::Styled);
-        assert_eq!(effective_color_system(&layout(Some(ColorSystem::Functional), Some(theme(&[("primary", "#112233")])))), ColorSystem::Functional);
-    }
-
-    #[test]
-    fn match_layout_theme_name_reports_graphite_for_functional_layouts_without_inspecting_the_theme() {
-        assert_eq!(match_layout_theme_name(&layout(Some(ColorSystem::Functional), Some(theme(&[("primary", "#123456")])))), Some("Graphite"));
-        assert_eq!(match_layout_theme_name(&layout(Some(ColorSystem::Styled), Some(theme(&[])))), Some("Graphite"));
     }
 }

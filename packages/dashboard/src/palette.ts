@@ -7,7 +7,7 @@
 // design tokens. Change these values only as a deliberate dash change — they are what the
 // wheel screen shows.
 
-import type { DashColorSystem, DashLayout, DashTheme } from './index'
+import type { DashTheme } from './index'
 
 /**
  * The resolved on-wheel color set for a dash. Functional dashboards keep focal values
@@ -58,11 +58,11 @@ export const dashColor = {
   text2: '#A1A1AA',
   text3: '#6F6F78',
   orange: '#FF6A00',
-  green: '#16B566',
-  red: '#F02744',
-  yellow: '#E0A30C',
-  blue: '#1F7FE6',
-  purple: '#A06BFF',
+  green: '#00D64F',
+  red: '#FF1E1E',
+  yellow: '#FFCC00',
+  blue: '#1A7CFF',
+  purple: '#A64DFF',
   suzukiPrimary: '#7C3AED',
   suzukiAccent: '#B15CFF',
   monoPrimary: '#F6F6F6',
@@ -127,8 +127,8 @@ export const colourThemes: readonly ColourTheme[] = ['Sprint', 'Calm', 'Strict']
 /**
  * Where values change colour (`ColourLimits` in Core), °C and percent. Tyres against the
  * compound's ideal: cold more than `tyreColdBelow` under it, warm and hot more than
- * `tyreWarmAbove` and `tyreHotAbove` over it. Brakes in plain °C; tyre wear (tread left) and fuel
- * and energy bars turn low, then critical, under their marks.
+ * `tyreWarmAbove` and `tyreHotAbove` over it. Brakes in plain °C; tyre wear (tread left) turns low,
+ * then critical, under its marks, and the battery bar is red under `energyCriticalBelow`.
  */
 export interface DashColourLimits {
   tyreColdBelow: number
@@ -139,24 +139,28 @@ export interface DashColourLimits {
   brakeHotAbove: number
   wearLowBelow: number
   wearCriticalBelow: number
-  energyLowBelow: number
   energyCriticalBelow: number
 }
 
-/** The app-wide Colours setting: what colours mean (the theme) and where values change colour. */
+/**
+ * The app-wide Colours setting: what colours mean (the theme), where values change colour, and
+ * whether the gear turns red near the limit and blue at the shift point (`gearRedline`).
+ */
 export interface DashColours {
   theme: ColourTheme
+  gearRedline: boolean
   limits: DashColourLimits
 }
 
 /** The Colours setting a fresh install has (`ColourSettings` in Core). */
 export const defaultDashColours: DashColours = {
   theme: 'Sprint',
+  gearRedline: true,
   limits: {
     tyreColdBelow: 10, tyreWarmAbove: 10, tyreHotAbove: 20,
     brakeColdBelow: 300, brakeWarmAbove: 650, brakeHotAbove: 800,
     wearLowBelow: 60, wearCriticalBelow: 30,
-    energyLowBelow: 50, energyCriticalBelow: 20,
+    energyCriticalBelow: 30,
   },
 }
 
@@ -193,15 +197,12 @@ function hex(value: string | undefined): string | undefined {
 
 /**
  * Resolves a layout theme into a concrete palette: the default palette with each supplied
- * hex override applied. Unparseable or missing values inherit the default. Styled themes
- * recolor the optical RPM endpoints while protected safety states (critical/fault/danger)
- * stay functional regardless of the theme.
+ * hex override applied. Unparseable or missing values inherit the default. A theme recolors
+ * the optical RPM endpoints while protected safety states (critical/fault/danger) stay
+ * functional regardless of the theme.
  */
-export function resolveDashPalette(
-  theme: DashTheme | undefined,
-  colorSystem: DashColorSystem = 'styled',
-): DashPaletteColors {
-  if (colorSystem === 'functional' || isThemeEmpty(theme)) {
+export function resolveDashPalette(theme: DashTheme | undefined): DashPaletteColors {
+  if (isThemeEmpty(theme)) {
     return defaultDashPalette
   }
 
@@ -295,14 +296,4 @@ export function matchThemeName(theme: DashTheme | undefined): string | null {
   const t = theme ?? {}
   const match = dashThemePresets.find((preset) => sameTheme(preset.theme, t))
   return match?.name ?? null
-}
-
-/** The layout's effective color system: an explicit choice, or "styled" whenever a theme override is set. */
-export function effectiveColorSystem(layout: Pick<DashLayout, 'colorSystem' | 'theme'>): DashColorSystem {
-  return layout.colorSystem ?? (isThemeEmpty(layout.theme) ? 'functional' : 'styled')
-}
-
-/** The preset whose output matches the layout's effective color system, or `null` for a custom styled theme. */
-export function matchLayoutThemeName(layout: Pick<DashLayout, 'colorSystem' | 'theme'>): string | null {
-  return effectiveColorSystem(layout) === 'functional' ? 'Graphite' : matchThemeName(layout.theme)
 }

@@ -62,10 +62,42 @@ test('gear holds through the neutral blip of a shift', () => {
 })
 
 test('corners are where the speed bottoms out after a real drop, numbered from the line', () => {
-  const corners = lapCorners(trace(false))
-  assert.deepEqual(corners.map((corner) => corner.label), ['C1', 'C2'])
+  const corners = lapCorners(trace(false), null)
+  assert.deepEqual(corners.map((corner) => corner.label), ['T1', 'T2'])
   assert.ok(Math.abs(corners[0].position - 0.3) < 0.01)
   assert.ok(Math.abs(corners[1].position - 0.7) < 0.01)
+})
+
+test('with the track’s real turns, the corners are those, a chicane’s turns as one', () => {
+  // Monza from the data: the first chicane, the flat-out Curva Grande, the Roggia chicane.
+  const turns = [
+    { number: 1, at: 0.16 },
+    { number: 2, at: 0.17 },
+    { number: 3, at: 0.24 },
+    { number: 4, at: 0.37 },
+    { number: 5, at: 0.38 },
+  ]
+  const corners = lapCorners({ ...trace(false), trackLengthMeters: 5780 }, turns)
+  assert.deepEqual(
+    corners.map((corner) => [corner.label, Number(corner.position.toFixed(3))]),
+    [
+      ['T1–2', 0.165],
+      ['T3', 0.24],
+      ['T4–5', 0.375],
+    ],
+  )
+})
+
+test('a real turn the data places behind the one before it is left out', () => {
+  const turns = [
+    { number: 1, at: 0.3 },
+    { number: 2, at: 0.1 },
+    { number: 3, at: 0.6 },
+  ]
+  assert.deepEqual(
+    lapCorners(trace(false), turns).map((corner) => corner.label),
+    ['T1', 'T3'],
+  )
 })
 
 test('the verdict names the faster lap', () => {
@@ -160,7 +192,7 @@ const spread = (seconds: number, from: number, to: number) => (x: number) => sec
 test('the map: green where this lap gains, red where it loses, stronger the faster, even elsewhere', () => {
   // Over 0.25–0.35 (6 s), 0.6 s lost: 10 % of the time it took, the strongest red. Over 0.65–0.75, 0.06 s gained: 1 %, the faintest green.
   const lap = timed((x) => spread(0.6, 0.25, 0.35)(x) - spread(0.06, 0.65, 0.75)(x))
-  const comparison = lapMapComparison(lap, trace(false), lapCorners(lap))
+  const comparison = lapMapComparison(lap, trace(false), lapCorners(lap, null))
   assert.ok(comparison)
   assert.equal(shadeAt(comparison.shades, 0.1), 0)
   assert.equal(shadeAt(comparison.shades, 0.3), -3)
@@ -180,12 +212,12 @@ test('the map: a lap a little slower all the way round is faintly red everywhere
 
 test('each corner carries what the lap lost (+) or gained (−) over its stretch, and they add up to the lap', () => {
   const lap = timed((x) => spread(0.2, 0.25, 0.35)(x) - spread(0.1, 0.65, 0.75)(x) + spread(0.05, 0, 0.1)(x))
-  const comparison = lapMapComparison(lap, trace(false), lapCorners(lap))
+  const comparison = lapMapComparison(lap, trace(false), lapCorners(lap, null))
   assert.ok(comparison)
-  // C1's stretch runs from the line to halfway to C2, so it takes the start's 0.05 s too.
+  // T1's stretch runs from the line to halfway to T2, so it takes the start's 0.05 s too.
   assert.deepEqual(comparison.corners.map((corner) => [corner.label, Math.round(corner.seconds * 1000) / 1000]), [
-    ['C1', 0.25],
-    ['C2', -0.1],
+    ['T1', 0.25],
+    ['T2', -0.1],
   ])
   assert.ok(Math.abs(comparison.corners.reduce((sum, corner) => sum + corner.seconds, 0) - 0.15) < 1e-9)
 })
@@ -193,7 +225,7 @@ test('each corner carries what the lap lost (+) or gained (−) over its stretch
 test('without elapsed time there is nothing to colour the map by', () => {
   const lap = trace(false)
   const { elapsedSeconds: _, ...channels } = lap.channels
-  assert.equal(lapMapComparison({ ...lap, channels }, trace(false), lapCorners(lap)), null)
+  assert.equal(lapMapComparison({ ...lap, channels }, trace(false), lapCorners(lap, null)), null)
 })
 
 test('a corner gap reads to the hundredth, red when lost, green when gained', () => {

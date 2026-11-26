@@ -241,7 +241,7 @@ mod tests {
             mode: GroupMode::OneAtATime,
             shown_first: None,
             hidden: false,
-            style: None,
+            framed: false,
         };
         let with = |widgets: Vec<DashWidget>, groups: Vec<DashWidgetGroup>| DashPage { widgets, groups, ..page("p") };
         let timer = widget("t", "racelogic_lap_timer", Some("stack"), false);

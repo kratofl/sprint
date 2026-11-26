@@ -1,4 +1,5 @@
 import { IconLock } from '@tabler/icons-react'
+import Link from 'next/link'
 import { listCardClass } from '@/components/app/grouped'
 import { PageHeader } from '@/components/app/page-header'
 import { ErrorState } from '@/components/app/states'
@@ -18,7 +19,7 @@ export default function SessionNotFound() {
           body="It doesn’t exist, or its driver hid it from you or removed you as their race engineer."
           action={
             <Button asChild variant="secondary">
-              <a href="/sessions">Back to sessions</a>
+              <Link href="/sessions">Back to sessions</Link>
             </Button>
           }
         />

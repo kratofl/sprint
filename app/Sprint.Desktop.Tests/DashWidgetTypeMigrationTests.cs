@@ -59,6 +59,9 @@ public class DashWidgetTypeMigrationTests
                 Widget("core", "tyre_temp", ("channel", "core")),
                 Widget("soc", "soc"),
                 Widget("header", "header"),
+                Widget("ve-bar", "bar", ("channel", "ve")),
+                Widget("map", "bar", ("channel", "linear_map")),
+                Widget("fuel-bar", "bar"),
             ],
         };
         DashLayout layout = new DashLayout { Pages = [page] };
@@ -66,9 +69,31 @@ public class DashWidgetTypeMigrationTests
         Assert.True(DashWidgetTypeMigration.Apply(layout));
 
         Assert.Equal(
-            ["last_lap", "current_lap", "class_best", "gap_behind", "gap_ahead", "ve_percent", "tyre_core_temp", "battery"],
+            ["last_lap", "current_lap", "class_best", "gap_behind", "gap_ahead", "ve_percent", "tyre_core_temp", "battery", "ve_bar", "relative_bar", "fuel_bar"],
             page.Widgets.Select(widget => widget.Type).ToArray());
         Assert.All(page.Widgets, widget => Assert.Null(widget.Config));
+    }
+
+    [Fact]
+    public void The_gear_and_speed_loses_its_alignment_and_a_text_keeps_only_an_identity_binding()
+    {
+        DashPage page = new DashPage
+        {
+            Widgets =
+            [
+                Widget("gear", "gear_speed", ("align", "left")),
+                Widget("speed", "text", ("content", "SPEED"), ("binding", "car.speed")),
+                Widget("name", "text", ("content", "Your Name"), ("binding", "profile.driverName")),
+            ],
+        };
+        DashLayout layout = new DashLayout { Pages = [page] };
+
+        Assert.True(DashWidgetTypeMigration.Apply(layout));
+
+        Assert.Null(page.Widgets[0].Config);
+        Assert.Equal(["content"], page.Widgets[1].Config?.Keys.ToArray() ?? []);
+        Assert.Equal(["content", "binding"], page.Widgets[2].Config?.Keys.ToArray() ?? []);
+        Assert.False(DashWidgetTypeMigration.Apply(layout));
     }
 
     [Fact]

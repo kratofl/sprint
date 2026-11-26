@@ -32,9 +32,9 @@
       ],
       "widgets": [
         {"id": "gear", "type": "gear", "col": 5, "row": 1, "colSpan": 1, "rowSpan": 3},
-        {"id": "practice-bar-left-0-0", "type": "bar", "col": 0, "row": 0, "colSpan": 1, "rowSpan": 9, "config": {"channel": "ve"}},
-        {"id": "practice-bar-right-10-0", "type": "bar", "col": 10, "row": 0, "colSpan": 1, "rowSpan": 9, "config": {"channel": "fuel"}},
-        {"id": "practice-bar-top-1-0", "type": "bar", "col": 1, "row": 0, "colSpan": 9, "rowSpan": 1, "config": {"channel": "rpm"}},
+        {"id": "practice-bar-left-0-0", "type": "ve_bar", "col": 0, "row": 0, "colSpan": 1, "rowSpan": 9},
+        {"id": "practice-bar-right-10-0", "type": "fuel_bar", "col": 10, "row": 0, "colSpan": 1, "rowSpan": 9},
+        {"id": "practice-bar-top-1-0", "type": "rpm_bar", "col": 1, "row": 0, "colSpan": 9, "rowSpan": 1},
         {"id": "practice-tc-1-1", "type": "tc", "col": 1, "row": 1, "colSpan": 2, "rowSpan": 1},
         {"id": "practice-abs-3-1", "type": "abs", "col": 3, "row": 1, "colSpan": 2, "rowSpan": 1},
         {"id": "practice-engine_map-1-2", "type": "engine_map", "col": 1, "row": 2, "colSpan": 2, "rowSpan": 1},
@@ -78,9 +78,9 @@
       ],
       "widgets": [
         {"id": "gear", "type": "gear", "col": 5, "row": 1, "colSpan": 1, "rowSpan": 3},
-        {"id": "tyres-bar-left-0-0", "type": "bar", "col": 0, "row": 0, "colSpan": 1, "rowSpan": 9, "config": {"channel": "inputs"}},
-        {"id": "tyres-bar-right-10-0", "type": "bar", "col": 10, "row": 0, "colSpan": 1, "rowSpan": 9, "config": {"channel": "soc"}},
-        {"id": "tyres-bar-top-1-0", "type": "bar", "col": 1, "row": 0, "colSpan": 9, "rowSpan": 1, "config": {"channel": "rpm"}},
+        {"id": "tyres-bar-left-0-0", "type": "inputs_bar", "col": 0, "row": 0, "colSpan": 1, "rowSpan": 9},
+        {"id": "tyres-bar-right-10-0", "type": "battery_bar", "col": 10, "row": 0, "colSpan": 1, "rowSpan": 9},
+        {"id": "tyres-bar-top-1-0", "type": "rpm_bar", "col": 1, "row": 0, "colSpan": 9, "rowSpan": 1},
         {"id": "tyres-tyre-fl-1-1", "type": "tyre", "col": 1, "row": 1, "colSpan": 2, "rowSpan": 2, "config": {"corner": "fl"}, "group": "tyres-tyres"},
         {"id": "tyres-tyre-fr-3-1", "type": "tyre", "col": 3, "row": 1, "colSpan": 2, "rowSpan": 2, "config": {"corner": "fr"}, "group": "tyres-tyres"},
         {"id": "tyres-tyre-rl-1-3", "type": "tyre", "col": 1, "row": 3, "colSpan": 2, "rowSpan": 2, "config": {"corner": "rl"}, "group": "tyres-tyres"},
@@ -114,9 +114,9 @@
       "showIn": ["practice"],
       "widgets": [
         {"id": "gear", "type": "gear", "col": 5, "row": 1, "colSpan": 1, "rowSpan": 3},
-        {"id": "energy-bar-left-0-0", "type": "bar", "col": 0, "row": 0, "colSpan": 1, "rowSpan": 9, "config": {"channel": "ve"}},
-        {"id": "energy-bar-right-10-0", "type": "bar", "col": 10, "row": 0, "colSpan": 1, "rowSpan": 9, "config": {"channel": "soc"}},
-        {"id": "energy-bar-top-1-0", "type": "bar", "col": 1, "row": 0, "colSpan": 9, "rowSpan": 1, "config": {"channel": "fuel_ve"}},
+        {"id": "energy-bar-left-0-0", "type": "ve_bar", "col": 0, "row": 0, "colSpan": 1, "rowSpan": 9},
+        {"id": "energy-bar-right-10-0", "type": "battery_bar", "col": 10, "row": 0, "colSpan": 1, "rowSpan": 9},
+        {"id": "energy-bar-top-1-0", "type": "fuel_ve_bar", "col": 1, "row": 0, "colSpan": 9, "rowSpan": 1},
         {"id": "energy-ve_percent-1-1", "type": "ve_percent", "col": 1, "row": 1, "colSpan": 2, "rowSpan": 2},
         {"id": "energy-ve_per_lap-3-1", "type": "ve_per_lap", "col": 3, "row": 1, "colSpan": 2, "rowSpan": 1},
         {"id": "energy-ve_last_lap-3-2", "type": "ve_last_lap", "col": 3, "row": 2, "colSpan": 2, "rowSpan": 1},
@@ -163,9 +163,9 @@
       ],
       "widgets": [
         {"id": "gear", "type": "gear", "col": 5, "row": 1, "colSpan": 1, "rowSpan": 3},
-        {"id": "outlap-bar-left-0-0", "type": "bar", "col": 0, "row": 0, "colSpan": 1, "rowSpan": 9, "config": {"channel": "linear_map"}},
-        {"id": "outlap-bar-right-10-0", "type": "bar", "col": 10, "row": 0, "colSpan": 1, "rowSpan": 9, "config": {"channel": "spotter"}},
-        {"id": "outlap-bar-top-1-0", "type": "bar", "col": 1, "row": 0, "colSpan": 9, "rowSpan": 1, "config": {"channel": "rpm"}},
+        {"id": "outlap-bar-left-0-0", "type": "relative_bar", "col": 0, "row": 0, "colSpan": 1, "rowSpan": 9},
+        {"id": "outlap-bar-right-10-0", "type": "spotter_bar", "col": 10, "row": 0, "colSpan": 1, "rowSpan": 9},
+        {"id": "outlap-bar-top-1-0", "type": "rpm_bar", "col": 1, "row": 0, "colSpan": 9, "rowSpan": 1},
         {"id": "outlap-tyre-fl-1-1", "type": "tyre", "col": 1, "row": 1, "colSpan": 2, "rowSpan": 2, "config": {"corner": "fl"}, "group": "outlap-tyres"},
         {"id": "outlap-tyre-fr-3-1", "type": "tyre", "col": 3, "row": 1, "colSpan": 2, "rowSpan": 2, "config": {"corner": "fr"}, "group": "outlap-tyres"},
         {"id": "outlap-tyre-rl-1-3", "type": "tyre", "col": 1, "row": 3, "colSpan": 2, "rowSpan": 2, "config": {"corner": "rl"}, "group": "outlap-tyres"},
@@ -202,9 +202,9 @@
       ],
       "widgets": [
         {"id": "gear", "type": "gear", "col": 5, "row": 1, "colSpan": 1, "rowSpan": 3},
-        {"id": "push-bar-left-0-0", "type": "bar", "col": 0, "row": 0, "colSpan": 1, "rowSpan": 9, "config": {"channel": "delta"}},
-        {"id": "push-bar-right-10-0", "type": "bar", "col": 10, "row": 0, "colSpan": 1, "rowSpan": 9, "config": {"channel": "soc"}},
-        {"id": "push-bar-top-1-0", "type": "bar", "col": 1, "row": 0, "colSpan": 9, "rowSpan": 1, "config": {"channel": "rpm"}},
+        {"id": "push-bar-left-0-0", "type": "delta_bar", "col": 0, "row": 0, "colSpan": 1, "rowSpan": 9},
+        {"id": "push-bar-right-10-0", "type": "battery_bar", "col": 10, "row": 0, "colSpan": 1, "rowSpan": 9},
+        {"id": "push-bar-top-1-0", "type": "rpm_bar", "col": 1, "row": 0, "colSpan": 9, "rowSpan": 1},
         {"id": "push-best_lap-1-1", "type": "best_lap", "col": 1, "row": 1, "colSpan": 4, "rowSpan": 2},
         {"id": "push-predictive_lap-1-3", "type": "predictive_lap", "col": 1, "row": 3, "colSpan": 4, "rowSpan": 2},
         {"id": "push-sector_time-1-5", "type": "sector_time", "col": 1, "row": 5, "colSpan": 4, "rowSpan": 1},
@@ -238,9 +238,9 @@
       ],
       "widgets": [
         {"id": "gear", "type": "gear", "col": 5, "row": 1, "colSpan": 1, "rowSpan": 3},
-        {"id": "race-bar-left-0-0", "type": "bar", "col": 0, "row": 0, "colSpan": 1, "rowSpan": 9, "config": {"channel": "ve"}},
-        {"id": "race-bar-right-10-0", "type": "bar", "col": 10, "row": 0, "colSpan": 1, "rowSpan": 9, "config": {"channel": "fuel"}},
-        {"id": "race-bar-top-1-0", "type": "bar", "col": 1, "row": 0, "colSpan": 9, "rowSpan": 1, "config": {"channel": "rpm"}},
+        {"id": "race-bar-left-0-0", "type": "ve_bar", "col": 0, "row": 0, "colSpan": 1, "rowSpan": 9},
+        {"id": "race-bar-right-10-0", "type": "fuel_bar", "col": 10, "row": 0, "colSpan": 1, "rowSpan": 9},
+        {"id": "race-bar-top-1-0", "type": "rpm_bar", "col": 1, "row": 0, "colSpan": 9, "rowSpan": 1},
         {"id": "race-tc-1-1", "type": "tc", "col": 1, "row": 1, "colSpan": 2, "rowSpan": 1},
         {"id": "race-abs-3-1", "type": "abs", "col": 3, "row": 1, "colSpan": 2, "rowSpan": 1},
         {"id": "race-engine_map-1-2", "type": "engine_map", "col": 1, "row": 2, "colSpan": 2, "rowSpan": 1},
@@ -280,9 +280,9 @@
       ],
       "widgets": [
         {"id": "gear", "type": "gear", "col": 5, "row": 1, "colSpan": 1, "rowSpan": 3},
-        {"id": "car-bar-left-0-0", "type": "bar", "col": 0, "row": 0, "colSpan": 1, "rowSpan": 9, "config": {"channel": "inputs"}},
-        {"id": "car-bar-right-10-0", "type": "bar", "col": 10, "row": 0, "colSpan": 1, "rowSpan": 9, "config": {"channel": "fuel"}},
-        {"id": "car-bar-top-1-0", "type": "bar", "col": 1, "row": 0, "colSpan": 9, "rowSpan": 1, "config": {"channel": "rpm"}},
+        {"id": "car-bar-left-0-0", "type": "inputs_bar", "col": 0, "row": 0, "colSpan": 1, "rowSpan": 9},
+        {"id": "car-bar-right-10-0", "type": "fuel_bar", "col": 10, "row": 0, "colSpan": 1, "rowSpan": 9},
+        {"id": "car-bar-top-1-0", "type": "rpm_bar", "col": 1, "row": 0, "colSpan": 9, "rowSpan": 1},
         {"id": "car-tyre-fl-1-1", "type": "tyre", "col": 1, "row": 1, "colSpan": 2, "rowSpan": 2, "config": {"corner": "fl"}, "group": "car-tyres"},
         {"id": "car-tyre-fr-3-1", "type": "tyre", "col": 3, "row": 1, "colSpan": 2, "rowSpan": 2, "config": {"corner": "fr"}, "group": "car-tyres"},
         {"id": "car-tyre-rl-1-3", "type": "tyre", "col": 1, "row": 3, "colSpan": 2, "rowSpan": 2, "config": {"corner": "rl"}, "group": "car-tyres"},
@@ -358,12 +358,6 @@
       "rowSpan": 12
     }
   ],
-  "alertConfig": {
-    "displayMode": "full",
-    "durationSeconds": 1.5,
-    "colorToken": "auto",
-    "invertColors": false
-  },
   "pitLimiter": {
     "style": "gear",
     "widgets": [

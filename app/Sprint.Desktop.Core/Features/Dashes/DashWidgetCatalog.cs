@@ -14,6 +14,9 @@ public enum DashConfigKind
 {
     Text,
     Select,
+
+    /// <summary>On or off, stored as <c>"on"</c> / <c>"off"</c>; the default is not written.</summary>
+    Switch,
 }
 
 /// <summary>A per-widget-type configurable field surfaced in the editor inspector.</summary>
@@ -26,60 +29,28 @@ public sealed record DashConfigOption(string Value, string Label);
 
 public static class DashWidgetCatalog
 {
-    // The text widget reads config["content"] (literal) and config["binding"]
-    // (live telemetry value, wins over content) in DashPainter.DrawText.
+    // The text widget reads config["content"] (literal) and config["binding"] (who drives and where,
+    // wins over content; TEXT_BINDINGS in the renderer). Live values have widgets of their own.
     private static readonly IReadOnlyList<DashConfigDef> TextConfig =
     [
         new DashConfigDef("content", "Text", DashConfigKind.Text, Default: ""),
-        new DashConfigDef("binding", "Live value", DashConfigKind.Select, Default: "", Options:
+        new DashConfigDef("binding", "Shows instead", DashConfigKind.Select, Default: "", Options:
         [
-            new DashConfigOption("", "None (static text)"),
+            new DashConfigOption("", "Nothing (the text)"),
             new DashConfigOption("profile.driverName", "Driver name"),
             new DashConfigOption("profile.driverNumber", "Driver number"),
             new DashConfigOption("session.track", "Track"),
             new DashConfigOption("session.car", "Car"),
-            new DashConfigOption("car.speed", "Speed"),
-            new DashConfigOption("car.gear", "Gear"),
-            new DashConfigOption("lap.current", "Current lap time"),
-            new DashConfigOption("lap.delta", "Delta"),
         ]),
     ];
 
-    // Horizontal placement for the gear/speed stack (DashPainter.HorizontalAnchor).
-    // Centre is the default; the setting exists so a widget parked at a screen edge can
-    // be flushed to that edge instead.
-    private static readonly IReadOnlyList<DashConfigDef> AlignConfig =
+    // The gear reads what it shows round its digit (GearParts in the renderer): the inputs and the
+    // revs and speed unless switched off, the speed above the revs when flipped.
+    private static readonly IReadOnlyList<DashConfigDef> GearConfig =
     [
-        new DashConfigDef("align", "Alignment", DashConfigKind.Select, Default: "center", Options:
-        [
-            new DashConfigOption("center", "Centre"),
-            new DashConfigOption("left", "Left"),
-            new DashConfigOption("right", "Right"),
-        ]),
-    ];
-
-    // The bar widget reads config["channel"]: what fills it. A bar on a zoned dash's side spot
-    // stands upright; across the top it lies down. "gap" is the gaps on the road.
-    private static readonly IReadOnlyList<DashConfigDef> BarConfig =
-    [
-        new DashConfigDef("channel", "Shows", DashConfigKind.Select, Default: "fuel", Options:
-        [
-            new DashConfigOption("fuel", "Fuel"),
-            new DashConfigOption("ve", "Virtual energy"),
-            new DashConfigOption("soc", "Battery charge"),
-            new DashConfigOption("delta", "Delta"),
-            new DashConfigOption("sectors", "Sectors"),
-            new DashConfigOption("inputs", "Throttle and brake"),
-            new DashConfigOption("throttle", "Throttle"),
-            new DashConfigOption("brake", "Brake"),
-            new DashConfigOption("clutch", "Clutch"),
-            new DashConfigOption("rpm", "RPM"),
-            new DashConfigOption("gap", "Track gaps"),
-            new DashConfigOption("class_gap", "Class gaps"),
-            new DashConfigOption("fuel_ve", "Fuel and virtual energy"),
-            new DashConfigOption("spotter", "Spotter"),
-            new DashConfigOption("linear_map", "Linear map"),
-        ]),
+        new DashConfigDef("inputs", "Throttle, brake and clutch", DashConfigKind.Switch, Default: "on"),
+        new DashConfigDef("readouts", "RPM and speed", DashConfigKind.Switch, Default: "on"),
+        new DashConfigDef("flip", "Speed above, RPM below", DashConfigKind.Switch, Default: "off"),
     ];
 
     // The tyre widget reads config["corner"]: which of the four it shows.
@@ -101,8 +72,8 @@ public static class DashWidgetCatalog
         {
             ["text"] = Definition("text", "Text", idleCapable: true, config: TextConfig, "profile.driverName", "profile.driverNumber"),
             ["rpm_bar"] = Definition("rpm_bar", "RPM Bar", idleCapable: false, "car.rpm", "car.maxRpm"),
-            ["gear"] = Definition("gear", "Gear", idleCapable: true, "car.gear", "car.rpm", "car.maxRpm"),
-            ["gear_speed"] = Definition("gear_speed", "Gear + Speed", idleCapable: true, AlignConfig, "car.gear", "car.speed"),
+            ["gear"] = Definition("gear", "Gear", idleCapable: true, GearConfig, "car.gear", "car.rpm", "car.maxRpm", "car.speed", "inputs.throttle", "inputs.brake", "inputs.clutch"),
+            ["gear_speed"] = Definition("gear_speed", "Gear + Speed", idleCapable: true, "car.gear", "car.speed"),
             ["input_trace"] = Definition("input_trace", "Input Trace", idleCapable: false, "inputs.throttle", "inputs.brake", "inputs.clutch", "inputs.steering"),
             // One lap time each. A current or last lap that does not count shows "-:--.---".
             ["current_lap"] = Definition("current_lap", "Current Lap", idleCapable: false, "lap.current", "lap.isValid"),
@@ -166,6 +137,10 @@ public static class DashWidgetCatalog
             ["tyre_core_temp"] = Definition("tyre_core_temp", "Tyre Core Temperature", idleCapable: true, "tires.fl", "tires.fr", "tires.rl", "tires.rr"),
             ["tyre_avg"] = Definition("tyre_avg", "Tyre Average Temperature", idleCapable: false, "tires.averageTempLastLap"),
             ["brake_temp"] = Definition("brake_temp", "Brake Temperature", idleCapable: true, "tires.brakeTemp"),
+            // The same four corners as bare coloured numbers, the motorsport look.
+            ["tyre_temp_numbers"] = Definition("tyre_temp_numbers", "Tyre Temp Numbers", idleCapable: true, "tires.fl", "tires.fr", "tires.rl", "tires.rr"),
+            ["brake_temp_numbers"] = Definition("brake_temp_numbers", "Brake Temp Numbers", idleCapable: true, "tires.brakeTemp"),
+            ["tyre_brake_temp_numbers"] = Definition("tyre_brake_temp_numbers", "Tyre + Brake Numbers", idleCapable: true, "tires.fl", "tires.fr", "tires.rl", "tires.rr", "tires.brakeTemp"),
             ["tyre_wear_lap"] = Definition("tyre_wear_lap", "Wear Per Lap", idleCapable: false, "tires.wearLastLap"),
             ["tyre_laps_left"] = Definition("tyre_laps_left", "Tyre Laps Left", idleCapable: false, "tires.wear", "tires.wearLastLap"),
             // LMU's virtual energy, one figure each (legacy "ers" widgets migrate to ve_percent). The
@@ -187,9 +162,23 @@ public static class DashWidgetCatalog
             // other cars (field) and damage for these.
             ["relative"] = Definition("relative", "Relative", idleCapable: false, "race.position"),
             ["damage"] = Definition("damage", "Damage", idleCapable: false),
-            // The flat, zoned dash's widgets: a bar for the bar spots, one tyre with its stripes
-            // and brake, the sectors as coloured times and single values.
-            ["bar"] = Definition("bar", "Bar", idleCapable: false, BarConfig, "car.fuelLiters", "energy.virtual", "energy.soc", "lap.delta", "car.rpm", "lap.sectors", "race.gapAhead", "race.classGapAhead", "inputs.throttle", "inputs.brake", "inputs.clutch", "field.lapDistance"),
+            // The bars, one widget each (no label or value: a meter; standing in a side spot, lying
+            // across the top), then one tyre with its stripes and brake, the sectors as coloured
+            // times and single values.
+            ["fuel_bar"] = Definition("fuel_bar", "Fuel Bar", idleCapable: false, "car.fuelLiters", "car.fuelCapacityLiters"),
+            ["ve_bar"] = Definition("ve_bar", "VE Bar", idleCapable: false, "energy.virtual"),
+            ["battery_bar"] = Definition("battery_bar", "Battery Bar", idleCapable: false, "energy.soc"),
+            ["fuel_ve_bar"] = Definition("fuel_ve_bar", "Fuel + VE Bar", idleCapable: false, "car.fuelLiters", "car.fuelCapacityLiters", "energy.virtual"),
+            ["delta_bar"] = Definition("delta_bar", "Delta Bar", idleCapable: false, "lap.delta"),
+            ["gap_bar"] = Definition("gap_bar", "Gap Bar", idleCapable: false, "race.gapAhead", "race.gapBehind"),
+            ["class_gap_bar"] = Definition("class_gap_bar", "Class Gap Bar", idleCapable: false, "race.classGapAhead", "race.classGapBehind"),
+            ["sector_bar"] = Definition("sector_bar", "Sector Bar", idleCapable: false, "lap.sectors", "lap.sectorBests"),
+            ["inputs_bar"] = Definition("inputs_bar", "Inputs Bar", idleCapable: false, "inputs.throttle", "inputs.brake"),
+            ["throttle_bar"] = Definition("throttle_bar", "Throttle Bar", idleCapable: false, "inputs.throttle"),
+            ["brake_bar"] = Definition("brake_bar", "Brake Bar", idleCapable: false, "inputs.brake"),
+            ["clutch_bar"] = Definition("clutch_bar", "Clutch Bar", idleCapable: false, "inputs.clutch"),
+            ["spotter_bar"] = Definition("spotter_bar", "Spotter", idleCapable: false, "race.carLeft", "race.carRight"),
+            ["relative_bar"] = Definition("relative_bar", "Relative Bar", idleCapable: false, "field.lapDistance"),
             ["tyre"] = Definition("tyre", "Tyre", idleCapable: true, TyreConfig, "tires.fl", "tires.fr", "tires.rl", "tires.rr"),
             ["sectors"] = Definition("sectors", "Sectors", idleCapable: false, "lap.sectors", "lap.sectorBests"),
             ["speed"] = Definition("speed", "Speed", idleCapable: true, "car.speed"),

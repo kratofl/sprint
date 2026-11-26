@@ -20,7 +20,10 @@ public sealed class DashWidgetCatalogTests
             "fuel",
             "tyre_temp",
             "flag",
-            "tc"
+            "tc",
+            "tyre_temp_numbers",
+            "brake_temp_numbers",
+            "tyre_brake_temp_numbers",
         };
 
         foreach (string? type in expected)
@@ -32,6 +35,10 @@ public sealed class DashWidgetCatalogTests
         Assert.Equal("Gear + Speed", gearSpeed.Name);
         Assert.Contains("car.gear", gearSpeed.Bindings);
         Assert.Contains("car.speed", gearSpeed.Bindings);
+
+        // The gear's parts round its digit are switches the inspector offers, on but the flip.
+        Assert.Equal([("inputs", "on"), ("readouts", "on"), ("flip", "off")], DashWidgetCatalog.Get("gear").Config.Select(field => (field.Key, field.Default)));
+        Assert.All(DashWidgetCatalog.Get("gear").Config, field => Assert.Equal(DashConfigKind.Switch, field.Kind));
     }
 
     [Fact]
@@ -62,7 +69,7 @@ public sealed class DashWidgetCatalogTests
     [Fact]
     public void RetiredAndSplitWidgetTypesAreGone()
     {
-        foreach (string type in new[] { "header", "sector", "lap_time", "slip", "cut", "arb" })
+        foreach (string type in new[] { "header", "sector", "lap_time", "slip", "cut", "arb", "bar" })
         {
             Assert.False(DashWidgetCatalog.IsKnown(type), $"'{type}' was retired or split.");
         }

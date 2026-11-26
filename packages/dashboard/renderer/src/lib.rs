@@ -308,8 +308,8 @@ mod tests {
         let widget = if timer { r#"{"id":"t","type":"racelogic_lap_timer","col":0,"row":0,"colSpan":20,"rowSpan":12}"# } else { "" };
         format!(
             r#"{{"layout":{{"id":"{layout_id}","name":"L","gridCols":20,"gridRows":12,"pages":[{{"id":"p","name":"P","widgets":[{widget}]}}],
-                "alerts":[{tc_alert},{{"id":"d","type":"dial_change","enabled":true,"col":0,"row":0,"colSpan":1,"rowSpan":1,"durationSeconds":1.5}}],
-                "alertConfig":{{"displayMode":"center"}}}},"width":200,"height":120}}"#
+                "alerts":[{tc_alert},{{"id":"d","type":"dial_change","enabled":true,"col":0,"row":0,"colSpan":1,"rowSpan":1,"durationSeconds":1.5}}]}},
+                "width":200,"height":120}}"#
         )
     }
 
@@ -394,7 +394,7 @@ mod tests {
     }
 
     fn dial_reading(position: usize, changes: u64) -> Vec<u8> {
-        let positions = r##"[{"label":"DASH","color":"#1F7FE6"},{"label":"TC2","color":"#E0A30C"}]"##;
+        let positions = r##"[{"label":"DASH","color":"#1A7CFF"},{"label":"TC2","color":"#FFCC00"}]"##;
         format!(r#"{{"caption":"MULTI","position":{position},"changes":{changes},"positions":{positions},"invertPopup":false}}"#).into_bytes()
     }
 
@@ -533,7 +533,7 @@ mod tests {
     fn a_dial_popup_banner_draws_as_a_still() {
         let mut r = Renderer::new();
         r.set_scene(SCENE.as_bytes()).unwrap();
-        let popup = br##"{"kind":"multiDial","caption":"MULTI","label":"PIT","color":"#16B566","inverted":true}"##;
+        let popup = br##"{"kind":"multiDial","caption":"MULTI","label":"PIT","color":"#00D64F","inverted":true}"##;
         assert_eq!(r.render_still(b"", Some(popup), 0.0), Ok(RenderInfo { time_dependent: false }));
         assert!(shows(&r, "PIT"));
     }

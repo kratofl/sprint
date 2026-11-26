@@ -1,23 +1,43 @@
-// Widget chrome: the frame and label a widget wears. A dash has one look (`DashChrome`): its
-// corner radius, edge weight and where labels sit; a widget may move only its own label. Widgets
-// draw only their values; the frame, the label and the knob colour come from here.
+// Widget chrome: the frame and label a widget wears. Sprint draws one look on every dash: a 1-px
+// edge with 6-px corners and the label centred in the top edge. A widget may only go without its
+// frame or its label (`Look`). Widgets draw only their values; the frame, the label and the knob
+// colour come from here.
 //
 // Geometry is cell-local (0,0 is the widget's cell top-left), authored at 800x480 and scaled by
 // `ChromeContext::scale`.
 
 use crate::draw::{Builder, Radii};
 use crate::grid::PixelRect;
-use crate::model::{BorderWeight, DashChrome, GroupLabel, GroupStyle, LabelMode};
 use crate::palette::{DashPaletteColors, Rgba, with_alpha};
 use crate::primitives::{TextAlign, TextLine, TextSizing, text_line};
 use crate::text::TextWeight;
 
-/// What every frame on a dash shares: the screen's scale against 800x480 and the dash's look.
+/// Sprint's frame: its corner radius and edge weight, at 800x480.
+pub const RADIUS: f64 = 6.0;
+const EDGE: f64 = 1.0;
+
+/// How one widget wears Sprint's look: with or without its frame, with or without its label.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Look {
+    pub framed: bool,
+    pub labelled: bool,
+}
+
+impl Look {
+    /// Frame and label: what every widget wears unless it turned one off.
+    pub const SPRINT: Look = Look { framed: true, labelled: true };
+
+    /// The edge weight at 800x480: none without a frame.
+    fn edge(self) -> f64 {
+        if self.framed { EDGE } else { 0.0 }
+    }
+}
+
+/// What a frame is drawn with: the screen's scale against 800x480 and the widget's look.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ChromeContext {
     pub scale: f64,
-    /// The dash's look, with the widget's own label already applied.
-    pub look: DashChrome,
+    pub look: Look,
 }
 
 /// The box a frame fills in a `width` x `height` cell, and its corner radius: where an unframed
@@ -25,14 +45,14 @@ pub struct ChromeContext {
 pub fn frame_box(ctx: ChromeContext, width: f64, height: f64) -> (PixelRect, f64) {
     let inset = GAP * ctx.scale;
     let box_ = PixelRect::new(inset, inset, (width - inset * 2.0).max(0.0), (height - inset * 2.0).max(0.0));
-    (box_, (ctx.look.radius * ctx.scale).min(box_.width / 2.0).min(box_.height / 2.0))
+    (box_, (RADIUS * ctx.scale).min(box_.width / 2.0).min(box_.height / 2.0))
 }
 
 /// Where an unframed widget's values go inside the box an overlay lights (`frame_box`): off its
 /// edge and padded like a framed widget's.
 pub fn lit_content(ctx: ChromeContext, width: f64, height: f64) -> PixelRect {
     let (box_, _) = frame_box(ctx, width, height);
-    let edge = ctx.look.border.px();
+    let edge = ctx.look.edge();
     let pad = 8.0 * ctx.scale;
     PixelRect::new(box_.left + edge + pad, box_.top + edge + pad / 2.0, (box_.width - (edge + pad) * 2.0).max(0.0), (box_.height - edge * 2.0 - pad).max(0.0))
 }
@@ -40,7 +60,7 @@ pub fn lit_content(ctx: ChromeContext, width: f64, height: f64) -> PixelRect {
 /// Where an unframed widget's content goes: the same margin a frame keeps, so bare and framed
 /// widgets line up.
 pub fn bare_content(ctx: ChromeContext, width: f64, height: f64) -> PixelRect {
-    let inset = GAP * ctx.scale + ctx.look.border.px();
+    let inset = GAP * ctx.scale + ctx.look.edge();
     PixelRect::new(inset, inset, (width - inset * 2.0).max(0.0), (height - inset * 2.0).max(0.0))
 }
 
@@ -123,65 +143,40 @@ const GAP: f64 = 3.0;
 /// How far a box with its label in the top edge steps down, so the label clears the box above.
 const NOTCH_DROP: f64 = 5.0;
 
-/// A label band's height, at 800x480; a label beside the value takes none.
-fn label_height(label: LabelMode) -> f64 {
-    match label {
-        LabelMode::Off | LabelMode::Left | LabelMode::Right => 0.0,
-        LabelMode::On | LabelMode::Top => 15.0,
-        LabelMode::Capsule => 17.0,
-    }
-}
-
 /// One widget frame, then `children` in its content box (with the builder's origin at the content
-/// box, and the palette to draw in — ink on a fill): a box with the dash's radius and edge weight,
-/// its edge in the text color (white by default, like a works team's wheel), and its label off, `On`: cut
-/// into the top edge (small above the value when there is no edge), `Top`: centred above the
-/// value, `Left`/`Right`: beside the value, or in a band across the top. A condition fills the box
-/// and turns every text in it to the dark ink; a knob's identity color is its label's color, a tab
-/// before an edgeless label, or the band's color. An untitled frame (a bar) keeps a thinner margin.
+/// box, and the palette to draw in — ink on a fill): a box with Sprint's radius and edge, its edge
+/// in the text color (white by default, like a works team's wheel), its label cut into the top
+/// edge (small above the value when the widget has no frame), or no label. A condition fills the
+/// box and turns every text in it to the dark ink; a knob's identity color is its label's color,
+/// or a tab before a frameless label. An untitled frame (a bar) keeps a thinner margin.
 pub fn widget_frame(b: &mut Builder, frame: WidgetFrame, children: impl FnOnce(&mut Builder, f64, f64, &DashPaletteColors)) {
     let WidgetFrame { ctx, rect, title, accent, fill, palette } = frame;
     let s = ctx.scale;
     let gap = GAP * s;
-    let label = if title.is_some() { ctx.look.label } else { LabelMode::Off };
-    let edge = if ctx.look.border == BorderWeight::None { 0.0 } else { (ctx.look.border.px() * s).max(1.0) };
-    let notched = label == LabelMode::On && edge > 0.0;
+    let labelled = title.is_some() && ctx.look.labelled;
+    let edge = if ctx.look.framed { (EDGE * s).max(1.0) } else { 0.0 };
+    let notched = labelled && edge > 0.0;
     let drop = if notched { NOTCH_DROP * s } else { 0.0 };
     let box_ = PixelRect::new(gap, gap + drop, (rect.width - gap * 2.0).max(0.0), (rect.height - gap * 2.0 - drop).max(0.0));
-    let radius = (ctx.look.radius * s).min(box_.width / 2.0).min(box_.height / 2.0);
-    let band_height = if notched { 7.0 * s } else { label_height(label) * s };
+    let radius = (RADIUS * s).min(box_.width / 2.0).min(box_.height / 2.0);
+    let band_height = match (labelled, notched) {
+        (false, _) => 0.0,
+        (true, true) => 7.0 * s,
+        (true, false) => 15.0 * s,
+    };
     let content_palette = if fill.is_some() { ink_palette(&palette) } else { palette };
     let pad = if title.is_some() { 6.0 * s } else { 2.0 * s };
-    // A label inside the box: ink on a fill, else the knob's color or the widget's own.
-    let inside_color = if fill.is_some() { with_alpha(palette.background, 0.78) } else { accent.unwrap_or(palette.secondary) };
-    let label_size = 11.0 * s;
-    let label_line = |text, left, top, align, max_width: f64, color| TextLine {
-        text,
-        left,
-        top,
-        size: label_size,
-        color,
-        align,
-        max_width: Some(max_width.max(0.0)),
-        weight: TextWeight::LabelBold,
-        sizing: TextSizing::Fit,
-    };
-    // The box's inner edges, and the room a label beside the value takes (at most half the box).
+    // An untitled frame (a bar) keeps the same 2 px on every side, so its meter sits evenly.
+    let bottom = if title.is_some() { 3.0 * s } else { pad };
+    // The box's inner edges.
     let (inner_left, inner_right) = (box_.left + edge + pad, box_.left + box_.width - edge - pad);
-    let title = title.map(|title| {
-        let (size, room) = match label {
-            LabelMode::On if notched => (10.0 * s, box_.width - (radius.max(6.0 * s) + 4.0 * s) * 2.0),
-            LabelMode::Left | LabelMode::Right => (label_size, (inner_right - inner_left) / 2.0),
-            _ => (label_size, inner_right - inner_left),
-        };
-        fitted_title(b, title, size, room)
+    let label_size = if notched { 10.0 * s } else { 11.0 * s };
+    // A label in the edge keeps clear of the corners, with a 6-px gap in the edge either side.
+    let notch_room = (box_.width - (radius.max(6.0 * s) + 8.0 * s) * 2.0).max(0.0);
+    let title = title.filter(|_| labelled).map(|title| {
+        let room = if notched { notch_room } else { inner_right - inner_left };
+        fitted_title(b, title, label_size, room)
     });
-    let side_width = match (label, title) {
-        (LabelMode::Left | LabelMode::Right, Some(title)) => {
-            b.text_width(title, label_size, TextWeight::LabelBold).min(((inner_right - inner_left) / 2.0).max(0.0))
-        }
-        _ => 0.0,
-    };
 
     b.translated(rect.left, rect.top, |b| {
         if let Some(fill) = fill {
@@ -191,9 +186,9 @@ pub fn widget_frame(b: &mut Builder, frame: WidgetFrame, children: impl FnOnce(&
             b.border(box_, edge, radius, fill.unwrap_or(palette.foreground));
         }
         if notched && let Some(title) = title {
-            let size = 10.0 * s;
-            let left = box_.left + radius.max(6.0 * s) + 4.0 * s;
-            let width = b.text_width(title, size, TextWeight::LabelBold).min((box_.width - (left - box_.left) * 2.0).max(0.0));
+            let size = label_size;
+            let width = b.text_width(title, size, TextWeight::LabelBold).min(notch_room);
+            let left = box_.left + (box_.width - width) / 2.0;
             // On a filled box the label sits on a round dark pill across the edge, so it never
             // sits on its fill; otherwise the notch only breaks the edge.
             if fill.is_some() {
@@ -201,7 +196,7 @@ pub fn widget_frame(b: &mut Builder, frame: WidgetFrame, children: impl FnOnce(&
                 let pill = PixelRect::new(left - 5.0 * s, box_.top + edge / 2.0 - height / 2.0, width + 10.0 * s, height);
                 b.rect(pill, Radii::all(height / 2.0), palette.background);
             } else {
-                b.rect(PixelRect::new(left - 4.0 * s, box_.top - 1.0, width + 8.0 * s, edge + 2.0), Radii::ZERO, palette.background);
+                b.rect(PixelRect::new(left - 6.0 * s, box_.top - 1.0, width + 12.0 * s, edge + 2.0), Radii::ZERO, palette.background);
             }
             let color = fill.or(accent).unwrap_or(palette.secondary);
             text_line(
@@ -219,69 +214,47 @@ pub fn widget_frame(b: &mut Builder, frame: WidgetFrame, children: impl FnOnce(&
                 },
             );
         } else if let Some(title) = title {
+            // No frame: the label sits small above the value, after the knob's tab.
             let band = PixelRect::new(box_.left, box_.top, box_.width, band_height);
-            let middle = box_.top + box_.height / 2.0;
-            match label {
-                LabelMode::Off => {}
-                LabelMode::On => {
-                    let mut left = band.left + edge + pad;
-                    if let (Some(accent), None) = (accent, fill) {
-                        b.rect(PixelRect::new(left, band.top + edge + band.height / 2.0 - 4.0 * s, 3.0 * s, 9.0 * s), Radii::ZERO, accent);
-                        left += 7.0 * s;
-                    }
-                    let color = if fill.is_some() { with_alpha(palette.background, 0.78) } else { palette.muted };
-                    text_line(b, label_line(title, left, band.top + band.height / 2.0 + edge, TextAlign::Start, band.left + band.width - left - pad, color));
-                }
-                LabelMode::Top => {
-                    let centre = box_.left + box_.width / 2.0;
-                    text_line(b, label_line(title, centre, band.top + edge + band.height / 2.0, TextAlign::Center, inner_right - inner_left, inside_color));
-                }
-                LabelMode::Left => text_line(b, label_line(title, inner_left, middle, TextAlign::Start, side_width, inside_color)),
-                LabelMode::Right => text_line(b, label_line(title, inner_right, middle, TextAlign::End, side_width, inside_color)),
-                LabelMode::Capsule => {
-                    let band_fill = if fill.is_some() { with_alpha(palette.background, 0.22) } else { accent.unwrap_or(palette.surface) };
-                    b.rect(band, Radii::top(radius), band_fill);
-                    let on_color = fill.is_some() || accent.is_some();
-                    let color = if on_color { with_alpha(palette.background, 0.85) } else { palette.secondary };
-                    let left = band.left + pad;
-                    text_line(b, label_line(title, left, band.top + band.height / 2.0, TextAlign::Start, band.left + band.width - left - pad, color));
-                }
+            let mut left = band.left + edge + pad;
+            if let (Some(accent), None) = (accent, fill) {
+                b.rect(PixelRect::new(left, band.top + edge + band.height / 2.0 - 4.0 * s, 3.0 * s, 9.0 * s), Radii::ZERO, accent);
+                left += 7.0 * s;
             }
+            let color = if fill.is_some() { with_alpha(palette.background, 0.78) } else { palette.muted };
+            text_line(
+                b,
+                TextLine {
+                    text: title,
+                    left,
+                    top: band.top + band.height / 2.0 + edge,
+                    size: label_size,
+                    color,
+                    align: TextAlign::Start,
+                    max_width: Some((band.left + band.width - left - pad).max(0.0)),
+                    weight: TextWeight::LabelBold,
+                    sizing: TextSizing::Fit,
+                },
+            );
         }
-        let top = box_.top + edge + band_height + if matches!(label, LabelMode::Off | LabelMode::Left | LabelMode::Right) { 2.0 * s } else { 0.0 };
-        let beside = if side_width > 0.0 { side_width + 6.0 * s } else { 0.0 };
-        let left = inner_left + if label == LabelMode::Left { beside } else { 0.0 };
-        let right = inner_right - if label == LabelMode::Right { beside } else { 0.0 };
-        let content = PixelRect::new(left, top, (right - left).max(0.0), (box_.top + box_.height - edge - 3.0 * s - top).max(0.0));
+        let top = box_.top + edge + band_height + if labelled { 0.0 } else { 2.0 * s };
+        let content = PixelRect::new(inner_left, top, (inner_right - inner_left).max(0.0), (box_.top + box_.height - edge - bottom - top).max(0.0));
         b.translated(content.left, content.top, |b| children(b, content.width, content.height, &content_palette));
     });
 }
 
-/// A group's own frame (mockup v2): one edge round `rect` (the union of its widgets' cells) and
-/// its name set into the top edge, plain or in a pill.
-pub fn group_frame(b: &mut Builder, ctx: ChromeContext, rect: PixelRect, style: GroupStyle, name: &str, palette: &DashPaletteColors) {
+/// Sprint's group frame: one edge round `rect` (the union of its widgets' cells) with the
+/// group's name breaking its top edge, like a fieldset's legend.
+pub fn group_frame(b: &mut Builder, ctx: ChromeContext, rect: PixelRect, name: &str, palette: &DashPaletteColors) {
     let s = ctx.scale;
-    let edge = if style.border == BorderWeight::None { 0.0 } else { (style.border.px() * s).max(1.0) };
-    let radius = (ctx.look.radius * s + GAP * s).min(rect.width / 2.0).min(rect.height / 2.0);
+    let edge = (EDGE * s).max(1.0);
+    let radius = (RADIUS * s + GAP * s).min(rect.width / 2.0).min(rect.height / 2.0);
     let size = 10.0 * s;
     let label_width = b.text_width(name, size, TextWeight::LabelBold);
-    let label_left = if style.centered { rect.left + (rect.width - label_width) / 2.0 } else { rect.left + radius.max(8.0 * s) + 4.0 * s };
-    if edge > 0.0 {
-        b.border(rect, edge, radius, palette.foreground);
-    }
-    match style.label {
-        GroupLabel::Off => {}
-        GroupLabel::On => {
-            // The name breaks the top edge, like a fieldset's legend.
-            b.rect(PixelRect::new(label_left - 4.0 * s, rect.top - 1.0, label_width + 8.0 * s, edge + 2.0), Radii::ZERO, palette.background);
-            text_line(b, group_label(name, label_left, rect.top + edge / 2.0, size, palette.muted));
-        }
-        GroupLabel::Capsule => {
-            let pill = PixelRect::new(label_left - 6.0 * s, rect.top - 7.0 * s + edge / 2.0, label_width + 12.0 * s, 14.0 * s);
-            b.rect(pill, Radii::all(7.0 * s), palette.border);
-            text_line(b, group_label(name, label_left, pill.top + pill.height / 2.0, size, palette.foreground));
-        }
-    }
+    let label_left = rect.left + radius.max(8.0 * s) + 4.0 * s;
+    b.border(rect, edge, radius, palette.foreground);
+    b.rect(PixelRect::new(label_left - 4.0 * s, rect.top - 1.0, label_width + 8.0 * s, edge + 2.0), Radii::ZERO, palette.background);
+    text_line(b, group_label(name, label_left, rect.top + edge / 2.0, size, palette.muted));
 }
 
 fn group_label(text: &str, left: f64, top: f64, size: f64, color: Rgba) -> TextLine<'_> {
@@ -296,7 +269,7 @@ mod tests {
     use crate::text::Fonts;
 
     fn at() -> ChromeContext {
-        ChromeContext { scale: 1.0, look: DashChrome::default() }
+        ChromeContext { scale: 1.0, look: Look::SPRINT }
     }
 
     fn frame_ops(title: &str, accent: Option<Rgba>, fill: Option<Rgba>) -> (Vec<DrawOp>, Option<DashPaletteColors>) {
@@ -344,14 +317,14 @@ mod tests {
         assert_eq!(title, Some(fill), "the label in the edge keeps the fill's colour on its dark pill");
     }
 
-    /// A 160x60 frame titled "LAP" with `label`, `fill` lit; its ops, the label's run and the
+    /// A 160x60 frame titled "LAP" in `look`, `fill` lit; its ops, the label's run and the
     /// content box (marked by a rect the content draws over all of it).
-    fn frame_parts(label: LabelMode, fill: Option<Rgba>) -> (Vec<DrawOp>, Option<crate::draw::TextRun>, PixelRect) {
+    fn frame_parts(look: Look, fill: Option<Rgba>) -> (Vec<DrawOp>, Option<crate::draw::TextRun>, PixelRect) {
         let fonts = Fonts::new();
         let mut ops = Vec::new();
         let marker = Rgba::rgb(1, 2, 3);
         let frame = WidgetFrame {
-            ctx: ChromeContext { scale: 1.0, look: DashChrome { label, ..DashChrome::default() } },
+            ctx: ChromeContext { scale: 1.0, look },
             rect: PixelRect::new(0.0, 0.0, 160.0, 60.0),
             title: Some("LAP"),
             accent: None,
@@ -376,7 +349,7 @@ mod tests {
             let fonts = Fonts::new();
             let mut ops = Vec::new();
             let frame = WidgetFrame {
-                ctx: ChromeContext { scale: 1.0, look: DashChrome { label: LabelMode::Top, ..DashChrome::default() } },
+                ctx: ChromeContext { scale: 1.0, look: Look::SPRINT },
                 rect: PixelRect::new(0.0, 0.0, width, 60.0),
                 title: Some("SESSION BEST"),
                 accent: None,
@@ -396,29 +369,25 @@ mod tests {
     }
 
     #[test]
-    fn a_top_label_sits_centred_inside_the_box_above_the_value() {
-        let (_, run, content) = frame_parts(LabelMode::Top, None);
+    fn a_widget_without_its_frame_draws_no_edge_and_its_label_small_above_the_value() {
+        let (ops, run, content) = frame_parts(Look { framed: false, labelled: true }, None);
+        assert!(!ops.iter().any(|op| matches!(op, DrawOp::Border { .. })), "no edge");
         let run = run.expect("a label");
-        assert!(run.x > 60.0 && run.x < 80.0, "centred on the 160px box: starts at {}", run.x);
         assert!(run.baseline < content.top, "above the value: {} vs {}", run.baseline, content.top);
     }
 
     #[test]
-    fn a_label_beside_the_value_gives_the_value_the_boxs_height_and_the_rest_of_its_width() {
-        let (_, top, top_content) = frame_parts(LabelMode::Top, None);
-        let (_, left, left_content) = frame_parts(LabelMode::Left, None);
-        let (_, right, right_content) = frame_parts(LabelMode::Right, None);
-        assert!(left_content.height > top_content.height && right_content.height == left_content.height);
-        let (left, right) = (left.expect("a label"), right.expect("a label"));
-        assert!(left_content.left > left.x, "the value starts right of the label");
-        assert!(right_content.left + right_content.width < right.x, "the value ends left of the label");
-        assert!(top.is_some());
+    fn a_widget_without_its_label_gives_the_value_the_label_s_room() {
+        let (_, labelled, with_label) = frame_parts(Look::SPRINT, None);
+        let (_, none, without_label) = frame_parts(Look { framed: true, labelled: false }, None);
+        assert!(labelled.is_some() && none.is_none());
+        assert!(without_label.height > with_label.height, "{} vs {}", without_label.height, with_label.height);
     }
 
     #[test]
     fn a_label_in_the_edge_of_a_lit_box_sits_on_a_round_dark_pill() {
         let fill = DEFAULT_DASH_PALETTE.assist_active;
-        let (ops, _, _) = frame_parts(LabelMode::On, Some(fill));
+        let (ops, _, _) = frame_parts(Look::SPRINT, Some(fill));
         let pill = ops
             .iter()
             .find_map(|op| match op {

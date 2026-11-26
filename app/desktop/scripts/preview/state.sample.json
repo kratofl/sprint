@@ -338,13 +338,12 @@
     }
   ],
   "dashLayouts": [
-    {"id":"zoned-race","name":"Zoned race (sample)","category":"Endurance","mode":"basic","colorSystem":"functional","gridCols":11,"gridRows":9,"colSizes":[40,68,68,68,68,176,68,68,68,68,40],"rowSizes":[36,55.5,55.5,55.5,55.5,55.5,55.5,55.5,55.5],"alerts":[],"pages":[{"id":"race","name":"Race","groups":[{"id":"tyres","name":"Tyres","mode":"together","style":{"border":"thin","label":"capsule","align":"center"}}],"widgets":[{"id":"gear","type":"gear","col":5,"row":1,"colSpan":1,"rowSpan":3},{"id":"rpm","type":"bar","col":1,"row":0,"colSpan":9,"rowSpan":1,"config":{"channel":"rpm"}},{"id":"ve","type":"bar","col":0,"row":0,"colSpan":1,"rowSpan":9,"config":{"channel":"ve"}},{"id":"fuel","type":"bar","col":10,"row":0,"colSpan":1,"rowSpan":9,"config":{"channel":"fuel"}},{"id":"tc","type":"tc","col":1,"row":1,"colSpan":2,"rowSpan":2},{"id":"abs","type":"abs","col":3,"row":1,"colSpan":2,"rowSpan":2},{"id":"slip","type":"tc_slip","col":1,"row":3,"colSpan":2,"rowSpan":1},{"id":"cut","type":"tc2","col":3,"row":3,"colSpan":2,"rowSpan":1},{"id":"map","type":"engine_map","col":1,"row":4,"colSpan":2,"rowSpan":1},{"id":"bias","type":"brake_bias","col":3,"row":4,"colSpan":2,"rowSpan":1},{"id":"fl","type":"tyre","col":1,"row":5,"colSpan":2,"rowSpan":2,"config":{"corner":"fl"},"group":"tyres","style":{"label":"off"}},{"id":"fr","type":"tyre","col":3,"row":5,"colSpan":2,"rowSpan":2,"config":{"corner":"fr"},"group":"tyres","style":{"label":"off"}},{"id":"rl","type":"tyre","col":1,"row":7,"colSpan":2,"rowSpan":2,"config":{"corner":"rl"},"group":"tyres","style":{"label":"off"}},{"id":"rr","type":"tyre","col":3,"row":7,"colSpan":2,"rowSpan":2,"config":{"corner":"rr"},"group":"tyres","style":{"label":"off"}},{"id":"delta","type":"delta","col":5,"row":4,"colSpan":1,"rowSpan":2},{"id":"sectors","type":"sectors","col":5,"row":6,"colSpan":1,"rowSpan":1},{"id":"last","type":"last_lap","col":5,"row":7,"colSpan":1,"rowSpan":1},{"id":"time-left","type":"time_left","col":5,"row":8,"colSpan":1,"rowSpan":1},{"id":"pos","type":"position","col":6,"row":1,"colSpan":2,"rowSpan":1},{"id":"lap","type":"laps","col":8,"row":1,"colSpan":2,"rowSpan":1},{"id":"best","type":"best_lap","col":6,"row":2,"colSpan":4,"rowSpan":2},{"id":"ahead","type":"gap_ahead","col":6,"row":4,"colSpan":2,"rowSpan":2},{"id":"behind","type":"gap_behind","col":8,"row":4,"colSpan":2,"rowSpan":2},{"id":"fuel-laps","type":"fuel_laps","col":6,"row":6,"colSpan":2,"rowSpan":1},{"id":"ve-laps","type":"ve_laps","col":8,"row":6,"colSpan":2,"rowSpan":1},{"id":"soc","type":"battery","col":6,"row":7,"colSpan":2,"rowSpan":1},{"id":"speed","type":"speed","col":8,"row":7,"colSpan":2,"rowSpan":1},{"id":"target","type":"fuel_target","col":6,"row":8,"colSpan":4,"rowSpan":1}]}]},
+    {"id":"zoned-race","name":"Zoned race (sample)","category":"Endurance","mode":"basic","gridCols":11,"gridRows":9,"colSizes":[40,68,68,68,68,176,68,68,68,68,40],"rowSizes":[36,55.5,55.5,55.5,55.5,55.5,55.5,55.5,55.5],"alerts":[],"pages":[{"id":"race","name":"Race","groups":[{"id":"tyres","name":"Tyres","mode":"together","framed":true}],"widgets":[{"id":"gear","type":"gear","col":5,"row":1,"colSpan":1,"rowSpan":3},{"id":"rpm","type":"rpm_bar","col":1,"row":0,"colSpan":9,"rowSpan":1},{"id":"ve","type":"ve_bar","col":0,"row":0,"colSpan":1,"rowSpan":9},{"id":"fuel","type":"fuel_bar","col":10,"row":0,"colSpan":1,"rowSpan":9},{"id":"tc","type":"tc","col":1,"row":1,"colSpan":2,"rowSpan":2},{"id":"abs","type":"abs","col":3,"row":1,"colSpan":2,"rowSpan":2},{"id":"slip","type":"tc_slip","col":1,"row":3,"colSpan":2,"rowSpan":1},{"id":"cut","type":"tc2","col":3,"row":3,"colSpan":2,"rowSpan":1},{"id":"map","type":"engine_map","col":1,"row":4,"colSpan":2,"rowSpan":1},{"id":"bias","type":"brake_bias","col":3,"row":4,"colSpan":2,"rowSpan":1},{"id":"fl","type":"tyre","col":1,"row":5,"colSpan":2,"rowSpan":2,"config":{"corner":"fl"},"group":"tyres","style":{"label":"off"}},{"id":"fr","type":"tyre","col":3,"row":5,"colSpan":2,"rowSpan":2,"config":{"corner":"fr"},"group":"tyres","style":{"label":"off"}},{"id":"rl","type":"tyre","col":1,"row":7,"colSpan":2,"rowSpan":2,"config":{"corner":"rl"},"group":"tyres","style":{"label":"off"}},{"id":"rr","type":"tyre","col":3,"row":7,"colSpan":2,"rowSpan":2,"config":{"corner":"rr"},"group":"tyres","style":{"label":"off"}},{"id":"delta","type":"delta","col":5,"row":4,"colSpan":1,"rowSpan":2},{"id":"sectors","type":"sectors","col":5,"row":6,"colSpan":1,"rowSpan":1},{"id":"last","type":"last_lap","col":5,"row":7,"colSpan":1,"rowSpan":1},{"id":"time-left","type":"time_left","col":5,"row":8,"colSpan":1,"rowSpan":1},{"id":"pos","type":"position","col":6,"row":1,"colSpan":2,"rowSpan":1},{"id":"lap","type":"laps","col":8,"row":1,"colSpan":2,"rowSpan":1},{"id":"best","type":"best_lap","col":6,"row":2,"colSpan":4,"rowSpan":2},{"id":"ahead","type":"gap_ahead","col":6,"row":4,"colSpan":2,"rowSpan":2},{"id":"behind","type":"gap_behind","col":8,"row":4,"colSpan":2,"rowSpan":2},{"id":"fuel-laps","type":"fuel_laps","col":6,"row":6,"colSpan":2,"rowSpan":1},{"id":"ve-laps","type":"ve_laps","col":8,"row":6,"colSpan":2,"rowSpan":1},{"id":"soc","type":"battery","col":6,"row":7,"colSpan":2,"rowSpan":1},{"id":"speed","type":"speed","col":8,"row":7,"colSpan":2,"rowSpan":1},{"id":"target","type":"fuel_target","col":6,"row":8,"colSpan":4,"rowSpan":1}]}]},
     {
       "id": "default",
       "name": "Driver Focus",
       "category": "Race",
       "mode": "advanced",
-      "colorSystem": "Functional",
       "screenProfile": "landscape-800x480",
       "gridCols": 20,
       "gridRows": 12,
@@ -870,25 +869,13 @@
           "invertColors": true
         }
       ],
-      "theme": null,
-      "alertConfig": {
-        "displayMode": "full",
-        "durationSeconds": 1.5,
-        "invertColors": true,
-        "colorToken": "auto",
-        "enabledTypes": [
-          "tc_change",
-          "abs_change",
-          "enginemap_change"
-        ]
-      }
+      "theme": null
     },
     {
       "id": "sprint-race",
       "name": "Sprint race",
       "category": "Race",
       "mode": "advanced",
-      "colorSystem": "Functional",
       "screenProfile": "landscape-800x480",
       "gridCols": 20,
       "gridRows": 12,
@@ -1086,7 +1073,6 @@
       "name": "Hotlap",
       "category": "Qualifying",
       "mode": "advanced",
-      "colorSystem": "Functional",
       "screenProfile": "landscape-800x480",
       "gridCols": 20,
       "gridRows": 12,
@@ -1284,7 +1270,6 @@
       "name": "Endurance",
       "category": "Endurance",
       "mode": "advanced",
-      "colorSystem": "Functional",
       "screenProfile": "landscape-800x480",
       "gridCols": 20,
       "gridRows": 12,
@@ -1624,7 +1609,6 @@
       "name": "Tyres & fuel",
       "category": "Endurance",
       "mode": "advanced",
-      "colorSystem": "Functional",
       "screenProfile": "landscape-800x480",
       "gridCols": 20,
       "gridRows": 12,
@@ -1759,7 +1743,6 @@
       "name": "Side screen",
       "category": "Side screens",
       "mode": "advanced",
-      "colorSystem": "Functional",
       "screenProfile": "portrait-480x800",
       "gridCols": 12,
       "gridRows": 20,
@@ -1847,7 +1830,6 @@
       "id": "testing",
       "name": "Testing",
       "mode": "advanced",
-      "colorSystem": "Functional",
       "screenProfile": "landscape-800x480",
       "gridCols": 20,
       "gridRows": 12,
@@ -2491,14 +2473,7 @@
           "rowSpan": 12
         }
       ],
-      "alertConfig": {
-        "displayMode": "full",
-        "durationSeconds": 1.5,
-        "colorToken": "auto",
-        "invertColors": false
-      },
-      "screenProfile": "landscape-800x480",
-      "colorSystem": "Functional"
+      "screenProfile": "landscape-800x480"
     }
   ],
   "dashModes": [
@@ -5057,14 +5032,14 @@
       "y": 0.63,
       "radius": 0.0518,
       "positions": [
-        { "label": "DASH", "color": "#1F7FE6" },
-        { "label": "TC2", "color": "#E0A30C" },
-        { "label": "MAP", "color": "#16B566" },
+        { "label": "DASH", "color": "#1A7CFF" },
+        { "label": "TC2", "color": "#FFCC00" },
+        { "label": "MAP", "color": "#00D64F" },
         { "label": "FUEL", "color": "#FF6A00" },
         { "label": "BRGT", "color": "#F5F5F7" },
-        { "label": "VOL", "color": "#A06BFF" },
-        { "label": "BOX", "color": "#F02744" },
-        { "label": "DIFF", "color": "#16B566" }
+        { "label": "VOL", "color": "#A64DFF" },
+        { "label": "BOX", "color": "#FF1E1E" },
+        { "label": "DIFF", "color": "#00D64F" }
       ],
       "modes": [null, null, null, "fuel-save", null, null, null, null],
       "position": 0,
@@ -5085,7 +5060,6 @@
         "id": "default",
         "name": "Driver Focus",
         "mode": "advanced",
-        "colorSystem": "Functional",
         "screenProfile": "landscape-800x480",
         "gridCols": 20,
         "gridRows": 12,
@@ -5561,18 +5535,7 @@
             "invertColors": true
           }
         ],
-        "theme": null,
-        "alertConfig": {
-          "displayMode": "full",
-          "durationSeconds": 1.5,
-          "invertColors": true,
-          "colorToken": "auto",
-          "enabledTypes": [
-            "tc_change",
-            "abs_change",
-            "enginemap_change"
-          ]
-        }
+        "theme": null
       },
       "hardware": {
         "status": {
@@ -5607,7 +5570,6 @@
         "id": "default",
         "name": "Driver Focus",
         "mode": "advanced",
-        "colorSystem": "Functional",
         "screenProfile": "landscape-800x480",
         "gridCols": 20,
         "gridRows": 12,
@@ -6083,18 +6045,7 @@
             "invertColors": true
           }
         ],
-        "theme": null,
-        "alertConfig": {
-          "displayMode": "full",
-          "durationSeconds": 1.5,
-          "invertColors": true,
-          "colorToken": "auto",
-          "enabledTypes": [
-            "tc_change",
-            "abs_change",
-            "enginemap_change"
-          ]
-        }
+        "theme": null
       },
       "hardware": {
         "status": {
