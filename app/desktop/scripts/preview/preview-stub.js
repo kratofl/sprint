@@ -231,7 +231,7 @@
     }
   }
   // The host's default pit wall layout (PitWallLayouts.Default), with the preview's variations.
-  const pitWallTile = (id, layers, x, y, w, h) => ({ id, layers, x, y, w, h, cycleSeconds: null, pauseOnHover: true, jumpRadar: false, jumpDamage: false, detached: false, bounds: null })
+  const pitWallTile = (id, layers, x, y, w, h) => ({ id, layers, x, y, w, h, cycleSeconds: null, pauseOnHover: true, jumpRadar: false, jumpDamage: false, detached: false, bounds: null, timingColumns: null })
   const samplePitWallLayout = () => ({
     mainBounds: null,
     pages: [

@@ -506,9 +506,9 @@
   overflow: hidden;
 }
 
+/* The columns are the tile's own: TimingTile.tsx sets grid-template-columns from timingColumns.ts. */
 .pw-trow {
   display: grid;
-  grid-template-columns: 22px 30px 4px 28px minmax(0, 1fr) 30px 34px 56px 48px 58px 42px 42px 42px 56px 36px;
   gap: 7px;
   align-items: center;
   min-height: 29px;
@@ -560,11 +560,21 @@
   color: var(--yellow-500);
 }
 
-/* An out car's "DNF · lap 22" takes the gap and interval columns. */
+/* An out car's "DNF · lap 22" sits in Gap (or Int), and takes both when Int follows Gap. */
 .pw-outcell {
-  grid-column: span 2;
+  overflow: hidden;
   text-align: right;
+  text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.pw-outcell.wide {
+  grid-column: span 2;
+}
+
+.pw-classtag {
+  display: flex;
+  min-width: 0;
 }
 
 .pw-trow .r {
@@ -1627,6 +1637,47 @@
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+}
+
+/* A section heading with its action (the timing columns' Reset) at the right. */
+.pw-inspector-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 8px;
+}
+
+.pw-inspector-row h4 {
+  margin: 0;
+}
+
+/* The columns section: a box only to find its buttons in; its rows sit in the inspector's flow. */
+.pw-columns {
+  display: contents;
+}
+
+/* A timing column: dragged by its row, with a line where it would land. */
+.pw-column {
+  gap: 4px;
+  padding-left: 4px;
+  cursor: grab;
+}
+
+.pw-column.dragging {
+  opacity: 0.5;
+}
+
+.pw-column.drop-before {
+  box-shadow: inset 0 2px 0 var(--brand-500);
+}
+
+.pw-column.drop-after {
+  box-shadow: inset 0 -2px 0 var(--brand-500);
+}
+
+.pw-column-grip {
+  flex: none;
+  color: var(--label-tertiary);
 }
 
 .pw-inspector > .button {

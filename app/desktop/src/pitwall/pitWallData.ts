@@ -1,5 +1,6 @@
 import type { RaceFuelEstimate } from '../bridge'
 import { parsePlan, parseRaceFuelEstimate, type SessionPlan } from '../views/SessionPlannerDomain'
+import { isTimingColumn, validColumns, type TimingColumn } from './timingColumns'
 
 // The pit wall's data as the host sends it (`state.link.pitWall`, `state.pitWallLayout`,
 // `GET /api/pitwall/trace`), typed and narrowed once here; bridge.ts calls these parsers and
@@ -232,6 +233,8 @@ export type PitWallTile = {
   jumpDamage: boolean
   detached: boolean
   bounds: Bounds | null
+  /** The timing layer's columns in order; null shows the default set (timingColumns.ts). */
+  timingColumns: TimingColumn[] | null
 }
 
 export type PitWallPage = { id: string; name: string; detached: boolean; bounds: Bounds | null; tiles: PitWallTile[] }
@@ -476,8 +479,16 @@ const parseTile = (value: unknown): PitWallTile[] => {
       jumpDamage: value.jumpDamage === true,
       detached: value.detached === true,
       bounds: parseBounds(value.bounds),
+      timingColumns: parseColumns(value.timingColumns),
     },
   ]
+}
+
+/** A tile's timing columns: ids this build does not know drop out; a list without Driver is the default. */
+const parseColumns = (value: unknown): TimingColumn[] | null => {
+  if (!Array.isArray(value)) return null
+  const columns = [...new Set(value.filter(isTimingColumn))]
+  return validColumns(columns) ? columns : null
 }
 
 /** Narrows `state.pitWallLayout`; null when the host sent none (an older host). */

@@ -2,7 +2,28 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import type { FieldEntry, PitWallCar, PitWallLayout, PitWallPage, PitWallTile, PitWallTrace } from './pitWallData'
 import { parsePitWall, parsePitWallLayout, parsePitWallTrace } from './pitWallData'
-import { addPage, addTile, deletePage, duplicatePage, freeSpot, moveLayer, moveTile, overDraft, removeLayer, resizeTile, setDetached, setStackOptions, shownPage, stackOnto, unstack } from './layoutOps'
+import {
+  addPage,
+  addTile,
+  deletePage,
+  duplicatePage,
+  freeSpot,
+  hideTimingColumn,
+  moveLayer,
+  moveTile,
+  moveTimingColumn,
+  overDraft,
+  removeLayer,
+  resetTimingColumns,
+  resizeTile,
+  setDetached,
+  setStackOptions,
+  showTimingColumn,
+  shownPage,
+  stackOnto,
+  unstack,
+} from './layoutOps'
+import { DEFAULT_TIMING_COLUMNS, outNoteAt, type TimingColumn } from './timingColumns'
 import { waiting } from './waiting'
 import type { LinkHealth, LinkPeer, LiveLink } from '../bridge'
 import { pickLayer, shownLayer, startStack, stepStack } from './stack'
@@ -21,11 +42,16 @@ const spaFuel: RaceFuelEstimate = {
 }
 
 const tile = (id: string, x: number, y: number, w: number, h: number, layers: PitWallTile['layers'] = ['timing']): PitWallTile => ({
-  id, layers, x, y, w, h, cycleSeconds: 10, pauseOnHover: true, jumpRadar: true, jumpDamage: true, detached: false, bounds: null,
+  id, layers, x, y, w, h, cycleSeconds: 10, pauseOnHover: true, jumpRadar: true, jumpDamage: true, detached: false, bounds: null, timingColumns: null,
 })
 const page = (id: string, tiles: PitWallTile[]): PitWallPage => ({ id, name: id, detached: false, bounds: null, tiles })
 const layoutOf = (...pages: PitWallPage[]): PitWallLayout => ({ pages, mainBounds: null })
 const tilesOf = (layout: PitWallLayout | null, pageId = 'race') => layout?.pages.find((candidate) => candidate.id === pageId)?.tiles ?? []
+/** An edit that must apply. */
+const applied = (layout: PitWallLayout | null): PitWallLayout => {
+  if (!layout) throw new Error('the edit was refused')
+  return layout
+}
 
 test('a tile moves and resizes only onto free cells inside the 12 × 8 grid', () => {
   const layout = layoutOf(page('race', [tile('a', 0, 0, 4, 4), tile('b', 4, 0, 4, 4)]))
@@ -64,6 +90,50 @@ test('layers reorder and leave a stack, and unstacking places each layer on its 
   const split = tilesOf(unstack(layout, 'race', 's', () => `new-${++n}`))
   assert.deepEqual(split.map((entry) => [entry.id, entry.layers, entry.x, entry.y]), [['s', ['relative'], 0, 0], ['new-1', ['radar'], 3, 0], ['new-2', ['damage'], 6, 0]])
   assert.equal(unstack(layoutOf(page('race', [tile('s', 0, 0, 12, 8, ['relative', 'radar'])])), 'race', 's', () => 'x'), null, 'no room')
+})
+
+test('timing columns hide, show at the end, reorder and reset, and Driver always stays', () => {
+  const layout = layoutOf(page('race', [tile('t', 0, 0, 6, 4)]))
+  const columns = (next: PitWallLayout | null): readonly TimingColumn[] | null => tilesOf(next)[0]?.timingColumns ?? null
+
+  const hidden = applied(hideTimingColumn(layout, 'race', 't', 'tyre'))
+  assert.deepEqual(columns(hidden), DEFAULT_TIMING_COLUMNS.filter((column) => column !== 'tyre'))
+  assert.equal(hideTimingColumn(layout, 'race', 't', 'driver'), null)
+  assert.equal(hideTimingColumn(layout, 'race', 't', 'classPlace'), null, 'not shown')
+  assert.deepEqual(columns(showTimingColumn(hidden, 'race', 't', 'tyre'))?.slice(-1), ['tyre'])
+  assert.equal(showTimingColumn(layout, 'race', 't', 'gap'), null, 'already shown')
+
+  // Gap (index 7) to the front, then back one place.
+  const moved = applied(moveTimingColumn(layout, 'race', 't', 7, 0))
+  assert.deepEqual(columns(moved)?.slice(0, 3), ['gap', 'place', 'gained'])
+  assert.deepEqual(columns(moveTimingColumn(moved, 'race', 't', 0, 1))?.slice(0, 2), ['place', 'gap'])
+  assert.equal(moveTimingColumn(layout, 'race', 't', 0, 13), null, 'past the end')
+
+  assert.equal(columns(resetTimingColumns(moved, 'race', 't')), null)
+  assert.equal(resetTimingColumns(layout, 'race', 't'), null, 'already the default')
+  assert.equal(hideTimingColumn(layoutOf(page('race', [tile('r', 0, 0, 3, 3, ['radar'])])), 'race', 'r', 'tyre'), null, 'no timing layer')
+})
+
+test('a timing tile keeps its columns through stacking, unstacking and leaving a stack', () => {
+  const custom: TimingColumn[] = ['place', 'driver', 'gap']
+  const layout = layoutOf(page('race', [{ ...tile('t', 0, 0, 6, 4), timingColumns: custom }, tile('r', 6, 0, 3, 3, ['radar'])]))
+
+  const timingOntoRadar = applied(stackOnto(layout, 'race', 't', 'r'))
+  assert.deepEqual(tilesOf(timingOntoRadar).map((entry) => [entry.id, entry.layers, entry.timingColumns]), [['r', ['radar', 'timing'], custom]])
+  assert.deepEqual(tilesOf(stackOnto(layout, 'race', 'r', 't')).map((entry) => entry.timingColumns), [custom], 'radar onto timing')
+
+  let n = 0
+  const split = tilesOf(unstack(timingOntoRadar, 'race', 'r', () => `new-${++n}`))
+  assert.deepEqual(split.map((entry) => [entry.id, entry.layers, entry.timingColumns]), [['r', ['radar'], null], ['new-1', ['timing'], custom]])
+  assert.equal(tilesOf(removeLayer(timingOntoRadar, 'race', 'r', 1))[0].timingColumns, null, 'the timing layer took its columns along')
+})
+
+test('an out car’s note spans Gap and Int side by side, else sits in Gap, else in Int', () => {
+  assert.deepEqual(outNoteAt(['driver', 'gap', 'interval']), { column: 'gap', span: 2 })
+  assert.deepEqual(outNoteAt(['driver', 'interval', 'gap']), { column: 'interval', span: 2 })
+  assert.deepEqual(outNoteAt(['gap', 'driver', 'interval']), { column: 'gap', span: 1 })
+  assert.deepEqual(outNoteAt(['driver', 'interval']), { column: 'interval', span: 1 })
+  assert.equal(outNoteAt(['driver', 'last']), null)
 })
 
 test('stack switching accepts 3 to 120 seconds or by hand', () => {
@@ -301,6 +371,12 @@ test('host payloads narrow once and drop what does not fit', () => {
   assert.equal(parsePitWallLayout({ pages: [] }), null)
   const layout = parsePitWallLayout({ pages: [{ id: 'p', name: 'Race', tiles: [{ id: 't', layers: ['radar', 'nope'], x: 0, y: 0, w: 3, h: 3 }, { id: 'u', layers: [] }] }] })
   assert.deepEqual(layout?.pages[0].tiles.map((entry) => entry.layers), [['radar']])
+  // Timing columns from a newer Sprint drop out; a list without Driver is the default.
+  const columnsOf = (timingColumns: unknown) =>
+    parsePitWallLayout({ pages: [{ id: 'p', name: 'Race', tiles: [{ id: 't', layers: ['timing'], x: 0, y: 0, w: 6, h: 4, timingColumns }] }] })?.pages[0].tiles[0].timingColumns
+  assert.deepEqual(columnsOf(['place', 'fuelLeft', 'driver', 'place']), ['place', 'driver'])
+  assert.equal(columnsOf(['place', 'gap']), null)
+  assert.equal(columnsOf(undefined), null)
   assert.deepEqual(parsePitWallTrace({ distance: [0, 0.5, 1], speed: [100, 200], throttle: [1, 1, 1], brake: [0, 0, 0], steering: [0, 0, 0] }).distance, [0, 0.5])
 })
 

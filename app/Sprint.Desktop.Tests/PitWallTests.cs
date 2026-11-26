@@ -383,12 +383,29 @@ public sealed class PitWallTests
     [InlineData("""{"pages":[{"id":"a","name":"   ","tiles":[]}]}""", "1 to 40 characters")]
     [InlineData("""{"pages":[{"id":"a","name":"This page name is far too long to fit a tab","tiles":[]}]}""", "1 to 40 characters")]
     [InlineData("""{"pages":[{"id":"a","name":"A","tiles":[{"id":"t1","layers":["timing","radar","track","fuel","stint","tyres","damage"],"x":0,"y":0,"w":1,"h":1}]}]}""", "1 to 6 layers")]
+    [InlineData("""{"pages":[{"id":"a","name":"A","tiles":[{"id":"t1","layers":["timing"],"x":0,"y":0,"w":1,"h":1,"timingColumns":"driver"}]}]}""", "list of column ids")]
     public void AnInvalidLayoutIsRefusedWithTheReason(string json, string reason)
     {
         using JsonDocument document = JsonDocument.Parse(json);
 
         Assert.False(PitWallLayouts.TryParse(document.RootElement, null, out _, out string error));
         Assert.Contains(reason, error, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TimingColumnsAreTidiedRatherThanCostingTheLayout()
+    {
+        // A column from a newer Sprint and a repeat are dropped; a list without Driver, or none,
+        // is the default set.
+        using JsonDocument document = JsonDocument.Parse(
+            """{"pages":[{"id":"a","name":"A","tiles":[{"id":"t1","layers":["timing"],"x":0,"y":0,"w":3,"h":4,"timingColumns":["place","fuelLeft","driver","gap","place"]},{"id":"t2","layers":["timing"],"x":3,"y":0,"w":3,"h":4,"timingColumns":["place","gap"]},{"id":"t3","layers":["timing"],"x":6,"y":0,"w":6,"h":4}]}]}""");
+
+        Assert.True(PitWallLayouts.TryParse(document.RootElement, null, out PitWallLayout layout, out string error), error);
+
+        PitWallPage page = Assert.Single(layout.Pages);
+        Assert.Equal(new[] { "place", "driver", "gap" }, page.Tiles[0].TimingColumns);
+        Assert.Null(page.Tiles[1].TimingColumns);
+        Assert.Null(page.Tiles[2].TimingColumns);
     }
 
     [Fact]
@@ -425,7 +442,7 @@ public sealed class PitWallTests
         try
         {
             PitWallLayoutStore store = new(root);
-            string json = """{"pages":[{"id":"strategy","name":"Strategy","detached":true,"tiles":[{"id":"s1","layers":["fuel","stint"],"x":0,"y":0,"w":6,"h":4,"cycleSeconds":10,"pauseOnHover":true,"jumpRadar":false,"jumpDamage":true,"detached":false,"bounds":null}]}]}""";
+            string json = """{"pages":[{"id":"strategy","name":"Strategy","detached":true,"tiles":[{"id":"s1","layers":["fuel","stint","timing"],"x":0,"y":0,"w":6,"h":4,"cycleSeconds":10,"pauseOnHover":true,"jumpRadar":false,"jumpDamage":true,"detached":false,"bounds":null,"timingColumns":["classPlace","driver","gap"]}]}]}""";
             using JsonDocument document = JsonDocument.Parse(json);
             Assert.True(store.TrySave(document.RootElement, out string error), error);
             Assert.True(store.TryPlace(PitWallWindow.Page, "strategy", new PitWallBounds(1920, 0, 1280, 720), out error), error);
@@ -438,7 +455,8 @@ public sealed class PitWallTests
             Assert.Equal(new PitWallBounds(1920, 0, 1280, 720), page.Bounds);
             Assert.Equal(new PitWallBounds(0, 0, 1920, 1080), reloaded.MainBounds);
             PitWallTile tile = Assert.Single(page.Tiles);
-            Assert.Equal(new[] { "fuel", "stint" }, tile.Layers);
+            Assert.Equal(new[] { "fuel", "stint", "timing" }, tile.Layers);
+            Assert.Equal(new[] { "classPlace", "driver", "gap" }, tile.TimingColumns);
             Assert.Equal(10, tile.CycleSeconds);
             Assert.True(tile.PauseOnHover && tile.JumpDamage && !tile.JumpRadar);
 
