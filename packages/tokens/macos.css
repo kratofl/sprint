@@ -96,12 +96,6 @@
   --font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", system-ui, sans-serif;
   --font-small: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
 
-  /* The shell over the light trails: the Mac shell keeps native vibrancy and draws no trails
-     (styles.mac.css), so these only matter for parity */
-  --chrome-opacity: 72%;
-  --chrome-backdrop: blur(20px) saturate(180%);
-  --veil-opacity: 82%;
-
   --motion-fast: 100ms;
   --motion-normal: 200ms;
   --motion-slow: 300ms;

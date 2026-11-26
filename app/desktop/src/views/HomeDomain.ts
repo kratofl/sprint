@@ -1,83 +1,22 @@
 import type { SprintState, TelemetryLinkState } from '../bridge'
 import { parseCarMarks, type CarMarks } from '../carMarks'
-import { deviceHasScreen, deviceImageKey, parseCatalog, parseDevices, toRecordArray } from './DevicesDomain'
-import type { Device, DeviceImageKey } from './DevicesDomain'
+import { describeDeviceStatus, deviceHasScreen, deviceImageKey, findScreen, parseCatalog, parseDevices, parseScreens, toRecordArray } from './DevicesDomain'
+import type { Device, DeviceImageKey, ScreenStatusPresentation } from './DevicesDomain'
 import { parseDashLayouts } from './DashesDomain'
 import { activePlan, parsePlans, targetsFor } from './SessionPlannerDomain'
 import type { PlanStatus, SessionPlan } from './SessionPlannerDomain'
 
 /**
- * Home domain: the Overview's own assembly of state already parsed elsewhere (devices, plans)
- * plus what nothing else on Home's surface parses yet — a screen's live hardware connection
- * state, the game link as a rig card, and the recent sessions with how the last one compares
- * to your earlier best on the same car and track.
+ * Home domain: the Overview's own assembly of state already parsed elsewhere (devices and their
+ * links, plans) plus what nothing else on Home's surface parses yet — the game link as a rig card,
+ * and the recent sessions with how the last one compares to your earlier best on the same car and
+ * track.
  */
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null
 
-// ── Screen hardware status (ScreenOutputHardware / ScreenModels.cs) ─────────
-// Mirrors `HelpDiagnostics.ts`'s copy of the same host shape. `screens[].hardware` is not in
-// bridge.ts's `SprintState.screens` type, so it is narrowed here, once, from `unknown` — kept
-// as a small local copy rather than importing Help's domain file, the same way DevicesDomain.ts
-// and DashesDomain.ts each keep their own hand-mirrored copy of the host shapes they read.
-
-const SCREEN_CONNECTION_STATES = [
-  'Disconnected',
-  'Connecting',
-  'Connected',
-  'ConfigurationRequired',
-  'PermissionDenied',
-  'DeviceBusy',
-  'DeviceConflict',
-  'Unsupported',
-  'Faulted',
-] as const
-type ScreenConnectionState = (typeof SCREEN_CONNECTION_STATES)[number]
-
-const isScreenConnectionState = (value: unknown): value is ScreenConnectionState =>
-  typeof value === 'string' && (SCREEN_CONNECTION_STATES as readonly string[]).includes(value)
-
-function parseScreenConnectionState(screen: unknown): ScreenConnectionState | null {
-  if (!isRecord(screen)) return null
-  const hardware = screen.hardware
-  if (!isRecord(hardware) || !isRecord(hardware.status) || !isScreenConnectionState(hardware.status.state)) return null
-  return hardware.status.state
-}
-
-const SCREEN_STATUS_LABELS: Record<ScreenConnectionState, string> = {
-  Disconnected: 'Disconnected',
-  Connecting: 'Connecting',
-  Connected: 'Connected',
-  ConfigurationRequired: 'Configuration required',
-  PermissionDenied: 'Permission denied',
-  DeviceBusy: 'Device busy',
-  DeviceConflict: 'Device conflict',
-  Unsupported: 'Unsupported',
-  Faulted: 'Faulted',
-}
-
-export type ScreenStatusTone = 'live' | 'attention' | 'idle' | 'fault'
-
-function screenStatusTone(state: ScreenConnectionState): ScreenStatusTone {
-  switch (state) {
-    case 'Connected':
-      return 'live'
-    case 'Connecting':
-    case 'ConfigurationRequired':
-    case 'DeviceBusy':
-      return 'attention'
-    case 'Disconnected':
-      return 'idle'
-    case 'PermissionDenied':
-    case 'DeviceConflict':
-    case 'Unsupported':
-    case 'Faulted':
-      return 'fault'
-  }
-}
-
 // ── Rig: the game link ───────────────────────────────────────────────────
-// The game as the rig's first card. The sidebar's status row already says the whole sentence
+// The game as the rig's first card. The status bar's game link already says the whole sentence
 // ("Le Mans Ultimate · 60 Hz"); the card splits it into a name and a short status word.
 
 export type HomeGameTone = 'live' | 'attention' | 'idle' | 'fault'
@@ -108,34 +47,33 @@ export function homeGame(telemetry: SprintState['telemetry']): HomeGame {
 }
 
 // ── Rig: screen devices ──────────────────────────────────────────────────
-// Every saved, enabled, screen-capable device with its live hardware link. "Connected" means
-// the link is actually up right now, not merely saved. Connected devices sort first; otherwise
-// the saved order is kept.
+// Every saved, enabled, screen-capable device with its live hardware link, in the Devices page's
+// words (`describeDeviceStatus`), so the Overview, Help, the status bar and Devices never disagree.
+// "Connected" means the link is actually up right now, not merely saved. Connected devices sort
+// first; otherwise the saved order is kept.
 
 export type HomeDevice = {
   device: Device
   image: DeviceImageKey | null
   dashName: string | null
   connected: boolean
-  statusLabel: string
-  statusTone: ScreenStatusTone
+  status: ScreenStatusPresentation
 }
 
 export function homeDevices(sprint: SprintState): HomeDevice[] {
   const dashes = parseDashLayouts(sprint.dashLayouts)
   const catalog = parseCatalog(toRecordArray(sprint.catalog))
+  const screens = parseScreens(sprint.screens)
   const result: HomeDevice[] = []
   for (const device of parseDevices(sprint.devices)) {
     if (device.disabled || !deviceHasScreen(device)) continue
-    const screen = sprint.screens.find((candidate) => candidate.deviceId === device.id)
-    const state = screen ? parseScreenConnectionState(screen) : null
+    const screen = findScreen(screens, device.id)
     result.push({
       device,
       image: deviceImageKey(device, catalog),
       dashName: dashes.find((layout) => layout.id === device.dashId)?.name ?? null,
-      connected: state === 'Connected',
-      statusLabel: state ? SCREEN_STATUS_LABELS[state] : 'Not connected',
-      statusTone: state ? screenStatusTone(state) : 'idle',
+      connected: screen?.hardware?.status.state === 'Connected',
+      status: describeDeviceStatus(device, screen),
     })
   }
 

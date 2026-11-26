@@ -6,15 +6,15 @@
 // Query parameters (all optional):
 //   view=Devices          open that page (any AppView name) once the shell is up
 //   theme=dark|light      force a theme; omitted = follow the OS
-//   collapsed=1           start with the navigation pane in compact mode
+//   collapsed=1           start with the explorer hidden (the toolbar's list toggle)
 //   palette=1             open the command palette
 //   update=available|downloading|ready|failed|unsupported
-//                         the self-update status (Settings row, sidebar dot, notification);
+//                         the self-update status (Settings row, the rail's Settings dot, notification);
 //                         update=1 is available. Default: up to date
 //   frame=none            drop the live telemetry frame (dash previews then render their no-data state)
 //   import=offer          the startup results scan finds sessions (opens the import prompt);
 //                         otherwise every scan finds nothing new
-//   telemetry=unsupported the Windows-only LMU source as a Mac reports it (Overview game card, sidebar status row and Help's Checks)
+//   telemetry=unsupported the Windows-only LMU source as a Mac reports it (Overview game card, the status bar's game link and Help's Checks)
 //   sprintWeb=1           the Sprint web feature flag is on (accounts, setup, sync). Off by default, as
 //                         shipped; any of account/setup/servers/storage/live/discord turns it on too
 //   account=signed-in     the desktop is signed in to Sprint (the account row shows the name);
@@ -29,7 +29,7 @@
 //                         Connected/Interrupted/Failed/Ended (default: Driver). Default: Off.
 //                         linkPeer=older|newer: the other side runs an older (on the engineer's side:
 //                         no pit wall arrives) or newer Sprint 0.4.2
-//   version=<x.y.z>       the version the sidebar shows (default: the sample's); readme-shots.mjs passes the latest release tag
+//   version=<x.y.z>       the version the status bar shows (default: the sample's); readme-shots.mjs passes the latest release tag
 //   laps=expiring|none    Settings' Storage: old laps' telemetry is deleted after 90 days (expiring), or
 //                         no lap is stored yet (none); default: 1,284 laps, all kept
 //   found=<id,id>         the USB scan finds these catalog ids plugged in and not added yet (Add device's
@@ -287,7 +287,7 @@
     state.buttons = { ...state.buttons, listening: { deviceId, command } }
   }
   if (params.get('frame') === 'none' && state.telemetry) state.telemetry = { ...state.telemetry, frame: null }
-  // telemetry=unsupported: what a Mac reports: the LMU source is Windows-only. The Overview's game card, the sidebar's status row and Help's Checks say so.
+  // telemetry=unsupported: what a Mac reports: the LMU source is Windows-only. The Overview's game card, the status bar's game link and Help's Checks say so.
   if (params.get('telemetry') === 'unsupported' && state.telemetry) {
     state.telemetry = {
       ...state.telemetry,
@@ -558,6 +558,9 @@
     setup('oreca-elms-nat', 'National test', 'Oreca 07', 'LMP2 ELMS', 'Silverstone National', '2026-09-09T10:00:00Z', null, null, null),
     setup('oreca-wec-spa', 'bA2_O07_SPA_S_R_V1_0_0', 'Oreca 07', 'LMP2', 'Spa', '2026-09-08T10:00:00Z', 'Race', 'Safe', '1.0.0'),
   ]
+  // A start time as the host words it in labels and details (LapCorpusFilter.Label): this machine's
+  // local time, not the time zone the sample was captured in.
+  const localClock = (iso) => new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
   // Analysis: the sample practice session in three runs (out of the garage and back), with the
   // tyres and fuel the recorder keeps per lap; "Race v3" is on run 1 and "Quali" on run 3, run 2
   // has none yet. How those setups drove is in setupDriven below.
@@ -566,7 +569,7 @@
     const start = Date.parse('2026-09-28T18:04:00Z')
     state.analysis.laps = state.analysis.laps.map((lap) => ({
       ...lap,
-      detail: 'Practice · 18:02',
+      detail: `Practice · ${localClock('2026-09-28T18:02:00+00:00')}`,
       // Every lap has a made-up line but lap 4, so compare opens and one lap shows "Time only".
       tier: lap.lapNumber === 4 ? 'TimeOnly' : 'FullTrace',
       hasChannels: lap.lapNumber !== 4,
@@ -630,7 +633,7 @@
     } else if (session?.id === 'sample-spa-practice') {
       const lapOf = (sessionId, lapNumber, lapTimeSeconds, sharedFrom = null) => ({
         ...state.analysis.laps[0], sessionId, lapNumber, label: `Lap ${lapNumber}`, lapTimeSeconds, tier: 'FullTrace', hasChannels: true,
-        detail: sharedFrom ? `Shared by ${sharedFrom} · 12:00` : 'Qualify · 19:10',
+        detail: sharedFrom ? `Shared by ${sharedFrom} · ${localClock('2026-09-25T12:00:00+00:00')}` : `Qualify · ${localClock('2026-09-28T19:10:00+00:00')}`,
         unavailableReason: null, sharedFrom, traceId: `${sessionId}/${lapNumber}`, outing: 1, sessionStartedAt: sharedFrom ? '2026-09-25T12:00:00+00:00' : '2026-09-28T19:10:00+00:00',
         // Ada's lap came with her notes, read-only here.
         notes: sharedFrom
@@ -699,6 +702,14 @@
     }
     state.analysis.sessions = [...many, ...state.analysis.sessions.filter((entry) => entry.sharedFrom)]
     state.analysis.session = null
+  }
+
+  // Each session's label as the host words it (LapCorpusFilter.Label): the kind and the start in
+  // local time (`localClock`), as the session rows show it.
+  if (state.analysis) {
+    const hostLabel = (entry) => (entry.sharedFrom ? `Shared by ${entry.sharedFrom}` : `${entry.kind} · ${localClock(entry.startedAt)}`)
+    for (const entry of state.analysis.sessions ?? []) entry.label = hostLabel(entry)
+    if (state.analysis.session) state.analysis.session.label = hostLabel(state.analysis.session)
   }
 
   // What the host adds to every session from its circuit and class catalogs (CorpusSession):
@@ -1053,9 +1064,9 @@
 
   // Pages are reached through the app's own input paths, so the preview adds
   // nothing to production code: Alt+1..8 (⌘1..8 with platform=mac) for the
-  // primary pages (shell/nav.ts order) and a click on the pane item for the footer pages.
+  // primary pages (shell/nav.ts order) and a click on the rail's area for the footer pages.
   const primaryOrder = ['Home', 'SessionPlanner', 'OnTrack', 'Analysis', 'Setups', 'Dashes', 'Devices', 'RaceEngineer']
-  const footerLabels = { Settings: 'Settings', Help: 'Help & diagnostics' }
+  const footerLabels = { Settings: 'Settings', Help: 'Help' }
   // The modifier the shell listens for (shell/shortcuts.ts): Command on mac, Alt/Ctrl elsewhere.
   const mac = params.get('platform') === 'mac'
 
@@ -1066,7 +1077,7 @@
       return
     }
     const label = footerLabels[view]
-    const item = [...document.querySelectorAll('.nav-item')].find((element) => element.textContent?.trim() === label)
+    const item = [...document.querySelectorAll('.rail-item')].find((element) => element.querySelector('.rail-item-label')?.textContent?.trim() === label)
     if (item instanceof HTMLElement) item.click()
     else console.warn(`[preview] unknown view "${view}"`)
   }

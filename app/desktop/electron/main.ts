@@ -323,9 +323,6 @@ ipcMain.handle('sprint:open-dash-designer', (_event: IpcMainInvokeEvent, dashId:
   designers.open(readDesignerDashId(dashId))
 })
 
-/** A designer's scope strip moves it on to another dash: 'switched' when it now edits that dash, 'focused' when that dash's own window came forward instead. */
-ipcMain.handle('sprint:switch-dash-designer', (event: IpcMainInvokeEvent, dashId: unknown) => designers.switchTo(event.sender, readDesignerDashId(dashId)))
-
 /** A designer's "Alerts and Ack": the main window comes forward (never in a hidden agent run) on Dashes > Settings. */
 ipcMain.handle('sprint:open-dash-settings', () => {
   if (!mainWindow || mainWindow.isDestroyed()) return
@@ -443,8 +440,8 @@ const captionButtonsHeight = (zoom: number): number => Math.round(TITLE_BAR_HEIG
 
 /**
  * macOS traffic lights, as the top-left of the close button. The renderer's
- * toolbar band is 52px tall and reserves the first 80px of the sidebar header
- * for the buttons. Each button is a 14px square, so y = (52 - 14) / 2 = 19
+ * toolbar band is 52px tall and the rail's top band, 80px wide, holds the
+ * buttons. Each button is a 14px square, so y = (52 - 14) / 2 = 19
  * centres them on the band. The buttons sit 23px apart on macOS 26+ (20px
  * before), so x = 16 ends the zoom button at 76px, inside the 80px.
  */
@@ -467,12 +464,12 @@ function chromeOptions(chrome: WindowChrome): BrowserWindowConstructorOptions {
     case 'vibrancy':
     case 'opaque':
       return {
-        // The renderer paints its content opaque and leaves the sidebar transparent,
-        // so the sidebar shows the vibrancy material — or, with Reduce Transparency,
+        // The renderer paints its content opaque and leaves the rail transparent,
+        // so the rail shows the vibrancy material — or, with Reduce Transparency,
         // the solid sidebar colour drawn here.
         backgroundColor: chrome.kind === 'vibrancy' ? TRANSPARENT : chrome.background,
         ...(chrome.kind === 'vibrancy' ? { vibrancy: 'sidebar' as const, visualEffectState: 'followWindow' as const } : {}),
-        // No OS title bar: the real traffic lights float over the sidebar header,
+        // No OS title bar: the real traffic lights float over the rail's top band,
         // and the renderer's toolbar is the drag region.
         titleBarStyle: 'hidden',
         trafficLightPosition: trafficLightPosition(1),

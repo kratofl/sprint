@@ -9,7 +9,7 @@
 //   1. finishes first run through window.sprint (a command round trip: preload → Electron → host)
 //      and checks the host's state says so;
 //   2. checks the replay reaches the app as live telemetry;
-//   3. opens every page in the sidebar and checks it rendered something;
+//   3. opens every area in the rail and every page tab in it, and checks each page rendered something;
 // and fails on any uncaught exception or console error along the way. Exits non-zero on failure
 // and always stops the run. `--shots` saves a screenshot per page (CI keeps them on failure).
 import { spawn } from 'node:child_process'
@@ -23,7 +23,8 @@ const desktopRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
 const fixture = path.join(desktopRoot, 'test-fixtures', 'replay-race.jsonl.gz')
 const shotsIndex = process.argv.indexOf('--shots')
 const shotsDir = shotsIndex >= 0 ? path.resolve(process.argv[shotsIndex + 1] ?? 'smoke-shots') : null
-const NAV_ITEM = 'nav.navview button.nav-item:not(.nav-telemetry)'
+const RAIL_ITEM = 'nav.rail button.rail-item'
+const PAGE_TAB = 'nav.explorer-tabs button.explorer-tab'
 
 const failures = []
 const fail = (message) => failures.push(message)
@@ -87,8 +88,8 @@ async function check(page, errors) {
   await page.evaluate(`window.sprint.sendCommand({ type: 'firstRun.complete', driverName: 'Smoke Test' })`)
   const state = await page.evaluate(`window.sprint.getState()`)
   if (state?.firstRun?.done !== true) fail('firstRun.complete did not reach the host state')
-  if (!(await until(page, `document.querySelectorAll(${JSON.stringify(NAV_ITEM)}).length > 0`))) {
-    fail('the app shell (sidebar) never appeared after first run')
+  if (!(await until(page, `document.querySelectorAll(${JSON.stringify(RAIL_ITEM)}).length > 0`))) {
+    fail('the app shell (rail) never appeared after first run')
     return
   }
 
@@ -99,24 +100,33 @@ async function check(page, errors) {
   // Errors so far came from startup and first run, before any page was opened.
   for (const error of errors) fail(`startup: ${error}`)
 
-  // 3. Every page in the sidebar renders.
-  const labels = await page.evaluate(`[...document.querySelectorAll(${JSON.stringify(NAV_ITEM)})].map((el) => el.textContent.trim())`)
-  for (const [index, label] of labels.entries()) {
-    const before = errors.length
+  // 3. Every page renders: each area in the rail, then each page tab in it (an area of one page has none).
+  const areas = await page.evaluate(`[...document.querySelectorAll(${JSON.stringify(RAIL_ITEM)})].map((el) => el.textContent.trim())`)
+  let shots = 0
+  for (const [areaIndex, area] of areas.entries()) {
     await closeDialogs(page)
-    await page.click(NAV_ITEM, index)
-    const shown = await until(
-      page,
-      `(() => { const item = document.querySelectorAll(${JSON.stringify(NAV_ITEM)})[${index}];
-          const main = document.querySelector('main.content');
-          return item?.getAttribute('aria-current') === 'page' && main?.firstElementChild?.getBoundingClientRect().height > 0 })()`,
-    )
-    // Effects and the first state polls run after the first paint.
-    await delay(750)
-    await shot(page, `${String(index + 1).padStart(2, '0')}-${label.replace(/[^a-z0-9]+/gi, '-')}`)
-    if (!shown) fail(`${label}: the page did not render`)
-    for (const error of errors.slice(before)) fail(`${label}: ${error}`)
-    console.log(`[smoke] ${shown && errors.length === before ? 'ok  ' : 'FAIL'} ${label}`)
+    await page.click(RAIL_ITEM, areaIndex)
+    await until(page, `document.querySelectorAll(${JSON.stringify(RAIL_ITEM)})[${areaIndex}]?.getAttribute('aria-current') === 'page'`)
+    const tabs = await page.evaluate(`[...document.querySelectorAll(${JSON.stringify(PAGE_TAB)})].map((el) => el.textContent.trim())`)
+    for (const [tabIndex, tab] of (tabs.length > 0 ? tabs : [null]).entries()) {
+      const label = tab ? `${area} › ${tab}` : area
+      const before = errors.length
+      await closeDialogs(page)
+      if (tab) await page.click(PAGE_TAB, tabIndex)
+      const shown = await until(
+        page,
+        `(() => { const tab = document.querySelectorAll(${JSON.stringify(PAGE_TAB)})[${tabIndex}];
+            const main = document.querySelector('main.content');
+            return (${tab === null} || tab?.getAttribute('aria-current') === 'page') && main?.firstElementChild?.getBoundingClientRect().height > 0 })()`,
+      )
+      // Effects and the first state polls run after the first paint.
+      await delay(750)
+      shots += 1
+      await shot(page, `${String(shots).padStart(2, '0')}-${label.replace(/[^a-z0-9]+/gi, '-')}`)
+      if (!shown) fail(`${label}: the page did not render`)
+      for (const error of errors.slice(before)) fail(`${label}: ${error}`)
+      console.log(`[smoke] ${shown && errors.length === before ? 'ok  ' : 'FAIL'} ${label}`)
+    }
   }
 }
 

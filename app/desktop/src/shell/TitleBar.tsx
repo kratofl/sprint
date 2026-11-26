@@ -1,6 +1,7 @@
-import { useLayoutEffect, useRef, type RefObject } from 'react'
-import { Download, PanelLeft, Search } from 'lucide-react'
-import type { UpdateStatus } from '../bridge'
+import { Fragment, useLayoutEffect, useRef, type RefObject } from 'react'
+import { ChevronRight, Download, PanelLeft, Search } from 'lucide-react'
+import type { AppView, UpdateStatus } from '../bridge'
+import { navItemFor } from './nav'
 import { platform } from '../platform'
 import { ProgressRing } from './ProgressRing'
 import { displayVersion } from './updates'
@@ -8,12 +9,15 @@ import { shortcutAria, shortcutLabel } from './shortcuts'
 
 type TitleBarProps = {
   onOpenPalette: () => void
-  /** The current page's navigation label, shown as the page title. */
-  title: string
-  sidebarCollapsed: boolean
-  onToggleSidebar: () => void
-  /** The "Show sidebar" button, focused after the sidebar is hidden from the keyboard. */
-  showSidebarRef: RefObject<HTMLButtonElement | null>
+  /** Where you are, the page last: "Drive", "Analysis" (shell/nav.ts `crumbsFor`). */
+  crumbs: string[]
+  /** The explorer's toggle; null on a page without one. */
+  explorer: { shown: boolean; onToggle: () => void } | null
+  /**
+   * The area's pages, while the explorer that shows them as tabs is hidden: then they are tabs here,
+   * after the area's name, in place of the page title. Null otherwise.
+   */
+  pages: { views: AppView[]; current: AppView; onSelect: (view: AppView) => void } | null
   /** The element the current page's actions render into (PageHeader portals them). */
   onActionsSlot: (slot: HTMLElement | null) => void
   /**
@@ -27,25 +31,24 @@ type TitleBarProps = {
 }
 
 /**
- * The window's toolbar, right of the sidebar, in two zones (styles.css lays them out as
- * one grid). Leading: (macOS: sidebar toggle while the sidebar is hidden), the page title. There
- * is no back button: a deeper page carries its own way up, and Alt+Left / ⌘[ goes up a level (App.tsx).
- * Trailing: the page's actions (PageHeader portals them into the slot), the update button while
- * there is an update (`UpdateIndicator`), then a search field that opens the palette. The game link lives at the foot of the sidebar (TelemetryRow.tsx), not here.
+ * The window's toolbar, right of the explorer, in two zones (styles.css lays them out as
+ * one grid). Leading: the explorer's toggle on a page with one, then where you are as crumbs, the
+ * page last and strongest; while the explorer is hidden, the area's name and its pages as tabs. There is no back button: a deeper page carries its own way up, and
+ * Alt+Left / ⌘[ goes up a level (App.tsx). Trailing: the page's actions (PageHeader portals them
+ * into the slot), the update button while there is an update (`UpdateIndicator`), then a search
+ * field that opens the palette. The game link lives in the status bar (StatusBar.tsx), not here.
  *
  * Windows and Linux: 48px, and it is the window's title bar. The OS caption buttons are
  * Electron's native `titleBarOverlay` on the right; `.titlebar-trail` reserves their width
  * from the `titlebar-area-*` env() values.
  *
- * macOS: 52px (styles.mac.css). The traffic lights are the OS's, over the sidebar's top band
- * (or over the toolbar's left inset while the sidebar is hidden).
+ * macOS: 52px (styles.mac.css). The traffic lights are the OS's, over the rail's top band.
  */
 export function TitleBar({
   onOpenPalette,
-  title,
-  sidebarCollapsed,
-  onToggleSidebar,
-  showSidebarRef,
+  crumbs,
+  explorer,
+  pages,
   onActionsSlot,
   onActionsRoom,
   update,
@@ -85,24 +88,42 @@ export function TitleBar({
   return (
     <header ref={toolbarRef} className="titlebar">
       <div ref={leadRef} className="titlebar-lead">
-        {/* Only the Mac hides the sidebar; the brand look keeps it as a rail with its own toggle. */}
-        {sidebarCollapsed && platform === 'mac' ? (
+        {explorer ? (
           <button
-            ref={showSidebarRef}
             type="button"
             className="titlebar-sidebar-toggle"
-            onClick={onToggleSidebar}
-            aria-label="Show sidebar"
-            aria-expanded={false}
-            title="Show sidebar"
+            onClick={explorer.onToggle}
+            aria-label={explorer.shown ? 'Hide list' : 'Show list'}
+            aria-expanded={explorer.shown}
+            title={explorer.shown ? 'Hide list' : 'Show list'}
           >
             <PanelLeft size={16} strokeWidth={1.7} />
           </button>
         ) : null}
         {/* The page's own <h1> (visually hidden) stays the accessible title. */}
-        <span className="titlebar-title" aria-hidden="true">
-          {title}
-        </span>
+        {pages ? (
+          <>
+            <span className="titlebar-crumb" aria-hidden="true">
+              {crumbs[0]}
+            </span>
+            <nav className="titlebar-tabs" aria-label={crumbs[0]}>
+              {pages.views.map((page) => (
+                <button key={page} type="button" className="explorer-tab" aria-current={page === pages.current ? 'page' : undefined} onClick={() => pages.onSelect(page)}>
+                  {navItemFor(page)?.tab ?? page}
+                </button>
+              ))}
+            </nav>
+          </>
+        ) : (
+          <span className="titlebar-crumbs" aria-hidden="true">
+            {crumbs.map((crumb, index) => (
+              <Fragment key={crumb}>
+                {index > 0 ? <ChevronRight size={12} className="titlebar-crumb-sep" /> : null}
+                <span className={index === crumbs.length - 1 ? 'titlebar-title' : 'titlebar-crumb'}>{crumb}</span>
+              </Fragment>
+            ))}
+          </span>
+        )}
       </div>
       <div ref={trailRef} className="titlebar-trail">
         <div ref={onActionsSlot} className="titlebar-actions" />

@@ -5,7 +5,7 @@ import { parseColours } from '../colours'
  * Settings domain model and parsing: the `AppSettings` fields the Settings page shows and
  * edits through `settings.update` (`RuntimeCoordinator.UpdateSettings`), and the colours through
  * `settings.colours`. sidebarCollapsed is
- * owned by the shell's sidebar toggle, and the other slices (dashEditorUI, newDashDefaults,
+ * owned by the shell's list toggle (the explorer), and the other slices (dashEditorUI, newDashDefaults,
  * devicesUI, sessionPlanner, liveCompare, cloud) are each edited from their own feature, so
  * they are not modelled here.
  */

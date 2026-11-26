@@ -54,7 +54,7 @@ if (debugWindow) document.documentElement.dataset.surface = 'debug'
 document.documentElement.dataset.platform = platform
 
 // On macOS the main window draws vibrancy (or its solid fallback) behind the page, so the
-// sidebar leaves it showing (styles.mac.css `[data-backdrop]`).
+// rail leaves it showing (styles.mac.css `[data-backdrop]`).
 if (!hudWindow && !designerDashId && !pitWall && !splash && !debugWindow && new URLSearchParams(window.location.search).get('backdrop') === 'window') {
   document.documentElement.dataset.backdrop = 'window'
 }

@@ -14,14 +14,16 @@ import { MenuLayer, type MenuAnchor } from '../shell/Menu'
  * a line opens the lap page; what else a lap can do sits behind its ⋯ menu.
  */
 
-/** "‹ All sessions", the session's kind and time, then its car (name and model), track and day. */
-export function SessionHead({ session, onBack }: { session: CorpusSession; onBack: () => void }) {
+/** The session's kind and time, then its car (name and model), track and day; `onBack` adds "‹ All sessions" over it (absent while the explorer lists them). */
+export function SessionHead({ session, onBack }: { session: CorpusSession; onBack?: () => void }) {
   const marks = session.marks
   return (
     <div className="analysis-session-head">
-      <button type="button" className="button subtle analysis-back" onClick={onBack}>
-        <ChevronLeft /> All sessions
-      </button>
+      {onBack && (
+        <button type="button" className="button subtle analysis-back" onClick={onBack}>
+          <ChevronLeft /> All sessions
+        </button>
+      )}
       <div className="analysis-session-heading">
         <h2 className="analysis-session-name">{session.label}</h2>
         {session.origin !== 'Recorded' && <span className="chip chip-muted">{session.origin}</span>}

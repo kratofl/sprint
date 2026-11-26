@@ -223,8 +223,8 @@ function Rig({
           key={entry.device.id}
           picture={<DeviceImage image={entry.image} dim={!entry.connected} className="overview-rig-picture" />}
           name={entry.device.name}
-          tone={TELEMETRY_STATUS_TONE[entry.statusTone]}
-          status={entry.statusLabel}
+          tone={entry.status.tone}
+          status={entry.status.label}
           detail={entry.connected ? entry.dashName : null}
           onOpen={() => onOpenDevice(entry.device.id)}
         />

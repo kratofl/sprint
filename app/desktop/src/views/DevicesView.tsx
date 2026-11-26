@@ -3,7 +3,9 @@ import { ChevronRight, Cpu, LayoutGrid, List, Plus } from 'lucide-react'
 import { dashAlertDefaults, type DashAlertSettings } from '@sprint/dashboard'
 import type { ButtonState, DashMode, MultiDial, SprintCommand, SprintState } from '../bridge'
 import type { RuntimeState } from '../shell/runtime'
+import { Explorer, ExplorerGroup, ExplorerRow, useExplorerShown } from '../shell/Explorer'
 import { CommandDivider, PageHeader } from '../shell/PageHeader'
+import { Status } from '../shell/Status'
 import { usePageUp } from '../shell/pageUp'
 import {
   buildDevicesViewMode,
@@ -11,6 +13,7 @@ import {
   deviceImageKey,
   deviceKind,
   deviceSummary,
+  describeDeviceStatus,
   findScreen,
   formatFramesPerSecond,
   foundEntries,
@@ -69,7 +72,8 @@ const KIND_GROUPS: ReadonlyArray<{ kind: DeviceKind; title: string }> = [
 /**
  * Devices: an overview of every wheel and screen as tiles or a list — pictures and status
  * only, nothing to edit — filtered by kind or state. Opening one shows its page
- * (DeviceDetail.tsx), one level down: the toolbar's back and "All devices" return here.
+ * (DeviceDetail.tsx), one level down. The explorer lists every device to switch between them,
+ * "All devices" first; while it is hidden the page's own "‹ All devices" and Alt+Left return here.
  */
 export function DevicesView({
   runtime,
@@ -90,6 +94,7 @@ export function DevicesView({
   const selected = state?.devices.find((device) => device.id === selectedId) ?? null
 
   usePageUp(selected ? 'All devices' : null, () => setSelectedId(null))
+  const explorerShown = useExplorerShown()
 
   // `focusDeviceId` only ever names a live device for one render (the shell clears it right
   // after handing it off — see App.tsx), so this opens the device page once; a request for a
@@ -125,22 +130,27 @@ export function DevicesView({
     )
   }
 
+  const explorer = <DevicesExplorer devices={state.devices} screens={state.screens} openId={selected?.id ?? null} onOpen={setSelectedId} />
+
   if (selected) {
     return (
-      <DeviceDetail
-        key={selected.id}
-        device={selected}
-        image={deviceImageKey(selected, state.catalog)}
-        dashOptions={state.dashOptions}
-        screen={findScreen(state.screens, selected.id)}
-        dial={state.dials.find((dial) => dial.deviceId === selected.id) ?? null}
-        dashModes={state.dashModes}
-        dialPopup={state.dialPopup}
-        buttons={state.buttons.functions[selected.id] ?? []}
-        listening={state.buttons.listening?.deviceId === selected.id ? state.buttons.listening.command : null}
-        send={send}
-        onBack={() => setSelectedId(null)}
-      />
+      <>
+        <DeviceDetail
+          key={selected.id}
+          device={selected}
+          image={deviceImageKey(selected, state.catalog)}
+          dashOptions={state.dashOptions}
+          screen={findScreen(state.screens, selected.id)}
+          dial={state.dials.find((dial) => dial.deviceId === selected.id) ?? null}
+          dashModes={state.dashModes}
+          dialPopup={state.dialPopup}
+          buttons={state.buttons.functions[selected.id] ?? []}
+          listening={state.buttons.listening?.deviceId === selected.id ? state.buttons.listening.command : null}
+          send={send}
+          onBack={explorerShown ? undefined : () => setSelectedId(null)}
+        />
+        {explorer}
+      </>
     )
   }
 
@@ -163,79 +173,122 @@ export function DevicesView({
   )
 
   return (
-    <div className="devices">
-      <PageHeader title="Devices">
-        <button type="button" className="button primary" onClick={() => setShowCatalog(true)}>
-          <Plus /> Add device
-        </button>
-        {state.devices.length > 0 && (
-          <>
-            <CommandDivider />
-            <div className="segmented devices-layout" role="radiogroup" aria-label="Layout">
-              <button type="button" role="radio" className="segmented-item" aria-checked={viewMode === 'gallery'} aria-label="Tiles" title="Tiles" onClick={() => chooseViewMode('gallery')}>
-                <LayoutGrid size={14} />
-              </button>
-              <button type="button" role="radio" className="segmented-item" aria-checked={viewMode === 'list'} aria-label="List" title="List" onClick={() => chooseViewMode('list')}>
-                <List size={14} />
-              </button>
+    <>
+      <div className="devices">
+        <PageHeader title="Devices">
+          <button type="button" className="button primary" onClick={() => setShowCatalog(true)}>
+            <Plus /> Add device
+          </button>
+          {state.devices.length > 0 && (
+            <>
+              <CommandDivider />
+              <div className="segmented devices-layout" role="radiogroup" aria-label="Layout">
+                <button type="button" role="radio" className="segmented-item" aria-checked={viewMode === 'gallery'} aria-label="Tiles" title="Tiles" onClick={() => chooseViewMode('gallery')}>
+                  <LayoutGrid size={14} />
+                </button>
+                <button type="button" role="radio" className="segmented-item" aria-checked={viewMode === 'list'} aria-label="List" title="List" onClick={() => chooseViewMode('list')}>
+                  <List size={14} />
+                </button>
+              </div>
+            </>
+          )}
+        </PageHeader>
+
+        {state.devices.length === 0 ? (
+          <div className="card">
+            <div className="empty-state">
+              <Cpu size={28} strokeWidth={1.5} />
+              <h2>No devices yet</h2>
+              <p>Add your wheel or screen to put a dash on it.</p>
             </div>
+          </div>
+        ) : (
+          <>
+            <DevicesFilterBar devices={state.devices} screens={state.screens} filter={filter} onFilter={setFilter} />
+            {groups.length === 0 && <p className="muted devices-none">No devices match this filter.</p>}
+            {groups.map((group) => (
+              <section key={group.kind} className="devices-group" aria-label={group.title}>
+                {groups.length > 1 && (
+                  <h2 className="devices-group-title">
+                    {group.title} <span className="muted tabular">{group.devices.length}</span>
+                  </h2>
+                )}
+                {viewMode === 'gallery' ? (
+                  <div className="devices-grid">
+                    {group.devices.map((device) => (
+                      <DeviceTile
+                        key={device.id}
+                        device={device}
+                        screen={findScreen(state.screens, device.id)}
+                        catalog={state.catalog}
+                        onOpen={() => setSelectedId(device.id)}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <DeviceRows devices={group.devices} screens={state.screens} catalog={state.catalog} onOpen={setSelectedId} />
+                )}
+              </section>
+            ))}
           </>
         )}
-      </PageHeader>
 
-      {state.devices.length === 0 ? (
-        <div className="card">
-          <div className="empty-state">
-            <Cpu size={28} strokeWidth={1.5} />
-            <h2>No devices yet</h2>
-            <p>Add your wheel or screen to put a dash on it.</p>
+        {showCatalog && (
+          <DevicesAddDialog
+            catalog={state.catalog}
+            found={state.found}
+            onClose={() => setShowCatalog(false)}
+            onAdd={(entry) => {
+              // Catalog entries are always valid ids from live state; a rejection here has no
+              // dedicated error UI, so the dialog just stays open with nothing added.
+              void addDevice({ type: 'devices.add', catalogId: entry.id }).catch(() => undefined)
+            }}
+            onAddCustom={addDevice}
+          />
+        )}
+      </div>
+      {explorer}
+    </>
+  )
+}
+
+/** The devices in the explorer: "All devices" (the overview), then the wheels and the screens, each with its link. */
+function DevicesExplorer({ devices, screens, openId, onOpen }: { devices: Device[]; screens: ScreenOutput[]; openId: string | null; onOpen: (deviceId: string | null) => void }) {
+  return (
+    <Explorer label="Devices">
+      <ExplorerRow title="All devices" meta={devices.length} selected={openId === null} onClick={() => onOpen(null)} />
+      {KIND_GROUPS.map((group) => {
+        const inKind = devices.filter((device) => deviceKind(device) === group.kind)
+        if (inKind.length === 0) return null
+        return (
+          <div key={group.kind} role="group" aria-label={group.title}>
+            <ExplorerGroup title={group.title} count={inKind.length} />
+            {inKind.map((device) => {
+              const screen = findScreen(screens, device.id)
+              const status = deviceHasScreen(device) ? describeDeviceStatus(device, screen) : null
+              return (
+                <ExplorerRow
+                  key={device.id}
+                  title={device.name}
+                  line={deviceSummary(device)}
+                  meta={
+                    status ? (
+                      <Status tone={status.tone} quiet>
+                        {status.label}
+                      </Status>
+                    ) : device.disabled ? (
+                      'Off'
+                    ) : undefined
+                  }
+                  selected={device.id === openId}
+                  onClick={() => onOpen(device.id)}
+                />
+              )
+            })}
           </div>
-        </div>
-      ) : (
-        <>
-          <DevicesFilterBar devices={state.devices} screens={state.screens} filter={filter} onFilter={setFilter} />
-          {groups.length === 0 && <p className="muted devices-none">No devices match this filter.</p>}
-          {groups.map((group) => (
-            <section key={group.kind} className="devices-group" aria-label={group.title}>
-              {groups.length > 1 && (
-                <h2 className="devices-group-title">
-                  {group.title} <span className="muted tabular">{group.devices.length}</span>
-                </h2>
-              )}
-              {viewMode === 'gallery' ? (
-                <div className="devices-grid">
-                  {group.devices.map((device) => (
-                    <DeviceTile
-                      key={device.id}
-                      device={device}
-                      screen={findScreen(state.screens, device.id)}
-                      catalog={state.catalog}
-                      onOpen={() => setSelectedId(device.id)}
-                    />
-                  ))}
-                </div>
-              ) : (
-                <DeviceRows devices={group.devices} screens={state.screens} catalog={state.catalog} onOpen={setSelectedId} />
-              )}
-            </section>
-          ))}
-        </>
-      )}
-
-      {showCatalog && (
-        <DevicesAddDialog
-          catalog={state.catalog}
-          found={state.found}
-          onClose={() => setShowCatalog(false)}
-          onAdd={(entry) => {
-            // Catalog entries are always valid ids from live state; a rejection here has no
-            // dedicated error UI, so the dialog just stays open with nothing added.
-            void addDevice({ type: 'devices.add', catalogId: entry.id }).catch(() => undefined)
-          }}
-          onAddCustom={addDevice}
-        />
-      )}
-    </div>
+        )
+      })}
+    </Explorer>
   )
 }
 

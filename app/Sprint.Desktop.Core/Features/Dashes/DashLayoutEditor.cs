@@ -86,7 +86,7 @@ public static class DashLayoutEditor
     /// every page including the idle page, without touching it. Zero when the layout already
     /// targets the profile (retargeting it is a no-op) or has its own track sizes (it fits any
     /// screen, so nothing is refit). Runs the same refit plan, so it never disagrees with what a change of
-    /// size or a duplicate to that size actually drops.
+    /// size or a duplicate to that size actually drops. A dash's variants count too.
     /// </summary>
     public static int CountRefitLosses(DashLayout layout, ScreenProfile profile)
     {
@@ -97,12 +97,15 @@ public static class DashLayoutEditor
             return 0;
         }
 
-        int oldCols = Math.Max(1, layout.GridCols);
-        int oldRows = Math.Max(1, layout.GridRows);
         int lost = 0;
-        foreach (DashPage page in layout.IdlePage is { } idle ? layout.Pages.Prepend(idle) : layout.Pages)
+        foreach (DashLayout shown in (layout.Variants ?? []).Select(variant => DashVariants.Shown(layout, variant)).Prepend(layout).Where(shown => !shown.HasTracks))
         {
-            lost += page.Widgets.Count - PlanRefit(page, oldCols, oldRows, profile.GridCols, profile.GridRows).Count;
+            int oldCols = Math.Max(1, shown.GridCols);
+            int oldRows = Math.Max(1, shown.GridRows);
+            foreach (DashPage page in shown.IdlePage is { } idle ? shown.Pages.Prepend(idle) : shown.Pages)
+            {
+                lost += page.Widgets.Count - PlanRefit(page, oldCols, oldRows, profile.GridCols, profile.GridRows).Count;
+            }
         }
 
         return lost;
@@ -110,7 +113,7 @@ public static class DashLayoutEditor
 
     /// <summary>
     /// Retargets a layout to a screen profile: tags it with the profile id and refits
-    /// its grid to the profile's fixed grid. The single shared primitive behind the
+    /// its grid to the profile's fixed grid, its variants' with it. The single shared primitive behind the
     /// runtime's change-size / duplicate-to-size and the editor's target-size selector.
     /// </summary>
     public static void ApplyScreenProfile(DashLayout layout, ScreenProfile profile)
@@ -122,6 +125,17 @@ public static class DashLayoutEditor
         {
             RefitLayoutToGrid(layout, profile.GridCols, profile.GridRows);
         }
+
+        DashVariants.Update(layout, shown =>
+        {
+            if (shown.HasTracks)
+            {
+                return false;
+            }
+
+            RefitLayoutToGrid(shown, profile.GridCols, profile.GridRows);
+            return true;
+        });
     }
 
     /// <summary>Whether a layout already targets the given profile (same id and grid) — a retarget no-op.</summary>

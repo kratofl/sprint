@@ -33,7 +33,7 @@ const screen = (deviceId: string, connectionState: string) => ({
   refreshHz: 30,
   layout: null,
   status: '',
-  hardware: { status: { state: connectionState } },
+  hardware: { status: { state: connectionState }, performance: {} },
 })
 
 // ── homeDevices ──────────────────────────────────────────────────────────
@@ -53,11 +53,11 @@ test('homeDevices lists enabled screen devices, connected first, with a status w
   const devices = homeDevices(sprint)
 
   assert.deepEqual(
-    devices.map((entry) => [entry.device.id, entry.connected, entry.statusLabel, entry.statusTone]),
+    devices.map((entry) => [entry.device.id, entry.connected, entry.status.label, entry.status.tone]),
     [
-      ['live', true, 'Connected', 'live'],
-      ['unplugged', false, 'Disconnected', 'idle'],
-      ['never-seen', false, 'Not connected', 'idle'],
+      ['live', true, 'Connected', 'success'],
+      ['unplugged', false, 'Not found', 'neutral'],
+      ['never-seen', false, 'Not found', 'neutral'],
     ],
   )
 })

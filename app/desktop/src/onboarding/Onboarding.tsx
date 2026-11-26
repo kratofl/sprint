@@ -26,7 +26,7 @@ const reduce = (flow: Flow, action: Reducer): Flow => (action.type === 'back' ? 
 /**
  * The Sprint web setup: a panel over the window that walks through one question at a time —
  * which server, where it is, the account, where data lives, and moving what is already here.
- * Shown on the first launch, and again from Settings or the sidebar's Sign in to connect later.
+ * Shown on the first launch, and again from Settings or the status bar's Sign in to connect later.
  * Steps slide in from the side they come from; nothing animates on its own.
  */
 export function Onboarding({

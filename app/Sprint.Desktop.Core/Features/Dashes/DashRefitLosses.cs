@@ -54,10 +54,21 @@ public sealed class DashRefitLosses
         return losses;
     }
 
-    /// <summary>Everything a refit reads: the profile and grid, and per page each widget's place, id and group, and the groups.</summary>
+    /// <summary>Everything a refit reads: the profile and grid, and per page each widget's place, id and group, and the groups; each variant's too.</summary>
     private static string GeometryKey(DashLayout layout)
     {
         StringBuilder key = new();
+        AppendGeometry(key, layout);
+        foreach (DashVariant variant in layout.Variants ?? [])
+        {
+            AppendGeometry(key.Append("|variant"), DashVariants.Shown(layout, variant));
+        }
+
+        return key.ToString();
+    }
+
+    private static void AppendGeometry(StringBuilder key, DashLayout layout)
+    {
         key.Append(layout.ScreenProfileId).Append('|').Append(layout.GridCols).Append('x').Append(layout.GridRows);
         if (layout.IdlePage is { } idle)
         {
@@ -68,8 +79,6 @@ public sealed class DashRefitLosses
         {
             AppendPage(key.Append("|page"), page);
         }
-
-        return key.ToString();
     }
 
     private static void AppendPage(StringBuilder key, DashPage page)

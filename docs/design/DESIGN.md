@@ -4,6 +4,11 @@ The authority for app UI. MUST = mandatory, NEVER = forbidden, SHOULD = default 
 reason exists. The rendered wheel dash is not app UI; its rules are in
 [`../internals/dash-rendering.md`](../internals/dash-rendering.md).
 
+The desktop app wears the **pro look**: Apple's pro apps (Final Cut Pro, Logic, Xcode) as the rules —
+the HIG's hierarchy, inspectors, toolbars and native Mac behaviour — with a Linear-style density and a
+workbench layout (rail, explorer, page, status bar). Dense and flat, no decoration; every control has a
+light fill and a hairline, and colour marks state, not chrome. Measure a desktop change against it.
+
 Token values live in `packages/tokens/` (`desktop.css`, `macos.css`, `web.css`); this file holds the
 rules for using them. The web app's system is described in [Web app](#web-app); [Web token
 roles](#web-token-roles) says what each web token is for.
@@ -26,15 +31,16 @@ Where the mockups are silent, the macOS look follows Apple's Human Interface Gui
 
 | Surface | Look | Tokens | Type |
 | --- | --- | --- | --- |
-| Desktop app on Windows and Linux (`app/desktop`, Electron) | The Sprint brand look, the web app's system on the desktop: full-height 224px sidebar with the Sprint mark in its top band, a 48px toolbar in three zones that carries the page title and the page's actions with the OS caption buttons at its right end, hairline-edged cards on a calm canvas over the light trails (glass sidebar and toolbar), glass menus, palette and notifications, solid dialogs. Flat 28px buttons with 6px corners, 10px cards, 14px dialogs. | `@sprint/tokens/desktop.css` | Bundled Figtree, 13px/20px base |
-| Desktop app on macOS (`app/desktop`, Electron) | macOS 27: full-height 224px source-list sidebar on vibrancy with the traffic lights in its top band, 52px toolbar in three zones that carries the page title and the page's actions, opaque content scrolling under the toolbar, glass menus, palette, notifications and dialogs. Borderless grey-filled 28px buttons with 8px corners, 14px cards with a hairline edge, 16px dialogs. | `@sprint/tokens/macos.css` over `desktop.css` | SF (system font, nothing bundled), 13px/20px base |
+| Desktop app on Windows and Linux (`app/desktop`, Electron) | The Sprint brand look on a tool's shell: a full-height 68px rail of areas with the Sprint mark in its top band, a 300px explorer listing the page's items under the area's page tabs, a 48px toolbar that carries where you are and the page's actions with the OS caption buttons at its right end, a 24px status bar, and the page as one flat sheet (cards are sections under a hairline). Glass menus, palette and notifications, solid dialogs. 24px controls with 12px text, a light fill, a hairline and 6px corners; 10px cards in dialogs and flyouts, 14px dialogs. | `@sprint/tokens/desktop.css` | Bundled Figtree, 13px/20px base |
+| Desktop app on macOS (`app/desktop`, Electron) | macOS 27 on the same shell: an 80px rail on vibrancy with the traffic lights in its top band, the explorer, a 52px toolbar that carries where you are and the page's actions, opaque content scrolling under the toolbar, the status bar, glass menus, palette, notifications and dialogs. Borderless grey-filled 24px controls with 8px corners, 16px dialogs. | `@sprint/tokens/macos.css` over `desktop.css` | SF (system font, nothing bundled), 13px/20px base |
 | Web app (`web/`) | Calm web app: cards one step off the canvas, defined by a hairline edge rather than fill or shadow, small controls, frosted glass only on the shell chrome and small floating layers, solid sheets. Dense desktop scale from 1024px, touch-sized pills below. See [Web app](#web-app). | `@sprint/tokens/web.css` | Bundled Figtree on every platform |
 | Wheel dash (`packages/dashboard`) | Hardware instrument with its own color domain. Not restyled with the app. | Dash palette in `packages/dashboard` | Saira Semi Condensed numerics, Inter labels |
 
 - The web app and the desktop on Windows and Linux share one brand look: the same neutrals
-  (`desktop.css` copies them from `web.css`), Figtree, hairline-edged cards, flat fills and the
-  sidebar-plus-toolbar shell. The desktop on macOS wears the native look instead; only the brand and
-  status colors carry over to it. NEVER use Material Design patterns (FABs with elevation, ripple,
+  (`desktop.css` copies them from `web.css`), Figtree and flat fills. The desktop's shell is a
+  tool's (rail, explorer, toolbar, status bar, the page as one sheet); the web keeps its sidebar and
+  hairline-edged cards. The desktop on macOS wears the native look on the same shell; only the brand
+  and status colors carry over to it. NEVER use Material Design patterns (FABs with elevation, ripple,
   underlined text fields with floating labels, app bars with shadows).
 - Desktop views are shared between the two looks, and so is the shell layout; only shapes and
   materials change. Mac shapes live in `app/desktop/src/styles.mac.css`, scoped to
@@ -49,23 +55,21 @@ Where the mockups are silent, the macOS look follows Apple's Human Interface Gui
 
 ### Flat first, glass on chrome
 
-- Content is flat: cards (`surface` on `bg`), lists, tables, inputs, buttons, sidebar — no shadow,
-  no gradients.
+- Content is flat: cards (`surface` on `bg`), lists, tables, inputs, buttons, the rail — no shadow,
+  no gradients. In the desktop's main window the page is the one `surface` sheet on the `window`
+  chrome, and a card in it is a section under a hairline, not a framed box.
 - **Glass only on:** context menus, the toolbar, alerts/notifications, toasts, popovers and dialogs.
-  The desktop's brand look puts it on menus, the palette, notifications and the shell chrome over
-  the light trails (dialogs are solid); on
-  macOS, glass on menus, the palette, notifications and dialogs, vibrancy behind the sidebar only.
+  The desktop's brand look puts it on menus, the palette and notifications (dialogs are solid); on
+  macOS, glass on menus, the palette, notifications and dialogs, vibrancy behind the rail only.
   The web's glass and elevation rules are under [Web app](#web-app).
 - **macOS scroll edge:** content scrolls under the toolbar. At rest the toolbar has no bar of its
   own and the content's colour shows through; once the content scrolls, a translucent blurred bar
   with a hairline fades in over the first 24px. With Reduce Transparency the bar is solid.
-- **Light-trails backdrop:** the web app and the desktop's brand look sit on the light-trails
-  artwork (`web/components/Backdrop.tsx`, its desktop copy `app/desktop/src/shell/Backdrop.tsx`):
-  vivid behind the web sign-in card and the desktop first-run setup card (`--glass`), blurred and
-  dimmed under the app shell (`bg` at 82 % over it, `--veil-opacity` on the desktop). Cards and
-  every other content element stay opaque; only the gaps, the glass sidebar and the toolbar
-  (`--chrome-opacity`, `--chrome-backdrop`) show it. The desktop's macOS look keeps its native
-  vibrancy and draws no trails behind the shell. The artwork is plain strokes painted once — no SVG/CSS filters or masks
+- **Light-trails backdrop:** the web app sits on the light-trails artwork
+  (`web/components/Backdrop.tsx`, its desktop copy `app/desktop/src/shell/Backdrop.tsx`): vivid
+  behind the web sign-in card and the desktop first-run setup card (`--glass`), blurred and
+  dimmed under the web app shell (`bg` at 82 % over it). The desktop's main window draws no
+  trails: it is a tool, and its chrome stays opaque. The artwork is plain strokes painted once — no SVG/CSS filters or masks
   in it (Safari re-runs them on every repaint), never animate its strokes, and no `backdrop-filter`
   over the whole content area.
 - **Flat fallback:** with `prefers-reduced-transparency: reduce` or no `backdrop-filter` support,
@@ -91,7 +95,8 @@ Where the mockups are silent, the macOS look follows Apple's Human Interface Gui
 
 ### Type
 
-- Desktop on Windows and Linux: Figtree — the 17px semibold toolbar title names the page (the
+- Desktop on Windows and Linux: Figtree — the 15px semibold toolbar title names the page, after its
+  area in 13px secondary text (the
   in-content page `<h1>` is visually hidden and stays the accessible title), 14px semibold card
   titles, 13px/20px body, 12px captions, 11px semibold column heads.
 - Desktop on macOS: SF — the 17px bold toolbar title names the page (the in-content page `<h1>` is
@@ -106,9 +111,14 @@ Where the mockups are silent, the macOS look follows Apple's Human Interface Gui
 
 ### Shape and spacing
 
-- Desktop on Windows and Linux: 28px controls with 6px corners (4px segments and small items),
-  10px cards and menus, 14px dialogs (`--radius-dialog`); the 2px focus ring sits 2px off the control.
-- macOS: buttons 28px with 8px corners on a borderless grey fill (small buttons 22px, 6px corners);
+- Desktop on Windows and Linux: 24px controls with 12px text and 6px corners (4px segments, chips and
+  small items): buttons, fields and selects on a light fill with a `--control-stroke` hairline, the
+  primary on brand with none; icon buttons have no fill until hover; a segmented control is a `--track`
+  trough whose picked segment is lifted (its own fill and a hairline). Small buttons are 22px. Rows:
+  28px list rows, 36–40px form rows; cards pad 12px 16px, the page 16px 20px. 10px cards and menus,
+  14px dialogs (`--radius-dialog`); the 2px focus ring sits 2px off the control.
+- macOS: the same sizes, borderless (its `--control-stroke` and `--input-stroke` are transparent):
+  buttons 24px with 8px corners on a grey fill (small buttons 22px, 6px corners);
   toolbar items, the search field, chips and tabs are capsules; 14px cards (`--radius-card`) with a
   hairline edge, 16px dialogs; focus is a 3px half-opacity brand halo hugging the control.
 - Web: the radius scale under [Web app](#web-app) — 6px controls, 10px cards on desktop; pills
@@ -133,7 +143,7 @@ appears only when it adds interaction or state meaning.
 
 | # | If the control … | Use | Never use |
 |---|---|---|---|
-| 1 | navigates between app areas | Sidebar | Segmented control, tab switcher, select |
+| 1 | navigates between app areas | Desktop: the rail, then the area's page tabs over the explorer · web: the sidebar | Segmented control, select |
 | 2 | starts actions | 1–2 actions: buttons · 3+ related actions: **pull-down button** / CommandBar overflow | Select, segmented control |
 | 3 | switches between **separate panes of content** on one page (2–6) | **Tabs** (desktop) · separate sidebar destinations (web) | Segmented control, select |
 | 4 | steps through consecutive periods or ordered steps | **Stepper** ‹ › | Select with every value |
@@ -160,8 +170,8 @@ grows past the screen once the corpus holds hundreds of entries.
 
 ### All selection controls
 
-- Text-only OR icon-only per control — never both in one control. Exception: tabs may carry an
-  icon before every label (all or none), as in the dash designer's toolbar.
+- Text-only OR icon-only per control — never both in one control. Exception: a rail's items carry
+  an icon over every label (all or none), as the main window's areas and the dash designer's sections.
 - Labels are short nouns; actions are verbs.
 - Selections and actions never share one control.
 - A choice always has a visible default; a select never starts empty unless the field is optional.
@@ -263,9 +273,9 @@ text-only segments; on desktop the selected segment NEVER has a shadow, border, 
 
 Switches between 2–6 separate panes of one page. Desktop uses `.tabs`; the web has none yet and
 splits such panes into sidebar destinations. One per page, NEVER inside a card. Renders as
-`role="tablist"` with `role="tabpanel"` panes. One tablist may show its tabs in visual groups
-(the dash designer's [Layout | Lap review | Pit limiter] [Settings]); arrow keys still
-run across all of them.
+`role="tablist"` with `role="tabpanel"` panes. A window
+whose sections are its whole content shows them as a rail instead, like the main window's areas
+(the dash designer: Layout, Lap review, Pit limiter, Settings at the foot); arrow keys run down it.
 
 ### Switch
 
@@ -279,16 +289,27 @@ checked state positively. NEVER for an instant action.
 
 ### Navigation
 
-Desktop sidebar: 224px, 28px items, the selected item a rounded fill with a semibold label (no
-indicator bar), footer for the game link, Settings, Help and the account. The game link is a
-status row under a hairline: a status dot in the icon's place and the link in secondary text; it
-opens Help & diagnostics, and on the rail only its dot stays. The brand look puts the Sprint mark in
-its top band, colours only the selected item's icon, and collapses to a 56px rail of icons (as the
-web sidebar) with the toggle still at the top; each item keeps its name as tooltip. On macOS the
-traffic lights take the band, every icon is brand, and collapsing hides the sidebar entirely, as
-Finder does; the toolbar then offers it back. Web sidebar: see
-[Web app](#web-app). NEVER put actions in navigation or
-nest deeper than one level.
+Desktop: a rail of areas, then an explorer.
+
+- **Rail** (68px; 80px on macOS, whose traffic lights take its top band): Home, Drive (Session
+  planner, On track, Analysis), Car & rig (Setups, Dashes, Devices) and Team (Race engineer), each
+  an icon over its 11px name; Settings and Help at its foot. The current area has the strong fill,
+  the brand icon and a 2px brand bar; Settings carries the update dot. An area opens the page last
+  open in it.
+- **Explorer** (300px): an area of several pages shows them as tabs across its top (the current one
+  underlined in brand); Settings names its page instead. Below, the page lists its items
+  (`app/desktop/src/shell/Explorer.tsx`): first "All …", the page's overview, then the items in
+  groups with a count, each row a lead (logo, flag, chip, icon), a title, a quiet second line and
+  its value at the end (a time, a count, a status). A list of cars picks one car with the car
+  picker (a search, Recent, then every car by class) and shows its circuits and their items. A
+  page without items of its own (Overview, Race engineer, Help) has no explorer and takes the full
+  width.
+- The toolbar's list toggle hides the explorer (kept across launches). While it is hidden every
+  page shows its own way around again: its "‹ All …" link, its filter bar, its Mine | Shared switch.
+- **Status bar** (24px, along the foot of the window): the game link (opens Help & diagnostics),
+  each screen device (opens its page), then the account and the running build at the right.
+
+Web sidebar: see [Web app](#web-app). NEVER put actions in navigation or nest deeper than one level.
 
 ### Toolbar / CommandBar
 
@@ -296,12 +317,12 @@ Web: one frosted band — title, scope control and caption leading; icon actions
 primary action trailing (see [Web app](#web-app)).
 
 Desktop: the toolbar has two zones; it is 48px and the window's title bar on Windows (the OS
-caption buttons at its right end), 52px on macOS. The game link is not in the toolbar: it sits at
-the foot of the sidebar, so page controls never compete with it.
+caption buttons at its right end), 52px on macOS. The game link is not in the toolbar: it sits in
+the status bar, so page controls never compete with it.
 
-- Leading: the sidebar toggle (macOS only, while the sidebar is hidden), the 17px page title. No
-  back button: a deeper page carries its own way up ("All sessions", the editor's back), and
-  Alt+Left / ⌘[ goes up a level.
+- Leading: the list toggle on a page with an explorer, then where you are: the area, then the
+  page as the title. No back button: the explorer holds a page's items, a deeper page carries its
+  own way up (the lap page's back to its session), and Alt+Left / ⌘[ goes up a level.
 - Trailing: the page's actions, then search. `PageHeader` moves its CommandBar here: secondary
   actions show icon-only with their label as tooltip (ghost icon buttons in the brand look, shared
   capsules on macOS), groups are split by fixed space instead of dividers, and the one primary is a
@@ -334,7 +355,7 @@ errors belong at the field, never in a notification.
   colour (`--infobar-*-text`). The brand look leads with a small status icon disc; macOS draws the
   component sheet's alert with no disc.
 - A state that is informational and offers no action is an indicator, not a banner. The game
-  link is the sidebar's status row and the Overview's game card; Help & diagnostics lists it
+  link is the status bar's first item and the Overview's game card; Help & diagnostics lists it
   first in its Checks, with the source's own reason when it is not live.
 
 ### Toast
@@ -349,8 +370,8 @@ errors that need action; never stacked.
 with white `on-class` text in both themes (Hypercar red, LMP2 blue, LMP3 purple, LMGT3 and GT3
 green, GTE orange); ELMS's LMP2 reads "LMP2" with an orange corner at the top right, like a bookmark (its
 tooltip says "LMP2 ELMS"). Counters are red pills (`red-500`, white text). NEVER color alone; at most one badge per
-row. The one exception is the sidebar's game link on the collapsed rail, a dot whose words stay in
-its tooltip and accessible name.
+row. The one exception is a connected screen device in the status bar: its name and a green dot,
+the word in its tooltip and accessible name (any other state shows its word).
 
 ### KPI card
 

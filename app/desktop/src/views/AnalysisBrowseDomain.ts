@@ -123,7 +123,7 @@ export function browseCars(sessions: readonly CorpusSession[]): BrowseCar[] {
 }
 
 /** The cars Recent offers: the newest few, or none when that would be every car anyway. */
-export const recentCars = (cars: readonly BrowseCar[]): BrowseCar[] => (cars.length > RECENT_COUNT ? cars.slice(0, RECENT_COUNT) : [])
+export const recentCars = <T,>(cars: readonly T[]): T[] => (cars.length > RECENT_COUNT ? cars.slice(0, RECENT_COUNT) : [])
 
 const CLASS_ORDER = ['HYP', 'GTP', 'LMP2', 'LMP2 ELMS', 'LMP3', 'LMGT3', 'GTE', 'GT3']
 const CLASS_NAMES: Record<string, string> = { HYP: 'Hypercar', LMP2: 'LMP2 · WEC', 'LMP2 ELMS': 'LMP2 · ELMS' }

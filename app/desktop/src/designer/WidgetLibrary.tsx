@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import type { PointerEvent as ReactPointerEvent, RefObject } from 'react'
+import type { PointerEvent as ReactPointerEvent, ReactNode, RefObject } from 'react'
 import { Search } from 'lucide-react'
 import type { DashWidgetType } from '@sprint/dashboard'
 import { ALL_WIDGET_TYPES, widgetDefinition, widgetDisplayName } from '../views/DashesDomain'
@@ -8,7 +8,8 @@ import { WIDGET_CATEGORIES, WIDGET_CATEGORY } from './widgetCategories'
 import { widgetIcon } from './widgetIcons'
 
 /**
- * The widget library, always open on the left of the Layout section: every widget type in its
+ * The widget library, always open in the left pane of the Layout section (under `head`, the page
+ * picker): every widget type in its
  * section (`WIDGET_CATEGORY`), A to Z, with a filter. Every item is both click-to-add (the
  * keyboard's way in: the widget goes into the first free cells) and drag-to-place: a pointer-down
  * captures the pointer on the item, follows it over the canvas (the spots that take it light up)
@@ -26,6 +27,7 @@ export function WidgetLibrary({
   onAdd,
   onDrop,
   off,
+  head,
 }: {
   isIdlePage: boolean
   canvasRef: RefObject<HTMLDivElement | null>
@@ -36,6 +38,8 @@ export function WidgetLibrary({
   onAdd: (type: DashWidgetType) => void
   onDrop: (type: DashWidgetType, pointer: PointerPos) => void
   off?: string
+  /** What heads the pane above the library: the Layout section's page picker. */
+  head?: ReactNode
 }) {
   const [filter, setFilter] = useState('')
   const needle = filter.trim().toLowerCase()
@@ -68,7 +72,8 @@ export function WidgetLibrary({
   }
 
   return (
-    <aside className={off ? 'designer-glass designer-sidebar designer-library is-off' : 'designer-glass designer-sidebar designer-library'} aria-label="Widget library">
+    <aside className={off ? 'designer-pane designer-sidebar designer-library is-off' : 'designer-pane designer-sidebar designer-library'} aria-label="Widget library">
+      {head}
       <div className="designer-sidebar-head">
         <span className="designer-sidebar-page">Widgets</span>
         {isIdlePage && <span className="muted">idle page</span>}

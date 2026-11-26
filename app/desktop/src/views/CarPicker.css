@@ -1,0 +1,103 @@
+/* The explorer's car picker (CarPicker.tsx): a control-filled button and its popover of cars. */
+
+.car-picker {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--control-stroke);
+  border-radius: var(--radius-control);
+  background: var(--control-fill);
+  color: var(--label);
+  text-align: left;
+}
+
+.car-picker:hover {
+  background: var(--control-fill-hover);
+}
+
+.car-picker-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.car-picker-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.car-picker-line {
+  overflow: hidden;
+  color: var(--label-secondary);
+  font-size: 12px;
+  line-height: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.car-picker-chevron {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  color: var(--label-tertiary);
+}
+
+.car-picker-flyout {
+  position: fixed;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 0;
+}
+
+.car-picker-flyout > .input {
+  margin: 0 10px 4px;
+}
+
+.car-picker-list {
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.car-picker-caption {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0 2px;
+  padding: 0 16px;
+  color: var(--label-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 16px;
+}
+
+.car-picker-caption svg {
+  width: 12px;
+  height: 12px;
+}
+
+.list-row.car-picker-row {
+  gap: 8px;
+}
+
+.car-picker-row .car-picker-name {
+  font-weight: 500;
+}
+
+.car-picker-count {
+  color: var(--label-secondary);
+  font-size: 12px;
+}
+
+.car-picker-none {
+  margin: 8px 16px;
+  color: var(--label-secondary);
+}

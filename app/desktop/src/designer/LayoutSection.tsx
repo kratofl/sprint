@@ -6,8 +6,8 @@ import { addWidget, addWidgetAt } from '../views/DashesDomain'
 import { DesignerCanvas, dropCell, type DragState, type PointerPos } from './DesignerCanvas'
 import { swapWidgets } from '../views/DashesDomain'
 import { GroupInspector, SelectionInspector } from './GroupInspector'
-import { PageDock } from './PageDock'
 import { PageInspector, type ModeActions } from './PageInspector'
+import { PagePicker } from './PagePicker'
 import { WidgetInspector } from './WidgetInspector'
 import { WidgetLibrary } from './WidgetLibrary'
 import { addLayer, addTarget, arrangedLayers, deleteNodes, duplicateNodes, findNode, flattenTree, groupNodes, moveNode, openStacks, parentGroup, setHidden, stackOnto, topmost, translateNodes, ungroup, withLayersShown } from './groupOps'
@@ -24,14 +24,14 @@ const ARROWS: Record<string, [number, number]> = { ArrowLeft: [-1, 0], ArrowRigh
 /**
  * What the section shows round the widgets when it edits an overlay's instead of a page's (the
  * Pit limiter section): the picture under them, what sits above the stage, the panel while nothing
- * is selected (in place of the page's), and the spots the overlay covers. There is no page dock.
+ * is selected (in place of the page's), and the spots the overlay covers. There is no page picker.
  */
 export type OverlayStage = { backdrop: (width: number, height: number) => ReactNode; aboveStage: ReactNode; panel: ReactNode; covered: readonly GridSpan[] }
 
 /**
  * The Layout section: the dash in a device-style bezel in the middle of the stage — its outline, or
- * the real dash faded back or tagged (`view`, the toolbar picks) — the widget library on the left, the selection's inspector on the right
- * and the page dock at the bottom. The dash is drawn at its real size when the window has room, smaller
+ * the real dash faded back or tagged (`view`, the title bar picks) — the page picker over the widget library in the left pane, and
+ * the selection's inspector in the right one. The dash is drawn at its real size when the window has room, smaller
  * otherwise. Keys (never while typing in a field): Delete removes the selection, the arrows move
  * it a cell, Ctrl+G groups it, Ctrl+Shift+G ungroups, Ctrl+D copies it, Escape deselects. A
  * right-click on a widget or group offers the same as a menu (`NodeMenu`), and moves it into a group. With nothing selected, the right panel is
@@ -55,7 +55,7 @@ export function LayoutSection({
   /** The page being designed; kept by the window so it survives a trip to another section. */
   chosenPageId: string
   onChoosePage: (pageId: string) => void
-  /** The driver's own dash modes, for the page panel and the dock's preview. */
+  /** The driver's own dash modes, for the page panel and the page picker. */
   modes: ModeActions
   /** How the canvas shows the dash, what it shows and the grid: the toolbar's (`ViewTools`). */
   view: CanvasView
@@ -68,8 +68,6 @@ export function LayoutSection({
   // The layer picked with a stack's canvas tabs, per stack; designer-only, never saved.
   const [picked, setPicked] = useState<ReadonlyMap<string, string>>(new Map())
   const [dragState, setDragState] = useState<DragState>({ kind: 'idle' })
-  // The dock's "Pages in": all, a session or a mode; pages the wheel skips there are struck through.
-  const [cyclePreview, setCyclePreview] = useState('all')
   const [flash, setFlash] = useState<string | null>(null)
   const [menu, setMenu] = useState<{ anchor: MenuAnchor; ids: string[] } | null>(null)
   const flashTimeout = useRef<number | null>(null)
@@ -287,7 +285,6 @@ export function LayoutSection({
   })
 
   const frameShown = resolvePreviewFrame(previewState, frame)
-  const dockPreview = modes.modes.some((mode) => mode.id === cyclePreview) || ['all', 'practice', 'qualifying', 'race'].includes(cyclePreview) ? cyclePreview : 'all'
   const only = selectedNodes.length === 1 ? selectedNodes[0] : undefined
 
   const stage =
@@ -343,6 +340,7 @@ export function LayoutSection({
           setDragState={setDragState}
           onAdd={(type) => addAndSelect(type, null)}
           onDrop={onDrop}
+          head={!overlay && <PagePicker layout={layout} pageId={page.id} onSelectPage={selectPage} apply={apply} modes={modes.modes} />}
         />
       )}
 
@@ -401,10 +399,6 @@ export function LayoutSection({
           </span>
           <span className="infobar-message">{flash}</span>
         </div>
-      )}
-
-      {!overlay && (
-        <PageDock layout={layout} pageId={pageId} onSelectPage={selectPage} apply={apply} cyclePreview={dockPreview} onCyclePreview={setCyclePreview} modes={modes.modes} />
       )}
     </>
   )

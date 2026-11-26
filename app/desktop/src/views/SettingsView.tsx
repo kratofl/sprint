@@ -1,12 +1,13 @@
 import { useState } from 'react'
 import type { ReactNode } from 'react'
-import { Check, ChevronLeft, CloudDownload, CloudUpload, Download, Pencil, RefreshCw } from 'lucide-react'
+import { Check, ChevronLeft, Cloud, CloudDownload, CloudUpload, Download, HardDrive, Palette, Pencil, RefreshCw, SlidersHorizontal, User } from 'lucide-react'
 import { bridge } from '../bridge'
 import type { Account, CloudState, CloudStorageMode, LiveUplink, LiveUplinkStatus, SprintCommand, SyncDirection, SyncReport, UpdateStatus } from '../bridge'
 import { syncReportText } from '../onboarding/summary'
 import { accountName, accountWhere, initialsFor } from '../shell/account'
 import { ConfirmDialog } from '../shell/ContentDialog'
 import { InlineName } from '../shell/InlineName'
+import { Explorer, ExplorerRow, useExplorerShown } from '../shell/Explorer'
 import { PageHeader } from '../shell/PageHeader'
 import { usePageUp } from '../shell/pageUp'
 import { ProgressRing, RingGauge } from '../shell/ProgressRing'
@@ -32,12 +33,14 @@ import { ListRow, OpenRow, SettingsList } from './SettingsLayout'
 type Send = (command: SprintCommand) => Promise<void>
 
 /**
- * Settings: you first, as a driver card (name and race number, renamed in place with the pen),
- * then grouped lists — Units, a row each for Colours and Sprint web (only with the feature on),
- * which are big enough for a page of their own ("‹ All settings" back), Updates, Storage, and
- * Reset on its own at the bottom. Everything saves on commit; risky changes (pre-release builds, web-only storage,
- * deleting old laps' telemetry, resetting preferences) confirm first. The page has no primary
- * button until an update is out.
+ * Settings, a page per section, picked in the explorer (`SettingsExplorer`): Driver (name and
+ * race number, renamed in place with the pen), General (units, and resetting preferences),
+ * Colours, Updates, Storage and, with the feature on, Sprint web. While the explorer is hidden it
+ * is one page instead: the driver card, then grouped lists — Units, a row each for Colours and
+ * Sprint web, which open a page of their own ("‹ All settings" back), Updates, Storage, and Reset
+ * on its own at the bottom. Everything saves on commit; risky changes (pre-release builds,
+ * web-only storage, deleting old laps' telemetry, resetting preferences) confirm first. The page
+ * has no primary button until an update is out.
  */
 export function SettingsView({
   runtime,
@@ -51,9 +54,11 @@ export function SettingsView({
   updateStatus: UpdateStatus
 }) {
   const [opened, setPage] = useState<SettingsPage | null>(null)
+  const [section, setSection] = useState<SettingsSection>('driver')
+  const explorer = useExplorerShown()
   // Sprint web's page closes by itself when its feature is turned off.
   const page = opened === 'web' && (runtime.kind === 'loading' || !runtime.sprint.features.sprintWeb) ? null : opened
-  usePageUp(page === null ? null : 'All settings', () => setPage(null))
+  usePageUp(page === null || explorer ? null : 'All settings', () => setPage(null))
 
   if (runtime.kind === 'loading') {
     return (
@@ -71,6 +76,51 @@ export function SettingsView({
   const storageInfo = parseStorageInfo(runtime.sprint)
   const sprintWeb = runtime.sprint.features.sprintWeb
   const account = runtime.sprint.account
+
+  if (explorer) {
+    const sections = SECTIONS.filter((candidate) => (candidate.id !== 'storage' || storageInfo !== null) && (candidate.id !== 'web' || sprintWeb))
+    const shown = sections.find((candidate) => candidate.id === section) ?? sections[0]
+    const value: Record<SettingsSection, string | undefined> = {
+      driver: settings.driverName || undefined,
+      general: UNITS.find((option) => option.id === settings.units)?.label,
+      colours: settings.colours.theme,
+      updates: updateStatus.kind === 'available' ? 'Update' : updatesInfo?.version,
+      storage: storageInfo ? sizeText(storageInfo.traceBytes) : undefined,
+      web: account.signedIn ? 'Connected' : 'Off',
+    }
+    return (
+      <div className="settings">
+        <PageHeader title="Settings" />
+        <h2 className="settings-sub-title">{shown.label}</h2>
+        {shown.id === 'driver' && <DriverCard settings={settings} send={send} />}
+        {shown.id === 'general' && (
+          <>
+            <UnitsGroup units={settings.units} send={send} />
+            <ResetGroup send={send} />
+          </>
+        )}
+        {shown.id === 'colours' && <ColoursGroup colours={settings.colours} units={settings.units} send={send} />}
+        {shown.id === 'updates' && <UpdatesGroup info={updatesInfo} channel={settings.updateChannel} status={updateStatus} send={send} titled={false} />}
+        {shown.id === 'storage' && storageInfo && <StorageGroup info={storageInfo} send={send} titled={false} />}
+        {shown.id === 'web' && <CloudGroup account={account} cloud={runtime.sprint.cloud} send={send} onSetUp={onSetUpCloud} />}
+        <Explorer label="Settings">
+          {sections.map((candidate) => {
+            const Icon = candidate.icon
+            return (
+              <ExplorerRow
+                key={candidate.id}
+                lead={<Icon className="settings-explorer-icon" aria-hidden="true" />}
+                title={candidate.label}
+                meta={value[candidate.id]}
+                selected={candidate.id === shown.id}
+                onClick={() => setSection(candidate.id)}
+              />
+            )
+          })}
+        </Explorer>
+      </div>
+    )
+  }
 
   if (page === 'colours') {
     return (
@@ -110,8 +160,20 @@ export function SettingsView({
   )
 }
 
-/** The groups with a page of their own. */
+/** The groups with a page of their own, while the explorer is hidden. */
 type SettingsPage = 'colours' | 'web'
+
+/** The sections the explorer lists, each a page; Storage only once the host reports it, Sprint web only with the feature on. */
+type SettingsSection = 'driver' | 'general' | 'colours' | 'updates' | 'storage' | 'web'
+
+const SECTIONS: ReadonlyArray<{ id: SettingsSection; label: string; icon: typeof User }> = [
+  { id: 'driver', label: 'Driver', icon: User },
+  { id: 'general', label: 'General', icon: SlidersHorizontal },
+  { id: 'colours', label: 'Colours', icon: Palette },
+  { id: 'updates', label: 'Updates', icon: Download },
+  { id: 'storage', label: 'Storage', icon: HardDrive },
+  { id: 'web', label: 'Sprint web', icon: Cloud },
+]
 
 /** A group's own page: "‹ All settings" (Alt+Left too), its name, then its lists. */
 function SettingsSubPage({ title, onBack, children }: { title: string; onBack: () => void; children: ReactNode }) {
@@ -527,9 +589,10 @@ const CHECK_STATUS: Record<'idle' | 'checking' | 'up-to-date' | 'failed', { labe
  * (the toolbar's update button does the same), then shows the download as a filling ring.
  * Otherwise a check-for-updates icon button with the last result beside it; while it checks, its
  * icon turns once and the download's ring stands empty around it. A dev build cannot
- * update and says so.
+ * update and says so. `titled={false}` drops the list's own heading where the page already names
+ * it (a section of its own).
  */
-function UpdatesGroup({ info, channel, status, send }: { info: UpdatesInfo | null; channel: UpdateChannel; status: UpdateStatus; send: Send }) {
+function UpdatesGroup({ info, channel, status, send, titled = true }: { info: UpdatesInfo | null; channel: UpdateChannel; status: UpdateStatus; send: Send; titled?: boolean }) {
   const [confirmPreRelease, setConfirmPreRelease] = useState(false)
 
   const channelLabel = CHANNELS.find((option) => option.id === channel)?.label ?? 'Stable'
@@ -614,7 +677,7 @@ function UpdatesGroup({ info, channel, status, send }: { info: UpdatesInfo | nul
 
   return (
     <>
-      <SettingsList title="Updates" footer="Pre-release builds get new features early and may contain bugs.">
+      <SettingsList title={titled ? 'Updates' : undefined} footer="Pre-release builds get new features early and may contain bugs.">
         {updateRow}
 
         <ListRow id="settings-auto-update" label="Install updates automatically" detail="A new version installs when Sprint starts">
@@ -653,13 +716,13 @@ function UpdatesGroup({ info, channel, status, send }: { info: UpdatesInfo | nul
  * is kept. Deleting old laps' telemetry is the driver's choice, off until turned on, and turning
  * it on confirms first because the old laps lose theirs at once.
  */
-function StorageGroup({ info, send }: { info: StorageInfo; send: Send }) {
+function StorageGroup({ info, send, titled = true }: { info: StorageInfo; send: Send; titled?: boolean }) {
   const [confirming, setConfirming] = useState(false)
 
   const setExpiry = (days: number) => void send({ type: 'settings.update', traceExpiryDays: days })
 
   return (
-    <SettingsList title="Storage" footer="Every lap is saved with its telemetry: your inputs, the engine, tyres, brakes, suspension, fuel and damage.">
+    <SettingsList title={titled ? 'Storage' : undefined} footer="Every lap is saved with its telemetry: your inputs, the engine, tyres, brakes, suspension, fuel and damage.">
       <ListRow id="settings-storage-laps" label="Lap telemetry" detail={lapsText(info.traceLaps)}>
         {() => <span className="tabular">{sizeText(info.traceBytes)}</span>}
       </ListRow>

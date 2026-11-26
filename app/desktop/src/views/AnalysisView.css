@@ -1313,3 +1313,10 @@
   fill: var(--label-secondary);
   font-weight: 500;
 }
+
+/* The explorer (AnalysisExplorer.tsx): the session chips in one column. */
+.analysis-explorer-kind {
+  display: flex;
+  width: 58px;
+  flex: none;
+}

@@ -48,7 +48,7 @@ export function WidgetInspector({
   const labelHint = !labelled ? 'Off: the value gets its room.' : framed || !hasFrame(widget.type) ? 'Cut into the top edge.' : 'Small, above the value.'
 
   return (
-    <aside className="designer-glass designer-inspector" aria-label={`${widgetName(widget)} properties`}>
+    <aside className="designer-pane designer-inspector" aria-label={`${widgetName(widget)} properties`}>
       <div className="designer-panel-head">
         <h2 className="designer-panel-title">{widgetName(widget)}</h2>
         <button type="button" className="icon-button" aria-label="Deselect widget" title="Deselect (Esc)" onClick={onDeselect}>

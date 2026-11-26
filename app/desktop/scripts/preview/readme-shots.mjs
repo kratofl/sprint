@@ -21,7 +21,7 @@ const SHOTS = [
   { name: 'pit-wall', view: 'Home', query: 'pitwall=main', size: '1920,1080' },
 ]
 
-// The sidebar shows the newest release, not the placeholder version in package.json and the sample.
+// The status bar shows the newest release, not the placeholder version in package.json and the sample.
 const tag = spawnSync('git', ['describe', '--tags', '--abbrev=0', '--match', 'v[0-9]*', '--exclude', '*-*'], { encoding: 'utf8' })
 const version = tag.status === 0 ? tag.stdout.trim().replace(/^v/, '') : null
 if (!version) console.warn('no release tag found: the screenshots show the sample version')

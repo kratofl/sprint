@@ -147,7 +147,7 @@ short, current, and tool-agnostic. Deeper material lives in `docs/` (index:
   data in, `REPLAY=<recording>` replays telemetry); drive it with `app/desktop/scripts/cdp.mjs`, stop
   it with `node app/desktop/scripts/agent-app.mjs stop <run folder>`
 - Smoke test the real app (CI runs it on Windows): `make smoke-app` — hidden run on a replayed
-  race, every sidebar page, fails on any uncaught exception or console error
+  race, every area and page tab, fails on any uncaught exception or console error
 - Start the native host alone: `make dev-host` (no UI)
 - Dev runs keep their data in the checkout's `app/desktop/.dev/data`, never the
   installed app's. Without the game, `make dev-data` fills it with the laps of every
@@ -281,16 +281,17 @@ more code. Review should converge, not just find more.
 
 - `docs/design/DESIGN.md` is the product design system; its MUST/NEVER rules
   are binding. The wheel dash rules are in `docs/internals/dash-rendering.md`.
-- On Windows and Linux the desktop app wears the Sprint brand look, the web
-  app's system: full-height 224px sidebar with the Sprint mark (a 56px icon rail
-  when collapsed), a 48px toolbar
-  carrying the page title and actions (the OS caption buttons at its right end),
-  hairline-edged cards on a calm canvas over the web's light trails (glass sidebar and
-  toolbar), flat fills, otherwise glass only on small floating layers, 6px controls, 10px cards, bundled Figtree; tokens
-  `@sprint/tokens/desktop.css`. On macOS it wears the native look (macOS 27
-  HIG): the same layout on a translucent sidebar, a 52px toolbar, 8px buttons,
-  14px cards, tokens `@sprint/tokens/macos.css` overlaid on `desktop.css` under
-  the same names. Reference for macOS: the mockups in `docs/design/mockups/`.
+- On Windows and Linux the desktop app wears the Sprint brand look on a tool's
+  shell: a full-height 68px rail of areas (Home, Drive, Car & rig, Team; Settings
+  and Help at its foot) with the Sprint mark, a 300px explorer with the area's
+  page tabs over the page's items (`shell/Explorer.tsx`), a 48px toolbar carrying
+  where you are and the page's actions (the OS caption buttons at its right end),
+  a 24px status bar, the page as one flat sheet with cards as hairline-topped
+  sections, the pro look (24px controls with a light fill and a hairline, docs/design/DESIGN.md),
+  glass only on small floating layers, bundled Figtree;
+  tokens `@sprint/tokens/desktop.css`. On macOS it wears the native look (macOS 27
+  HIG) on the same shell: an 80px rail on vibrancy, a 52px toolbar, borderless 24px controls,
+  tokens `@sprint/tokens/macos.css` overlaid on `desktop.css` under the same names. Reference for macOS: the mockups in `docs/design/mockups/`.
 - Electron passes the look as `?platform=mac|windows`; the renderer sets
   `<html data-platform>`. The shell layout and the brand shapes live in
   `app/desktop/src/styles.css`; Mac-only shapes go in
@@ -343,7 +344,7 @@ second opinion. If the two ever disagree, `docs/design/DESIGN.md` wins.
 - Desktop UI on Windows and Linux is the bundled Figtree, the web's face
   (`--font-text`, `--font-display` in `desktop.css`; the font file is in
   `app/desktop/src/fonts/`). On macOS it is SF, the system font (`macos.css`).
-  13px/20px base, the 17px toolbar title names the page, 14px semibold card
+  13px/20px base, the toolbar title names the page (15px; 17px on macOS), 14px semibold card
   titles, 11px semibold column heads.
 - Web UI is the bundled Figtree on every platform (`--font-sans` in
   `web/app/globals.css`); the sign-in page keeps its own stack.

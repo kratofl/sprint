@@ -38,9 +38,10 @@ data, `REPLAY=<recording>` for live telemetry), driven with `app/desktop/scripts
 (`docs/operations/development.md`). A replay is not a real-game pass. Check:
 
 - (visible `make dev-app` only, the hidden run has no OS chrome) the window opens with its native chrome — Windows: the 48px toolbar with the caption buttons at its right end; macOS:
-  the traffic lights over the sidebar's top band and the 52px toolbar — and telemetry status shows
+  the traffic lights over the rail's top band and the 52px toolbar — and telemetry status shows
   the real link state, never fake live data (on macOS that is `Unsupported`);
-- every navigation item and Alt+1…8 (⌘1…8) opens its view; Ctrl+K (⌘K) opens the command palette;
+- every area in the rail, every page tab over the explorer and Alt+1…8 (⌘1…8) opens its view; the
+  toolbar's list toggle hides and shows the explorer; Ctrl+K (⌘K) opens the command palette;
   Alt+Left (⌘[) goes back;
 - each action you touched round-trips: send it, then confirm `/api/state` changed and the view shows
   it — create/edit/delete a plan, arm and stop it; create, edit and delete a dash; add, disable and

@@ -22,6 +22,12 @@ splits searches and confuses the next agent.
 
 - **Dash** — a `DashLayout`: pages of widgets for one screen profile. Not "dashboard" in code.
 - **Page** — one screen of a dash; the **idle page** shows when no session runs.
+- **Dash rule** — a device's (or every device's) pick of a dash for a game, class or car
+  (`DeviceDashRules`); Devices > Output and the designer's "Use here" set them.
+- **Variant** — a dash's own version for a device, game, class or car (`DashVariants`): part of
+  the dash, never a dash in the list. The host draws the most specific one matching the screen and car
+  after the rules picked the dash; the renderer never sees the rest. The designer makes one on the
+  first change in a scope that had none (`designer/variants.ts`), so picking a scope changes nothing.
 - **Widget** — one catalog element on a page. A **group** gathers widgets and groups; one that
   shows "one at a time" is a **widget stack**, each child a **layer** (`packages/dashboard/src/groups.ts`).
 - **Binding** — a named value a widget reads (`lap.delta`, `target.fuelPerLapLiters`).

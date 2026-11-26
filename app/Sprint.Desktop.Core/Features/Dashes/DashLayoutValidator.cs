@@ -14,7 +14,7 @@ public static class DashLayoutValidator
             return false;
         }
 
-        return Pages(layout).All(page => PageIsValid(page, layout.GridCols, layout.GridRows));
+        return Pages(layout).All(page => PageIsValid(page, layout.GridCols, layout.GridRows)) && DashVariants.AreValid(layout);
     }
 
     private static IEnumerable<DashPage> Pages(DashLayout layout)

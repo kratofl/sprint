@@ -1,5 +1,5 @@
 /**
- * Which build is running, for the sidebar's tag and version line. A dev run (Vite's dev
+ * Which build is running, for the status bar's tag and version. A dev run (Vite's dev
  * server) names its git branch, since its version is always the 0.1.0 placeholder and the
  * branch tells worktrees apart. A packaged build is a pre-release when its version carries a
  * suffix (0.2.1-alpha.1), stable otherwise. Stable builds get no tag.
