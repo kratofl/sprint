@@ -1,0 +1,42 @@
+/* Tyre compounds (TyreMark.tsx): a ringed letter, or four dots in the car's layout when the axles
+   differ, coloured by kind. Soft red, medium yellow (deeper on light, --yellow-text), wet blue,
+   intermediate green, hard plain. */
+
+.tyre-chip {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  flex: none;
+  border: 2px solid var(--label);
+  border-radius: 50%;
+  color: var(--label);
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.tyre-dots {
+  display: inline-grid;
+  grid-template-columns: repeat(2, 6px);
+  gap: 3px 4px;
+  flex: none;
+  padding: 3px;
+}
+
+.tyre-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--label);
+}
+
+.tyre-chip.t-s { border-color: var(--red-500); color: var(--red-500); }
+.tyre-chip.t-m { border-color: var(--yellow-text); color: var(--yellow-text); }
+.tyre-chip.t-w { border-color: var(--blue-500); color: var(--blue-500); }
+.tyre-chip.t-i { border-color: var(--green-500); color: var(--green-500); }
+
+.tyre-dot.t-s { background: var(--red-500); }
+.tyre-dot.t-m { background: var(--yellow-text); }
+.tyre-dot.t-w { background: var(--blue-500); }
+.tyre-dot.t-i { background: var(--green-500); }

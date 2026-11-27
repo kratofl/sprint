@@ -4,8 +4,9 @@ import { dayLabel, formatGap, formatLapSeconds, fuelText, lapTimeStats, lapsByRu
 import type { CorpusLap, CorpusRun, CorpusSession } from './AnalysisDomain'
 import { lapTimesPlot, tickLabel } from './AnalysisPlot'
 import type { PlotDot } from './AnalysisPlot'
-import { RunSetupButton } from './AnalysisRunSetup'
+import { RunSetupButton, type SetupSession } from './AnalysisRunSetup'
 import { CarName, TrackName } from './CarBadges'
+import { TyreSet } from './TyreMark'
 import { MenuLayer, type MenuAnchor } from '../shell/Menu'
 
 /**
@@ -167,7 +168,7 @@ export type LapOrder = 'LapNumber' | 'Fastest'
 export function LapList({
   laps,
   runs,
-  car,
+  setupSession,
   order,
   onOrder,
   onSetRunSetup,
@@ -177,7 +178,8 @@ export function LapList({
 }: {
   laps: readonly CorpusLap[]
   runs: readonly CorpusRun[]
-  car: string
+  /** The session's car and circuit, which a run's setup is picked for. */
+  setupSession: SetupSession
   order: LapOrder
   onOrder: (order: LapOrder) => void
   onSetRunSetup: (outing: number, setupId: string | null) => void
@@ -234,7 +236,7 @@ export function LapList({
                   <strong>{runTitle(run)}</strong>
                   <span className="analysis-secondary">{runLine(run)}</span>
                 </span>
-                {run.outing !== 0 && <RunSetupButton run={run} before={before} car={car} onPick={(setupId) => onSetRunSetup(run.outing, setupId)} />}
+                {run.outing !== 0 && <RunSetupButton run={run} before={before} session={setupSession} onPick={(setupId) => onSetRunSetup(run.outing, setupId)} />}
               </div>
               <div className="list-rows" role="list">
                 {runLaps.map(row)}
@@ -247,7 +249,10 @@ export function LapList({
   )
 }
 
-/** One lap. With a line the whole row opens it (its lap name is the real button) and ⋯ holds the rest. */
+/**
+ * One lap. With a line the whole row opens it (its lap name is the real button) and ⋯ holds the rest.
+ * The row names the lap by its number alone: the host's label repeats the time the next column shows.
+ */
 function LapRow({
   lap,
   best,
@@ -278,16 +283,14 @@ function LapRow({
     <div className={`list-row analysis-lap-columns${lap.hasChannels ? ' opens' : ''}${isBest ? ' best' : ''}`} role="listitem">
       {lap.hasChannels ? (
         <button type="button" className="analysis-lap-open" aria-label={`Open ${lap.label}`} onClick={() => onOpen(lap)}>
-          {lap.label}
+          Lap {lap.lapNumber}
         </button>
       ) : (
-        <span className="analysis-strong">{lap.label}</span>
+        <span className="analysis-strong">Lap {lap.lapNumber}</span>
       )}
       <span className="analysis-num tabular analysis-strong analysis-lap-time">{formatLapSeconds(lap.lapTimeSeconds)}</span>
       <span className="analysis-num tabular analysis-secondary">{isBest ? 'Best' : best ? formatGap(lap.lapTimeSeconds - best.lapTimeSeconds) : '—'}</span>
-      <span className="analysis-ellipsis" title={tyres ?? undefined}>
-        {tyres ?? <span className="analysis-secondary">—</span>}
-      </span>
+      <span className="analysis-tyres">{tyres ? <TyreSet front={lap.frontCompound} rear={lap.rearCompound} label={tyres} /> : <span className="analysis-secondary">—</span>}</span>
       <span className="analysis-num tabular analysis-secondary">{fuelText(lap.fuelUsedLiters)}</span>
       <span className="analysis-secondary" title={lap.unavailableReason ?? undefined}>
         {lap.hasChannels ? 'Recorded' : 'Time only'}

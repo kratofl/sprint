@@ -9,6 +9,7 @@ import {
   filterChoices,
   filterSetups,
   searchSetups,
+  setupsForSession,
   setupCars,
   setupCircuits,
   sheetBlocks,
@@ -82,6 +83,7 @@ const item = (id: string, car: string, trackName: string, savedAt: string, extra
   circuitName: trackName,
   layout: trackName,
   car,
+  carName: car,
   carClass: 'Hypercar',
   season: null,
   savedAt,
@@ -167,6 +169,18 @@ test("a run's setup list puts the session's car first even when the game names i
   const found = searchSetups(setups, '', '#6 Porsche 963 Penske')
   assert.deepEqual(found.map((setup) => setup.id), ['low-drag', 'race-v3', 'quali', 'ba-499'])
   assert.deepEqual(searchSetups(setups, 'ferrari', null).map((setup) => setup.id), ['ba-499'])
+})
+
+test("a run's setups are only the session's car at its circuit, any layout, whatever the search", () => {
+  const lmp2 = [
+    item('daytona-elms', 'Oreca 07', 'Daytona', '2026-11-20T10:00:00Z', { carName: 'LMP2 ELMS' }),
+    item('daytona-wec', 'Oreca 07', 'Daytona', '2026-11-21T10:00:00Z', { carName: 'LMP2 WEC' }),
+    item('daytona-short', 'Oreca 07', 'Daytona Short', '2026-11-19T10:00:00Z', { carName: 'LMP2 ELMS', circuitId: 'daytona' }),
+    item('sebring-elms', 'Oreca 07', 'Sebring', '2026-11-22T10:00:00Z', { carName: 'LMP2 ELMS' }),
+  ]
+  const forSession = setupsForSession(lmp2, 'LMP2 ELMS', 'daytona')
+  assert.deepEqual(forSession.map((setup) => setup.id), ['daytona-elms', 'daytona-short'])
+  assert.deepEqual(searchSetups(forSession, 'sebring', null), [], 'a search never brings in another track')
 })
 
 test('two setups compare by how they drove: times and fuel as first minus second', () => {

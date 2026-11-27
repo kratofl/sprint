@@ -51,6 +51,9 @@ if (!platform) {
 // needs one; 0.0.0 sorts below every release, so such a build always sees updates as newer.
 const requested = process.argv[2] ?? ''
 const version = /^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/.test(requested) ? requested : '0.0.0-dev'
+// A pre-release (`-beta.N`, docs/operations/release.md) wears the green icon, a stable release the
+// orange one; a dev run is red (electron/main.ts). macOS has no green .icns yet, so it stays orange.
+const beta = /-beta\./.test(version)
 
 await rm(outDir, { recursive: true, force: true })
 
@@ -73,7 +76,7 @@ const built = await build({
     extraResources: [{ from: 'resources/host', to: 'host' }],
     // Nothing native to rebuild against Electron's headers.
     npmRebuild: false,
-    win: { target: 'nsis', icon: 'resources/icon.ico' },
+    win: { target: 'nsis', icon: beta ? 'resources/icon-beta.ico' : 'resources/icon.ico' },
     // One click, per user, no admin prompt: installs to %LocalAppData%\Programs\@sprintdesktop
     // (named after the package). Sprint's data lives elsewhere (%AppData%\Sprint) and survives
     // an uninstall.
@@ -84,7 +87,7 @@ const built = await build({
       shortcutName: 'Sprint',
       include: 'resources/installer.nsh',
     },
-    linux: { target: 'tar.gz', icon: 'resources/icon.png', artifactName: 'sprint-${version}-linux-${arch}.${ext}' },
+    linux: { target: 'tar.gz', icon: beta ? 'resources/icon-beta.png' : 'resources/icon.png', artifactName: 'sprint-${version}-linux-${arch}.${ext}' },
     // The .icns comes from scripts/icons/make-mac-icon.mjs.
     mac: { target: 'dir', icon: 'resources/icon.icns', identity: null },
     // Where the installed app looks for updates (written into its app-update.yml).

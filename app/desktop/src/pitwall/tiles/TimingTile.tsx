@@ -3,7 +3,8 @@ import { Flag } from 'lucide-react'
 import { ClassTag } from '../../views/CarBadges'
 import type { FieldEntry } from '../pitWallData'
 import { outCell } from '../raceControl'
-import { carName, carNumber, classLabel, classMark, classesOf, compoundLetter, gapCell, inYellow, isOut, lapClock, placesGained, sectorMarks, timingRows, timingSummary, type SectorMark } from '../timing'
+import { carName, carNumber, classLabel, classMark, classesOf, gapCell, inYellow, isOut, lapClock, placesGained, sectorMarks, timingRows, timingSummary, type SectorMark } from '../timing'
+import { TyreChip } from '../../views/TyreMark'
 import { gridTemplate, outNoteAt, TIMING_COLUMN_SPECS, type OutNote, type TimingColumn } from '../timingColumns'
 import { TileFrame, type FrameProps, type TileData } from '../tileFrame'
 
@@ -16,17 +17,6 @@ function Gained({ entry }: { entry: FieldEntry }) {
     <span className={gained > 0 ? 'pw-gain up' : 'pw-gain down'} aria-label={gained > 0 ? `${gained} places gained` : `${-gained} places lost`}>
       {gained > 0 ? '▲' : '▼'}
       {Math.abs(gained)}
-    </span>
-  )
-}
-
-/** The compound as a ringed letter, coloured by kind. */
-export function TyreChip({ compound }: { compound: string | null }) {
-  const letter = compoundLetter(compound)
-  if (!letter) return <span />
-  return (
-    <span className={`pw-tyre t-${letter.toLowerCase()}`} title={compound ?? undefined}>
-      {letter}
     </span>
   )
 }

@@ -3,14 +3,14 @@
 // its inputs: the stateful parts (which banner is up, what the lap timer shows) arrive already
 // decided, as `Overlays`.
 
-use crate::alerts::{AlertLimits, DashAlertBanner, FlagBar, alert_limits, pit_limiter_alert_on};
+use crate::alerts::{AlertLimits, DashAlertBanner, alert_limits, pit_limiter_alert_on};
 use crate::chrome::{ChromeContext, Look, WidgetFrame, bare_content, frame_box, group_frame, ink_palette, lit_content, widget_frame};
 use crate::draw::{Builder, DrawOp, Radii};
 use crate::forms::form_index;
 use crate::grid::{GridSpan, PixelRect, layout_rect, page_has_race_logic_lap_timer, select_page, track_rect};
-use crate::groups::drawn_widgets;
+use crate::groups::{drawn_widgets, drawn_widgets_with};
 use crate::model::{DashPage, DashWidget, Scene, TelemetryFrame};
-use crate::overlays::{alert_banner, flag_bar, race_logic_lap_timer_overlay};
+use crate::overlays::{alert_banner, race_logic_lap_timer_overlay};
 use crate::palette::{DashPaletteColors, Rgba, themed_palette};
 use crate::pit_limiter::{PIT_INK, PIT_YELLOW, PitLimiter, PitLimiterStyle, draw_box_frame, draw_full_screen, draw_gear_box};
 use crate::racelogic::RaceLogicLapTimerView;
@@ -20,14 +20,12 @@ use crate::widgets::{WidgetChrome, WidgetContext, widget_chrome, widget_content}
 /// The layout id of the focused RaceLogic purpose screen, which keeps a pure black canvas.
 const PURPOSE_LAP_TIMES: &str = "purpose-lap-times";
 
-/// The overlays decided outside the display list: the alert banner to draw (`alertBanner`),
-/// what the RaceLogic lap timer shows when the page has one (see `draws_race_logic_lap_timer`),
-/// and the bar of a flag that is out (`alerts::flag_bar`, or the live tracker's).
+/// The overlays decided outside the display list: the alert banner to draw (`alertBanner`), and
+/// what the RaceLogic lap timer shows when the page has one (see `draws_race_logic_lap_timer`).
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Overlays<'a> {
     pub banner: Option<&'a DashAlertBanner>,
     pub lap_timer: Option<&'a RaceLogicLapTimerView>,
-    pub flag_bar: Option<FlagBar>,
 }
 
 /// The palette every dash draws in: Sprint's, in the driver's colour theme (the app-wide Colours
@@ -39,7 +37,7 @@ pub fn scene_palette(scene: &Scene) -> DashPaletteColors {
 /// True when the scene's page draws the full-canvas RaceLogic lap timer, so its presenter must
 /// be asked what to show (and, when false, the TypeScript unmounts it and its state is gone).
 pub fn draws_race_logic_lap_timer(scene: &Scene) -> bool {
-    page_has_race_logic_lap_timer(select_page(&scene.layout, scene.page_id.as_deref(), scene.idle))
+    page_has_race_logic_lap_timer(select_page(&scene.layout, scene.page_id.as_deref(), scene.idle), &scene.layers)
 }
 
 /// What every tile on the canvas shares.
@@ -61,7 +59,7 @@ fn widget_tile(b: &mut Builder, widget: &DashWidget, rect: PixelRect, inputs: &T
     }
     // On a lit box the ink is the pit limiter's, not the theme's background.
     let tile_palette = if lit.is_some() { DashPaletteColors { background: PIT_INK, ..*inputs.palette } } else { *inputs.palette };
-    let chrome = ChromeContext { look: Look { framed: !widget.frame_off, labelled: !widget.label_off }, ..inputs.chrome };
+    let chrome = ChromeContext { look: Look { framed: !widget.frame_off, labelled: !widget.label_off, side_label: true }, ..inputs.chrome };
     // Forms are sized at 800x480, like the chrome.
     let reference = (inputs.scene.width / 800.0).min(inputs.scene.height / 480.0).max(f64::EPSILON);
     let form = form_index(&widget.widget_type, rect.width / reference, rect.height / reference);
@@ -119,7 +117,7 @@ fn widget_tile(b: &mut Builder, widget: &DashWidget, rect: PixelRect, inputs: &T
 fn pit_limiter_overlay(b: &mut Builder, inputs: &TileInputs, page: Option<&DashPage>, width: f64, height: f64) {
     let layout = &inputs.scene.layout;
     let scale = inputs.chrome.scale;
-    let gear = page.and_then(|page| drawn_widgets(page).into_iter().find(|widget| widget.widget_type == "gear")).map(GridSpan::from);
+    let gear = page.and_then(|page| drawn_widgets_with(page, &inputs.scene.layers).into_iter().find(|widget| widget.widget_type == "gear")).map(GridSpan::from);
     let style = match PitLimiter::style_on(layout) {
         PitLimiterStyle::Gear if gear.is_none() => PitLimiterStyle::Full,
         style => style,
@@ -184,8 +182,7 @@ pub fn build_display_list(fonts: &Fonts, scene: &Scene, frame: &TelemetryFrame, 
     let page = select_page(layout, scene.page_id.as_deref(), scene.idle);
     let (width, height) = (scene.width, scene.height);
 
-    // Focused purpose screens own their visual language: the canvas stays pure black and the
-    // flag bar never covers it.
+    // Focused purpose screens own their visual language: the canvas stays pure black.
     let focused_lap_timer = layout.id == PURPOSE_LAP_TIMES;
     let background = if focused_lap_timer { Rgba::BLACK } else { palette.background };
     // The chrome is authored at 800x480 whatever the grid.
@@ -203,7 +200,8 @@ pub fn build_display_list(fonts: &Fonts, scene: &Scene, frame: &TelemetryFrame, 
     let rect_of = |widget: &DashWidget| layout_rect(layout, width, height, GridSpan::from(widget));
     // Drawn widgets never overlap (only layers of one stack may, and a stack draws one), so
     // their order never shows. One with no pixels (a span past the grid) is not drawn.
-    let drawn: Vec<&DashWidget> = page.map(drawn_widgets).unwrap_or_default().into_iter().filter(|widget| has_area(rect_of(widget))).collect();
+    let drawn: Vec<&DashWidget> =
+        page.map(|page| drawn_widgets_with(page, &scene.layers)).unwrap_or_default().into_iter().filter(|widget| has_area(rect_of(widget))).collect();
     // A framed group draws Sprint's group frame round its widgets' cells, and they step inside it.
     let mut framed_groups: Vec<(&str, PixelRect, f64)> = Vec::new();
     if let Some(page) = page {
@@ -225,9 +223,8 @@ pub fn build_display_list(fonts: &Fonts, scene: &Scene, frame: &TelemetryFrame, 
         widget_tile(&mut b, widget, rect, &inputs, None);
     }
     // Over everything: the pit limiter while it is on
-    // (never over the idle page or the focused lap-timer screen), the lap timer island, the alert
-    // banner, then the flag bar (never on the focused lap-timer screen, and not while the flag
-    // alert is up: it names the flag itself, so the bar would say it twice).
+    // (never over the idle page or the focused lap-timer screen), the lap timer island, then the
+    // alert banner.
     if frame.car.pit_limiter == Some(true) && !scene.idle && !focused_lap_timer && page.is_some() && pit_limiter_alert_on(layout) {
         pit_limiter_overlay(&mut b, &inputs, page, width, height);
     }
@@ -236,12 +233,6 @@ pub fn build_display_list(fonts: &Fonts, scene: &Scene, frame: &TelemetryFrame, 
     }
     if let Some(banner) = overlays.banner {
         alert_banner(&mut b, banner, &layout.lap_review, &palette, chrome, scene.units(), width, height);
-    }
-    if let Some(bar) = overlays.flag_bar
-        && !focused_lap_timer
-        && !overlays.banner.is_some_and(DashAlertBanner::is_flag_alert)
-    {
-        flag_bar(&mut b, bar, width, height);
     }
     b.into_failure().map_or(Ok(()), Err)
 }

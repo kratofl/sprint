@@ -23,6 +23,12 @@ public sealed record DeltaReference
 
     /// <summary>The reference lap's own total time, reported as <see cref="LapState.TargetLapTime"/>.</summary>
     public required double LapTimeSeconds { get; init; }
+
+    /// <summary>
+    /// Only until this session has a valid lap of its own: then the session's fastest takes over.
+    /// For the fallback to your fastest lap ever, never for a lap the driver chose as a target.
+    /// </summary>
+    public bool UntilSessionBest { get; init; }
 }
 
 /// <summary>
@@ -76,6 +82,7 @@ public sealed class DeltaTracker
     // session-best comparison that was being tracked underneath all along.
     private (double Pos, double Time)[]? _planReference;
     private double _planReferenceTotal;
+    private bool _planUntilSessionBest;
 
     // In-progress lap accumulation.
     private bool _haveLap;
@@ -181,14 +188,15 @@ public sealed class DeltaTracker
         this._prevPos = pos;
 
         // A chosen plan target outranks the session best: it is what the driver said they
-        // are driving against.
-        (double Pos, double Time)[]? reference = this._planReference ?? this._reference;
+        // are driving against. Your fastest lap ever only stands in until the session has its own.
+        bool planWins = this._planReference is not null && !(this._planUntilSessionBest && this._reference is not null);
+        (double Pos, double Time)[]? reference = planWins ? this._planReference : this._reference;
         if (reference is null)
         {
             return frame; // nothing to compare against yet
         }
 
-        double referenceTotal = this._planReference is not null ? this._planReferenceTotal : this._referenceTotal;
+        double referenceTotal = planWins ? this._planReferenceTotal : this._referenceTotal;
 
         // Hold the last delta through the 1–2 frame line desync rather than emitting a
         // ~full-lap spike; otherwise compute the position-relative gap.
@@ -249,8 +257,11 @@ public sealed class DeltaTracker
         {
             this._planReference = null;
             this._planReferenceTotal = 0;
+            this._planUntilSessionBest = false;
             return;
         }
+
+        this._planUntilSessionBest = reference.UntilSessionBest;
 
         // Positions are known by construction — the curve stores only the times — and a
         // positive step makes them strictly ascending, which the interpolation requires.

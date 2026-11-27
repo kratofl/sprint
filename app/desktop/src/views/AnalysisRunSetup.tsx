@@ -3,27 +3,28 @@ import { Check, ChevronDown, Plus, SlidersHorizontal, X } from 'lucide-react'
 import { Popover } from '../shell/Menu'
 import type { CorpusRun, RunSetup } from './AnalysisDomain'
 import { CarAtTrack, MakerLogo } from './CarBadges'
-import { searchSetups, shortDate } from './SetupsDomain'
+import { searchSetups, setupsForSession, shortDate } from './SetupsDomain'
 import { moveInSearchList } from './searchListKeys'
 import { useSetupLibrary } from './useSetups'
 import './SetupsView.css'
 
 /**
  * Which setup a run was driven with: a button naming it, or "Pick the setup…" until the driver
- * says. Opens a searchable list of the game's setups, read when it opens. Nothing is ever picked
- * for the driver; "Same as before" only puts the run before's setup at the top.
+ * says. Opens a searchable list of the game's setups for the session's car and circuit, read when
+ * it opens; a search narrows that list, never widens it. Nothing is ever picked for the driver;
+ * "Same as before" only puts the run before's setup at the top.
  */
 export function RunSetupButton({
   run,
   before,
-  car,
+  session,
   onPick,
 }: {
   run: CorpusRun
   /** The setup on the run before this one, if the driver put one on it. */
   before: RunSetup | null
-  /** The car the session was driven in, to list its setups first. */
-  car: string
+  /** The session's car as laps are filed ("LMP2 ELMS") and its circuit: only their setups are listed. */
+  session: SetupSession
   /** A setup's list id, or null to take the run's setup off. */
   onPick: (setupId: string | null) => void
 }) {
@@ -65,7 +66,7 @@ export function RunSetupButton({
           anchor={anchor}
           current={run.setup}
           before={before && before.setupId !== run.setup?.setupId ? before : null}
-          car={car}
+          session={session}
           onClose={close}
           onPick={(setupId) => {
             close()
@@ -82,20 +83,20 @@ function RunSetupMenu({
   anchor,
   current,
   before,
-  car,
+  session,
   onClose,
   onPick,
 }: {
   anchor: MenuPlace
   current: RunSetup | null
   before: RunSetup | null
-  car: string
+  session: SetupSession
   onClose: () => void
   onPick: (setupId: string | null) => void
 }) {
   const [query, setQuery] = useState('')
   const library = useSetupLibrary(0)
-  const setups = library.kind === 'ready' ? searchSetups(library.setups, query, car) : []
+  const setups = library.kind === 'ready' ? searchSetups(setupsForSession(library.setups, session.carModel, session.circuitId), query, null) : []
   const showBefore = before !== null && query.trim() === ''
 
   return (
@@ -122,10 +123,12 @@ function RunSetupMenu({
               picked={false}
               onPick={() => onPick(before.setupId)}
             />
-            <span className="analysis-run-menu-section">All setups</span>
+            <span className="analysis-run-menu-section">For this car and track</span>
           </>
         )}
-        {library.kind === 'ready' && setups.length === 0 && <p className="setups-none">No setups match.</p>}
+        {library.kind === 'ready' && setups.length === 0 && (
+          <p className="setups-none">{query.trim() === '' ? `No setups for the ${session.carModel} at ${session.circuitName}.` : 'No setups match.'}</p>
+        )}
         {setups.map((setup) => (
           <SetupOption
             key={setup.id}
@@ -152,6 +155,9 @@ function RunSetupMenu({
     </Popover>
   )
 }
+
+/** The session a run belongs to, as far as its setups go. */
+export type SetupSession = { carModel: string; circuitId: string; circuitName: string }
 
 /** One setup to pick: its maker's badge, its name, and a line under it (the car at the track and when it was saved). */
 function SetupOption({ name, make, detail, picked, onPick }: { name: string; make: string | null; detail: ReactNode; picked: boolean; onPick: () => void }) {

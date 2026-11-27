@@ -1,8 +1,8 @@
 // Dash alerts as the app sees them: the alert types and their default settings, the popups an
 // alert shows, and the sample popup the app plays so an alert's look can be set without the car.
 // `pit_limiter` shows no popup: its setting only turns the pit limiter overlay on (pitLimiter.ts).
-// `launch`, `pit_now` and `lift_now` are live: up while their condition holds. A flag out stays as
-// a thin bar across the top once its popup is down, until Ack (the renderer's flag bar).
+// `launch`, `pit_now` and `lift_now` are live: up while their condition holds. A flag shows as its
+// popup only; nothing stays on the dash once that is down.
 // Alerts are app-wide: the driver's settings (`DashAlertSettings`, stored by the host) are stamped
 // onto every dash's layout as its `alerts` (`dashAlertFromSettings`), and the Rust renderer
 // (renderer/src/alerts.rs) detects them on the wheel and draws every popup. `previewAlertBanner`

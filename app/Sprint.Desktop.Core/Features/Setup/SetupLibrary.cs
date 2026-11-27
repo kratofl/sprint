@@ -46,6 +46,12 @@ public sealed record SetupListItem(
 
     /// <summary>The car's make ("Porsche"), for its logo.</summary>
     public string? Make => CarNames.MakeOf(this.Car);
+
+    /// <summary>
+    /// The car as laps are filed under it ("LMP2 ELMS", "Hypercar BMW", <see cref="CarNames.Name"/>),
+    /// so a session's setups can be told apart; the game's own car name when its class or make is unknown.
+    /// </summary>
+    public string CarName => CarNames.Name(this.CarClass, this.Season, this.Car) ?? this.Car;
 }
 
 /// <summary>One version of a setup: what the file held from <paramref name="SavedAt"/> on.</summary>

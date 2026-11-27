@@ -12,8 +12,8 @@ use crate::bindings::{BindingContext, flag_summary, resolve_binding};
 use crate::chrome::{ChromeContext, WidgetFrame, widget_frame};
 use crate::draw::{Builder, Radii};
 use crate::format::{
-    Units, format_degrees, format_delta, format_front_brake_bias, format_fuel, format_fuel_per_lap, format_fuel_per_lap_target, format_gap, format_gear,
-    format_int, format_lap, format_pressure, format_setting, format_speed, js_number_string, to_fixed,
+    Units, format_degrees, format_delta, format_engine_map, format_front_brake_bias, format_fuel, format_fuel_per_lap, format_fuel_per_lap_target, format_gap,
+    format_gear, format_int, format_lap, format_pressure, format_setting, format_speed, js_number_string, to_fixed,
 };
 use crate::grid::PixelRect;
 use crate::model::{CarState, DashSettings, DashTargets, DashWidget, FieldCar, LapState, TelemetryFrame, TireState};
@@ -1662,8 +1662,13 @@ fn setting(b: &mut Builder, w: &WidgetContext) {
         "arb_rear" => (e.rear_anti_roll_bar, e.rear_anti_roll_bar_max, false),
         _ => return,
     };
-    let text = if max > 0.0 { format_setting(value, assist) } else { "-".to_owned() };
-    big_value(b, &text, "OFF", w.width, w.height, w.palette.neutral, VALUE_SHARE);
+    let (text, template) = match () {
+        _ if max <= 0.0 => ("-".to_owned(), "OFF"),
+        // The map as the car calls it: R or SC, or the hybrid's kW.
+        _ if w.widget.widget_type == "engine_map" => (format_engine_map(value, max), if max >= 5.0 { "000 kW" } else { "OFF" }),
+        _ => (format_setting(value, assist), "OFF"),
+    };
+    big_value(b, &text, template, w.width, w.height, w.palette.neutral, VALUE_SHARE);
 }
 
 fn brake_bias(b: &mut Builder, w: &WidgetContext) {

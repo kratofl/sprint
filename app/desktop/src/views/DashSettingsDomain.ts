@@ -28,7 +28,7 @@ export const ALERT_COPY: Record<DashAlertType, { label: string; when: string }> 
   launch: { label: 'Launch', when: 'Standing with the clutch in: LAUNCH and the revs, green inside your window' },
   engine_warning: { label: 'Engine overheating', when: 'At your water or oil limit, or when the game reports overheating' },
   damage: { label: 'Damage', when: 'After a hit that damages the car' },
-  flag: { label: 'Flags', when: 'Yellow, blue, safety car, VSC and red. Then a thin bar across the top while it is out; Ack hides it.' },
+  flag: { label: 'Flags', when: 'Yellow, blue, safety car, VSC and red, as it comes out.' },
   penalty: { label: 'Penalties', when: 'A new penalty to serve' },
   fuel_low: { label: 'Fuel warning', when: 'Low fuel, once a stint, at the second level' },
   pit_now: { label: 'Pit now', when: 'On the last quarter of the lap when the fuel or energy will not last another lap' },

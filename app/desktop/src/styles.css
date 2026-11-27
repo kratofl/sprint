@@ -696,6 +696,48 @@ a:hover {
   flex: 1;
 }
 
+/* A dev or beta build (StatusBar.tsx): one chip, the channel on the darker half and the branch or
+   version on the brighter one, red for dev and green for beta, as their app icons. */
+.build-chip {
+  display: inline-flex;
+  overflow: hidden;
+  border-radius: var(--radius-control-small);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 16px;
+}
+
+.build-chip > span {
+  padding: 1px 7px;
+}
+
+.build-chip-channel {
+  background: var(--build-channel);
+  color: var(--build-channel-text);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.build-chip-name {
+  background: var(--build-name);
+  color: var(--build-name-text);
+}
+
+.build-chip.dev {
+  --build-channel: var(--red-700);
+  --build-channel-text: var(--red-100);
+  --build-name: var(--red-500);
+  --build-name-text: var(--on-status);
+}
+
+/* The bright green carries dark text in both themes; white on it would not read. */
+.build-chip.beta {
+  --build-channel: var(--green-700);
+  --build-channel-text: var(--green-100);
+  --build-name: var(--green-500);
+  --build-name-text: var(--green-900);
+}
+
 .account-avatar {
   display: grid;
   place-items: center;

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import type { LapChannelTrace, LapNote } from './AnalysisDomain'
-import { carSettingsChart, lapPins, placeLabel, placePins, settingChanges, settingPinText, settingRuns } from './AnalysisLapMarks'
+import { carSettingsChart, engineMapText, lapPins, placeLabel, placePins, settingChanges, settingPinText, settingRuns } from './AnalysisLapMarks'
 
 /** A 1 km lap on 101 grid points with the given setting channels, each as [value, from index][] steps. */
 function trace(settings: Record<string, [number, number][]>): LapChannelTrace {
@@ -101,4 +101,12 @@ test('a place reads in km, with the corner when one is near', () => {
 
   assert.equal(placeLabel(0.457, 7000, corners), '3.2 km · T3')
   assert.equal(placeLabel(0.2, 7000, corners), '1.4 km')
+})
+
+test('the engine map reads as the car calls it when the trace keeps its highest step, as on the wheel', () => {
+  assert.deepEqual([engineMapText(1, 1), engineMapText(0, 1), engineMapText(3, 5), engineMapText(2, 10), engineMapText(4, null)], ['R', 'SC', '30 kW', '40 kW', '4'])
+  const hypercar = trace({ motorMap: [[3, 0], [4, 50]], motorMapMax: [[5, 0]] })
+  assert.equal(settingPinText(settingChanges(hypercar)), 'Map 40 kW')
+  const older = trace({ motorMap: [[3, 0], [4, 50]] })
+  assert.equal(settingPinText(settingChanges(older)), 'Map 4', 'a lap from before the highest step was kept')
 })

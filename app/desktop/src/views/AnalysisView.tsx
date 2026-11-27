@@ -220,8 +220,7 @@ export function AnalysisView({
           <LapList
             laps={analysis.laps}
             runs={analysis.runs}
-            // Setup files name the model ("Porsche 963"), not the car's name ("Hypercar Porsche").
-            car={session.context.carType ?? session.context.carModel}
+            setupSession={{ carModel: session.context.carModel, circuitId: session.circuitId, circuitName: session.circuitName }}
             order={order}
             onOrder={setOrder}
             onSetRunSetup={(outing, setupId) => void runAction(buildSetRunSetup(outing, setupId))}

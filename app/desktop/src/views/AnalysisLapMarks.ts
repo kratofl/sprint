@@ -39,7 +39,22 @@ const BRAKE_BIAS = 'brakeBiasRear'
  */
 export const settingValue = (channel: string, raw: number): number => (channel === BRAKE_BIAS ? Math.round((1 - raw) * 1000) / 10 : Math.round(raw))
 
-export const formatSettingValue = (channel: string, value: number): string => (channel === BRAKE_BIAS ? `${value.toFixed(1)} %` : String(value))
+/**
+ * The engine map as the car calls it, from its highest step (the trace's `motorMapMax`): R or SC on
+ * a car with two maps (LMP2, LMGT3), the hybrid's power on a hypercar (10 kW a step on an LMDh's
+ * five, 20 kW on an LMH's ten), else the step. The wheel prints it the same way (the renderer's
+ * `format_engine_map`). An older trace without the highest step shows the step.
+ */
+export function engineMapText(step: number, max: number | null): string {
+  if (max === 1) return step >= 1 ? 'R' : 'SC'
+  if (max === 5) return `${step * 10} kW`
+  if (max === 10) return `${step * 20} kW`
+  return String(step)
+}
+
+/** A setting's value as the driver reads it; `max` is the trace's highest step for the setting, when it keeps one (the motor map). */
+export const formatSettingValue = (channel: string, value: number, max: number | null = null): string =>
+  channel === BRAKE_BIAS ? `${value.toFixed(1)} %` : channel === 'motorMap' ? engineMapText(value, max) : String(value)
 
 /** One stretch of the lap a setting held one value: from and to as lap fractions. */
 export type SettingRun = { from: number; to: number; value: number }
@@ -63,16 +78,23 @@ export function settingRuns(trace: LapChannelTrace, channel: string): SettingRun
   return runs
 }
 
-/** A setting changed at a place on the lap. */
-export type SettingChange = { position: number; setting: CarSetting; from: number; to: number }
+/** A setting's highest step as the trace keeps it (only the motor map's, `motorMapMax`), or null. */
+export function settingMax(trace: LapChannelTrace, channel: string): number | null {
+  const max = channel === 'motorMap' ? trace.channels.motorMapMax?.[0] : undefined
+  return max === undefined || !Number.isFinite(max) ? null : Math.round(max)
+}
+
+/** A setting changed at a place on the lap; `max` is its highest step when the trace keeps it (`settingMax`). */
+export type SettingChange = { position: number; setting: CarSetting; from: number; to: number; max: number | null }
 
 /** Every change of every setting the trace carries, in lap order. */
 export function settingChanges(trace: LapChannelTrace): SettingChange[] {
   const changes: SettingChange[] = []
   for (const setting of CAR_SETTINGS) {
     const runs = settingRuns(trace, setting.channel) ?? []
+    const max = settingMax(trace, setting.channel)
     for (let index = 1; index < runs.length; index++) {
-      changes.push({ position: runs[index].from, setting, from: runs[index - 1].value, to: runs[index].value })
+      changes.push({ position: runs[index].from, setting, from: runs[index - 1].value, to: runs[index].value, max })
     }
   }
   return changes.sort((a, b) => a.position - b.position)
@@ -81,8 +103,8 @@ export function settingChanges(trace: LapChannelTrace): SettingChange[] {
 /** Whether a trace carries any setting at all; older laps (and other games) do not. */
 export const hasCarSettings = (trace: LapChannelTrace): boolean => CAR_SETTINGS.some((setting) => setting.channel in trace.channels)
 
-/** One lane of the Car settings chart: a setting's runs on this lap and, compared, the other's. */
-export type SettingLane = { setting: CarSetting; mine: SettingRun[] | null; other: SettingRun[] | null }
+/** One lane of the Car settings chart: a setting's runs on this lap and, compared, the other's; `max` as `settingMax`. */
+export type SettingLane = { setting: CarSetting; mine: SettingRun[] | null; other: SettingRun[] | null; max: number | null }
 
 export type CarSettingsChart = {
   lanes: SettingLane[]
@@ -97,26 +119,27 @@ export type CarSettingsChart = {
 export function carSettingsChart(mine: LapChannelTrace, other: LapChannelTrace | null): CarSettingsChart | null {
   if (!hasCarSettings(mine) && !(other && hasCarSettings(other))) return null
   const lanes: SettingLane[] = []
-  const folded: { setting: CarSetting; value: number }[] = []
+  const folded: { setting: CarSetting; value: number; max: number | null }[] = []
   for (const setting of CAR_SETTINGS) {
     const ours = settingRuns(mine, setting.channel)
     const theirs = other ? settingRuns(other, setting.channel) : null
     if (ours === null && theirs === null) continue
     const steady = (runs: SettingRun[] | null) => runs !== null && runs.length === 1
     const same = other === null ? steady(ours) : steady(ours) && steady(theirs) && ours?.[0].value === theirs?.[0].value
-    if (same && ours) folded.push({ setting, value: ours[0].value })
-    else lanes.push({ setting, mine: ours, other: theirs })
+    const max = settingMax(mine, setting.channel) ?? (other ? settingMax(other, setting.channel) : null)
+    if (same && ours) folded.push({ setting, value: ours[0].value, max })
+    else lanes.push({ setting, mine: ours, other: theirs, max })
   }
   return { lanes, same: foldedText(folded) }
 }
 
 /** "Migration 2 · Motor map 3 · ARB F3 R2": both anti-roll bars as one, as drivers say them. */
-function foldedText(folded: readonly { setting: CarSetting; value: number }[]): string | null {
+function foldedText(folded: readonly { setting: CarSetting; value: number; max: number | null }[]): string | null {
   const front = folded.find((entry) => entry.setting.channel === 'arbFront')
   const rear = folded.find((entry) => entry.setting.channel === 'arbRear')
   const parts = folded
     .filter((entry) => !(front && rear && (entry === front || entry === rear)))
-    .map((entry) => `${entry.setting.name} ${formatSettingValue(entry.setting.channel, entry.value)}`)
+    .map((entry) => `${entry.setting.name} ${formatSettingValue(entry.setting.channel, entry.value, entry.max)}`)
   if (front && rear) parts.push(`ARB F${front.value} R${rear.value}`)
   return parts.length > 0 ? parts.join(' · ') : null
 }
@@ -154,7 +177,7 @@ export function lapPins(changes: readonly SettingChange[], notes: readonly LapNo
 
 /** A setting pin's text: "TC 5", or "TC 5 · ABS 3" for two at once. */
 export const settingPinText = (changes: readonly SettingChange[]): string =>
-  changes.map((change) => `${change.setting.short} ${formatSettingValue(change.setting.channel, change.to)}`).join(' · ')
+  changes.map((change) => `${change.setting.short} ${formatSettingValue(change.setting.channel, change.to, change.max)}`).join(' · ')
 
 const NOTE_PIN_WIDTH = 26
 // Icon, gaps and padding of a setting pin; the text is 11px semibold, ~6.6px a character.

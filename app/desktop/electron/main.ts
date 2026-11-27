@@ -21,6 +21,12 @@ import { nextZoomFactor, zoomStepFor, type ZoomStep } from './uiZoom.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const desktopRoot = path.resolve(__dirname, '..')
+
+// A dev build is its own app to Windows: its own taskbar entry (app id), name and the red icon, so it
+// is never mistaken for, or grouped with, the installed Sprint (orange; a beta is green, scripts/package.mjs).
+const devBuild = !app.isPackaged
+const APP_NAME = devBuild ? 'Sprint Dev' : 'Sprint'
+const APP_ICON = path.join(desktopRoot, 'resources', devBuild ? 'icon-dev.png' : 'icon.png')
 const hostProject = path.resolve(desktopRoot, '..', 'Sprint.Desktop.Host', 'Sprint.Desktop.Host.csproj')
 const STATE_POLL_INTERVAL_MS = 250
 const X86_DOTNET = 'C:\\Program Files (x86)\\dotnet\\dotnet.exe'
@@ -514,9 +520,9 @@ function createSplashWindow(): BrowserWindow {
     // Closing it would quit Sprint halfway through its launch.
     closable: false,
     show: false,
-    title: 'Sprint',
+    title: APP_NAME,
     backgroundColor: chrome.kind === 'vibrancy' ? TRANSPARENT : chrome.background,
-    icon: path.join(desktopRoot, 'resources', 'icon.png'),
+    icon: APP_ICON,
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
@@ -546,7 +552,7 @@ function createAppWindow({ size, title, query }: AppWindowOptions): BrowserWindo
     ...size,
     title,
     ...chromeOptions(currentChrome()),
-    icon: path.join(desktopRoot, 'resources', 'icon.png'),
+    icon: APP_ICON,
     // An agent run never appears on screen; it is driven and captured over CDP. A merely hidden
     // window paints nothing, so it renders offscreen instead.
     show: !agentRun,
@@ -618,7 +624,7 @@ function createWindow(): BrowserWindow {
   // `?platform=` picks the look the chrome above was built for.
   const window = createAppWindow({
     size: { width: 1440, height: 900, minWidth: 1040, minHeight: 680 },
-    title: 'Sprint',
+    title: APP_NAME,
     query: { backdrop: 'window', platform: look },
   })
   mainWindow = window
@@ -652,7 +658,7 @@ function createWindow(): BrowserWindow {
 const designers = new DashDesigners((dashId) =>
   createAppWindow({
     size: { width: 1440, height: 900, minWidth: 960, minHeight: 640 },
-    title: 'Sprint',
+    title: APP_NAME,
     query: { designer: dashId, platform: look },
   }),
 )
@@ -678,7 +684,7 @@ const pitWall = new PitWallWindows({
   displays: () => screen.getAllDisplays().map((display) => display.workArea),
 })
 
-app.setName('Sprint')
+app.setName(APP_NAME)
 // A dev run (scripts/dev.mjs) keeps the browser profile with the host's data in its own checkout,
 // away from the installed app's. The host reads the same variable.
 const dataRoot = process.env.SPRINT_DESKTOP_DATA_ROOT
@@ -730,8 +736,8 @@ if (debugWindow) {
 // opens a DevTools port of its own choosing, written to <userData>/DevToolsActivePort.
 if (agentRun) app.commandLine.appendSwitch('remote-debugging-port', '0')
 // Windows groups taskbar entries and resolves their icon by this id; without it
-// a dev run is filed under Electron's own identity and icon.
-if (process.platform === 'win32') app.setAppUserModelId('com.sprint.desktop')
+// a dev run is filed under Electron's own identity and icon. A dev build has its own.
+if (process.platform === 'win32') app.setAppUserModelId(devBuild ? 'com.sprint.desktop.dev' : 'com.sprint.desktop')
 
 async function bootstrap(): Promise<void> {
   await app.whenReady()

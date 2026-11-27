@@ -59,6 +59,10 @@ if (!hudWindow && !designerDashId && !pitWall && !splash && !debugWindow && new 
   document.documentElement.dataset.backdrop = 'window'
 }
 
+// A dev run's window says so (the page title is the window's title in the taskbar); Electron gives it
+// its own app id and icon (electron/main.ts).
+if (import.meta.env.DEV && document.title === 'Sprint') document.title = 'Sprint Dev'
+
 createRoot(document.getElementById('root')!).render(
   MockupRoot && mockupName ? (
     <Suspense>

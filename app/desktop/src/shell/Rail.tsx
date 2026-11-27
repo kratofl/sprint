@@ -1,20 +1,31 @@
 import type { AppView } from '../bridge'
-import sprintMark from '../assets/sprint-mark.svg'
 import { platform } from '../platform'
+import { BuildMark } from './BuildMark'
+import type { RunningBuild } from './build'
 import { areaOf, footerAreas, primaryAreas, type NavArea } from './nav'
 
 /** Lucide's default stroke is heavier than the brand's line icons; 1.6 matches the mockups. */
 const ICON_STROKE = 1.6
 
 /**
- * The full-height rail: the Sprint mark, the areas (Home, Drive, Car & rig, Team), each an icon
+ * The full-height rail: the Sprint mark in the build's colour (BuildMark.tsx), the areas (Home, Drive, Car & rig, Team), each an icon
  * over its name, then Settings and Help at the foot. The current area gets the strong fill, the
  * brand icon and a brand bar. Pressing an area opens the page last open in it (App.tsx).
  *
  * The top band, level with the toolbar, drags the window. On macOS it has no mark: the traffic
  * lights sit there (styles.mac.css).
  */
-export function Rail({ view, onSelect, updateAvailable }: { view: AppView; onSelect: (area: NavArea) => void; updateAvailable: boolean }) {
+export function Rail({
+  view,
+  build,
+  onSelect,
+  updateAvailable,
+}: {
+  view: AppView
+  build: RunningBuild | null
+  onSelect: (area: NavArea) => void
+  updateAvailable: boolean
+}) {
   const current = areaOf(view).id
   const item = (area: NavArea) => {
     const Icon = area.icon
@@ -37,7 +48,7 @@ export function Rail({ view, onSelect, updateAvailable }: { view: AppView; onSel
   }
   return (
     <nav className="rail" aria-label="Main navigation">
-      <div className="rail-band">{platform === 'mac' ? null : <img src={sprintMark} alt="Sprint" />}</div>
+      <div className="rail-band">{platform === 'mac' ? null : <BuildMark build={build} />}</div>
       {primaryAreas.map(item)}
       <div className="rail-spacer" />
       {footerAreas.map(item)}

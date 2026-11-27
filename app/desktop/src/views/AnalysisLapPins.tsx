@@ -80,7 +80,7 @@ export function PinRows({
               const left = CHART_MARGIN.left + lefts[index]
               const dashed = row.other ? ' other' : ''
               if (pin.kind === 'setting') {
-                const changes = pin.changes.map((change) => `${change.setting.name} ${formatSettingValue(change.setting.channel, change.from)} → ${formatSettingValue(change.setting.channel, change.to)}`)
+                const changes = pin.changes.map((change) => `${change.setting.name} ${formatSettingValue(change.setting.channel, change.from, change.max)} → ${formatSettingValue(change.setting.channel, change.to, change.max)}`)
                 return (
                   <span key={pinKey(pin)} className={`analysis-pin setting${dashed}`} style={{ left, width: pinWidth(pin) }} title={`${changes.join(', ')} at ${placeOf(pin.position)}`}>
                     <SlidersHorizontal size={12} aria-hidden="true" />
@@ -139,7 +139,7 @@ export function CarSettingsLanes({
   const laneHeight = SETTINGS_LANE.label + SETTINGS_LANE.bar + (compared ? SETTINGS_LANE.between + SETTINGS_LANE.bar : 0) + SETTINGS_LANE.after
   const cursorX = cursorPosition !== null ? scaleX(cursorPosition) : null
 
-  const bar = (runs: SettingRun[] | null, channel: string, y: number, other: boolean) =>
+  const bar = (runs: SettingRun[] | null, channel: string, max: number | null, y: number, other: boolean) =>
     (runs ?? []).map((run, index) => {
       if (run.to < view.from || run.from > view.to) return null
       // A hairline between steps, so a change reads even where the two values look alike.
@@ -150,7 +150,7 @@ export function CarSettingsLanes({
           <rect x={x} y={y} width={runWidth} height={SETTINGS_LANE.bar} rx={3} className={other ? 'analysis-lane-run other' : 'analysis-lane-run'} />
           {runWidth >= 26 && (
             <text x={x + 6} y={y + SETTINGS_LANE.bar / 2} dominantBaseline="central" className={other ? 'analysis-lane-value other tabular' : 'analysis-lane-value tabular'}>
-              {formatSettingValue(channel, run.value)}
+              {formatSettingValue(channel, run.value, max)}
             </text>
           )}
         </g>
@@ -168,8 +168,8 @@ export function CarSettingsLanes({
             <text x={CHART_MARGIN.left} y={top + SETTINGS_LANE.label / 2} dominantBaseline="central" className="analysis-lane-label">
               {lane.setting.name}
             </text>
-            {bar(lane.mine, lane.setting.channel, mineY, false)}
-            {compared && bar(lane.other, lane.setting.channel, mineY + SETTINGS_LANE.bar + SETTINGS_LANE.between, true)}
+            {bar(lane.mine, lane.setting.channel, lane.max, mineY, false)}
+            {compared && bar(lane.other, lane.setting.channel, lane.max, mineY + SETTINGS_LANE.bar + SETTINGS_LANE.between, true)}
           </g>
         )
       })}

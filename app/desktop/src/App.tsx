@@ -19,13 +19,12 @@ import { Onboarding } from './onboarding/Onboarding'
 import { localCounts } from './onboarding/summary'
 import { useToasts } from './shell/useToasts'
 import { buildShellCommands } from './shell/commands'
-import { areaOf, crumbsFor, hasExplorer, primaryNav, type NavArea } from './shell/nav'
+import { areaOf, crumbsFor, explorerPinned, hasExplorer, primaryNav, type NavArea } from './shell/nav'
 import { matchShortcut } from './shell/shortcuts'
 import { platform } from './platform'
 import { readSidebarCollapsed } from './shell/settings'
 import { PageUpContext, type PageUp } from './shell/pageUp'
-import { describeBuild } from './shell/build'
-import { parseUpdatesInfo } from './views/SettingsUpdates'
+import { currentBuild } from './shell/BuildMark'
 import { ToolbarActionsContext, type ToolbarActions } from './shell/toolbarActions'
 
 export type { RuntimeState }
@@ -225,7 +224,7 @@ export function App({ mockup }: { mockup?: { view: AppView; content: ReactNode }
   useColourTheme(colours.theme)
   // Off (the shipped default), Sprint web shows nowhere: no setup, no account row, no Settings group.
   const sprintWeb = runtime.kind === 'ready' && runtime.sprint.features.sprintWeb
-  const build = describeBuild(import.meta.env.DEV, __SPRINT_DEV_BRANCH__, runtime.kind === 'ready' ? parseUpdatesInfo(runtime.sprint)?.version ?? null : null)
+  const build = currentBuild(runtime.kind === 'ready' ? runtime.sprint : null)
 
   // Asked once, on the first state that says the setup was never answered.
   useEffect(() => {
@@ -290,16 +289,16 @@ export function App({ mockup }: { mockup?: { view: AppView; content: ReactNode }
     )
   }
 
-  const explorerShown = collapsed !== true
+  const explorerShown = collapsed !== true || explorerPinned(view)
 
   return (
     <div className={collapsed === null ? 'app pending' : 'app ready'}>
-      <Rail view={view} onSelect={openArea} updateAvailable={updateStatus.kind === 'available'} />
+      <Rail view={view} build={build} onSelect={openArea} updateAvailable={updateStatus.kind === 'available'} />
       {explorerShown ? <ExplorerPane view={view} onSelect={navigate} bodyRef={setExplorerBody} /> : null}
       <TitleBar
         onOpenPalette={() => setPaletteOpen(true)}
         crumbs={crumbsFor(view)}
-        explorer={hasExplorer(view) ? { shown: explorerShown, onToggle: toggleSidebar } : null}
+        explorer={hasExplorer(view) && !explorerPinned(view) ? { shown: explorerShown, onToggle: toggleSidebar } : null}
         pages={!explorerShown && areaOf(view).views.length > 1 ? { views: areaOf(view).views, current: view, onSelect: navigate } : null}
         onActionsSlot={setActionsSlot}
         onActionsRoom={setActionsRoom}

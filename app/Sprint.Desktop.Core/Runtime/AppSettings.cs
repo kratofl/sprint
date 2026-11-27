@@ -75,6 +75,12 @@ public sealed class AppSettings
     public ColourSettings Colours { get; set; } = new();
 
     /// <summary>
+    /// What the delta compares the lap with when no plan target is set (<see cref="Sprint.Desktop.Features.SessionPlanning.PlanTargetDelivery"/>).
+    /// </summary>
+    [JsonPropertyName("deltaBaseline")]
+    public DeltaBaseline DeltaBaseline { get; set; } = DeltaBaseline.SessionBest;
+
+    /// <summary>
     /// The first-run setup (driver, game folder, results import) was finished, so it is not
     /// shown again. False by default, so an install from before the setup existed sees it once.
     /// </summary>
@@ -198,6 +204,17 @@ public enum UnitSystem
 
     /// <summary>US customary: mph, °F, psi and US gallons.</summary>
     Imperial,
+}
+
+/// <summary>What the delta runs against without a plan target. Stored by name.</summary>
+[JsonConverter(typeof(JsonStringEnumConverter<DeltaBaseline>))]
+public enum DeltaBaseline
+{
+    /// <summary>This session's fastest valid lap; until there is one, your fastest lap ever with the car and track.</summary>
+    SessionBest,
+
+    /// <summary>Your fastest lap ever with the car and track, from any session.</summary>
+    YourFastest,
 }
 
 /// <summary>Which Sprint server the driver chose. Stored by name.</summary>

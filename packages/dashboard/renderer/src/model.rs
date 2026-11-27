@@ -142,6 +142,9 @@ pub struct Scene {
     /// Device pixel ratio: the pixmap is `round(width * scale) x round(height * scale)`.
     pub scale: f64,
     pub page_id: Option<String>,
+    /// The layer the wheel's buttons switched each stack to, stack id -> layer id (`drawn_widgets_with`);
+    /// a stack not named shows its `shown_first`. The host keeps it per device, as it does the page.
+    pub layers: BTreeMap<String, String>,
     pub idle: bool,
     pub settings: Option<DashSettings>,
     pub targets: Option<DashTargets>,
@@ -191,6 +194,11 @@ pub fn parse_scene(json: &[u8]) -> Result<Scene, String> {
         height,
         scale,
         page_id: root.get("pageId").and_then(Value::as_str).map(str::to_owned),
+        layers: root
+            .get("layers")
+            .and_then(Value::as_object)
+            .map(|raw| raw.iter().filter_map(|(stack, layer)| Some((stack.clone(), layer.as_str()?.to_owned()))).collect())
+            .unwrap_or_default(),
         idle: root.get("idle") == Some(&Value::Bool(true)),
         settings: root.get("settings").and_then(Value::as_object).map(|raw| DashSettings {
             driver_name: string_field(raw, "driverName"),

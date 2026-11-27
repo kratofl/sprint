@@ -151,7 +151,8 @@ short, current, and tool-agnostic. Deeper material lives in `docs/` (index:
 - Start the native host alone: `make dev-host` (no UI)
 - Dev runs keep their data in the checkout's `app/desktop/.dev/data`, never the
   installed app's. Without the game, `make dev-data` fills it with the laps of every
-  recording in `app/recordings`; `make reset-dev-data` wipes it
+  recording in `app/recordings`; `make reset-dev-data` wipes it; `make dev-sessions-to-app` lists the
+  dev sessions the installed app lacks and copies them with `SESSION=<id>` or `SESSION=today`
 - Record a driven session: `make dev-app RECORD=1` (every telemetry frame, one file per
   session, into `app/recordings`, committed through Git LFS, no real names). Run
   the app on one instead of the game, looping: `make dev-app REPLAY=<recording>`

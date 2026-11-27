@@ -21,7 +21,8 @@ import { ViewTools } from './ViewTools'
 import { ScopeStrip, UsedIn } from './ScopeStrip'
 import { pointScope, type DashScope } from './dashScope'
 import { changedScope, dropVariant, editAt, looksSame, shownLayout } from './variants'
-import sprintMark from '../assets/sprint-mark.svg'
+import { BuildMark, currentBuild } from '../shell/BuildMark'
+import type { RunningBuild } from '../shell/build'
 import { platform } from '../platform'
 import type { ModeActions } from './PageInspector'
 import '../views/DashesView.css'
@@ -155,6 +156,7 @@ export function DashDesigner({ dashId }: { dashId: string }) {
         losses={sprint.dashRefitLosses[host.id] ?? {}}
         send={send}
         duplicate={duplicate}
+        build={currentBuild(sprint)}
       />
       </DashColoursContext>
     </DashUnitsContext>
@@ -175,6 +177,7 @@ function DesignerWindow({
   losses,
   send,
   duplicate,
+  build,
 }: {
   host: DashLayout
   /** The title bar's scope: what it picked and its actions. */
@@ -189,6 +192,8 @@ function DesignerWindow({
   send: (command: SprintCommand) => Promise<void>
   /** Copies the dash (as saved) and opens the copy in its own window once it exists. */
   duplicate: () => Promise<void>
+  /** The running build, for the rail mark's colour. */
+  build: RunningBuild | null
 }) {
   const whole = useDesignerDoc(host, send)
   const { scope, onScope } = strip
@@ -308,7 +313,7 @@ function DesignerWindow({
   return (
     <div className="designer ready">
       <nav className="rail" role="tablist" aria-label="Designer sections" aria-orientation="vertical" onKeyDown={onTabKeyDown}>
-        <div className="rail-band">{platform === 'mac' ? null : <img src={sprintMark} alt="Sprint" />}</div>
+        <div className="rail-band">{platform === 'mac' ? null : <BuildMark build={build} />}</div>
         {WHEEL_SECTIONS.map(tab)}
         <div className="rail-spacer" />
         {tab(SETTINGS_SECTION)}

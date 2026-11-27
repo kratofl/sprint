@@ -18,7 +18,10 @@ namespace Sprint.Desktop.Features.Dashes;
 /// </summary>
 public sealed class DashPageCycle
 {
+    private static readonly IReadOnlyDictionary<string, string> NoLayers = new Dictionary<string, string>();
+
     private readonly ConcurrentDictionary<string, string?> _pages = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, IReadOnlyDictionary<string, string>> _layers = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, string?> _modes = new(StringComparer.OrdinalIgnoreCase);
     private int _session = (int)SessionType.Unknown;
 
@@ -76,6 +79,56 @@ public sealed class DashPageCycle
         string pageId = pages[index].Id;
         this._pages[deviceId] = pageId;
         return pageId;
+    }
+
+    /// <summary>
+    /// The layer the device's buttons switched each stack to (stack id → layer id), handed to the
+    /// renderer with the scene; a stack not in it shows its <see cref="DashWidgetGroup.ShownFirst"/>.
+    /// A new instance after every switch, so a scene compares it by reference. Kept across page
+    /// changes; Sprint starts every stack on its first layer again.
+    /// </summary>
+    public IReadOnlyDictionary<string, string> LayersOf(string deviceId) =>
+        this._layers.TryGetValue(deviceId, out IReadOnlyDictionary<string, string>? layers) ? layers : NoLayers;
+
+    /// <summary>
+    /// Steps every stack on the page the device shows (its current page, else the dash's first) by
+    /// <paramref name="offset"/> layers, wrapping around, skipping hidden and empty layers. False
+    /// when that page has no stack with two layers to switch between.
+    /// </summary>
+    public bool MoveLayers(string deviceId, DashLayout layout, int offset)
+    {
+        ArgumentNullException.ThrowIfNull(deviceId);
+        ArgumentNullException.ThrowIfNull(layout);
+        string? current = this.CurrentPageId(deviceId);
+        DashPage? page = layout.Pages.FirstOrDefault(candidate => string.Equals(candidate.Id, current, StringComparison.OrdinalIgnoreCase)) ?? layout.Pages.FirstOrDefault();
+        if (page is null)
+        {
+            return false;
+        }
+
+        Dictionary<string, string> next = new(this.LayersOf(deviceId), StringComparer.Ordinal);
+        bool moved = false;
+        foreach (DashWidgetGroup stack in page.Groups.Where(group => group.Mode == DashGroupMode.OneAtATime && !group.Hidden))
+        {
+            List<string> layers = DashWidgetGroups.ShownLayers(page, stack.Id);
+            if (layers.Count < 2)
+            {
+                continue;
+            }
+
+            string shown = next.TryGetValue(stack.Id, out string? picked) && layers.Contains(picked)
+                ? picked
+                : stack.ShownFirst is { } first && layers.Contains(first) ? first : layers[0];
+            next[stack.Id] = layers[((layers.IndexOf(shown) + offset) % layers.Count + layers.Count) % layers.Count];
+            moved = true;
+        }
+
+        if (moved)
+        {
+            this._layers[deviceId] = next;
+        }
+
+        return moved;
     }
 
     /// <summary>

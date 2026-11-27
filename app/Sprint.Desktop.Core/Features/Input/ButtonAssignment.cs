@@ -84,9 +84,10 @@ public static class ButtonFunctions
     public const string GotoPrefix = "dash.page.goto:";
 
     /// <summary>
-    /// For a device showing <paramref name="layout"/>: next and previous page and a jump to each of
-    /// its pages (the dash functions, all <c>dash.*</c>); on any device, the app functions: Ack (it
-    /// acts on every dash, so a button box can carry it too) and the HUD over the game.
+    /// For a device showing <paramref name="layout"/>: next and previous page, a jump to each of its
+    /// pages, and next and previous layer when a page has a stack (the dash functions, all
+    /// <c>dash.*</c>); on any device, the app functions: Ack (it acts on every dash, so a button box
+    /// can carry it too) and the HUD over the game.
     /// </summary>
     public static IReadOnlyList<ButtonFunction> For(DashLayout? layout)
     {
@@ -96,6 +97,11 @@ public static class ButtonFunctions
             functions.Add(new ButtonFunction(SprintCommands.DashPageNext, "Next dash page"));
             functions.Add(new ButtonFunction(SprintCommands.DashPagePrev, "Previous dash page"));
             functions.AddRange(layout.Pages.Select(page => new ButtonFunction(GotoPrefix + page.Id, $"Go to {page.Name}")));
+            if (layout.Pages.Any(page => page.Groups.Any(group => group.Mode == DashGroupMode.OneAtATime)))
+            {
+                functions.Add(new ButtonFunction(SprintCommands.DashLayerNext, "Next layer"));
+                functions.Add(new ButtonFunction(SprintCommands.DashLayerPrev, "Previous layer"));
+            }
         }
 
         functions.Add(new ButtonFunction(SprintCommands.Acknowledge, "Acknowledge"));

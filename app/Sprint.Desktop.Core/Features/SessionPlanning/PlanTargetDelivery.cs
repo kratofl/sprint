@@ -20,7 +20,9 @@ namespace Sprint.Desktop.Features.SessionPlanning;
 /// <b>Without a target the delta runs against your fastest lap.</b> A session with no plan target
 /// (practice, or no plan) is measured against the driver's own fastest valid lap with a line for
 /// the game, car and track being driven, from any session, so the delta is there from the first
-/// lap. Laps are saved as they are completed, so a faster one takes over from the next line.
+/// lap. Laps are saved as they are completed, so a faster one takes over from the next line. By
+/// default (<paramref name="untilSessionBest"/>, the driver's <c>DeltaBaseline</c>) that lap only
+/// stands in until the session has a valid lap of its own; then the session's fastest takes over.
 /// </para>
 /// <para>
 /// <b>The engineer's target lap wins over the plan's.</b> A target lap time the engineer sent over
@@ -60,12 +62,19 @@ namespace Sprint.Desktop.Features.SessionPlanning;
 /// (the host just started, or a car or track no poll has asked about yet) means no fuel target yet: it fills in at the
 /// next line after a poll has worked the figure out, as does a median a new lap moved.
 /// </param>
+/// <param name="untilSessionBest">
+/// Whether your fastest lap ever only stands in for the delta until the session has a valid lap of
+/// its own (the driver's <c>DeltaBaseline</c>, read at every line). True when not given.
+/// </param>
 public sealed class PlanTargetDelivery(
     Func<PlanTargetDelivery.Aim?> activePlan,
     ILapHistoryStore history,
     IFuelHistorySource? fuelHistory = null,
-    Func<double?>? engineerTarget = null)
+    Func<double?>? engineerTarget = null,
+    Func<bool>? untilSessionBest = null)
 {
+    private readonly Func<bool> _untilSessionBest = untilSessionBest ?? (() => true);
+
     private readonly Func<double?> _engineerTarget = engineerTarget ?? (() => null);
 
     private readonly IFuelHistorySource _fuelHistory = fuelHistory ?? NoFuelHistorySource.Instance;
@@ -244,7 +253,7 @@ public sealed class PlanTargetDelivery(
         if (target is null)
         {
             return this._fastest is { } fastest && SameContext(fastest.Context, session)
-                ? new DeltaReference { PositionStep = fastest.Curve.PositionStep, TimesSeconds = fastest.Curve.TimesSeconds, LapTimeSeconds = fastest.LapTimeSeconds }
+                ? new DeltaReference { PositionStep = fastest.Curve.PositionStep, TimesSeconds = fastest.Curve.TimesSeconds, LapTimeSeconds = fastest.LapTimeSeconds, UntilSessionBest = this._untilSessionBest() }
                 : null;
         }
 

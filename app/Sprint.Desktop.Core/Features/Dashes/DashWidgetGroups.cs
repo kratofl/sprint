@@ -70,6 +70,31 @@ public static class DashWidgetGroups
         return layers;
     }
 
+    /// <summary>
+    /// A stack's layers the wheel can show, in draw order: the ids of its children that hold a
+    /// widget and are not hidden. An empty child has nothing to show, so it is left out.
+    /// </summary>
+    public static List<string> ShownLayers(DashPage page, string stackId)
+    {
+        Dictionary<string, DashWidgetGroup> groups = page.Groups.ToDictionary(group => group.Id, StringComparer.Ordinal);
+        List<string> layers = [];
+        foreach (DashWidget widget in page.Widgets)
+        {
+            if (!StackLayers(page, widget).TryGetValue(stackId, out string? layer) || layers.Contains(layer))
+            {
+                continue;
+            }
+
+            bool hidden = layer == widget.Id ? widget.Hidden : groups.TryGetValue(layer, out DashWidgetGroup? group) && group.Hidden;
+            if (!hidden)
+            {
+                layers.Add(layer);
+            }
+        }
+
+        return layers;
+    }
+
     /// <summary>Whether two widgets may share cells: only when they sit in different layers of one stack.</summary>
     public static bool MayOverlap(IReadOnlyDictionary<string, string> first, IReadOnlyDictionary<string, string> second)
     {

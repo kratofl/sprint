@@ -1,15 +1,14 @@
-import { useState } from 'react'
-import type { ReactNode } from 'react'
-import { Check, ChevronLeft, Cloud, CloudDownload, CloudUpload, Download, HardDrive, Palette, Pencil, RefreshCw, SlidersHorizontal, User } from 'lucide-react'
+import { Fragment, useEffect, useRef, useState } from 'react'
+import { Check, Cloud, CloudDownload, CloudUpload, Download, HardDrive, Palette, Pencil, RefreshCw, Search, SlidersHorizontal, User } from 'lucide-react'
 import { bridge } from '../bridge'
 import type { Account, CloudState, CloudStorageMode, LiveUplink, LiveUplinkStatus, SprintCommand, SyncDirection, SyncReport, UpdateStatus } from '../bridge'
 import { syncReportText } from '../onboarding/summary'
 import { accountName, accountWhere, initialsFor } from '../shell/account'
 import { ConfirmDialog } from '../shell/ContentDialog'
 import { InlineName } from '../shell/InlineName'
-import { Explorer, ExplorerRow, useExplorerShown } from '../shell/Explorer'
+import { Explorer, ExplorerGroup, ExplorerRow } from '../shell/Explorer'
 import { PageHeader } from '../shell/PageHeader'
-import { usePageUp } from '../shell/pageUp'
+import { platform } from '../platform'
 import { ProgressRing, RingGauge } from '../shell/ProgressRing'
 import { Status, type StatusTone } from '../shell/Status'
 import type { RuntimeState } from '../shell/runtime'
@@ -21,26 +20,25 @@ import '../pitwall/PitWall.css'
 import { COLOUR_LIMIT_ROWS, COLOUR_PREVIEW_FRAME, COLOUR_PREVIEW_LAYOUT, COLOUR_PREVIEW_TYRES, THEME_DETAIL, colourLimitText, stepColourLimit } from './ColoursDomain'
 import type { ColourMark } from './ColoursDomain'
 import { ScaledDash } from './ScaledDash'
-import { CHANNELS, UNITS, parseSettings } from './SettingsDomain'
+import { CHANNELS, DELTA_BASELINES, UNITS, parseSettings, sectionMatches } from './SettingsDomain'
 import type { AppSettings, UpdateChannel } from './SettingsDomain'
 import { TRACE_EXPIRY_DAYS, lapsText, parseStorageInfo, sizeText } from './SettingsStorage'
 import type { StorageInfo } from './SettingsStorage'
 import { parseUpdatesInfo } from './SettingsUpdates'
 import type { UpdatesInfo } from './SettingsUpdates'
 import { Switch } from '../shell/Switch'
-import { ListRow, OpenRow, SettingsList } from './SettingsLayout'
+import { ListRow, SettingsList, type ControlLabels } from './SettingsLayout'
 
 type Send = (command: SprintCommand) => Promise<void>
 
 /**
- * Settings, a page per section, picked in the explorer (`SettingsExplorer`): Driver (name and
- * race number, renamed in place with the pen), General (units, and resetting preferences),
- * Colours, Updates, Storage and, with the feature on, Sprint web. While the explorer is hidden it
- * is one page instead: the driver card, then grouped lists — Units, a row each for Colours and
- * Sprint web, which open a page of their own ("‹ All settings" back), Updates, Storage, and Reset
- * on its own at the bottom. Everything saves on commit; risky changes (pre-release builds,
- * web-only storage, deleting old laps' telemetry, resetting preferences) confirm first. The page
- * has no primary button until an update is out.
+ * Settings, a page per section, picked in the explorer's grouped list (`SettingsExplorer`), which
+ * stays out even while the driver hides the explorer elsewhere (`explorerPinned`): Driver (name
+ * and race number, renamed in place with the pen), General (units, the delta, and resetting
+ * preferences), Colours, Updates, Storage and, with the feature on, Account & sync. Everything
+ * saves on commit; risky changes (pre-release builds, web-only storage, deleting old laps'
+ * telemetry, resetting preferences) confirm first. The page has no primary button until an
+ * update is out.
  */
 export function SettingsView({
   runtime,
@@ -53,12 +51,7 @@ export function SettingsView({
   onSetUpCloud: () => void
   updateStatus: UpdateStatus
 }) {
-  const [opened, setPage] = useState<SettingsPage | null>(null)
   const [section, setSection] = useState<SettingsSection>('driver')
-  const explorer = useExplorerShown()
-  // Sprint web's page closes by itself when its feature is turned off.
-  const page = opened === 'web' && (runtime.kind === 'loading' || !runtime.sprint.features.sprintWeb) ? null : opened
-  usePageUp(page === null || explorer ? null : 'All settings', () => setPage(null))
 
   if (runtime.kind === 'loading') {
     return (
@@ -76,118 +69,127 @@ export function SettingsView({
   const storageInfo = parseStorageInfo(runtime.sprint)
   const sprintWeb = runtime.sprint.features.sprintWeb
   const account = runtime.sprint.account
-
-  if (explorer) {
-    const sections = SECTIONS.filter((candidate) => (candidate.id !== 'storage' || storageInfo !== null) && (candidate.id !== 'web' || sprintWeb))
-    const shown = sections.find((candidate) => candidate.id === section) ?? sections[0]
-    const value: Record<SettingsSection, string | undefined> = {
-      driver: settings.driverName || undefined,
-      general: UNITS.find((option) => option.id === settings.units)?.label,
-      colours: settings.colours.theme,
-      updates: updateStatus.kind === 'available' ? 'Update' : updatesInfo?.version,
-      storage: storageInfo ? sizeText(storageInfo.traceBytes) : undefined,
-      web: account.signedIn ? 'Connected' : 'Off',
-    }
-    return (
-      <div className="settings">
-        <PageHeader title="Settings" />
-        <h2 className="settings-sub-title">{shown.label}</h2>
-        {shown.id === 'driver' && <DriverCard settings={settings} send={send} />}
-        {shown.id === 'general' && (
-          <>
-            <UnitsGroup units={settings.units} send={send} />
-            <ResetGroup send={send} />
-          </>
-        )}
-        {shown.id === 'colours' && <ColoursGroup colours={settings.colours} units={settings.units} send={send} />}
-        {shown.id === 'updates' && <UpdatesGroup info={updatesInfo} channel={settings.updateChannel} status={updateStatus} send={send} titled={false} />}
-        {shown.id === 'storage' && storageInfo && <StorageGroup info={storageInfo} send={send} titled={false} />}
-        {shown.id === 'web' && <CloudGroup account={account} cloud={runtime.sprint.cloud} send={send} onSetUp={onSetUpCloud} />}
-        <Explorer label="Settings">
-          {sections.map((candidate) => {
-            const Icon = candidate.icon
-            return (
-              <ExplorerRow
-                key={candidate.id}
-                lead={<Icon className="settings-explorer-icon" aria-hidden="true" />}
-                title={candidate.label}
-                meta={value[candidate.id]}
-                selected={candidate.id === shown.id}
-                onClick={() => setSection(candidate.id)}
-              />
-            )
-          })}
-        </Explorer>
-      </div>
-    )
+  const sections = SECTIONS.filter((candidate) => (candidate.id !== 'storage' || storageInfo !== null) && (candidate.id !== 'web' || sprintWeb))
+  const shown = sections.find((candidate) => candidate.id === section) ?? sections[0]
+  const value: Record<SettingsSection, string | undefined> = {
+    driver: settings.driverName || undefined,
+    general: UNITS.find((option) => option.id === settings.units)?.label,
+    colours: settings.colours.theme,
+    updates: updateStatus.kind === 'available' ? 'Update' : updatesInfo?.version,
+    storage: storageInfo ? sizeText(storageInfo.traceBytes) : undefined,
+    web: account.signedIn ? 'Connected' : 'Off',
   }
-
-  if (page === 'colours') {
-    return (
-      <SettingsSubPage title="Colours" onBack={() => setPage(null)}>
-        <ColoursGroup colours={settings.colours} units={settings.units} send={send} />
-      </SettingsSubPage>
-    )
-  }
-  if (page === 'web') {
-    return (
-      <SettingsSubPage title="Sprint web" onBack={() => setPage(null)}>
-        <CloudGroup account={account} cloud={runtime.sprint.cloud} send={send} onSetUp={onSetUpCloud} />
-      </SettingsSubPage>
-    )
-  }
-
   return (
     <div className="settings">
       <PageHeader title="Settings" />
-      <DriverCard settings={settings} send={send} />
-      <UnitsGroup units={settings.units} send={send} />
-      <SettingsList>
-        <OpenRow label="Colours" detail="Cold, good, warm and hot on your dashes, the pit wall and Analysis" value={settings.colours.theme} onOpen={() => setPage('colours')} />
-        {sprintWeb && (
-          <OpenRow
-            label="Sprint web"
-            detail={account.signedIn ? accountWhere(account) : 'Keep sessions, setups and dashes on your Sprint web server too'}
-            value={account.signedIn ? 'Connected' : 'Not connected'}
-            onOpen={() => setPage('web')}
-          />
-        )}
-      </SettingsList>
-      <UpdatesGroup info={updatesInfo} channel={settings.updateChannel} status={updateStatus} send={send} />
-      {storageInfo && <StorageGroup info={storageInfo} send={send} />}
-      <ResetGroup send={send} />
+      <h2 className="settings-sub-title">{shown.label}</h2>
+      {shown.id === 'driver' && <DriverCard settings={settings} send={send} />}
+      {shown.id === 'general' && (
+        <>
+          <DashGroup settings={settings} send={send} />
+          <ResetGroup send={send} />
+        </>
+      )}
+      {shown.id === 'colours' && <ColoursGroup colours={settings.colours} units={settings.units} send={send} />}
+      {shown.id === 'updates' && <UpdatesGroup info={updatesInfo} channel={settings.updateChannel} status={updateStatus} send={send} />}
+      {shown.id === 'storage' && storageInfo && <StorageGroup info={storageInfo} send={send} />}
+      {shown.id === 'web' && <CloudGroup account={account} cloud={runtime.sprint.cloud} send={send} onSetUp={onSetUpCloud} />}
+      <SettingsExplorer sections={sections} shown={shown.id} value={value} onOpen={setSection} />
     </div>
   )
 }
 
-/** The groups with a page of their own, while the explorer is hidden. */
-type SettingsPage = 'colours' | 'web'
-
-/** The sections the explorer lists, each a page; Storage only once the host reports it, Sprint web only with the feature on. */
+/** The sections, each a page; Storage only once the host reports it, Account & sync only with Sprint web on. */
 type SettingsSection = 'driver' | 'general' | 'colours' | 'updates' | 'storage' | 'web'
 
-const SECTIONS: ReadonlyArray<{ id: SettingsSection; label: string; icon: typeof User }> = [
-  { id: 'driver', label: 'Driver', icon: User },
-  { id: 'general', label: 'General', icon: SlidersHorizontal },
-  { id: 'colours', label: 'Colours', icon: Palette },
-  { id: 'updates', label: 'Updates', icon: Download },
-  { id: 'storage', label: 'Storage', icon: HardDrive },
-  { id: 'web', label: 'Sprint web', icon: Cloud },
+type SectionEntry = { id: SettingsSection; group: string; label: string; icon: typeof User; keywords: string }
+
+/** In the explorer's order, under their group headings; the keywords are what the search also finds a section by. */
+const SECTIONS: ReadonlyArray<SectionEntry> = [
+  { id: 'driver', group: 'You', label: 'Driver', icon: User, keywords: 'name race number' },
+  { id: 'general', group: 'Dash & wheel', label: 'General', icon: SlidersHorizontal, keywords: 'units metric imperial delta session best fastest reset preferences' },
+  { id: 'colours', group: 'Dash & wheel', label: 'Colours', icon: Palette, keywords: 'theme cold good warm hot tyres brakes temperatures' },
+  { id: 'updates', group: 'App', label: 'Updates', icon: Download, keywords: 'version channel stable pre-release beta check install' },
+  { id: 'storage', group: 'App', label: 'Storage', icon: HardDrive, keywords: 'telemetry laps disk space delete old' },
+  { id: 'web', group: 'Sprint web', label: 'Account & sync', icon: Cloud, keywords: 'sprint web account sign in sync cloud server live' },
 ]
 
-/** A group's own page: "‹ All settings" (Alt+Left too), its name, then its lists. */
-function SettingsSubPage({ title, onBack, children }: { title: string; onBack: () => void; children: ReactNode }) {
+const SEARCH_SHORTCUT = platform === 'mac' ? '⌘F' : 'Ctrl+F'
+
+/**
+ * The explorer's list: a search over the sections (Ctrl+F, ⌘F on macOS), then the sections under
+ * their group headings, each with where it stands now. Enter opens the first match; Escape clears.
+ */
+function SettingsExplorer({
+  sections,
+  shown,
+  value,
+  onOpen,
+}: {
+  sections: ReadonlyArray<SectionEntry>
+  shown: SettingsSection
+  value: Record<SettingsSection, string | undefined>
+  onOpen: (section: SettingsSection) => void
+}) {
+  const [query, setQuery] = useState('')
+  const search = useRef<HTMLInputElement>(null)
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if ((platform === 'mac' ? event.metaKey : event.ctrlKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 'f') {
+        event.preventDefault()
+        search.current?.focus()
+        search.current?.select()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+  const trimmed = query.trim()
+  const matching = trimmed ? sections.filter((entry) => sectionMatches(entry, trimmed)) : sections
+  const groups = [...new Set(matching.map((entry) => entry.group))]
   return (
-    <div className="settings">
-      <PageHeader title="Settings" />
-      <div className="settings-sub-head">
-        <button type="button" className="button subtle settings-back" onClick={onBack}>
-          <ChevronLeft /> All settings
-        </button>
-        <h2 className="settings-sub-title">{title}</h2>
-      </div>
-      {children}
-    </div>
+    <Explorer label="Settings">
+      <label className="input settings-search">
+        <Search aria-hidden="true" />
+        <input
+          ref={search}
+          type="search"
+          placeholder="Search settings"
+          aria-label="Search settings"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' && matching[0]) onOpen(matching[0].id)
+            if (event.key === 'Escape' && query) {
+              event.stopPropagation()
+              setQuery('')
+            }
+          }}
+        />
+        {!query && <kbd>{SEARCH_SHORTCUT}</kbd>}
+      </label>
+      {groups.map((group) => (
+        <Fragment key={group}>
+          <ExplorerGroup title={group} />
+          {matching
+            .filter((entry) => entry.group === group)
+            .map((entry) => {
+              const Icon = entry.icon
+              return (
+                <ExplorerRow
+                  key={entry.id}
+                  lead={<Icon className="settings-explorer-icon" aria-hidden="true" />}
+                  title={entry.label}
+                  meta={value[entry.id]}
+                  selected={entry.id === shown}
+                  onClick={() => onOpen(entry.id)}
+                />
+              )
+            })}
+        </Fragment>
+      ))}
+      {matching.length === 0 && <p className="settings-search-empty">No settings match “{trimmed}”.</p>}
+    </Explorer>
   )
 }
 
@@ -266,31 +268,43 @@ function NumberPlate({ number, onChange }: { number: string; onChange: (number: 
   )
 }
 
-// ── Units ────────────────────────────────────────────────────────────────
+// ── Units and delta ──────────────────────────────────────────────────────
 
-/** Metric or imperial for every dash: the wheel, browser displays and every dash picture in the app. */
-function UnitsGroup({ units, send }: { units: DashUnits; send: Send }) {
-  const detail = UNITS.find((option) => option.id === units)?.detail
+/** One of a row's choices as a segmented control; picking the one already on sends nothing. */
+function Choice<T extends string>({ labels, value, options, onPick }: { labels: ControlLabels; value: T; options: ReadonlyArray<{ id: T; label: string }>; onPick: (id: T) => void }) {
+  return (
+    <div className="segmented" role="radiogroup" {...labels}>
+      {options.map((option) => (
+        <button
+          key={option.id}
+          type="button"
+          role="radio"
+          aria-checked={value === option.id}
+          className="segmented-item"
+          onClick={() => {
+            if (option.id !== value) onPick(option.id)
+          }}
+        >
+          {option.label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+/**
+ * What every dash reads: metric or imperial (the wheel, browser displays and every dash picture in
+ * the app), and what the delta runs against while no plan target is set.
+ */
+function DashGroup({ settings, send }: { settings: AppSettings; send: Send }) {
   return (
     <SettingsList>
-      <ListRow id="settings-units" label="Units" detail={detail}>
+      <ListRow id="settings-units" label="Units" detail={UNITS.find((option) => option.id === settings.units)?.detail}>
+        {(labels) => <Choice labels={labels} value={settings.units} options={UNITS} onPick={(units) => void send({ type: 'settings.update', units })} />}
+      </ListRow>
+      <ListRow id="settings-delta" label="Delta against" detail={DELTA_BASELINES.find((option) => option.id === settings.deltaBaseline)?.detail}>
         {(labels) => (
-          <div className="segmented" role="radiogroup" {...labels}>
-            {UNITS.map((option) => (
-              <button
-                key={option.id}
-                type="button"
-                role="radio"
-                aria-checked={units === option.id}
-                className="segmented-item"
-                onClick={() => {
-                  if (option.id !== units) void send({ type: 'settings.update', units: option.id })
-                }}
-              >
-                {option.label}
-              </button>
-            ))}
-          </div>
+          <Choice labels={labels} value={settings.deltaBaseline} options={DELTA_BASELINES} onPick={(deltaBaseline) => void send({ type: 'settings.update', deltaBaseline })} />
         )}
       </ListRow>
     </SettingsList>
@@ -589,10 +603,9 @@ const CHECK_STATUS: Record<'idle' | 'checking' | 'up-to-date' | 'failed', { labe
  * (the toolbar's update button does the same), then shows the download as a filling ring.
  * Otherwise a check-for-updates icon button with the last result beside it; while it checks, its
  * icon turns once and the download's ring stands empty around it. A dev build cannot
- * update and says so. `titled={false}` drops the list's own heading where the page already names
- * it (a section of its own).
+ * update and says so.
  */
-function UpdatesGroup({ info, channel, status, send, titled = true }: { info: UpdatesInfo | null; channel: UpdateChannel; status: UpdateStatus; send: Send; titled?: boolean }) {
+function UpdatesGroup({ info, channel, status, send }: { info: UpdatesInfo | null; channel: UpdateChannel; status: UpdateStatus; send: Send }) {
   const [confirmPreRelease, setConfirmPreRelease] = useState(false)
 
   const channelLabel = CHANNELS.find((option) => option.id === channel)?.label ?? 'Stable'
@@ -677,7 +690,7 @@ function UpdatesGroup({ info, channel, status, send, titled = true }: { info: Up
 
   return (
     <>
-      <SettingsList title={titled ? 'Updates' : undefined} footer="Pre-release builds get new features early and may contain bugs.">
+      <SettingsList footer="Pre-release builds get new features early and may contain bugs.">
         {updateRow}
 
         <ListRow id="settings-auto-update" label="Install updates automatically" detail="A new version installs when Sprint starts">
@@ -716,13 +729,13 @@ function UpdatesGroup({ info, channel, status, send, titled = true }: { info: Up
  * is kept. Deleting old laps' telemetry is the driver's choice, off until turned on, and turning
  * it on confirms first because the old laps lose theirs at once.
  */
-function StorageGroup({ info, send, titled = true }: { info: StorageInfo; send: Send; titled?: boolean }) {
+function StorageGroup({ info, send }: { info: StorageInfo; send: Send }) {
   const [confirming, setConfirming] = useState(false)
 
   const setExpiry = (days: number) => void send({ type: 'settings.update', traceExpiryDays: days })
 
   return (
-    <SettingsList title={titled ? 'Storage' : undefined} footer="Every lap is saved with its telemetry: your inputs, the engine, tyres, brakes, suspension, fuel and damage.">
+    <SettingsList footer="Every lap is saved with its telemetry: your inputs, the engine, tyres, brakes, suspension, fuel and damage.">
       <ListRow id="settings-storage-laps" label="Lap telemetry" detail={lapsText(info.traceLaps)}>
         {() => <span className="tabular">{sizeText(info.traceBytes)}</span>}
       </ListRow>

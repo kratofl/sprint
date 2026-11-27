@@ -535,7 +535,9 @@
   const setup = (id, name, car, carClass, trackName, savedAt, session, style, version, versions = 1) => {
     const [circuitId, circuitName, layout, country] = setupTracks[trackName]
     return {
+      // carName is the car as laps are filed (the host's CarNames.Name): class and make, the LMP2s by series.
       id, name, track: trackName, trackName, circuitId, circuitName, layout, car, carClass,
+      carName: carClass === 'LMP2 ELMS' ? 'LMP2 ELMS' : carClass === 'LMP2' ? 'LMP2 WEC' : `${carClass === 'GT3' ? 'LMGT3' : carClass} ${car.split(' ')[0]}`,
       season: carClass === 'LMP2 ELMS' ? 'ELMS 2025' : 'WEC 2025', savedAt, versions, session, style, version,
       taggedByDriver: !name.startsWith('bA') && (session !== null || style !== null),
       classTag: setupTags[carClass] ?? carClass, make: car.split(' ')[0], country,

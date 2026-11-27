@@ -247,7 +247,7 @@ telemetryEngine.Start();
 // instances above -- not fresh ones -- so a recorded lap or a plan write is visible on the very
 // next /api/state poll and a plan.* command sees exactly what the ingest loop just did.
 // The engineer's target lap, sent over the live link, wins over the plan's.
-PlanTargetDelivery planTargets = new(() => plannerService.ReadActive(PlanTargetDelivery.Aim.Of), lapHistoryStore, fuelHistory, () => peerLink.State.Radio?.TargetLapSeconds);
+PlanTargetDelivery planTargets = new(() => plannerService.ReadActive(PlanTargetDelivery.Aim.Of), lapHistoryStore, fuelHistory, () => peerLink.State.Radio?.TargetLapSeconds, () => runtime.Settings.DeltaBaseline == DeltaBaseline.SessionBest);
 TelemetryIngestionPipeline ingestion = new(
     runtime,
     plannerService,

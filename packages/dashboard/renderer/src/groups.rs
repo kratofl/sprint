@@ -12,7 +12,7 @@
 // allowed to overlap (`may_overlap`). A hidden widget or group is not drawn but still holds its
 // place on the grid.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use crate::model::{DashPage, DashWidget, DashWidgetGroup, GroupMode};
 
@@ -118,8 +118,9 @@ pub fn page_tree(page: &DashPage) -> Vec<DashNode<'_>> {
 
 /// The layer a one-at-a-time group draws: its `shown_first` child while that exists, else its
 /// first.
-pub fn shown_child<'n, 'a>(group: &DashWidgetGroup, children: &'n [DashNode<'a>]) -> Option<&'n DashNode<'a>> {
-    children.iter().find(|child| Some(child.id()) == group.shown_first.as_deref()).or(children.first())
+pub fn shown_child<'n, 'a>(group: &DashWidgetGroup, children: &'n [DashNode<'a>], layers: &BTreeMap<String, String>) -> Option<&'n DashNode<'a>> {
+    let pick = |id: Option<&str>| children.iter().find(|child| Some(child.id()) == id);
+    pick(layers.get(&group.id).map(String::as_str)).or_else(|| pick(group.shown_first.as_deref())).or(children.first())
 }
 
 /// Every widget under a node (itself, for a widget), in draw order, hidden or not.
@@ -131,9 +132,15 @@ pub fn node_widgets<'a>(node: &DashNode<'a>) -> Vec<&'a DashWidget> {
 }
 
 /// The widgets the wheel draws, in draw order: not hidden, in no hidden group, and in each stack
-/// only under the layer it shows.
+/// only under the layer it shows, its `shown_first`.
 pub fn drawn_widgets(page: &DashPage) -> Vec<&DashWidget> {
-    fn visit<'a>(node: &DashNode<'a>, out: &mut Vec<&'a DashWidget>) {
+    drawn_widgets_with(page, &BTreeMap::new())
+}
+
+/// `drawn_widgets` with the layer the wheel's buttons switched each stack to (`Scene::layers`,
+/// stack id -> layer id) in place of its `shown_first`; a layer no longer in the stack falls back.
+pub fn drawn_widgets_with<'a>(page: &'a DashPage, layers: &BTreeMap<String, String>) -> Vec<&'a DashWidget> {
+    fn visit<'a>(node: &DashNode<'a>, layers: &BTreeMap<String, String>, out: &mut Vec<&'a DashWidget>) {
         match node {
             DashNode::Widget(widget) => {
                 if !widget.hidden {
@@ -142,16 +149,16 @@ pub fn drawn_widgets(page: &DashPage) -> Vec<&DashWidget> {
             }
             DashNode::Group { group, .. } if group.hidden => {}
             DashNode::Group { group, children } if group.mode == GroupMode::OneAtATime => {
-                if let Some(layer) = shown_child(group, children) {
-                    visit(layer, out);
+                if let Some(layer) = shown_child(group, children, layers) {
+                    visit(layer, layers, out);
                 }
             }
-            DashNode::Group { children, .. } => children.iter().for_each(|child| visit(child, out)),
+            DashNode::Group { children, .. } => children.iter().for_each(|child| visit(child, layers, out)),
         }
     }
     let mut out = Vec::new();
     for node in &page_tree(page) {
-        visit(node, &mut out);
+        visit(node, layers, &mut out);
     }
     out
 }
@@ -254,6 +261,23 @@ mod tests {
         assert_eq!(drawn(&with_group("stack", |g| g.shown_first = Some("gone".to_owned()))), ["a"]);
         assert_eq!(drawn(&with_group("stack", |g| g.mode = Together)), ["a", "b", "c"]);
         assert!(drawn(&with_group("two", |g| g.hidden = true)).is_empty());
+    }
+
+    #[test]
+    fn the_layer_the_wheel_switched_to_wins_over_the_one_shown_first_while_it_is_in_the_stack() {
+        let p = page(
+            vec![widget("a", Some("one")), widget("b", Some("two"))],
+            vec![
+                DashWidgetGroup { shown_first: Some("two".to_owned()), ..group("stack", OneAtATime, None) },
+                group("one", Together, Some("stack")),
+                group("two", Together, Some("stack")),
+            ],
+        );
+        let switched = |layer: &str| BTreeMap::from([("stack".to_owned(), layer.to_owned())]);
+        let ids = |layers: &BTreeMap<String, String>| drawn_widgets_with(&p, layers).into_iter().map(|w| w.id.as_str()).collect::<Vec<_>>();
+        assert_eq!(ids(&switched("one")), ["a"]);
+        assert_eq!(ids(&switched("gone")), ["b"], "a layer no longer in the stack falls back to the one shown first");
+        assert_eq!(ids(&BTreeMap::new()), ["b"]);
     }
 
     #[test]

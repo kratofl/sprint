@@ -67,6 +67,9 @@ const EXPLORER_VIEWS: readonly AppView[] = ['SessionPlanner', 'OnTrack', 'Analys
 
 export const hasExplorer = (view: AppView): boolean => EXPLORER_VIEWS.includes(view)
 
+/** A page whose explorer stays out even while the driver hides it elsewhere: Settings, whose section list is its only way around. */
+export const explorerPinned = (view: AppView): boolean => view === 'Settings'
+
 /** The row that stands for a page. */
 export const navItemFor = (view: AppView): NavItem | undefined => [...primaryNav, ...footerNav].find((item) => item.view === view)
 

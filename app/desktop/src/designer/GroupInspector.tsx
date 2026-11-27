@@ -168,7 +168,7 @@ export function GroupInspector({
           >
             <Plus /> Add layer
           </button>
-          <p className="field-hint">The wheel shows {shown ? nodeName(shown) : 'nothing yet'}. Switching layers with a wheel button comes later.</p>
+          <p className="field-hint">The wheel starts on {shown ? nodeName(shown) : 'nothing yet'}. A button set to Next layer or Previous layer (Devices › Controls) switches it while you drive.</p>
         </div>
       )}
 

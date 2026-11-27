@@ -100,6 +100,10 @@ public static class SprintCommands
 {
     public const string DashPageNext = "dash.page.next";
     public const string DashPagePrev = "dash.page.prev";
+
+    /// <summary>Every stack on the page the wheel shows steps to its next (or previous) layer (#269).</summary>
+    public const string DashLayerNext = "dash.layer.next";
+    public const string DashLayerPrev = "dash.layer.prev";
     public const string DashTargetSet = "dash.target.set";
 
     /// <summary>Show/hide the Live Compare overlay (#195).</summary>
@@ -113,6 +117,8 @@ public static class SprintCommands
         ArgumentNullException.ThrowIfNull(bus);
         bus.RegisterMeta(new CommandMeta(DashPageNext, "Next dash page", "Dashboard", Capturable: true, DeviceOnly: true));
         bus.RegisterMeta(new CommandMeta(DashPagePrev, "Previous dash page", "Dashboard", Capturable: true, DeviceOnly: true));
+        bus.RegisterMeta(new CommandMeta(DashLayerNext, "Next layer", "Dashboard", Capturable: true, DeviceOnly: true));
+        bus.RegisterMeta(new CommandMeta(DashLayerPrev, "Previous layer", "Dashboard", Capturable: true, DeviceOnly: true));
         bus.RegisterMeta(new CommandMeta(DashTargetSet, "Set delta reference", "Timing", Capturable: true, DeviceOnly: false));
         // Not DeviceOnly: most drivers have few spare wheel buttons, so the keyboard fallback
         // has to work (spec §2.5). Lock and target selection are deliberately absent — a locked

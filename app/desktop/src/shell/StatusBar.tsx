@@ -71,13 +71,26 @@ function AccountItem({ account, onOpen }: { account: Account | null; onOpen: () 
   )
 }
 
+/**
+ * The running build. Dev and beta are one chip in the colour of their app icon: the channel on
+ * the darker half, the branch or version on the brighter one (dev red, beta green). Stable is
+ * the version alone.
+ */
 function BuildItem({ build }: { build: RunningBuild }) {
-  const text = build.kind === 'development' ? (build.branch ?? 'Development build') : build.version
+  if (build.kind === 'stable') {
+    return (
+      <span className="statusbar-item static tabular" title={`Version ${build.version}`}>
+        {build.version}
+      </span>
+    )
+  }
+  const dev = build.kind === 'development'
   return (
-    <span className="statusbar-item static" title={build.kind === 'development' ? 'Development build' : `Version ${build.version}`}>
-      {build.kind === 'development' && <span className="chip chip-warning">Dev</span>}
-      {build.kind === 'pre-release' && <span className="chip chip-info">Pre-release</span>}
-      <span className="statusbar-build tabular">{text}</span>
+    <span className="statusbar-item static" title={dev ? 'Development build' : `Beta, version ${build.version}`}>
+      <span className={dev ? 'build-chip dev' : 'build-chip beta'}>
+        <span className="build-chip-channel">{dev ? 'Dev' : 'Beta'}</span>
+        <span className="build-chip-name tabular">{dev ? (build.branch ?? 'local') : build.version}</span>
+      </span>
     </span>
   )
 }

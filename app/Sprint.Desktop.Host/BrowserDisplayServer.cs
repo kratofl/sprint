@@ -397,7 +397,7 @@ public sealed class BrowserDisplayServer
                 // Taken before the count is read, so a press between the two still wakes the next wait.
                 Task pressed = acknowledgements?.Next ?? Never;
                 BrowserDisplayLook look = display.Look;
-                SceneKey scene = new(display.Scenes.Content, display.Scenes.Idle, display.Scenes.PageId, look);
+                SceneKey scene = new(display.Scenes.Content, display.Scenes.Idle, display.Scenes.PageId, display.Scenes.Layers, look);
                 bool wrote = false;
                 if (scene != sentScene)
                 {
@@ -472,7 +472,7 @@ public sealed class BrowserDisplayServer
         writer.Reset(buffer);
         writer.WriteStartObject();
         writer.WritePropertyName("scene");
-        content.WriteScene(writer, scene.Look.Width, scene.Look.Height, scene.PageId, scene.Idle, scene.Look.Transparent);
+        content.WriteScene(writer, scene.Look.Width, scene.Look.Height, scene.PageId, scene.Layers, scene.Idle, scene.Look.Transparent);
         writer.WriteEndObject();
         writer.Flush();
         buffer.Write("\n"u8);
@@ -526,7 +526,7 @@ public sealed class BrowserDisplayServer
         <p>Turn it on, or add a Browser / VR display, on Sprint's Devices page.</p></body></html>
         """;
 
-    private readonly record struct SceneKey(DashSceneContent? Content, bool Idle, string? PageId, BrowserDisplayLook Look);
+    private readonly record struct SceneKey(DashSceneContent? Content, bool Idle, string? PageId, IReadOnlyDictionary<string, string> Layers, BrowserDisplayLook Look);
 
     private sealed record FrameLine(TelemetryFrame Frame, byte[] Line);
 }

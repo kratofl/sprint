@@ -45,7 +45,8 @@ export function WidgetInspector({
   const minRowSpan = widget.rowSpan > 1 && holdsSmallestAt(layout, widget.type, { ...widget, rowSpan: widget.rowSpan - 1 }) ? 1 : widget.rowSpan
   const framed = widget.style?.frame !== 'off'
   const labelled = widget.style?.label !== 'off'
-  const labelHint = !labelled ? 'Off: the value gets its room.' : framed || !hasFrame(widget.type) ? 'Cut into the top edge.' : 'Small, above the value.'
+  // In a flat cell (2.5 times as wide as tall) the renderer puts the label at its left (chrome.rs side_labelled).
+  const labelHint = !labelled ? 'Off: the value gets its room.' : framed || !hasFrame(widget.type) ? 'Cut into the top edge; at its left in a flat cell.' : 'Small, above the value; at its left in a flat cell.'
 
   return (
     <aside className="designer-pane designer-inspector" aria-label={`${widgetName(widget)} properties`}>
