@@ -208,6 +208,7 @@ internal abstract class WinUsbScreenDriverBase : IScreenDriver
 internal sealed class VoCoreScreenDriver : WinUsbScreenDriverBase
 {
     private bool _loggedFirstWrite;
+    private bool _panelOn;
 
     public override string Name => "VoCore Screen";
 
@@ -239,11 +240,29 @@ internal sealed class VoCoreScreenDriver : WinUsbScreenDriverBase
             $"VoCore dimensions resolved: pid=0x{transport.MatchedPid:X4} " +
             $"native={native.Width}x{native.Height} configured={config.Width}x{config.Height}.");
 
-        // Panel-on + backlight restore, mirroring the mpro DRM driver's enable
-        // path (cmd_quit_sleep, cmd_set_brightness=0xFF). Another screen app's
-        // "disable" can leave the backlight at 0, in which case frames transfer
-        // fine but land on a dark panel. Non-fatal: a wedged firmware NAKs every
-        // vendor request, so the draw command surfaces the fault either way.
+        // The panel stays dark until the first frame is in (WriteFrame). Lit now, it would show what
+        // its memory still holds from the last session until the first frame lands, often with its
+        // halves swapped. A previous owner that quit without letting go may have left it lit.
+        this._panelOn = false;
+        if (!transport.ControlOut(
+                VoCoreProtocol.RequestTypeOut,
+                VoCoreProtocol.VendorRequest,
+                value: 0,
+                index: 0,
+                VoCoreProtocol.BrightnessOffCommand))
+        {
+            this.Log.Warn($"VoCore backlight off before the first frame failed (non-fatal): {transport.LastFailure}");
+        }
+    }
+
+    /// <summary>
+    /// Panel-on + backlight restore, mirroring the mpro DRM driver's enable path (cmd_quit_sleep,
+    /// cmd_set_brightness=0xFF). Another screen app's "disable" can leave the backlight at 0, in
+    /// which case frames transfer fine but land on a dark panel. Non-fatal: a wedged firmware NAKs
+    /// every vendor request, so the draw command surfaces the fault either way.
+    /// </summary>
+    private void TurnPanelOn(WinUsbScreenTransport transport)
+    {
         if (!transport.ControlOut(
                 VoCoreProtocol.RequestTypeOut,
                 VoCoreProtocol.VendorRequest,
@@ -264,7 +283,7 @@ internal sealed class VoCoreScreenDriver : WinUsbScreenDriverBase
         }
         else
         {
-            this.Log.Debug("VoCore initialization complete: wake (0x29) and full brightness (0x51) acknowledged.");
+            this.Log.Debug("VoCore panel on after the first frame: wake (0x29) and full brightness (0x51) acknowledged.");
         }
     }
 
@@ -310,7 +329,34 @@ internal sealed class VoCoreScreenDriver : WinUsbScreenDriverBase
         return VoCoreProtocol.NativeDimensionsForPid(transport.MatchedPid, config.Width, config.Height);
     }
 
+    /// <summary>
+    /// Sends one frame. The first frame after connecting is written twice before the panel and its
+    /// backlight are switched on (TurnPanelOn): a transfer cut off when the last owner let go can
+    /// leave the panel's write position mid-frame, so the first frame may land shifted, and the
+    /// second lands whole. Until then the panel stays dark.
+    /// </summary>
     protected override bool WriteFrame(WinUsbScreenTransport transport, byte[] rgb565)
+    {
+        if (!this.Draw(transport, rgb565))
+        {
+            return false;
+        }
+
+        if (!this._panelOn)
+        {
+            if (!this.Draw(transport, rgb565))
+            {
+                return false;
+            }
+
+            this.TurnPanelOn(transport);
+            this._panelOn = true;
+        }
+
+        return true;
+    }
+
+    private bool Draw(WinUsbScreenTransport transport, byte[] rgb565)
     {
         byte[] drawCommand = VoCoreProtocol.BuildDrawCommand(rgb565.Length);
         if (!this._loggedFirstWrite)
@@ -333,7 +379,7 @@ internal sealed class VoCoreScreenDriver : WinUsbScreenDriverBase
     protected override void Shutdown(WinUsbScreenTransport transport)
     {
         // Backlight off, like other screen apps do when they let go; the next owner turns it back on
-        // (Initialize above does). Closing the handle alone leaves the last dash frame lit.
+        // (TurnPanelOn above, once its first frame is in). Closing the handle alone leaves the last dash frame lit.
         if (!transport.ControlOut(
                 VoCoreProtocol.RequestTypeOut,
                 VoCoreProtocol.VendorRequest,

@@ -194,11 +194,10 @@ Open sequence:
    (non-fatal).
 6. Resolve native dimensions: model query `0xB5`/`0xB6`/`0xB7`; on failure fall
    back to the matched PID and saved orientation.
-7. Send quit-sleep `00 29 00 00 00 00` and full brightness
-   `00 51 02 00 00 00 FF 00` via request `0xB0` (both non-fatal on failure).
-   This mirrors the mpro DRM driver's enable path; another screen app's
-   "disable" can leave the backlight at 0, in which case frames transfer
-   fine but land on a dark panel.
+7. Backlight off (`00 51 02 00 00 00 00 00`, non-fatal). The panel stays dark
+   until the first frame is in: lit at once, it shows what its memory still
+   holds from the last session until that frame lands, often with its halves
+   swapped (seen on the Omega PRO V2).
 8. Build draw command `00 2C <size24le> 00`, where `0x2C` is Memory
    Write and `size = width * height * 2`.
 
@@ -220,6 +219,13 @@ Frame send:
 
 1. Control OUT request `0xB0` with the 6-byte draw command.
 2. Bulk write the full RGB565 frame to endpoint `0x02`.
+
+The first frame after connecting is sent twice (a transfer cut off when the last
+owner let go can leave the panel's write position mid-frame), then the panel is
+switched on: quit-sleep `00 29 00 00 00 00` and full brightness
+`00 51 02 00 00 00 FF 00` via request `0xB0` (both non-fatal). This mirrors the
+mpro DRM driver's enable path; another screen app's "disable" can leave the
+backlight at 0, in which case frames transfer fine but land on a dark panel.
 
 Close sequence:
 
