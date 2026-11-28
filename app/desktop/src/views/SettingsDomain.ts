@@ -5,7 +5,7 @@ import { parseColours } from '../colours'
  * Settings domain model and parsing: the `AppSettings` fields the Settings page shows and
  * edits through `settings.update` (`RuntimeCoordinator.UpdateSettings`), and the colours through
  * `settings.colours`. sidebarCollapsed is
- * owned by the shell's sidebar toggle, and the other slices (dashEditorUI, newDashDefaults,
+ * owned by the shell's list toggle (the explorer), and the other slices (dashEditorUI, newDashDefaults,
  * devicesUI, sessionPlanner, liveCompare, cloud) are each edited from their own feature, so
  * they are not modelled here.
  */
@@ -24,6 +24,15 @@ export const normalizeChannel = (value: string): UpdateChannel => {
     : 'stable'
 }
 
+/** What the delta runs against without a plan target (host `DeltaBaseline`). */
+export type DeltaBaseline = 'SessionBest' | 'YourFastest'
+
+/** The delta's choices, in the order the Settings page offers them. */
+export const DELTA_BASELINES: ReadonlyArray<{ id: DeltaBaseline; label: string; detail: string }> = [
+  { id: 'SessionBest', label: 'This session', detail: 'Your fastest lap of this session; until you set one, your fastest lap ever with the car and track' },
+  { id: 'YourFastest', label: 'Your fastest', detail: 'Your fastest lap ever with the car and track, from any session' },
+]
+
 /** The Units choices, in the order the Settings page offers them. */
 export const UNITS: ReadonlyArray<{ id: DashUnits; label: string; detail: string }> = [
   { id: 'Metric', label: 'Metric', detail: 'Dashes show km/h, °C, kPa and litres' },
@@ -36,6 +45,8 @@ export type AppSettings = {
   updateChannel: UpdateChannel
   /** What every dash prints speeds, temperatures, pressures and fuel in (host `AppSettings.Units`). */
   units: DashUnits
+  /** What the delta runs against without a plan target (host `AppSettings.DeltaBaseline`). */
+  deltaBaseline: DeltaBaseline
   /** What colours mean and where values change colour, on the dashes, the pit wall and in Analysis (host `AppSettings.Colours`). */
   colours: DashColours
 }
@@ -50,5 +61,12 @@ export const parseSettings = (row: Record<string, unknown>): AppSettings => ({
   driverNumber: str(row, 'driverNumber', '22'),
   updateChannel: normalizeChannel(str(row, 'updateChannel', 'stable')),
   units: row.units === 'Imperial' ? 'Imperial' : 'Metric',
+  deltaBaseline: row.deltaBaseline === 'YourFastest' ? 'YourFastest' : 'SessionBest',
   colours: parseColours(row.colours),
 })
+
+/** Whether a Settings section answers every word of `query` (the explorer's search), by its name, its group heading or its keywords. */
+export const sectionMatches = (section: { label: string; group: string; keywords: string }, query: string): boolean => {
+  const haystack = `${section.label} ${section.group} ${section.keywords}`.toLowerCase()
+  return query.toLowerCase().split(/\s+/).filter(Boolean).every((word) => haystack.includes(word))
+}

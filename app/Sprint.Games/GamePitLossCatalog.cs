@@ -11,7 +11,7 @@ public sealed record TypicalPitLoss(double Lane, double Standing);
 
 /// <summary>
 /// Each track's typical pit loss per class, for before a session has a stop of its own to measure.
-/// Le Mans Ultimate's comes from Lovely Track Data, bundled as <c>LeMansUltimate/lmu-pit-loss.json</c>
+/// Le Mans Ultimate's comes from the bundled track data, <c>LeMansUltimate/lmu-pit-loss.json</c>
 /// (refreshed by <c>app/desktop/scripts/sync-track-data.mjs</c>; credit in
 /// <c>app/desktop/src/assets/tracks/README.md</c>). Its <c>dt</c> (a drive-through's loss) is the
 /// lane loss and its <c>pit</c> (a typical race stop's) less that is the standing time. Other games

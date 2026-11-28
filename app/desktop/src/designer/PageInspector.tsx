@@ -4,7 +4,8 @@ import type { DashLayout, DashPage, DashPageJump } from '@sprint/dashboard'
 import type { DashMode } from '../bridge'
 import { ConfirmDialog } from '../shell/ContentDialog'
 import { MenuLayer, type MenuAnchor } from '../shell/Menu'
-import { Switch } from '../shell/Switch'
+import { InlineName } from '../shell/InlineName'
+import { clearPage, deletePage, removeIdlePage, renamePage } from '../views/DashesDomain'
 import { SESSIONS, setEverySession, setPageJump, showsEverywhere, toggleShowIn } from './pageModes'
 import { evenTracks } from './layoutOps'
 import type { Mutate } from './useDesignerDoc'
@@ -38,10 +39,12 @@ export function PageInspector({ layout, page, isIdlePage, apply, modes }: { layo
   const jump = JUMPS.find((candidate) => candidate.id === (page.jump ?? null)) ?? JUMPS[0]
   const picked = new Set(page.showIn ?? [])
 
+  const empty = page.widgets.length === 0 && (page.groups ?? []).length === 0
+
   return (
-    <aside className="designer-glass designer-inspector" aria-label={`${page.name} page`}>
-      <div className="designer-panel-head">
-        <h2 className="designer-panel-title">{page.name}</h2>
+    <aside className="designer-pane designer-inspector" aria-label={`${page.name} page`}>
+      <div className="designer-page-head">
+        <InlineName key={page.id} name={page.name} label="Page name" onRename={(name) => apply((current) => renamePage(current, page.id, name))} />
         <span className="muted designer-page-count">{isIdlePage ? 'Idle page' : `Page ${index + 1} of ${layout.pages.length}`}</span>
       </div>
 
@@ -53,28 +56,27 @@ export function PageInspector({ layout, page, isIdlePage, apply, modes }: { layo
       ) : (
         <>
           <div className="designer-group">
-            <div className="designer-switch-row">
-              <span className="designer-switch-text">
-                <span id="page-every-session" className="designer-switch-title">
-                  Every session
-                </span>
-                <span className="muted designer-switch-hint">{every ? 'Shows whatever you drive. Turn off to pick.' : 'Off: shows only where picked below.'}</span>
-              </span>
-              <Switch checked={every} onChange={(next) => apply((current) => setEverySession(current, page.id, next))} stateText={false} aria-labelledby="page-every-session" />
+            <h3 className="designer-group-title">Shows in</h3>
+            {/* One row: "Every session", or the sessions picked. Picking one turns "Every session" off; taking the last away turns it back on. */}
+            <div className="designer-chips" role="group" aria-label="Sessions">
+              <button type="button" className="filter-chip" aria-pressed={every} onClick={() => apply((current) => setEverySession(current, page.id, true))}>
+                Every session
+              </button>
+              {SESSIONS.map((session) => (
+                <button
+                  key={session.id}
+                  type="button"
+                  className="filter-chip"
+                  aria-pressed={!every && picked.has(session.id)}
+                  onClick={() => apply((current) => toggleShowIn(current, page.id, session.id))}
+                >
+                  {session.label}
+                </button>
+              ))}
             </div>
-            {!every && (
-              <>
-                <div className="designer-chips" role="group" aria-label="Sessions">
-                  {SESSIONS.map((session) => (
-                    <button key={session.id} type="button" className="filter-chip" aria-pressed={picked.has(session.id)} onClick={() => apply((current) => toggleShowIn(current, page.id, session.id))}>
-                      {session.label}
-                    </button>
-                  ))}
-                </div>
-                <h3 className="designer-group-title designer-modes-title">Your modes</h3>
-                <ModeChips modes={modes} picked={picked} onToggle={(id) => apply((current) => toggleShowIn(current, page.id, id))} />
-              </>
-            )}
+            <p className="field-hint">{every ? 'The wheel cycles this page whatever you drive.' : 'The wheel cycles it only in what is picked here.'}</p>
+            <h3 className="designer-group-title designer-modes-title">Your modes</h3>
+            <ModeChips modes={modes} picked={every ? new Set<string>() : picked} onToggle={(id) => apply((current) => toggleShowIn(current, page.id, id))} />
           </div>
 
           <div className="designer-group">
@@ -102,6 +104,30 @@ export function PageInspector({ layout, page, isIdlePage, apply, modes }: { layo
           <GridGroup layout={layout} apply={apply} />
         </>
       )}
+
+      <div className="designer-group designer-page-actions">
+        <div className="designer-button-row">
+          <button type="button" className="button small" disabled={empty} onClick={() => apply((current) => clearPage(current, page.id))}>
+            Clear page
+          </button>
+          {isIdlePage ? (
+            <button type="button" className="button small destructive" onClick={() => apply((current) => removeIdlePage(current))}>
+              <Trash2 /> Remove idle page
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="button small destructive"
+              disabled={layout.pages.length <= 1}
+              title={layout.pages.length <= 1 ? 'A dash keeps at least one page.' : undefined}
+              onClick={() => apply((current) => deletePage(current, page.id))}
+            >
+              <Trash2 /> Delete page
+            </button>
+          )}
+        </div>
+        <p className="field-hint">Clear removes its widgets; the page stays. Undo brings either back.</p>
+      </div>
     </aside>
   )
 }

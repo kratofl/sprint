@@ -484,11 +484,6 @@ export type SprintBridge = {
   resizeHud(width: number, height: number, done: boolean): void
   /** Opens a dash in its own designer window, or brings that window forward. */
   openDashDesigner(dashId: string): Promise<void>
-  /**
-   * From a designer window: moves it on to another dash. 'switched' when this window now edits it,
-   * 'focused' when that dash's own window came forward instead (this one stays where it was).
-   */
-  switchDashDesigner(dashId: string): Promise<'switched' | 'focused'>
   /** From a designer window: brings the main window forward on Dashes > Settings. */
   openDashSettings(): Promise<void>
   /** The main window: called when a designer asks for Dashes > Settings (`openDashSettings`). */
@@ -545,9 +540,8 @@ type RawBridge = {
   /** Both absent in the preview harness's stub. */
   subscribeHud?(listener: (message: unknown) => void): () => void
   resizeHud?(width: number, height: number, done: boolean): void
-  /** Both absent in the preview harness's stub. */
+  /** Absent in the preview harness's stub. */
   openDashDesigner?(dashId: string): Promise<unknown>
-  switchDashDesigner?(dashId: string): Promise<unknown>
   /** Both absent in the preview harness's stub. */
   openDashSettings?(): Promise<unknown>
   subscribeOpenDashSettings?(listener: () => void): () => void
@@ -1176,8 +1170,6 @@ export const bridge: SprintBridge = raw
           : () => undefined,
       resizeHud: (width, height, done) => raw.resizeHud?.(width, height, done),
       openDashDesigner: async (dashId) => { await raw.openDashDesigner?.(dashId) },
-      // Without Electron (the preview) the page switches by itself.
-      switchDashDesigner: async (dashId) => ((await raw.switchDashDesigner?.(dashId)) === 'focused' ? 'focused' : 'switched'),
       openDashSettings: async () => { await raw.openDashSettings?.() },
       subscribeOpenDashSettings: (listener) => (raw.subscribeOpenDashSettings ? raw.subscribeOpenDashSettings(listener) : () => undefined),
       openPitWall: async (target) => { await raw.openPitWall?.(target) },
@@ -1224,7 +1216,6 @@ export const bridge: SprintBridge = raw
       subscribeHud: () => () => undefined,
       resizeHud: () => undefined,
       openDashDesigner: async () => undefined,
-      switchDashDesigner: async () => 'switched',
       openDashSettings: async () => undefined,
       subscribeOpenDashSettings: () => () => undefined,
       openPitWall: async () => undefined,

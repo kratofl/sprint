@@ -77,7 +77,8 @@ export function DashSettings({
   alerts: readonly DashAlertSettings[]
   buttons: ButtonState
   send: (command: SprintCommand) => Promise<void>
-  onBack: () => void
+  /** "‹ All dashes"; absent while the explorer lists the way there. */
+  onBack?: () => void
 }) {
   const [picked, setPicked] = useState<DashAlertType>('tc_change')
   const [error, setError] = useState<string | null>(null)
@@ -97,9 +98,11 @@ export function DashSettings({
   return (
     <div className="dash-settings">
       <PageHeader title="Dashes" />
-      <button type="button" className="button subtle device-back" onClick={onBack}>
-        <ChevronLeft /> All dashes
-      </button>
+      {onBack && (
+        <button type="button" className="button subtle device-back" onClick={onBack}>
+          <ChevronLeft /> All dashes
+        </button>
+      )}
       <header className="dash-settings-head">
         <h2 className="dash-settings-title">Settings for every dash</h2>
         <span className="muted">Alerts, the Ack button and the lap review show the same on every dash you drive with.</span>

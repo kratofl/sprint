@@ -16,16 +16,18 @@ use crate::text::TextWeight;
 pub const RADIUS: f64 = 6.0;
 const EDGE: f64 = 1.0;
 
-/// How one widget wears Sprint's look: with or without its frame, with or without its label.
+/// How one widget wears Sprint's look: with or without its frame, with or without its label, and
+/// whether a flat cell puts its label at its side (`side_labelled`; dash widgets only, never a popup's cells).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Look {
     pub framed: bool,
     pub labelled: bool,
+    pub side_label: bool,
 }
 
 impl Look {
-    /// Frame and label: what every widget wears unless it turned one off.
-    pub const SPRINT: Look = Look { framed: true, labelled: true };
+    /// Frame and label above the value: what a popup's cells wear (a dash widget adds `side_label`).
+    pub const SPRINT: Look = Look { framed: true, labelled: true, side_label: false };
 
     /// The edge weight at 800x480: none without a frame.
     fn edge(self) -> f64 {
@@ -143,17 +145,27 @@ const GAP: f64 = 3.0;
 /// How far a box with its label in the top edge steps down, so the label clears the box above.
 const NOTCH_DROP: f64 = 5.0;
 
+/// How much wider than tall a labelled cell is before its label goes to its side (`side_labelled`).
+const SIDE_LABEL_RATIO: f64 = 2.5;
+
+/// The share of a side-labelled cell's inside its label may take at most; a longer one shortens.
+const SIDE_LABEL_SHARE: f64 = 0.4;
+
 /// One widget frame, then `children` in its content box (with the builder's origin at the content
 /// box, and the palette to draw in — ink on a fill): a box with Sprint's radius and edge, its edge
 /// in the text color (white by default, like a works team's wheel), its label cut into the top
 /// edge (small above the value when the widget has no frame), or no label. A condition fills the
 /// box and turns every text in it to the dark ink; a knob's identity color is its label's color,
-/// or a tab before a frameless label. An untitled frame (a bar) keeps a thinner margin.
+/// or a tab before a frameless label. An untitled frame (a bar) keeps a thinner margin. A flat cell
+/// carries its label at its left instead (`side_labelled`).
 pub fn widget_frame(b: &mut Builder, frame: WidgetFrame, children: impl FnOnce(&mut Builder, f64, f64, &DashPaletteColors)) {
     let WidgetFrame { ctx, rect, title, accent, fill, palette } = frame;
     let s = ctx.scale;
     let gap = GAP * s;
     let labelled = title.is_some() && ctx.look.labelled;
+    if let Some(title) = title.filter(|_| labelled && ctx.look.side_label && rect.width - gap * 2.0 >= (rect.height - gap * 2.0) * SIDE_LABEL_RATIO) {
+        return side_labelled(b, frame, title, children);
+    }
     let edge = if ctx.look.framed { (EDGE * s).max(1.0) } else { 0.0 };
     let notched = labelled && edge > 0.0;
     let drop = if notched { NOTCH_DROP * s } else { 0.0 };
@@ -239,6 +251,54 @@ pub fn widget_frame(b: &mut Builder, frame: WidgetFrame, children: impl FnOnce(&
         }
         let top = box_.top + edge + band_height + if labelled { 0.0 } else { 2.0 * s };
         let content = PixelRect::new(inner_left, top, (inner_right - inner_left).max(0.0), (box_.top + box_.height - edge - bottom - top).max(0.0));
+        b.translated(content.left, content.top, |b| children(b, content.width, content.height, &content_palette));
+    });
+}
+
+/// A flat cell (at least `SIDE_LABEL_RATIO` times as wide as tall): its label at its left, vertically
+/// centred, and the value in the rest at the box's full height. A label above the value would take
+/// half of such a cell's height, and a value sized by height stays small however wide the cell is
+/// (Luca, 2026-11-27, option A). The box, its edge and fill are `widget_frame`'s, without the notch.
+fn side_labelled(b: &mut Builder, frame: WidgetFrame, title: &str, children: impl FnOnce(&mut Builder, f64, f64, &DashPaletteColors)) {
+    let WidgetFrame { ctx, rect, accent, fill, palette, .. } = frame;
+    let s = ctx.scale;
+    let gap = GAP * s;
+    let box_ = PixelRect::new(gap, gap, (rect.width - gap * 2.0).max(0.0), (rect.height - gap * 2.0).max(0.0));
+    let edge = if ctx.look.framed { (EDGE * s).max(1.0) } else { 0.0 };
+    let radius = (RADIUS * s).min(box_.width / 2.0).min(box_.height / 2.0);
+    let content_palette = if fill.is_some() { ink_palette(&palette) } else { palette };
+    let pad = 6.0 * s;
+    let (inner_left, inner_right) = (box_.left + edge + pad, box_.left + box_.width - edge - pad);
+    let (inner_top, inner_bottom) = (box_.top + edge + 2.0 * s, box_.top + box_.height - edge - 2.0 * s);
+    let size = 11.0 * s;
+    let room = (inner_right - inner_left) * SIDE_LABEL_SHARE;
+    let title = fitted_title(b, title, size, room);
+    let label_width = b.text_width(title, size, TextWeight::LabelBold).min(room);
+    let color = if fill.is_some() { with_alpha(palette.background, 0.78) } else { accent.unwrap_or(palette.muted) };
+
+    b.translated(rect.left, rect.top, |b| {
+        if let Some(fill) = fill {
+            b.rect(box_, Radii::all(radius), fill);
+        }
+        if edge > 0.0 {
+            b.border(box_, edge, radius, fill.unwrap_or(palette.foreground));
+        }
+        text_line(
+            b,
+            TextLine {
+                text: title,
+                left: inner_left,
+                top: box_.top + box_.height / 2.0,
+                size,
+                color,
+                align: TextAlign::Start,
+                max_width: Some(label_width),
+                weight: TextWeight::LabelBold,
+                sizing: TextSizing::Fit,
+            },
+        );
+        let left = inner_left + label_width + 8.0 * s;
+        let content = PixelRect::new(left, inner_top, (inner_right - left).max(0.0), (inner_bottom - inner_top).max(0.0));
         b.translated(content.left, content.top, |b| children(b, content.width, content.height, &content_palette));
     });
 }
@@ -370,7 +430,7 @@ mod tests {
 
     #[test]
     fn a_widget_without_its_frame_draws_no_edge_and_its_label_small_above_the_value() {
-        let (ops, run, content) = frame_parts(Look { framed: false, labelled: true }, None);
+        let (ops, run, content) = frame_parts(Look { framed: false, labelled: true, side_label: false }, None);
         assert!(!ops.iter().any(|op| matches!(op, DrawOp::Border { .. })), "no edge");
         let run = run.expect("a label");
         assert!(run.baseline < content.top, "above the value: {} vs {}", run.baseline, content.top);
@@ -379,9 +439,18 @@ mod tests {
     #[test]
     fn a_widget_without_its_label_gives_the_value_the_label_s_room() {
         let (_, labelled, with_label) = frame_parts(Look::SPRINT, None);
-        let (_, none, without_label) = frame_parts(Look { framed: true, labelled: false }, None);
+        let (_, none, without_label) = frame_parts(Look { framed: true, labelled: false, side_label: false }, None);
         assert!(labelled.is_some() && none.is_none());
         assert!(without_label.height > with_label.height, "{} vs {}", without_label.height, with_label.height);
+    }
+
+    #[test]
+    fn a_flat_dash_cell_puts_its_label_at_its_left_and_gives_the_value_the_full_height() {
+        let (_, _, above) = frame_parts(Look::SPRINT, None);
+        let (_, run, beside) = frame_parts(Look { side_label: true, ..Look::SPRINT }, None);
+        let label = run.expect("the label");
+        assert!(label.x + label.width(&Fonts::new()) < beside.left, "the label left of the value");
+        assert!(beside.height > above.height + 10.0, "{} vs {}", beside.height, above.height);
     }
 
     #[test]

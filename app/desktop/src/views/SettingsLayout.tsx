@@ -1,14 +1,12 @@
 import { useId } from 'react'
 import type { KeyboardEvent, ReactNode } from 'react'
-import { ChevronRight } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import './SettingsView.css'
 
 /**
  * Two layouts for settings. The grouped list (`SettingsList` + `ListRow`) is the Settings page's:
  * one card per titled group, rows split by hairlines, a label at the left and the control at the
- * right, with an explanation under the group only where it adds something; a group too big for
- * the page folds into an `OpenRow` that opens its own page. The setting cards
+ * right, with an explanation under the group only where it adds something. The setting cards
  * (`SettingsGroup` + `SettingRow`) are the dash designer's Settings section: a card per setting
  * with an icon, a title and a one-line description.
  */
@@ -79,23 +77,6 @@ export function ListRow({
       </div>
       <div className="settings-list-control">{children({ 'aria-labelledby': labelId, 'aria-describedby': detail ? detailId : undefined })}</div>
     </div>
-  )
-}
-
-/**
- * A grouped-list row that opens its own page: the label (and a second line), then where it stands
- * now ("Sprint", "Connected") and a chevron. The whole row is the button.
- */
-export function OpenRow({ label, detail, value, onOpen }: { label: string; detail?: string; value: string; onOpen: () => void }) {
-  return (
-    <button type="button" className="settings-list-row settings-open-row" onClick={onOpen}>
-      <span className="settings-list-text">
-        <span>{label}</span>
-        {detail && <span className="settings-list-detail">{detail}</span>}
-      </span>
-      <span className="settings-open-value">{value}</span>
-      <ChevronRight className="settings-open-chevron" aria-hidden="true" />
-    </button>
   )
 }
 

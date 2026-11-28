@@ -74,6 +74,15 @@ public sealed class DashLayout
     [JsonPropertyName("theme")]
     public DashTheme? Theme { get; set; }
 
+    /// <summary>
+    /// The dash's versions for a device, game, class or car (<see cref="DashVariants"/>): what the
+    /// designer saved while that scope was picked. Part of this dash, never a dash of their own.
+    /// Null when there are none.
+    /// </summary>
+    [JsonPropertyName("variants")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<DashVariant>? Variants { get; set; }
+
     [JsonExtensionData]
     public Dictionary<string, JsonElement>? ExtensionData { get; set; }
 

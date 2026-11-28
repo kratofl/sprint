@@ -34,6 +34,7 @@ public readonly record struct LapTraceSettings(
     float? TractionControlCut,
     float? Abs,
     float? MotorMap,
+    float? MotorMapMax,
     float? Migration,
     float? FrontAntiRollBar,
     float? RearAntiRollBar,
@@ -47,6 +48,7 @@ public readonly record struct LapTraceSettings(
         (LapTraceChannels.TractionControlCut, settings => settings.TractionControlCut),
         (LapTraceChannels.Abs, settings => settings.Abs),
         (LapTraceChannels.MotorMap, settings => settings.MotorMap),
+        (LapTraceChannels.MotorMapMax, settings => settings.MotorMapMax),
         (LapTraceChannels.Migration, settings => settings.Migration),
         (LapTraceChannels.FrontAntiRollBar, settings => settings.FrontAntiRollBar),
         (LapTraceChannels.RearAntiRollBar, settings => settings.RearAntiRollBar),
@@ -60,6 +62,7 @@ public readonly record struct LapTraceSettings(
         Setting(electronics.TractionControlCut, electronics.TractionControlCutMax),
         Setting(electronics.Abs, electronics.AbsMax),
         Setting(electronics.MotorMap, electronics.MotorMapMax),
+        Setting(electronics.MotorMapMax, electronics.MotorMapMax),
         Setting(electronics.Migration, electronics.MigrationMax),
         Setting(electronics.FrontAntiRollBar, electronics.FrontAntiRollBarMax),
         Setting(electronics.RearAntiRollBar, electronics.RearAntiRollBarMax),
@@ -116,6 +119,9 @@ public static class LapTraceChannels
     public const string TractionControlCut = "tcCut";
     public const string Abs = "abs";
     public const string MotorMap = "motorMap";
+
+    /// <summary>The motor map's highest step: how a map reads (R or SC, or the hybrid's kW; the renderer's <c>format_engine_map</c>).</summary>
+    public const string MotorMapMax = "motorMapMax";
     public const string Migration = "migration";
     public const string FrontAntiRollBar = "arbFront";
     public const string RearAntiRollBar = "arbRear";

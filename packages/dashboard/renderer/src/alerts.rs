@@ -3,11 +3,11 @@
 // overheating) and watches levels that need no diff (fuel running low, a finished lap). The
 // `pit_limiter` alert raises no popup: it only turns the pit limiter overlay on or off
 // (`pit_limiter_alert_on`, drawn by `pit_limiter.rs`). Live alerts (launch, pit now, lift now)
-// are up while their condition holds, their content followed every frame. A flag out after its
-// popup stays as a thin bar across the top (`DashAlertTracker::flag_bar`).
+// are up while their condition holds, their content followed every frame. A flag shows as its
+// popup only: nothing stays on the dash once that is down.
 // What it raises stays up for its duration, or until the driver acknowledges it (`untilAck`).
 // There is no internal clock: callers drive time explicitly via `advance_to`, which is what makes
-// expiry deterministic to test. Nothing here blinks: a popup or bar only changes when the frame
+// expiry deterministic to test. Nothing here blinks: a popup only changes when the frame
 // or the clock moves it on.
 //
 // Alerts are app-wide: whoever hands a dash to the renderer stamps the driver's alert settings
@@ -20,7 +20,7 @@
 use serde::{Deserialize, Deserializer};
 use serde_json::{Map, Value};
 
-use crate::format::{Units, format_degrees, format_front_brake_bias, format_setting, js_number_string, to_fixed};
+use crate::format::{Units, format_degrees, format_engine_map, format_front_brake_bias, format_setting, js_number_string, to_fixed};
 use crate::grid::AlertSpan;
 use crate::lap_summary::{LapSector, LapSummary, LapSummaryWatcher};
 use crate::model::{DashAlert, DashLayout, DashTargets, TelemetryFrame};
@@ -172,13 +172,6 @@ pub enum DashAlertBanner {
     Radio(DashRadioBanner),
 }
 
-impl DashAlertBanner {
-    /// True for a popup of the flag alert, which says what the flag bar would.
-    pub fn is_flag_alert(&self) -> bool {
-        matches!(self, DashAlertBanner::Alert(popup) if popup.alert_type == DashAlertType::Flag)
-    }
-}
-
 /// The race engineer's message, up until the driver presses a wheel button or the host takes it
 /// down. The host writes the text ("Box now", "Target lap 2:04.5").
 #[derive(Clone, Debug, PartialEq, Deserialize)]
@@ -241,7 +234,7 @@ impl Default for FuelWarning {
 }
 
 /// The game's lift-and-coast cue (0–255) above which LIFT NOW shows and the Lift & coast widget
-/// lights, unless the `lift_now` alert sets its own `liftPoint` (the point Lovely Dash Pro uses).
+/// lights, unless the `lift_now` alert sets its own `liftPoint`.
 pub const LIFT_POINT: f64 = 220.0;
 pub const LIFT_POINT_MIN: f64 = 0.0;
 pub const LIFT_POINT_MAX: f64 = 255.0;
@@ -348,26 +341,6 @@ pub const PIT_NOW_FROM_LAP_SHARE: f64 = 0.75;
 /// (the app-wide setting, stamped on by the host) is on. A layout without one shows none.
 pub(crate) fn pit_limiter_alert_on(layout: &DashLayout) -> bool {
     layout.alerts.iter().any(|alert| alert.alert_type == "pit_limiter" && js_truthy(alert.fields.get("enabled")))
-}
-
-/// The thin bar across the top of the dash while a flag is out (once its popup is down), in the
-/// flag's colour.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct FlagBar {
-    pub color: Rgba,
-}
-
-/// Whether `layout` shows the flag bar: unless its `flag` alert is turned off. A layout without
-/// one (a dash in its designer) shows it, as the flag overlay it replaced always did.
-fn flag_bar_on(layout: &DashLayout) -> bool {
-    !layout.alerts.iter().any(|alert| alert.alert_type == "flag" && !js_truthy(alert.fields.get("enabled")))
-}
-
-/// The flag bar a still shows for `frame`, which has no history: the highest flag out. A live
-/// output follows its tracker instead (`DashAlertTracker::flag_bar`), where Ack hides it.
-pub fn flag_bar(layout: &DashLayout, frame: &TelemetryFrame, palette: &DashPaletteColors) -> Option<FlagBar> {
-    let flag = FLAGS.into_iter().find(|flag| flag.is_out(frame))?;
-    flag_bar_on(layout).then(|| flag.bar(palette))
 }
 
 /// Fuel gained since `fuel_low` fired that counts as a refuel: the next stint, the alert re-arms.
@@ -480,11 +453,13 @@ impl Knob {
 
     /// The value as the popup prints it. Changes are detected on the printed value, so sensor
     /// noise below the display precision never fires.
-    /// TC and ABS print a setting of 0 as "OFF", as their widgets do.
-    fn shown(self, value: f64) -> String {
+    /// TC and ABS print a setting of 0 as "OFF", and the engine map as the car calls it (R or SC, or
+    /// the hybrid's kW), as their widgets do.
+    fn shown(self, value: f64, max: f64) -> String {
         match self {
             Knob::Bias => format_front_brake_bias(value),
             Knob::Tc | Knob::TcSlip | Knob::TcCut | Knob::Abs => format_setting(value, true),
+            Knob::EngineMap => format_engine_map(value, max),
             _ => js_number_string(value.trunc()),
         }
     }
@@ -579,11 +554,6 @@ impl FlagKind {
             FlagKind::Blue => Rgba::hex(dash_color::BLUE),
             _ => palette.race_control_yellow,
         }
-    }
-
-    /// The bar it stays as while it is out.
-    fn bar(self, palette: &DashPaletteColors) -> FlagBar {
-        FlagBar { color: self.color(palette) }
     }
 }
 
@@ -907,8 +877,8 @@ fn detect(spec: &AlertSpec, now: &Readings, prev: Option<&Readings>, fuel: &mut 
             if knob.only_while_driving() && !(now.driving && prev.driving) {
                 return None;
             }
-            let ((value, _), (before, _)) = (now.knob(knob), prev.knob(knob));
-            let (value, previous) = (knob.shown(value), knob.shown(before));
+            let ((value, max), (before, before_max)) = (now.knob(knob), prev.knob(knob));
+            let (value, previous) = (knob.shown(value, max), knob.shown(before, before_max));
             (value != previous).then(|| Raised::new(knob.title(), value, Some(was(&previous)), spec.knob_color(knob, palette)))
         }),
     }
@@ -1056,11 +1026,6 @@ pub struct DashAlertTracker {
     up: Vec<UpAlert>,
     /// The live alerts whose condition held on the last frame.
     holding: Vec<DashAlertType>,
-    /// The flag out on the last frame (`None` with none out, or the flag alert off), its bar,
-    /// and whether Ack hid it.
-    flag: Option<FlagKind>,
-    flag_bar: Option<FlagBar>,
-    flag_bar_hidden: bool,
 }
 
 impl DashAlertTracker {
@@ -1117,13 +1082,6 @@ impl DashAlertTracker {
             }
         }
 
-        // A changed flag (another one, or none) brings a bar Ack hid back.
-        let flag = FLAGS.into_iter().find(|flag| readings.flag(*flag)).filter(|_| enabled().any(|spec| spec.alert_type == DashAlertType::Flag));
-        if flag != self.flag {
-            self.flag_bar_hidden = false;
-        }
-        (self.flag, self.flag_bar) = (flag, flag.map(|flag| flag.bar(palette)));
-
         self.prev = Some(readings);
         self.current()
     }
@@ -1151,12 +1109,6 @@ impl DashAlertTracker {
         self.up.push(alert);
     }
 
-    /// The bar of the flag out, unless Ack hid it: under the flag's own popup while that is up
-    /// (the dash leaves it out then), across the top after.
-    pub fn flag_bar(&self) -> Option<FlagBar> {
-        self.flag_bar.filter(|_| !self.flag_bar_hidden)
-    }
-
     /// The popup up at the tracker's clock, without feeding a frame: what `evaluate` would
     /// return for a repeat of the last frame. Drops what has run out.
     pub fn current(&mut self) -> Option<&DashAlertBanner> {
@@ -1172,13 +1124,10 @@ impl DashAlertTracker {
         self.up.last().is_some_and(|up| up.until.is_some())
     }
 
-    /// The driver acknowledged: the popup up now goes at once (what was beneath it shows again);
-    /// with none up, the flag bar goes until the flag changes.
+    /// The driver acknowledged: the popup up now goes at once (what was beneath it shows again).
     pub fn acknowledge(&mut self) {
         self.current();
-        if self.up.pop().is_none() && self.flag_bar.is_some() {
-            self.flag_bar_hidden = true;
-        }
+        self.up.pop();
     }
 
     /// Clears change-tracking state (call when the link goes offline so a stale diff doesn't
@@ -1187,9 +1136,6 @@ impl DashAlertTracker {
         self.prev = None;
         self.up.clear();
         self.holding.clear();
-        self.flag = None;
-        self.flag_bar = None;
-        self.flag_bar_hidden = false;
         self.laps.reset();
     }
 }
@@ -1554,37 +1500,6 @@ mod tests {
         assert_eq!(tracker.evaluate(&l, &cue(0.0), &P, None, Units::Metric), None);
         let early = one(json!({ "type": "lift_now", "untilAck": true, "liftPoint": 150 }));
         assert!(DashAlertTracker::default().evaluate(&early, &cue(160.0), &P, None, Units::Metric).is_some(), "the driver's own lift point");
-    }
-
-    #[test]
-    fn a_new_flag_pops_up_then_stays_as_a_bar_that_ack_hides_until_the_flag_changes() {
-        let l = one(json!({ "type": "flag", "durationSeconds": 3 }));
-        let flags = |yellow: bool, sc: bool| driving(|f| (f.flags.yellow, f.flags.safety_car) = (yellow, sc));
-        let yellow = FlagBar { color: P.race_control_yellow };
-        let mut tracker = DashAlertTracker::default();
-        tracker.evaluate(&l, &flags(false, false), &P, None, Units::Metric);
-        assert_eq!(tracker.flag_bar(), None);
-        tracker.advance_to(100.0);
-        assert_eq!(popup(tracker.evaluate(&l, &flags(true, false), &P, None, Units::Metric)).value, "YELLOW");
-        assert_eq!(tracker.flag_bar(), Some(yellow), "the dash leaves it out under the popup");
-        tracker.advance_to(3100.0);
-        assert_eq!(tracker.evaluate(&l, &flags(true, false), &P, None, Units::Metric), None, "the popup is down after 3 s");
-        assert_eq!(tracker.flag_bar(), Some(yellow), "the bar stays while it is out");
-
-        tracker.acknowledge();
-        tracker.evaluate(&l, &flags(true, false), &P, None, Units::Metric);
-        assert_eq!(tracker.flag_bar(), None, "Ack hides it");
-        tracker.evaluate(&l, &flags(true, true), &P, None, Units::Metric);
-        assert_eq!(tracker.flag_bar(), Some(yellow), "a new flag (the safety car) brings it back");
-        tracker.evaluate(&l, &flags(false, false), &P, None, Units::Metric);
-        assert_eq!(tracker.flag_bar(), None, "the flags are in");
-
-        let off = one(json!({ "type": "flag", "enabled": false }));
-        let mut quiet = DashAlertTracker::default();
-        quiet.evaluate(&off, &flags(true, false), &P, None, Units::Metric);
-        assert_eq!(quiet.flag_bar(), None, "the flag alert off shows no bar");
-        assert_eq!(flag_bar(&off, &flags(true, false), &P), None);
-        assert_eq!(flag_bar(&layout(json!([])), &flags(true, false), &P), Some(yellow), "a still of a dash without the alert shows it");
     }
 
     #[test]

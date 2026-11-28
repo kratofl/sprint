@@ -50,8 +50,9 @@ public sealed record DashSceneContent(byte[] Layout, byte[] Settings, byte[] Tar
     /// is the logical size the picture is drawn at; <paramref name="transparent"/> is only written
     /// when set, so a wheel's scene stays what it always was.
     /// </summary>
-    public void WriteScene(Utf8JsonWriter writer, int width, int height, string? pageId, bool idle, bool transparent)
+    public void WriteScene(Utf8JsonWriter writer, int width, int height, string? pageId, IReadOnlyDictionary<string, string> layers, bool idle, bool transparent)
     {
+        ArgumentNullException.ThrowIfNull(layers);
         writer.WriteStartObject();
         writer.WritePropertyName("layout");
         writer.WriteRawValue(this.Layout, skipInputValidation: true);
@@ -60,6 +61,18 @@ public sealed record DashSceneContent(byte[] Layout, byte[] Settings, byte[] Tar
         if (pageId is not null)
         {
             writer.WriteString("pageId", pageId);
+        }
+
+        // The layer the wheel's buttons switched each stack to; the renderer shows the rest as saved.
+        if (layers.Count > 0)
+        {
+            writer.WriteStartObject("layers");
+            foreach ((string stack, string layer) in layers)
+            {
+                writer.WriteString(stack, layer);
+            }
+
+            writer.WriteEndObject();
         }
 
         writer.WriteBoolean("idle", idle);
@@ -158,6 +171,7 @@ public sealed class DashSceneFeed
 {
     private readonly Func<bool> _idle;
     private readonly Func<string?> _pageId;
+    private readonly Func<IReadOnlyDictionary<string, string>> _layers;
     private readonly Func<MultiDialStatus> _dialStatus;
     private readonly Func<string?> _radio;
     private DashSceneContent? _content;
@@ -168,10 +182,14 @@ public sealed class DashSceneFeed
         Func<string?> pageId,
         Func<MultiDialStatus>? dialStatus = null,
         Func<string?>? radio = null,
-        Acknowledgements? acknowledgements = null)
+        Acknowledgements? acknowledgements = null,
+        Func<IReadOnlyDictionary<string, string>>? layers = null)
     {
         this._idle = idle ?? throw new ArgumentNullException(nameof(idle));
         this._pageId = pageId ?? throw new ArgumentNullException(nameof(pageId));
+        // One empty map for good: a new one per read would look like a new scene every frame.
+        IReadOnlyDictionary<string, string> none = new Dictionary<string, string>();
+        this._layers = layers ?? (() => none);
         this._dialStatus = dialStatus ?? (() => MultiDialStatus.Unknown);
         this._radio = radio ?? (() => null);
         this.Acknowledgements = acknowledgements;
@@ -185,6 +203,9 @@ public sealed class DashSceneFeed
     public bool Idle => this._idle();
 
     public string? PageId => this._pageId();
+
+    /// <summary>The layer the wheel's buttons switched each stack to (<see cref="DashPageCycle.LayersOf"/>); a new instance on every switch.</summary>
+    public IReadOnlyDictionary<string, string> Layers => this._layers();
 
     /// <summary>The wheel's multi-dial, or null when it has none.</summary>
     public DashMultiDial? Dial => Volatile.Read(ref this._dial);
@@ -248,7 +269,7 @@ public sealed class DashSceneFeed
 /// </summary>
 public sealed class NativeDashFrameSource : IDashFrameSource
 {
-    private readonly record struct SceneKey(DashSceneContent? Content, bool Idle, string? PageId);
+    private readonly record struct SceneKey(DashSceneContent? Content, bool Idle, string? PageId, IReadOnlyDictionary<string, string> Layers);
 
     /// <summary>The dial as last handed to the renderer; the default is no dial, as a new renderer has.</summary>
     private readonly record struct DialKey(DashMultiDial? Dial, MultiDialStatus? Status);
@@ -323,7 +344,7 @@ public sealed class NativeDashFrameSource : IDashFrameSource
         }
 
         long started = Stopwatch.GetTimestamp();
-        SceneKey scene = new(this._scenes.Content, this._scenes.Idle, this._scenes.PageId);
+        SceneKey scene = new(this._scenes.Content, this._scenes.Idle, this._scenes.PageId, this._scenes.Layers);
         if (scene.Content is null)
         {
             // No dash to show at all (every dash deleted): a dark screen, not a failure.
@@ -430,7 +451,7 @@ public sealed class NativeDashFrameSource : IDashFrameSource
         this._sceneWriter.Reset(this._sceneJson);
         // The scene's size is the picture size the composer takes (the margin's inset), so the
         // picture always lands on the panel pixel for pixel.
-        content.WriteScene(this._sceneWriter, this._composer.PictureWidth, this._composer.PictureHeight, scene.PageId, scene.Idle, transparent: false);
+        content.WriteScene(this._sceneWriter, this._composer.PictureWidth, this._composer.PictureHeight, scene.PageId, scene.Layers, scene.Idle, transparent: false);
         this._sceneWriter.Flush();
 
         try

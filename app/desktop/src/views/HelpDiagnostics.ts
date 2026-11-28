@@ -89,7 +89,7 @@ const SCREEN_STATUS_LABELS: Record<ScreenConnectionState, string> = {
   Connecting: 'Connecting',
   Connected: 'Connected',
   ConfigurationRequired: 'Configuration required',
-  PermissionDenied: 'Permission denied',
+  PermissionDenied: 'USB driver needed',
   DeviceBusy: 'Device busy',
   DeviceConflict: 'Device conflict',
   Unsupported: 'Unsupported',
@@ -124,8 +124,8 @@ const SCREEN_HINTS: Record<ScreenConnectionState, string | null> = {
   Connecting: null,
   Disconnected: 'Not on USB. Plug it in, or turn it off on its device page so Sprint stops looking.',
   ConfigurationRequired: 'Its settings need a look on its device page.',
-  PermissionDenied: 'Windows refused access. Close other apps that use it, then plug it back in.',
-  DeviceBusy: 'Another app is using it. Close that app and Sprint takes over.',
+  PermissionDenied: "It needs the WinUSB driver. Bind it once with SimHub, your screen maker's driver setup or Zadig, then plug it back in.",
+  DeviceBusy: 'Another app, SimHub for example, is using it. Close that app and Sprint takes over.',
   DeviceConflict: 'Two devices claim this screen. Check them on the Devices page.',
   Unsupported: 'This screen can’t be driven on this computer.',
   Faulted: 'It stopped answering. Unplug it and plug it back in.',
@@ -133,12 +133,14 @@ const SCREEN_HINTS: Record<ScreenConnectionState, string | null> = {
 
 /**
  * What to do about a screen that is not connected, for the Checks list. Unplugged (or never
- * reported) always reads as the plain sentence: the host's reason there is a USB match message,
- * which the logs keep. Other problems prefer the host's own reason, else a sentence for the state.
+ * reported) and a missing driver always read as the plain sentence: the host's reason there is a
+ * USB match or WinUSB error, which the logs keep. Other problems prefer the host's own reason, else
+ * a sentence for the state.
  * Null while it is fine or still connecting.
  */
 export const screenHint = (status: ScreenStatus | null): string | null => {
   if (status === null || status.state === 'Disconnected') return SCREEN_HINTS.Disconnected
+  if (status.state === 'PermissionDenied') return SCREEN_HINTS.PermissionDenied
   if (SCREEN_HINTS[status.state] === null) return null
   return status.detail ?? SCREEN_HINTS[status.state]
 }

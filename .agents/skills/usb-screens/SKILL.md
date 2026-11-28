@@ -25,7 +25,7 @@ reference and troubleshooting table: `docs/internals/screen-protocols.md`.
 
 - Native WinUSB only — no libusb, no CGO-era code. Windows-only paths sit behind
   `OperatingSystem.IsWindows()` guards; other platforms report the state without crashing.
-- Open with exclusive access so a competing owner (SimHub, Ref) is reported as `In use`, never
+- Open with exclusive access so a competing owner (SimHub or another screen app) is reported as `In use`, never
   silently shared. Only claim `In use` when a native access error proves it.
 - Never hardcode dimensions. Resolve the native size from the device, and let
   `AdoptDetectedResolutions` write it back so the Devices UI and dash sizing follow.

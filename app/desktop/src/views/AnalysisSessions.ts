@@ -163,3 +163,14 @@ export function sharedStanding(shared: CorpusSession, sessions: readonly CorpusS
   if (gap === 0) return 'Level with you'
   return `${Math.abs(gap).toFixed(3)} s ${gap < 0 ? 'faster' : 'slower'} than you`
 }
+
+/**
+ * What the switcher on a session's name offers (AnalysisSessionPage.tsx): your sessions with the
+ * same car on the same circuit, newest first, the open one among them. A shared lap offers none.
+ */
+export function sessionsAlike(sessions: readonly CorpusSession[], session: CorpusSession): CorpusSession[] {
+  if (session.sharedFrom) return []
+  return sessions
+    .filter((other) => !other.sharedFrom && other.context.carModel === session.context.carModel && other.circuitId === session.circuitId)
+    .sort((a, b) => b.startedAt.localeCompare(a.startedAt))
+}

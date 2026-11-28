@@ -1,7 +1,8 @@
 import type { DashCategoryLists, DashRefitLosses, SprintCommand } from '../bridge'
 import { dashboardWidgetTypes, groupParents, isDashPitLimiterStyle, isDashWidgetGroup, isDashWidgetType, mayOverlap, stackLayers } from '@sprint/dashboard'
 import { DEFAULT_PIT_LIMITER_STYLE, formIndex, holdsSmallest, layoutRect, referenceSize, widgetForms, type WidgetForm } from '@sprint/dashboard'
-import type { DashAlert, DashLayout, DashPitLimiter, DashPage, DashTheme, DashWidget, DashWidgetStyle, DashWidgetType, LayoutGrid } from '@sprint/dashboard'
+import type { DashAlert, DashLayout, DashPitLimiter, DashPage, DashTheme, DashVariant, DashVariantScope, DashWidget, DashWidgetStyle, DashWidgetType, LayoutGrid } from '@sprint/dashboard'
+import { variantLayoutOf } from '../designer/variants'
 import type { TelemetryFrame } from '@sprint/types'
 
 /**
@@ -81,6 +82,23 @@ function parseDashAlert(value: unknown): DashAlert | null {
 const trackSizes = (value: unknown, count: number): number[] | undefined =>
   Array.isArray(value) && value.length === count && value.every((size) => typeof size === 'number' && Number.isFinite(size) && size > 0) ? value : undefined
 
+const VARIANT_LEVELS = ['device', 'game', 'carClass', 'car'] as const
+
+/** A host row's variants that are whole: a scope naming at least one level, content that reads like a dash's. */
+function parseVariants(value: unknown, id: string): DashVariant[] {
+  if (!Array.isArray(value)) return []
+  return value.flatMap((row): DashVariant[] => {
+    if (!isRecord(row) || !isRecord(row.scope) || !isRecord(row.layout)) return []
+    const scope: DashVariantScope = {}
+    for (const level of VARIANT_LEVELS) {
+      const named = row.scope[level]
+      if (typeof named === 'string' && named.trim() !== '') scope[level] = named
+    }
+    const shown = parseDashLayout({ ...row.layout, id })
+    return Object.keys(scope).length > 0 && shown ? [{ scope, layout: variantLayoutOf(shown) }] : []
+  })
+}
+
 /** Parses one raw `dashLayouts[]` row. Returns `null` for a row with no id — never a fabricated dash. */
 export function parseDashLayout(row: Record<string, unknown>): DashLayout | null {
   if (typeof row.id !== 'string' || row.id.length === 0) {
@@ -112,6 +130,8 @@ export function parseDashLayout(row: Record<string, unknown>): DashLayout | null
   // The renderer reads each cell defensively (lapReviewCells); only the shape is checked here.
   if (isRecord(row.lapReview) && Array.isArray(row.lapReview.cells)) layout.lapReview = { cells: row.lapReview.cells.filter((cell): cell is string => typeof cell === 'string') }
   if (isRecord(row.pitLimiter)) layout.pitLimiter = parsePitLimiter(row.pitLimiter)
+  const variants = parseVariants(row.variants, row.id)
+  if (variants.length > 0) layout.variants = variants
 
   return layout
 }

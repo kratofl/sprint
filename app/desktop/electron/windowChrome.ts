@@ -4,7 +4,8 @@
  *
  * Windows and Linux: the Sprint brand look, a solid window in the brand's
  * background colour (no Mica: the brand canvas is the same on every OS).
- * `symbol` colours the overlaid caption buttons.
+ * The overlaid caption buttons sit on the toolbar's colour (`caption`) with
+ * `symbol` as their glyph colour.
  *
  * macOS: the sidebar vibrancy material sits behind the whole window; the
  * renderer paints its content opaque and leaves the sidebar translucent. With
@@ -15,7 +16,7 @@
  * Mac look falls back to its solid colour, like the accessibility setting above.
  */
 export type WindowChrome =
-  | { kind: 'solid'; background: string; symbol: string }
+  | { kind: 'solid'; background: string; caption: string; symbol: string }
   | { kind: 'vibrancy' }
   | { kind: 'opaque'; background: string }
 
@@ -37,7 +38,7 @@ export function windowLook(platform: string): WindowLook {
 /**
  * Chrome colours for the current OS theme. The main process cannot read CSS
  * custom properties, so token values are repeated here: the brand look mirrors
- * `--window` and `--label` in @sprint/tokens/desktop.css, macOS mirrors the
+ * `--window`, `--toolbar` and `--label` in @sprint/tokens/desktop.css, macOS mirrors the
  * solid `--sidebar` in @sprint/tokens/macos.css.
  */
 export function windowChrome(input: ChromeInput): WindowChrome {
@@ -45,5 +46,7 @@ export function windowChrome(input: ChromeInput): WindowChrome {
     if (input.vibrancySupported && !input.reducedTransparency) return { kind: 'vibrancy' }
     return { kind: 'opaque', background: input.dark ? '#28282a' : '#f6f6f8' }
   }
-  return input.dark ? { kind: 'solid', background: '#09090b', symbol: '#ededef' } : { kind: 'solid', background: '#fafafa', symbol: '#18181b' }
+  return input.dark
+    ? { kind: 'solid', background: '#09090b', caption: '#0f0f11', symbol: '#ededef' }
+    : { kind: 'solid', background: '#fafafa', caption: '#ffffff', symbol: '#18181b' }
 }

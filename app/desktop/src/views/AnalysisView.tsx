@@ -4,6 +4,8 @@ import { bridge } from '../bridge'
 import type { LapExportResult, SprintCommand } from '../bridge'
 import type { RuntimeState } from '../shell/runtime'
 import { PageHeader } from '../shell/PageHeader'
+import { useExplorerShown } from '../shell/Explorer'
+import { AnalysisExplorer } from './AnalysisExplorer'
 import { usePageUp } from '../shell/pageUp'
 import { EMPTY_ANALYSIS_STATE, buildAnalysisSelectSession, buildSetRunSetup, parseAnalysisState } from './AnalysisDomain'
 import type { AnalysisState, CorpusLap, LapFileNotice } from './AnalysisDomain'
@@ -14,7 +16,7 @@ import { SharedList } from './AnalysisSessionList'
 import { useLapFileImport } from './LapImportDialog'
 import { LapList, LapTimesCard, SessionHead } from './AnalysisSessionPage'
 import type { LapOrder } from './AnalysisSessionPage'
-import { sessionsIn } from './AnalysisSessions'
+import { sessionsAlike, sessionsIn } from './AnalysisSessions'
 import type { ListScope } from './AnalysisSessions'
 import { MenuLayer, type MenuAnchor } from '../shell/Menu'
 import { buildSetTarget } from './OnTrackDomain'
@@ -23,9 +25,10 @@ import type { LapKey } from './OnTrackLaps'
 import './AnalysisView.css'
 
 /**
- * Analysis: the laps Sprint recorded, imported or was sent, over three pages at the full content
- * width. The list (pick a car, then its sessions by circuit, AnalysisBrowse.tsx; or — Mine |
- * Shared — the laps others shared with you, AnalysisSessionList.tsx), one session (its lap times and its laps by run,
+ * Analysis: the laps Sprint recorded, imported or was sent, over three pages. The explorer lists
+ * one car's sessions by circuit to switch between them (AnalysisExplorer.tsx). The list (pick a
+ * car, then its sessions by circuit, AnalysisBrowse.tsx; or — Mine | Shared, in the explorer or,
+ * while it is hidden, the header — the laps others shared with you, AnalysisSessionList.tsx), one session (its lap times and its laps by run,
  * AnalysisSessionPage.tsx), and one lap on its own (the track map and its channels,
  * AnalysisLapPage.tsx), where comparing with another lap is the driver's choice. Any lap with a
  * line can also become On track's training target or be saved as a lap file.
@@ -77,6 +80,7 @@ export function AnalysisView({
   const [scope, setScope] = useState<ListScope>('mine')
   const [order, setOrder] = useState<LapOrder>('LapNumber')
   const [layout, setLayout] = useStoredLapLayout(parseLapLayout, DEFAULT_LAP_LAYOUT)
+  const explorer = useExplorerShown()
   const [actionError, setActionError] = useState<string | null>(null)
   const [lapFileNotice, setLapFileNotice] = useState<LapFileNotice | null>(null)
   const lapFileImport = useLapFileImport(setLapFileNotice)
@@ -158,7 +162,7 @@ export function AnalysisView({
       <PageHeader title="Analysis">
         {page === 'list' && (
           <>
-            <ScopeSwitch scope={scope} sharedCount={sharedCount} onScope={setScope} />
+            {!explorer && <ScopeSwitch scope={scope} sharedCount={sharedCount} onScope={setScope} />}
             <ImportButton onLapFile={lapFileImport.open} onResults={onImportResults} />
           </>
         )}
@@ -211,13 +215,12 @@ export function AnalysisView({
         />
       ) : session ? (
         <>
-          <SessionHead session={session} onBack={() => openSession(null)} />
+          <SessionHead session={session} alike={sessionsAlike(analysis.sessions, session)} onBack={() => openSession(null)} onOpen={(id) => openSession(id)} />
           <LapTimesCard laps={analysis.laps} runs={analysis.runs} yourBest={yourBest} onOpen={(picked) => setOpenLap(lapKeyOf(picked))} />
           <LapList
             laps={analysis.laps}
             runs={analysis.runs}
-            // Setup files name the model ("Porsche 963"), not the car's name ("Hypercar Porsche").
-            car={session.context.carType ?? session.context.carModel}
+            setupSession={{ carModel: session.context.carModel, circuitId: session.circuitId, circuitName: session.circuitName }}
             order={order}
             onOrder={setOrder}
             onSetRunSetup={(outing, setupId) => void runAction(buildSetRunSetup(outing, setupId))}
@@ -240,6 +243,16 @@ export function AnalysisView({
         <SharedList sessions={analysis.sessions} onOpen={(id) => openSession(id)} />
       )}
       {lapFileImport.dialog}
+      <AnalysisExplorer
+        sessions={analysis.sessions}
+        open={session}
+        scope={scope}
+        onList={(next) => {
+          setScope(next)
+          if (session) openSession(null)
+        }}
+        onOpen={(id) => openSession(id)}
+      />
     </div>
   )
 }

@@ -279,6 +279,20 @@ pub fn format_setting(value: f64, off_at_zero: bool) -> String {
     if off_at_zero && step == 0.0 { "OFF".to_owned() } else { js_number_string(step) }
 }
 
+/// The engine map as the car calls it (Luca, 2026-11-27), from its step and highest step: a car with
+/// two maps (LMP2, LMGT3) runs `R` (race) or `SC` (safety car); a hybrid hypercar's map is its
+/// electric motor's power as the game's setup screen names it, `10 kW` a step on an LMDh (five steps,
+/// 50 kW) and `20 kW` on an LMH (ten steps, 200 kW); any other car its step.
+pub fn format_engine_map(value: f64, max: f64) -> String {
+    let step = value.trunc();
+    match max.trunc() as i64 {
+        1 => if step >= 1.0 { "R" } else { "SC" }.to_owned(),
+        5 => format!("{} kW", js_number_string(step * 10.0)),
+        10 => format!("{} kW", js_number_string(step * 20.0)),
+        _ => js_number_string(step),
+    }
+}
+
 /// Signed liters -> `+0.10` / `-0.05` / `0.00`, for fuel against a target.
 pub fn format_signed_liters(liters: f64) -> String {
     let fixed = to_fixed(liters, 2);
@@ -322,6 +336,15 @@ mod tests {
         assert_eq!(format_setting(4.9, true), "4");
         assert_eq!(format_setting(0.4, true), "OFF");
         assert_eq!(format_setting(0.0, false), "0");
+    }
+
+    #[test]
+    fn the_engine_map_reads_as_the_car_calls_it() {
+        // LMP2 and LMGT3: two maps, race and safety car.
+        assert_eq!((format_engine_map(1.0, 1.0), format_engine_map(0.0, 1.0)), ("R".to_owned(), "SC".to_owned()));
+        // An LMDh's 50 kW in five steps (Porsche 963: map 3 is 30 kW), an LMH's 200 kW in ten (Peugeot 9X8: map 2 is 40 kW).
+        assert_eq!((format_engine_map(3.0, 5.0), format_engine_map(2.0, 10.0)), ("30 kW".to_owned(), "40 kW".to_owned()));
+        assert_eq!(format_engine_map(4.0, 8.0), "4", "any other car its step");
     }
 
     #[test]

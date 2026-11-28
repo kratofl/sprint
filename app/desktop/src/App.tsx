@@ -4,11 +4,12 @@ import { bridge, type AppView, type ResultsImportOffer, type SprintCommand, type
 import type { RuntimeState } from './shell/runtime'
 import { TitleBar } from './shell/TitleBar'
 import { Sidebar } from './shell/Sidebar'
+import { ExplorerContext, ExplorerPane } from './shell/Explorer'
+import { StatusBar } from './shell/StatusBar'
 import { ViewRouter, type NavigationTarget } from './shell/ViewRouter'
 import { CommandPalette } from './shell/CommandPalette'
 import { ToastHost } from './shell/ToastHost'
 import { ImportResultsDialog } from './shell/ImportResultsDialog'
-import { Backdrop } from './shell/Backdrop'
 import { FirstRun } from './firstRun/FirstRun'
 import type { FirstRunActions } from './firstRun/FirstRun'
 import { parseSettings } from './views/SettingsDomain'
@@ -18,13 +19,12 @@ import { Onboarding } from './onboarding/Onboarding'
 import { localCounts } from './onboarding/summary'
 import { useToasts } from './shell/useToasts'
 import { buildShellCommands } from './shell/commands'
-import { primaryNav, viewLabel } from './shell/nav'
+import { hasExplorer, primaryNav, viewLabel } from './shell/nav'
 import { matchShortcut } from './shell/shortcuts'
 import { platform } from './platform'
 import { readSidebarCollapsed } from './shell/settings'
 import { PageUpContext, type PageUp } from './shell/pageUp'
-import { describeBuild } from './shell/build'
-import { parseUpdatesInfo } from './views/SettingsUpdates'
+import { currentBuild } from './shell/BuildMark'
 import { ToolbarActionsContext, type ToolbarActions } from './shell/toolbarActions'
 
 export type { RuntimeState }
@@ -44,9 +44,11 @@ export function App({ mockup }: { mockup?: { view: AppView; content: ReactNode }
   // seed its own selection, and a later plain navigation back to the same
   // page (sidebar, palette, Alt shortcut) never re-forces it.
   const [focus, setFocus] = useState<NavigationTarget | null>(null)
-  // Unknown until the persisted setting loads, so the shell never paints the
-  // wrong sidebar width and then snaps (old app: `SidebarCollapsed` restore).
+  // Whether the sidebar is folded (the persisted `sidebarCollapsed` setting). Unknown until it
+  // loads, so the shell never paints the wrong width and then snaps.
   const [collapsed, setCollapsed] = useState<boolean | null>(null)
+  // The explorer's body, which the page's list renders into (shell/Explorer.tsx); null while there is none.
+  const [explorerBody, setExplorerBody] = useState<HTMLElement | null>(null)
   const [runtime, setRuntime] = useState<RuntimeState>({ kind: 'loading' })
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [accountOpen, setAccountOpen] = useState(false)
@@ -112,24 +114,6 @@ export function App({ mockup }: { mockup?: { view: AppView; content: ReactNode }
       return next
     })
   }, [send])
-
-  // Pressing a sidebar toggle hands keyboard focus to the toggle that is visible
-  // afterwards: on macOS hiding the sidebar hides the pressed button, and the
-  // toolbar's "Show sidebar" unmounts once pressed, so focus would fall to <body>.
-  // The toolbar button only exists while the Mac sidebar is hidden; otherwise (and
-  // always on the brand look's rail) focus stays on the sidebar's own toggle.
-  const sidebarToggleRef = useRef<HTMLButtonElement>(null)
-  const showSidebarRef = useRef<HTMLButtonElement>(null)
-  const refocusSidebarToggle = useRef(false)
-  const toggleSidebarFromButton = useCallback(() => {
-    refocusSidebarToggle.current = true
-    toggleSidebar()
-  }, [toggleSidebar])
-  useEffect(() => {
-    if (!refocusSidebarToggle.current) return
-    refocusSidebarToggle.current = false
-    ;(showSidebarRef.current ?? sidebarToggleRef.current)?.focus()
-  }, [collapsed])
 
   // The main process checks at launch and every hour after; an update on offer shows as the
   // toolbar's update button, not a toast. A check the driver asked for from the palette also
@@ -234,7 +218,7 @@ export function App({ mockup }: { mockup?: { view: AppView; content: ReactNode }
   useColourTheme(colours.theme)
   // Off (the shipped default), Sprint web shows nowhere: no setup, no account row, no Settings group.
   const sprintWeb = runtime.kind === 'ready' && runtime.sprint.features.sprintWeb
-  const build = describeBuild(import.meta.env.DEV, __SPRINT_DEV_BRANCH__, runtime.kind === 'ready' ? parseUpdatesInfo(runtime.sprint)?.version ?? null : null)
+  const build = currentBuild(runtime.kind === 'ready' ? runtime.sprint : null)
 
   // Asked once, on the first state that says the setup was never answered.
   useEffect(() => {
@@ -279,9 +263,7 @@ export function App({ mockup }: { mockup?: { view: AppView; content: ReactNode }
     [actionsSlot, actionsRoom],
   )
   const openDiagnostics = useCallback(() => navigate('Help'), [navigate])
-
-  // The light trails behind the shell on Windows/Linux; macOS keeps its native vibrancy.
-  const trails = platform !== 'mac'
+  const openDevices = useCallback(() => navigate('Devices'), [navigate])
   const firstRunActions = useMemo<FirstRunActions>(
     () => ({ send, pickFolder: bridge.pickFolder, scan: () => bridge.resultsImportScan(false), runImport: bridge.resultsImport, decline: bridge.resultsImportDecline }),
     [send],
@@ -301,36 +283,31 @@ export function App({ mockup }: { mockup?: { view: AppView; content: ReactNode }
     )
   }
 
-  const appClassName = ['app', collapsed === null ? 'pending' : 'ready', collapsed ? 'collapsed' : '', trails ? 'with-trails' : ''].filter(Boolean).join(' ')
+  const explorerShown = hasExplorer(view)
 
   return (
-    <div className={appClassName}>
-      {trails ? <Backdrop tone="ambient" /> : null}
+    <div className={['app', collapsed === null ? 'pending' : 'ready', collapsed ? 'collapsed' : ''].filter(Boolean).join(' ')}>
+      <Sidebar
+        view={view}
+        build={build}
+        collapsed={collapsed ?? false}
+        onToggle={toggleSidebar}
+        onSelect={navigate}
+        updateAvailable={updateStatus.kind === 'available'}
+      />
+      {explorerShown ? <ExplorerPane view={view} bodyRef={setExplorerBody} /> : null}
       <TitleBar
         onOpenPalette={() => setPaletteOpen(true)}
         title={viewLabel(view)}
-        sidebarCollapsed={collapsed ?? false}
-        onToggleSidebar={toggleSidebarFromButton}
-        showSidebarRef={showSidebarRef}
+        // On a Mac a folded sidebar is hidden entirely, so the toolbar offers it back.
+        onShowSidebar={platform === 'mac' && collapsed ? toggleSidebar : null}
         onActionsSlot={setActionsSlot}
         onActionsRoom={setActionsRoom}
         update={updateStatus}
         onInstallUpdate={() => void bridge.installUpdate()}
       />
-      <div className="app-frame">
-        <Sidebar
-          view={view}
-          collapsed={collapsed ?? false}
-          onToggleCollapsed={toggleSidebarFromButton}
-          toggleRef={sidebarToggleRef}
-          onSelect={navigate}
-          accountRow={sprintWeb ? { account, onOpen: () => (account?.signedIn ? setAccountOpen(true) : openSetup()) } : null}
-          updateAvailable={updateStatus.kind === 'available'}
-          build={build}
-          telemetry={runtime.kind === 'ready' ? runtime.sprint.telemetry : null}
-          onOpenDiagnostics={openDiagnostics}
-        />
-        <main className="content">
+      <main className="content">
+        <ExplorerContext value={explorerShown ? explorerBody : null}>
           <ToolbarActionsContext value={toolbarActions}>
             <PageUpContext value={setUp}>
               <DashUnitsContext value={units}>
@@ -354,8 +331,15 @@ export function App({ mockup }: { mockup?: { view: AppView; content: ReactNode }
               </DashUnitsContext>
             </PageUpContext>
           </ToolbarActionsContext>
-        </main>
-      </div>
+        </ExplorerContext>
+      </main>
+      <StatusBar
+        sprint={runtime.kind === 'ready' ? runtime.sprint : null}
+        build={build}
+        account={sprintWeb ? { account, onOpen: () => (account?.signedIn ? setAccountOpen(true) : openSetup()) } : null}
+        onOpenDiagnostics={openDiagnostics}
+        onOpenDevices={openDevices}
+      />
       {paletteOpen ? <CommandPalette commands={commands} onClose={() => setPaletteOpen(false)} /> : null}
       {importDialog ? (
         <ImportResultsDialog

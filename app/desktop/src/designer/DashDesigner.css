@@ -1,20 +1,29 @@
-/* The dash designer window (DashDesigner.tsx): a stage filling the window, the live dash in a
-   device-style bezel in its middle, and the controls on small floating glass layers around it —
-   the name pill, the section tabs and undo/redo along the top, a panel on the left, one on the
-   right and a dock at the bottom (each section fills them: Layout's widget sidebar, inspector and
-   page dock; Alerts' and Theme's own panels). Settings is a calm column instead. Glass only on those
-   layers (docs/design/DESIGN.md); the stage and bezel are flat. The dash itself is hardware
-   output and keeps its own colours; only the overlays drawn on it use brand/status. */
+/* The dash designer window (DashDesigner.tsx), in the main window's tool layout: the sections as a
+   rail on the left, the title bar carrying where the dash is used (the scope) with the view and
+   undo/redo at its right end, the stage below it and a status bar along the foot. In the stage the
+   panes are docked: the left one (the Layout section's page picker over the widget library), the
+   right one (the inspector), the dash in a device-style bezel between them. Chrome (rail, title
+   bar, panes, status bar) sits on --window, the stage on --surface, hairlines between them. Glass
+   only on the small layer over the canvas (the selection bar). The dash itself is hardware output
+   and keeps its own colours; only the overlays drawn on it use brand/status. */
 
 .designer {
   position: fixed;
   inset: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-rows: 48px minmax(0, 1fr) 24px;
+  grid-template-areas:
+    "rail toolbar"
+    "rail stage"
+    "status status";
   /* clip, not hidden: focusing something near an edge must never scroll the stage. */
   overflow: clip;
   background: var(--window);
+  color: var(--label);
 }
 
-/* The frameless window is dragged by the band along its top, around the floating layers. */
+/* A deleted dash's window keeps a band to drag it by. */
 .designer-dragband {
   position: absolute;
   top: 0;
@@ -24,11 +33,37 @@
   -webkit-app-region: drag;
 }
 
-.designer-stage {
-  position: absolute;
-  inset: 0;
+/* The title bar: the scope, then the view group and undo/redo, left of the OS caption buttons (the
+   titlebar-area env() values describe the space left for the page, as in the main window's
+   toolbar; outside Electron they fall back to a 12px inset). It drags the window; its controls opt
+   back out. */
+.designer-titlebar {
+  grid-area: toolbar;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 0 calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw) + 12px) 0 8px;
+  border-bottom: 1px solid var(--layer-stroke);
+  background: var(--toolbar);
+  user-select: none;
+  -webkit-app-region: drag;
 }
 
+.designer-titlebar :is(button, select, label, input) {
+  -webkit-app-region: no-drag;
+}
+
+.designer-stage {
+  grid-area: stage;
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  overflow: clip;
+  background: var(--surface);
+}
+
+/* The small layer over the canvas (the selection bar). */
 .designer-glass {
   position: absolute;
   z-index: 2;
@@ -37,7 +72,6 @@
   background: var(--acrylic);
   box-shadow: var(--shadow-flyout);
   backdrop-filter: blur(14px);
-  -webkit-app-region: no-drag;
 }
 
 /* Reduced transparency: solid surface, same shape. */
@@ -46,6 +80,15 @@
     background: var(--surface);
     backdrop-filter: none;
   }
+}
+
+/* A docked pane: full height of the stage, chrome-coloured, a hairline toward the dash. */
+.designer-pane {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 2;
+  background: var(--window);
 }
 
 .designer-row-label {
@@ -85,14 +128,14 @@
 .designer-group-title {
   margin: 0;
   color: var(--label-secondary);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
   line-height: 16px;
 }
 
 .designer-notice {
   position: absolute;
-  top: 56px;
+  top: 12px;
   left: 50%;
   z-index: 3;
   width: max-content;
@@ -107,135 +150,29 @@
   place-content: center;
 }
 
-/* ── Top: name pill, section tabs, undo / redo ───────────────────────── */
+/* ── Title bar's end: the view group, then undo / redo ──────────────────── */
 
-/* The 48px title band, level with the OS caption buttons and left of them (the titlebar-area env()
-   values describe the space left for the page, as in the main window's toolbar; outside Electron
-   they fall back to a 12px inset). The tabs stay centred while there is room; when the trailing
-   groups need it they move left rather than overlap. */
-.designer-toolbar {
-  position: absolute;
-  top: 6px;
-  right: calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw) + 12px);
-  left: 12px;
-  z-index: 2;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(max-content, 1fr);
-  gap: 12px;
-  align-items: center;
-  pointer-events: none;
-}
-
-.designer-toolbar > *,
-.designer-trail > * {
-  pointer-events: auto;
-}
-
-.designer-toolbar .designer-glass {
-  position: static;
-}
-
-.designer-pill,
-.designer-tabs,
-.designer-tools,
-.designer-view-tools {
-  display: flex;
-  align-items: center;
-  height: 36px;
-}
-
-.designer-pill {
-  justify-self: start;
-  gap: 8px;
-  max-width: 100%;
-  padding: 0 14px;
-}
-
-.designer-pill-name {
-  min-width: 0;
-  overflow: hidden;
-  font-weight: 600;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.designer-pill-status {
-  flex: none;
-  color: var(--label-secondary);
-  font-size: 12px;
-}
-
-.designer-pill-retry {
-  flex: none;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: var(--danger-text);
-  font: inherit;
-  font-size: 12px;
-}
-
-.designer-pill-retry:hover {
-  text-decoration: underline;
-}
-
-.designer-tabs {
-  gap: 2px;
-  padding: 0 3px;
-}
-
-/* The two section groups side by side: what the wheel shows, then how the dash looks. */
-.designer-tab-groups {
-  display: flex;
-  justify-self: center;
-  gap: 8px;
-}
-
-/* Icon and label: the designer's one exception to text-only tabs (DESIGN.md). */
-.designer-tab {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 28px;
-  padding: 0 12px;
-  border: 0;
-  border-radius: var(--radius-control);
-  background: transparent;
-  color: var(--label-secondary);
-  font: inherit;
-}
-
-.designer-tab:hover {
-  background: var(--subtle-hover);
-  color: var(--label);
-}
-
-.designer-tab[aria-selected='true'] {
-  background: var(--subtle-selected);
-  color: var(--label);
-  font-weight: 600;
-}
-
-/* Trailing: the view group (Layout only), then undo / redo, split by space. */
 .designer-trail {
   display: flex;
-  justify-self: end;
-  gap: 8px;
-  pointer-events: none;
+  flex: none;
+  align-items: center;
+  gap: 12px;
+  margin-left: auto;
 }
 
 .designer-tools,
 .designer-view-tools {
+  display: flex;
+  align-items: center;
   gap: 2px;
-  padding: 0 3px;
 }
 
 .designer-view-tools .segmented {
-  margin: 0 2px;
+  margin: 0 4px 0 0;
 }
 
 .designer-view-caption {
-  padding: 0 6px 0 9px;
+  padding: 0 6px 0 0;
   color: var(--label-secondary);
   font-size: 12px;
 }
@@ -247,24 +184,31 @@
   }
 }
 
+/* Status bar: a failed save in the danger colour. */
+.statusbar .designer-save-retry {
+  color: var(--danger-text);
+}
+
 /* ── Layout: sidebar, bezel, inspector, dock ──────────────────────────── */
 
 .designer-sidebar {
-  top: 108px;
-  bottom: 76px;
-  left: 12px;
+  left: 0;
   display: flex;
   flex-direction: column;
-  width: 250px;
-  padding: 8px 6px;
+  width: 280px;
+  padding: 8px;
+  border-right: 1px solid var(--layer-stroke);
 }
 
 .designer-sidebar-head {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 0 2px 6px 6px;
-  border-bottom: 1px solid var(--divider);
+  padding: 4px 2px 4px 8px;
+  color: var(--label-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 16px;
 }
 
 .designer-sidebar-page {
@@ -395,17 +339,16 @@ svg.designer-node-stack {
 
 .designer-group > .button.small {
   align-self: flex-start;
-  margin-left: -8px;
 }
 
 
-/* The box the bezel is fitted into: the stage between the floating layers. */
+/* The box the bezel is fitted into: the stage between the panes. */
 .designer-fit {
   position: absolute;
-  top: 108px;
-  right: 304px;
-  bottom: 76px;
-  left: 274px;
+  top: 24px;
+  right: 324px;
+  bottom: 24px;
+  left: 304px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -440,18 +383,24 @@ svg.designer-node-stack {
 }
 
 .designer-inspector {
-  top: 108px;
-  right: 12px;
+  right: 0;
   display: flex;
   flex-direction: column;
   gap: 16px;
-  width: 280px;
-  max-height: calc(100% - 184px);
-  padding: 14px;
+  width: 300px;
+  padding: 12px 16px;
   overflow-y: auto;
+  border-left: 1px solid var(--layer-stroke);
 }
 
-/* The page panel (PageInspector.tsx). */
+/* The page panel (PageInspector.tsx): the name with its pen, which page it is, and at the foot
+   Clear and Delete. */
+.designer-page-head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
 .designer-page-count {
   font-size: 12px;
 }
@@ -476,6 +425,77 @@ svg.designer-node-stack {
 .designer-switch-hint {
   font-size: 12px;
   line-height: 16px;
+}
+
+/* A hairline between the selection bar's parts. */
+.designer-dock-sep {
+  width: 1px;
+  height: 20px;
+  flex: none;
+  margin: 0 4px;
+  background: var(--divider);
+}
+
+.designer-page-actions {
+  margin-top: auto;
+  padding-top: 12px;
+  border-top: 1px solid var(--divider);
+}
+
+/* ── Page picker (PagePicker.tsx): the left pane's head ─────────────────── */
+
+.designer-page-picker {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding-bottom: 8px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--divider);
+}
+
+.designer-page-picker .car-picker {
+  flex: 1;
+  min-width: 0;
+}
+
+.designer-page-picker-icon {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  color: var(--label-secondary);
+}
+
+/* The page list it opens: every page, the idle one first, each with Move up / Move down. */
+.designer-page-list {
+  max-height: min(420px, calc(100vh - 120px));
+  padding: 4px;
+  overflow-y: auto;
+}
+
+.designer-page-row {
+  gap: 2px;
+  padding: 0 4px 0 0;
+}
+
+.designer-page-row-pick {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 4px 8px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+
+.designer-page-row-icon {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  color: var(--label-secondary);
 }
 
 .designer-chips {
@@ -601,12 +621,11 @@ svg.designer-node-stack {
 }
 
 .designer-inspector p.field-hint {
-  margin: -8px 0 0;
+  margin: -4px 0 0;
 }
 
 .designer-inspector-delete {
   align-self: flex-start;
-  margin-left: -8px;
 }
 
 .designer-geometry {
@@ -619,7 +638,7 @@ svg.designer-node-stack {
   display: flex;
   align-items: center;
   gap: 2px;
-  height: 28px;
+  height: 24px;
   padding: 0 2px;
   border: 1px solid var(--input-stroke);
   border-radius: var(--radius-control);
@@ -636,8 +655,8 @@ svg.designer-node-stack {
 .designer-spin {
   display: grid;
   place-items: center;
-  width: 22px;
-  height: 22px;
+  width: 20px;
+  height: 20px;
   flex: none;
   padding: 0;
   border: 0;
@@ -693,79 +712,11 @@ svg.designer-node-stack {
   outline-offset: 2px;
 }
 
-.designer-dock {
-  bottom: 12px;
-  left: 50%;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  max-width: calc(100% - 24px);
-  padding: 5px;
-  transform: translateX(-50%);
-}
-
-.designer-pages {
-  display: flex;
-  gap: 2px;
-  min-width: 0;
-  overflow-x: auto;
-}
-
-.designer-page {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 28px;
-  flex: none;
-  padding: 0 12px;
-  border: 0;
-  border-radius: var(--radius-control);
-  background: transparent;
-  color: var(--label-secondary);
-  font: inherit;
-  white-space: nowrap;
-}
-
-.designer-page:hover {
-  background: var(--subtle-hover);
-  color: var(--label);
-}
-
-.designer-page[aria-selected='true'] {
-  background: var(--subtle-selected);
-  color: var(--label);
-  font-weight: 600;
-}
-
-/* A page the wheel skips in the dock's "Pages in" session or mode. */
-.designer-page.is-skipped {
-  color: var(--label-disabled);
-  text-decoration: line-through;
-}
-
-.designer-cycle-preview select {
-  font-weight: 600;
-}
-
-.designer-page-rename {
-  width: 128px;
-  height: 28px;
-  flex: none;
-}
-
-.designer-dock-sep {
-  width: 1px;
-  height: 20px;
-  flex: none;
-  margin: 0 4px;
-  background: var(--divider);
-}
-
 .designer-preview {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  height: 28px;
+  height: 24px;
   flex: none;
   padding-left: 8px;
   border-radius: var(--radius-control);
@@ -777,7 +728,7 @@ svg.designer-node-stack {
 }
 
 .designer-preview select {
-  height: 28px;
+  height: 24px;
   padding: 0 6px 0 2px;
   border: 0;
   background: transparent;
@@ -795,7 +746,7 @@ svg.designer-node-stack {
   position: relative;
   display: flex;
   align-items: center;
-  margin: 8px 2px 0;
+  margin: 2px 2px 0;
   color: var(--label-tertiary);
 }
 
@@ -828,7 +779,7 @@ svg.designer-node-stack {
   display: flex;
   align-items: center;
   gap: 8px;
-  height: 28px;
+  height: 26px;
   flex: none;
   padding: 0 8px;
   border: 0;
@@ -1446,22 +1397,14 @@ svg.designer-node-stack {
   border-top: 1px solid var(--divider);
 }
 
-/* The scope strip: Device › Game › Class › Car → Dash, under the toolbar. Centred while it fits; in a
-   narrow window the pickers shrink (ellipsis) so the save status stays inside the window. */
+/* The scope in the title bar: Device › Game › Class › Car. In a narrow window the pickers shrink
+   (ellipsis) before the view group and undo/redo do. */
 .designer-scope {
-  position: absolute;
-  top: 54px;
-  right: 12px;
-  left: 12px;
-  z-index: 2;
   display: flex;
+  flex: 0 1 auto;
   align-items: center;
   gap: 2px;
-  width: max-content;
-  max-width: calc(100% - 24px);
-  height: 40px;
-  margin: 0 auto;
-  padding: 0 6px;
+  min-width: 0;
   white-space: nowrap;
 }
 
@@ -1471,7 +1414,7 @@ svg.designer-node-stack {
   flex: 0 1 auto;
   align-items: center;
   min-width: 0;
-  height: 28px;
+  height: 24px;
   border-radius: var(--radius-control);
   color: var(--label);
 }
@@ -1487,7 +1430,7 @@ svg.designer-node-stack {
 }
 
 .designer-scope-pick > svg:first-child {
-  left: 10px;
+  left: 8px;
 }
 
 .designer-scope-pick > svg:last-child {
@@ -1495,8 +1438,8 @@ svg.designer-node-stack {
 }
 
 .designer-scope-pick select {
-  height: 28px;
-  padding: 0 28px 0 32px;
+  height: 24px;
+  padding: 0 24px 0 28px;
   border: 0;
   border-radius: var(--radius-control);
   background: transparent;
@@ -1509,29 +1452,15 @@ svg.designer-node-stack {
   cursor: pointer;
 }
 
-.designer-scope-pick.is-dash {
-  background: var(--subtle-selected);
-  font-weight: 600;
-}
-
-.designer-scope-pick.is-dash select {
-  padding-left: 10px;
-}
-
 .designer-scope-pick select option {
   background: var(--layer);
   color: var(--label);
   font-weight: 400;
 }
 
-.designer-scope-sep,
-.designer-scope-uses {
+.designer-scope-sep {
   flex: none;
   color: var(--label-tertiary);
-}
-
-.designer-scope-uses {
-  margin: 0 4px;
 }
 
 .designer-scope-note {
@@ -1539,27 +1468,10 @@ svg.designer-node-stack {
   font-size: 12px;
 }
 
-.designer-scope-rule {
-  flex: none;
-  width: 1px;
-  height: 20px;
-  margin: 0 8px;
-  background: var(--divider);
-}
-
 .designer-scope-used {
-  padding: 0 8px;
-  color: var(--label-secondary);
-  font-size: 12px;
   text-decoration: underline dotted;
   text-underline-offset: 3px;
   cursor: default;
-}
-
-.designer-scope .designer-pill-status,
-.designer-scope .designer-pill-retry {
-  padding: 0 8px 0 4px;
-  font-size: 12px;
 }
 
 /* Resizing a widget: its old size dashed, and a tag naming the form the new size draws. */

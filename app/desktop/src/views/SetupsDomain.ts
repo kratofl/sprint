@@ -23,6 +23,8 @@ export type SetupItem = {
   /** The layout within the circuit ("National"), or the track's own name when the host's catalog does not know it. */
   layout: string
   car: string
+  /** The car as laps are filed under it ("LMP2 ELMS", "Hypercar BMW"; host `SetupListItem.CarName`): a session's `carModel`. */
+  carName: string
   carClass: string | null
   /** The season the file was saved for: "WEC 2025", "ELMS 2025". */
   season: string | null
@@ -109,6 +111,7 @@ const parseItem = (value: unknown): SetupItem | null => {
     circuitName: text(value.circuitName) || trackName,
     layout: text(value.layout) || trackName,
     car: text(value.car) ?? 'Unknown car',
+    carName: text(value.carName) ?? text(value.car) ?? 'Unknown car',
     carClass: text(value.carClass),
     season: text(value.season),
     savedAt,
@@ -518,6 +521,13 @@ export function sameCar(setupCar: string, car: string | null): boolean {
   const b = squash(car)
   return a.length > 0 && b.length > 0 && (a.includes(b) || b.includes(a))
 }
+
+/**
+ * The setups a session can have been driven with: for its car (as laps are filed, "LMP2 ELMS") at
+ * its circuit, whatever the layout.
+ */
+export const setupsForSession = (setups: readonly SetupItem[], carModel: string, circuitId: string): SetupItem[] =>
+  setups.filter((setup) => setup.carName.toLowerCase() === carModel.toLowerCase() && setup.circuitId === circuitId)
 
 /** Setups matching every word of `query` in their name, car or track: `car`'s first, then newest first; at most `limit`. */
 export function searchSetups(setups: readonly SetupItem[], query: string, car: string | null, limit = 100): SetupItem[] {

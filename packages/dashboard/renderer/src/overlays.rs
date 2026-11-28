@@ -10,7 +10,7 @@
 // box with a border every child sits the border width further in. The TypeScript lays children
 // out from the box's full width anyway; that offset is reproduced, not corrected.
 
-use crate::alerts::{AlertPlacement, AlertSize, DashAlertBanner, DashAlertPopup, DashRadioBanner, FlagBar};
+use crate::alerts::{AlertPlacement, AlertSize, DashAlertBanner, DashAlertPopup, DashRadioBanner};
 use crate::chrome::{ChromeContext, WidgetFrame, widget_frame};
 use crate::draw::{Builder, Radii};
 use crate::format::{Units, format_delta, format_lap, format_speed, js_number_string, to_fixed};
@@ -35,17 +35,6 @@ fn border_width(width: f64) -> f64 {
         width.floor()
     }
 }
-
-/// The flag bar: a thin band in the flag's colour across the very top of the dash, no lettering
-/// (its popup named the flag). Thin enough to sit above a zoned dash's top bar, so the shift
-/// lights stay in view for as long as the flag is out.
-pub fn flag_bar(b: &mut Builder, bar: FlagBar, width: f64, height: f64) {
-    let bar_height = (FLAG_BAR_PX * (width / 800.0).min(height / 480.0)).max(3.0);
-    b.rect(PixelRect::new(0.0, 0.0, width, bar_height), Radii::ZERO, bar.color);
-}
-
-/// The flag bar's height at the 800x480 the dash is authored at; it scales with the screen.
-const FLAG_BAR_PX: f64 = 8.0;
 
 /// A strip is a band this share of the dash tall, across its middle.
 const STRIP_SHARE: f64 = 1.0 / 3.0;
@@ -106,7 +95,7 @@ pub fn alert_banner(
     }
 }
 
-/// A popup's lines: a small title and detail on the left, the value big on the right.
+/// A popup's lines: a small title on top, the value big in the middle, the detail under it.
 struct PopupText<'a> {
     title: &'a str,
     value: &'a str,
@@ -121,61 +110,49 @@ struct PopupLook {
     edge: Option<Rgba>,
 }
 
-/// The type scale of a popup's lines, as shares of its box's height.
+/// The type scale of a popup's lines, as shares of its box's height: each line's size and centre line.
 struct PopupType {
     title_size: f64,
-    /// The title's centre line over a detail, and alone.
     title_top: f64,
-    title_top_alone: f64,
+    value_size: f64,
+    /// The value's centre line over a detail, and alone (it then sits a little lower, centred under the title).
+    value_top: f64,
+    value_top_alone: f64,
     detail_size: f64,
     detail_top: f64,
-    value_size: f64,
 }
 
-const FULL_TYPE: PopupType = PopupType { title_size: 0.27, title_top: 0.46, title_top_alone: 0.5, detail_size: 0.05, detail_top: 0.66, value_size: 0.78 };
+const FULL_TYPE: PopupType =
+    PopupType { title_size: 0.11, title_top: 0.15, value_size: 0.52, value_top: 0.5, value_top_alone: 0.55, detail_size: 0.08, detail_top: 0.85 };
 
 /// The strip's box is short, so its title and detail take a bigger share of it to stay readable.
-const STRIP_TYPE: PopupType = PopupType { title_size: 0.34, title_top: 0.36, title_top_alone: 0.5, detail_size: 0.15, detail_top: 0.74, value_size: 0.8 };
+const STRIP_TYPE: PopupType =
+    PopupType { title_size: 0.17, title_top: 0.15, value_size: 0.46, value_top: 0.52, value_top_alone: 0.57, detail_size: 0.12, detail_top: 0.87 };
 
-/// The title and detail from the left pad, the value up to 55% of the width ending at the right
-/// pad, its size from its length (at least 2 characters), so the driver reads which alert it is
-/// before the number. A long value (a word: "OVERHEAT") comes out smaller, so the title stays
-/// under 70% of the value's size and ends a pad short of where the value is estimated to start:
-/// the title never outgrows or runs into the value. Laid out in a `width` x `height` box.
+/// Three lines, centred (Luca, 2026-11-27): what it is small on top, the setting it is now huge in
+/// the middle, what it was smaller under it, so the eye lands on the value. A long value (a word:
+/// "OVERHEAT") comes out smaller so it stays inside the box. Laid out in a `width` x `height` box.
 fn popup_lines(b: &mut Builder, text: &PopupText, ink: Rgba, width: f64, height: f64, pad: f64, scale: &PopupType) {
-    let value_width = width * 0.55;
+    let room = width - pad * 2.0;
     let value_chars = text.value.encode_utf16().count().max(2) as f64;
-    let value_size = (height * scale.value_size).min(value_width / (value_chars * 0.56));
-    let title_width = (width - value_chars * value_size * 0.56 - pad * 3.0).min(width - value_width - pad * 2.0);
-    let title_top = if text.detail.is_some() { scale.title_top } else { scale.title_top_alone };
+    let value_size = (height * scale.value_size).min(room / (value_chars * 0.58));
     let line = TextLine {
         text: text.title,
-        left: pad,
-        top: height * title_top,
-        size: (height * scale.title_size).min(value_size * 0.7),
+        left: width / 2.0,
+        top: height * scale.title_top,
+        size: height * scale.title_size,
         color: ink,
-        align: TextAlign::Start,
-        max_width: Some(title_width),
-        weight: TextWeight::Value,
+        align: TextAlign::Center,
+        max_width: Some(room),
+        weight: TextWeight::LabelBold,
         sizing: TextSizing::Fit,
     };
     text_line(b, line);
+    let value_top = if text.detail.is_some() { scale.value_top } else { scale.value_top_alone };
+    text_line(b, TextLine { text: text.value, top: height * value_top, size: value_size, weight: TextWeight::Value, sizing: TextSizing::Stable, ..line });
     if let Some(detail) = text.detail {
-        text_line(b, TextLine { text: detail, top: height * scale.detail_top, size: height * scale.detail_size, weight: TextWeight::LabelBold, ..line });
+        text_line(b, TextLine { text: detail, top: height * scale.detail_top, size: height * scale.detail_size, ..line });
     }
-    text_line(
-        b,
-        TextLine {
-            text: text.value,
-            left: width - pad,
-            top: height / 2.0,
-            size: value_size,
-            align: TextAlign::End,
-            max_width: Some(value_width),
-            sizing: TextSizing::Stable,
-            ..line
-        },
-    );
 }
 
 /// A popup as a band a third of the dash tall across its middle (`STRIP_SHARE`), the dash still
@@ -294,8 +271,8 @@ fn centered_alert_popup(b: &mut Builder, banner: &DashAlertPopup, span: AlertSpa
     });
 }
 
-/// A popup filling the whole dash with the alert's color: its title and detail on the left, the
-/// value huge on the right. Inverted, it turns dark with the color on the text and an edge in
+/// A popup filling the whole dash with the alert's color: its title small on top, the value huge in
+/// the middle and the detail under it (`popup_lines`). Inverted, it turns dark with the color on the text and an edge in
 /// the color, which moves the lines in by its width.
 fn full_screen_popup(b: &mut Builder, text: &PopupText, look: PopupLook, width: f64, height: f64) {
     let canvas = PixelRect::new(0.0, 0.0, width, height);
@@ -690,10 +667,9 @@ mod tests {
         banner_ops_at(banner, 800.0, 480.0)
     }
 
-    /// What a still draws: `banner`, and the flag bar of the flag out (`alerts::flag_bar`).
+    /// What a still draws: `banner` over the dash.
     fn draw_still(scene: &Scene, frame: &TelemetryFrame, banner: Option<&DashAlertBanner>) -> Vec<DrawOp> {
-        let flag_bar = crate::alerts::flag_bar(&scene.layout, frame, &P);
-        draw(scene, frame, Overlays { banner, flag_bar, ..Overlays::default() })
+        draw(scene, frame, Overlays { banner, ..Overlays::default() })
     }
 
     fn banner_ops_at(banner: serde_json::Value, width: f64, height: f64) -> Vec<DrawOp> {
@@ -739,11 +715,10 @@ mod tests {
         assert_eq!(ops[2], DrawOp::Rect { rect: PixelRect::new(0.0, 160.0, 800.0, 160.0), radii: Radii::ZERO, color: dash_setting_colors::TC });
         let (title, detail, value) = (run(&ops, "TC"), run(&ops, "WAS 4"), run(&ops, "5"));
         assert!([title.color, detail.color, value.color].iter().all(|c| *c == P.background));
-        assert_eq!((title.weight, detail.weight, value.weight), (TextWeight::Value, TextWeight::LabelBold, TextWeight::Value));
-        assert_eq!((title.size, detail.size, value.size), (160.0 * 0.34, 160.0 * 0.15, 160.0 * 0.8));
-        assert!((title.x - 26.4).abs() < 1e-9, "from the dash's pad");
-        assert!((value.x + value.width(&Fonts::new()) - (800.0 - 26.4)).abs() < 1e-6, "the value ends at the right pad");
-        assert!(value.baseline > 160.0 && value.baseline < 320.0, "inside the band");
+        assert_eq!((title.weight, detail.weight, value.weight), (TextWeight::LabelBold, TextWeight::LabelBold, TextWeight::Value));
+        assert_eq!((title.size, detail.size, value.size), (160.0 * 0.17, 160.0 * 0.12, 160.0 * 0.46));
+        assert!(title.baseline < value.baseline && value.baseline < detail.baseline, "stacked: title, value, detail");
+        assert!([&title, &value, &detail].iter().all(|r| r.baseline > 160.0 && r.baseline < 320.0), "inside the band");
     }
 
     #[test]
@@ -766,40 +741,24 @@ mod tests {
     }
 
     #[test]
-    fn a_popup_without_a_detail_centres_its_title() {
+    fn a_popup_without_a_detail_puts_its_value_a_little_lower() {
         let mut limiter = alert("full", false);
         (limiter["title"], limiter["value"], limiter["detail"]) = (json!("PIT LIMITER"), json!("ON"), json!(null));
         let ops = banner_ops(limiter);
-        let title = run(&ops, "PIT LIMITER");
-        let line_top = 240.0 - title.size / 2.0;
-        assert!(title.baseline > line_top && title.baseline < line_top + title.size, "on the dash's centre line");
+        let value = run(&ops, "ON");
+        let line_top = 480.0 * 0.55 - value.size / 2.0;
+        assert!(value.baseline > line_top && value.baseline < line_top + value.size, "centred a little under the middle");
         assert_eq!(runs(&ops).len(), 2, "title and value only");
     }
 
     #[test]
-    fn a_long_word_value_keeps_the_title_smaller_and_clear_of_it() {
+    fn a_long_word_value_comes_out_smaller_and_stays_on_the_dash() {
         let mut engine = alert("full", false);
         (engine["title"], engine["value"]) = (json!("ENGINE"), json!("OVERHEAT"));
         let ops = banner_ops(engine);
         let (title, value) = (run(&ops, "ENGINE"), run(&ops, "OVERHEAT"));
-        assert!(title.size < value.size, "{} vs {}", title.size, value.size);
-        assert!(title.x + title.width(&Fonts::new()) + 20.0 < value.x, "a gap between them");
-    }
-
-    #[test]
-    fn the_flag_alert_stands_in_for_the_flag_bar_while_it_is_up() {
-        let mut frame = TelemetryFrame::default();
-        frame.flags.yellow = true;
-        let mut flag = alert("strip", false);
-        (flag["alertType"], flag["title"], flag["value"], flag["detail"], flag["color"]) =
-            (json!("flag"), json!("FLAG"), json!("YELLOW"), json!(null), json!("#FFCC00"));
-        let flag = parse_banner(flag.to_string().as_bytes()).expect("flag");
-        let ops = draw_still(&scene("l"), &frame, Some(&flag));
-        let bar = DrawOp::Rect { rect: PixelRect::new(0.0, 0.0, 800.0, 8.0), radii: Radii::ZERO, color: P.race_control_yellow };
-        assert!(!ops.contains(&bar), "no second account of the flag");
-        run(&ops, "YELLOW");
-        let tc = parse_banner(alert("strip", false).to_string().as_bytes()).expect("tc");
-        assert_eq!(draw_still(&scene("l"), &frame, Some(&tc)).last(), Some(&bar), "over another popup");
+        assert!(title.size < value.size && value.size < 480.0 * 0.52, "{} vs {}", title.size, value.size);
+        assert!(value.x > 0.0 && value.x + value.width(&Fonts::new()) < 800.0, "inside the dash");
     }
 
     #[test]
@@ -817,18 +776,10 @@ mod tests {
     }
 
     #[test]
-    fn the_flag_bar_is_a_thin_band_across_the_top_in_the_highest_flags_colour() {
+    fn a_flag_out_with_no_popup_up_leaves_the_dash_as_it_is() {
         let mut frame = TelemetryFrame::default();
-        (frame.flags.yellow, frame.flags.safety_car) = (true, true);
-        let band = |color: Rgba, width: f64, height: f64| DrawOp::Rect { rect: PixelRect::new(0.0, 0.0, width, height), radii: Radii::ZERO, color };
-        assert_eq!(draw_still(&scene("l"), &frame, None)[1..], [band(P.race_control_yellow, 800.0, 8.0)], "nothing else: no tint, no lettering");
-
-        frame.flags.red = true;
-        let mut big = scene("l");
-        (big.width, big.height) = (1600.0, 960.0);
-        assert_eq!(draw_still(&big, &frame, None)[1..], [band(P.critical, 1600.0, 16.0)], "it scales with the screen");
-        assert_eq!(draw_still(&scene("purpose-lap-times"), &frame, None).len(), 1, "never on the focused lap timer screen");
-        assert_eq!(draw_still(&scene("l"), &TelemetryFrame::default(), None).len(), 1, "no flag, no bar");
+        (frame.flags.yellow, frame.flags.red) = (true, true);
+        assert_eq!(draw_still(&scene("l"), &frame, None), draw_still(&scene("l"), &TelemetryFrame::default(), None), "no bar across the top");
     }
 
     #[test]
@@ -837,10 +788,13 @@ mod tests {
         assert_eq!(ops[1], DrawOp::Rect { rect: PixelRect::new(0.0, 0.0, 800.0, 480.0), radii: Radii::ZERO, color: dash_setting_colors::TC });
         let (title, was, value) = (run(&ops, "TC"), run(&ops, "WAS 4"), run(&ops, "5"));
         assert!([title.color, was.color, value.color].iter().all(|c| *c == P.background));
-        assert_eq!((title.weight, was.weight), (TextWeight::Value, TextWeight::LabelBold));
-        assert!((title.x - 26.4).abs() < 1e-9);
-        assert!((value.x + value.width(&Fonts::new()) - (800.0 - 26.4)).abs() < 1e-6, "the value ends at the right pad");
-        assert_eq!(value.size, (480.0f64 * 0.78).min(440.0 / (2.0 * 0.56)));
+        assert_eq!((title.weight, value.weight, was.weight), (TextWeight::LabelBold, TextWeight::Value, TextWeight::LabelBold));
+        // What it is small on top, the setting huge in the middle, what it was smaller under it, all centred.
+        assert!(title.baseline < value.baseline && value.baseline < was.baseline);
+        assert!(was.size < value.size && title.size < value.size);
+        let centre = |r: &crate::draw::TextRun| r.x + r.width(&Fonts::new()) / 2.0;
+        assert!([&title, &value, &was].iter().all(|r| (centre(r) - 400.0).abs() < 1.0), "centred");
+        assert_eq!(value.size, 480.0 * 0.52);
     }
 
     #[test]
@@ -849,8 +803,9 @@ mod tests {
         assert_eq!(ops[1], DrawOp::Rect { rect: PixelRect::new(0.0, 0.0, 800.0, 480.0), radii: Radii::ZERO, color: P.background });
         // max(2, 4.8) paints as a 4px border, and the children sit inside it.
         assert!(matches!(ops[2], DrawOp::Border { width: 4.0, radius: 0.0, color, .. } if color == dash_setting_colors::TC));
-        let title = run(&ops, "TC");
-        assert!((title.x - (26.4 + 4.0)).abs() < 0.02);
+        let plain_ops = banner_ops(setting(true, false));
+        let (title, plain) = (run(&ops, "TC"), run(&plain_ops, "TC"));
+        assert!((title.x - (plain.x + 4.0)).abs() < 0.02 && (title.baseline - (plain.baseline + 4.0)).abs() < 0.02);
         assert_eq!(title.color, dash_setting_colors::TC);
     }
 
@@ -1100,15 +1055,14 @@ mod tests {
     }
 
     #[test]
-    fn overlays_draw_in_the_typescript_order_lap_timer_banner_flag() {
+    fn overlays_draw_in_the_typescript_order_lap_timer_then_banner() {
         let mut frame = TelemetryFrame::default();
         frame.flags.red = true;
         let banner = parse_banner(setting(true, false).to_string().as_bytes()).expect("banner");
         let v = view(false, 0.0);
         let s = scene("l");
-        let ops = draw(&s, &frame, Overlays { banner: Some(&banner), lap_timer: Some(&v), flag_bar: crate::alerts::flag_bar(&s.layout, &frame, &P) });
+        let ops = draw(&s, &frame, Overlays { banner: Some(&banner), lap_timer: Some(&v) });
         let at = |text: &str| ops.iter().position(|op| matches!(op, DrawOp::Text(r) if r.text == text)).expect(text);
         assert!(at("PREDICTIVE") < at("WAS 4"));
-        assert!(matches!(ops.last(), Some(DrawOp::Rect { color, .. }) if *color == P.critical), "the flag bar last");
     }
 }

@@ -346,6 +346,25 @@ public sealed class DeltaTrackerTests
     }
 
     [Fact]
+    public void Your_fastest_lap_ever_stands_in_only_until_the_session_has_a_valid_lap()
+    {
+        DeltaTracker tracker = new DeltaTracker();
+        tracker.SetPlanReference(PlanCurve(pace: 85) with { UntilSessionBest = true });
+
+        // No lap of this session yet: the delta runs against the 85 from another day.
+        Assert.Equal(85, tracker.Augment(Frame(0.5, 45, 1)).Lap.TargetLapTime, precision: 6);
+        DriveLap(tracker, lap: 1, pace: 90);
+        tracker.Augment(Boundary(newLap: 2, completedLapTime: 90));
+
+        // The session's first valid lap, a 90, takes over even though it is slower.
+        Assert.Equal(90, tracker.Augment(Frame(0.5, 45, 2)).Lap.TargetLapTime, precision: 6);
+
+        // Set to "your fastest", the 85 stays whatever the session drives.
+        tracker.SetPlanReference(PlanCurve(pace: 85));
+        Assert.Equal(85, tracker.Augment(Frame(0.5, 45, 2)).Lap.TargetLapTime, precision: 6);
+    }
+
+    [Fact]
     public void Clearing_the_plan_reference_restores_the_session_best_comparison()
     {
         DeltaTracker tracker = new DeltaTracker();

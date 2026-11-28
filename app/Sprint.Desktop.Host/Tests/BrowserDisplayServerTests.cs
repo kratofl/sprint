@@ -115,6 +115,30 @@ public sealed class BrowserDisplayServerTests
         JsonElement paged = await feed.NextWithAsync("scene");
         Assert.Equal("second", paged.GetProperty("pageId").GetString());
 
+        // A wheel button steps a stack's layer: the scene names it, read live like the page.
+        DashLayout stacked = new()
+        {
+            Id = "dash",
+            Pages =
+            [
+                new DashPage
+                {
+                    Id = "second",
+                    Name = "second",
+                    Widgets =
+                    [
+                        new DashWidget { Id = "a", Type = "speed", Group = "stack", Col = 0, Row = 0, ColSpan = 1, RowSpan = 1 },
+                        new DashWidget { Id = "b", Type = "rpm_bar", Group = "stack", Col = 0, Row = 0, ColSpan = 1, RowSpan = 1 },
+                    ],
+                    Groups = [new DashWidgetGroup { Id = "stack", Name = "Stack", Mode = DashGroupMode.OneAtATime }],
+                },
+            ],
+        };
+        Assert.True(fixture.Pages.MoveLayers("b1", stacked, 1));
+        fixture.PublishFrame(speed: 125);
+        JsonElement layered = await feed.NextWithAsync("scene");
+        Assert.Equal("b", layered.GetProperty("layers").GetProperty("stack").GetString());
+
         device.Disabled = true;
         fixture.Reconcile(device);
         Assert.True(await feed.EndsAsync(), "The feed should end when the display is turned off.");

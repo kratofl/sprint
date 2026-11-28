@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import { ArrowUpDown, Check, ChevronDown, ChevronRight, GitCompareArrows, ListFilter, X } from 'lucide-react'
 import type { SprintCommand } from '../bridge'
+import { useExplorerShown } from '../shell/Explorer'
 import { PageHeader } from '../shell/PageHeader'
 import { usePageUp } from '../shell/pageUp'
 import { MenuLayer, type MenuAnchor } from '../shell/Menu'
@@ -25,6 +26,7 @@ import { classTone } from '../carMarks'
 import { classSections } from './AnalysisBrowseDomain'
 import { FilterChip } from './FilterChip'
 import { ComparePage, SetupPage, SetupTags } from './SetupsPages'
+import { SetupsExplorer } from './SetupsExplorer'
 import { SetupTagButton } from './SetupTagMenu'
 import { useSetupLibrary } from './useSetups'
 import './SetupsView.css'
@@ -35,7 +37,8 @@ import './AnalysisBrowse.css'
  * are changed in the game; Sprint only adds the driver's tags (session, style). Three pages over
  * the whole content width: the list (Analysis's two panes: cars by class on the left, the picked
  * car's tracks on the right), one setup opened from it with its versions, and two setups compared
- * (SetupsPages.tsx). Which page is open, the filters and the sort are the only local state; the
+ * (SetupsPages.tsx). The explorer (SetupsExplorer.tsx) switches between one car's setups. Which
+ * page is open, the filters and the sort are the only local state; the
  * list is fetched again each time it is shown and after each tag.
  */
 export function SetupsView({ send }: { send: (command: SprintCommand) => Promise<void> }) {
@@ -45,6 +48,10 @@ export function SetupsView({ send }: { send: (command: SprintCommand) => Promise
   const library = useSetupLibrary(shown)
   usePageUp(page.kind === 'list' ? null : 'All setups', () => toList())
   const setups = library.kind === 'ready' ? library.setups : []
+  const explorerShown = useExplorerShown()
+  const explorer = (
+    <SetupsExplorer setups={setups} list={page.kind === 'list'} openId={page.kind === 'setup' ? page.setup.id : null} onList={toList} onOpen={(id) => setPage({ kind: 'setup', setup: { id, version: null } })} />
+  )
 
   function toList() {
     setPage(LIST_PAGE)
@@ -76,69 +83,78 @@ export function SetupsView({ send }: { send: (command: SprintCommand) => Promise
 
   if (page.kind === 'setup') {
     return (
-      <SetupPage
-        setup={page.setup}
-        refresh={shown}
-        notice={errorBar}
-        onTag={tag}
-        canCompare={setups.length > 1}
-        onBack={toList}
-        onVersion={(version) => setPage({ kind: 'setup', setup: { id: page.setup.id, version } })}
-        onCompare={(first: SetupRef, second: SetupRef | null) => {
-          const pair = comparePair(setups, first.id)
-          const other = second ?? pair?.second
-          if (other) setPage({ kind: 'compare', first, second: other })
-        }}
-      />
+      <>
+        <SetupPage
+          setup={page.setup}
+          refresh={shown}
+          notice={errorBar}
+          onTag={tag}
+          canCompare={setups.length > 1}
+          onBack={explorerShown ? undefined : toList}
+          onVersion={(version) => setPage({ kind: 'setup', setup: { id: page.setup.id, version } })}
+          onCompare={(first: SetupRef, second: SetupRef | null) => {
+            const pair = comparePair(setups, first.id)
+            const other = second ?? pair?.second
+            if (other) setPage({ kind: 'compare', first, second: other })
+          }}
+        />
+        {explorer}
+      </>
     )
   }
 
   if (page.kind === 'compare') {
     return (
-      <ComparePage
-        first={page.first}
-        second={page.second}
-        setups={setups}
-        onBack={toList}
-        onPick={(first, second) => setPage({ kind: 'compare', first, second })}
-      />
+      <>
+        <ComparePage
+          first={page.first}
+          second={page.second}
+          setups={setups}
+          onBack={toList}
+          onPick={(first, second) => setPage({ kind: 'compare', first, second })}
+        />
+        {explorer}
+      </>
     )
   }
 
   return (
-    <div className="setups-page">
-      <PageHeader title="Setups">
-        <button type="button" className="button" disabled={setups.length < 2} onClick={() => openCompare(null)}>
-          <GitCompareArrows /> Compare…
-        </button>
-      </PageHeader>
-      {errorBar}
-      {library.kind === 'loading' ? (
-        <>
-          <div className="card skeleton setups-bar-skeleton" />
-          <div className="card skeleton setups-list-skeleton" />
-        </>
-      ) : library.kind === 'unavailable' ? (
-        <div className="card setups-empty">
-          <div className="empty-state">
-            <h2>No Le Mans Ultimate setups found</h2>
-            <p>Sprint looks for the game in your Steam libraries and reads the setups saved in its garage.</p>
+    <>
+      <div className="setups-page">
+        <PageHeader title="Setups">
+          <button type="button" className="button" disabled={setups.length < 2} onClick={() => openCompare(null)}>
+            <GitCompareArrows /> Compare…
+          </button>
+        </PageHeader>
+        {errorBar}
+        {library.kind === 'loading' ? (
+          <>
+            <div className="card skeleton setups-bar-skeleton" />
+            <div className="card skeleton setups-list-skeleton" />
+          </>
+        ) : library.kind === 'unavailable' ? (
+          <div className="card setups-empty">
+            <div className="empty-state">
+              <h2>No Le Mans Ultimate setups found</h2>
+              <p>Sprint looks for the game in your Steam libraries and reads the setups saved in its garage.</p>
+            </div>
           </div>
-        </div>
-      ) : library.kind === 'failed' ? (
-        <div className="card setups-empty">
-          <div className="empty-state">
-            <h2>The setups could not be read</h2>
-            <p>Sprint could not reach the game's setup folder just now.</p>
-            <button type="button" className="button" onClick={() => setShown((count) => count + 1)}>
-              Try again
-            </button>
+        ) : library.kind === 'failed' ? (
+          <div className="card setups-empty">
+            <div className="empty-state">
+              <h2>The setups could not be read</h2>
+              <p>Sprint could not reach the game's setup folder just now.</p>
+              <button type="button" className="button" onClick={() => setShown((count) => count + 1)}>
+                Try again
+              </button>
+            </div>
           </div>
-        </div>
-      ) : (
-        <SetupList setups={setups} onOpen={(id) => setPage({ kind: 'setup', setup: { id, version: null } })} onTag={tag} />
-      )}
-    </div>
+        ) : (
+          <SetupList setups={setups} onOpen={(id) => setPage({ kind: 'setup', setup: { id, version: null } })} onTag={tag} />
+        )}
+      </div>
+      {explorer}
+    </>
   )
 }
 

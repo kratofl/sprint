@@ -153,6 +153,8 @@ public sealed class RuntimeCoordinator
             case SprintCommands.Acknowledge: this.Acknowledge(); return true;
             case SprintCommands.DashPageNext: return this.CycleDashPage(command, offset: 1, out error);
             case SprintCommands.DashPagePrev: return this.CycleDashPage(command, offset: -1, out error);
+            case SprintCommands.DashLayerNext: return this.SwitchDashLayers(command, offset: 1, out error);
+            case SprintCommands.DashLayerPrev: return this.SwitchDashLayers(command, offset: -1, out error);
             case "setup.duplicate": return this.DuplicateSetup(command, out error);
             case "setup.save": return this.SaveSetup(command, out error);
             case "setup.delete": return this.DeleteSetup(command, out error);
@@ -493,6 +495,18 @@ public sealed class RuntimeCoordinator
                 }
 
                 this._runtime.Settings.Units = units;
+                applied = true;
+            }
+
+            if (TryStringField(command, "deltaBaseline", out string baselineText))
+            {
+                if (!Enum.TryParse(baselineText, ignoreCase: false, out DeltaBaseline baseline) || Enum.GetName(baseline) != baselineText)
+                {
+                    error = $"unknown deltaBaseline: {baselineText} (SessionBest or YourFastest)";
+                    return false;
+                }
+
+                this._runtime.Settings.DeltaBaseline = baseline;
                 applied = true;
             }
 
@@ -1247,6 +1261,12 @@ public sealed class RuntimeCoordinator
             case SprintCommands.DashPagePrev:
                 this._pageCycle.Move(device.Id, layout, -1);
                 break;
+            case SprintCommands.DashLayerNext:
+                this._pageCycle.MoveLayers(device.Id, layout, 1);
+                break;
+            case SprintCommands.DashLayerPrev:
+                this._pageCycle.MoveLayers(device.Id, layout, -1);
+                break;
             default:
                 if (ButtonFunctions.GotoPage(command) is { } pageId)
                     this._pageCycle.Show(device.Id, layout, pageId);
@@ -1550,6 +1570,23 @@ public sealed class RuntimeCoordinator
         }
 
         this._pageCycle.Move(device.Id, layout, offset);
+        return true;
+    }
+
+    /// <summary><c>{ deviceId }</c>: every stack on the page the device shows steps a layer; nothing to switch is not an error.</summary>
+    private bool SwitchDashLayers(JsonElement command, int offset, out string error)
+    {
+        error = "";
+        if (!this.FindDevice(command, out SavedDevice device, out error)) return false;
+
+        DashLayout? layout = DevicePurposeLayouts.Resolve(device, this._runtime.DashLayouts, this.CurrentCar);
+        if (layout is null)
+        {
+            error = "device has no telemetry-backed screen layout to switch layers on";
+            return false;
+        }
+
+        this._pageCycle.MoveLayers(device.Id, layout, offset);
         return true;
     }
 

@@ -1,9 +1,11 @@
 // Pure grid/layout math: grid-rect placement and page selection. Port of
 // `packages/dashboard/src/grid.ts`.
 
+use std::collections::BTreeMap;
+
 use serde::Deserialize;
 
-use crate::groups::drawn_widgets;
+use crate::groups::drawn_widgets_with;
 use crate::model::{DashLayout, DashPage, DashWidget, Tracks};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -149,9 +151,9 @@ pub fn select_page<'a>(layout: &'a DashLayout, page_id: Option<&str>, idle: bool
 }
 
 /// True when `page` draws the full-canvas RaceLogic lap timer (hidden widgets and stack layers
-/// it does not show do not count).
-pub fn page_has_race_logic_lap_timer(page: Option<&DashPage>) -> bool {
-    page.is_some_and(|page| drawn_widgets(page).iter().any(|widget| widget.widget_type == "racelogic_lap_timer"))
+/// it does not show, after `layers`, do not count).
+pub fn page_has_race_logic_lap_timer(page: Option<&DashPage>, layers: &BTreeMap<String, String>) -> bool {
+    page.is_some_and(|page| drawn_widgets_with(page, layers).iter().any(|widget| widget.widget_type == "racelogic_lap_timer"))
 }
 
 #[cfg(test)]
@@ -246,11 +248,11 @@ mod tests {
         let with = |widgets: Vec<DashWidget>, groups: Vec<DashWidgetGroup>| DashPage { widgets, groups, ..page("p") };
         let timer = widget("t", "racelogic_lap_timer", Some("stack"), false);
         let fuel = widget("f", "fuel", Some("stack"), false);
-        assert!(!page_has_race_logic_lap_timer(None));
-        assert!(page_has_race_logic_lap_timer(Some(&with(vec![widget("w", "racelogic_lap_timer", None, false)], vec![]))));
-        assert!(page_has_race_logic_lap_timer(Some(&with(vec![timer.clone(), fuel.clone()], vec![stack.clone()]))));
-        assert!(!page_has_race_logic_lap_timer(Some(&with(vec![fuel, timer], vec![stack]))), "a layer the stack does not show");
-        assert!(!page_has_race_logic_lap_timer(Some(&with(vec![widget("w", "racelogic_lap_timer", None, true)], vec![]))));
+        assert!(!page_has_race_logic_lap_timer(None, &BTreeMap::new()));
+        assert!(page_has_race_logic_lap_timer(Some(&with(vec![widget("w", "racelogic_lap_timer", None, false)], vec![])), &BTreeMap::new()));
+        assert!(page_has_race_logic_lap_timer(Some(&with(vec![timer.clone(), fuel.clone()], vec![stack.clone()])), &BTreeMap::new()));
+        assert!(!page_has_race_logic_lap_timer(Some(&with(vec![fuel, timer], vec![stack])), &BTreeMap::new()), "a layer the stack does not show");
+        assert!(!page_has_race_logic_lap_timer(Some(&with(vec![widget("w", "racelogic_lap_timer", None, true)], vec![])), &BTreeMap::new()));
     }
 
     #[test]

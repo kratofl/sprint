@@ -94,9 +94,9 @@
 .settings-list-row {
   display: flex;
   align-items: center;
-  gap: 16px;
-  min-height: 48px;
-  padding: 8px 16px;
+  gap: 12px;
+  min-height: 36px;
+  padding: 4px 12px;
 }
 
 .settings-list-row + .settings-list-row {
@@ -164,9 +164,9 @@
   display: grid;
   grid-template-columns: 16px minmax(0, 1fr) auto;
   align-items: center;
-  gap: 16px;
-  min-height: 64px;
-  padding: 12px 16px;
+  gap: 12px;
+  min-height: 40px;
+  padding: 6px 12px;
 }
 
 .settings-row-icon {
@@ -281,56 +281,7 @@
   width: 108px;
 }
 
-/* ── A group's own page ───────────────────────────────────────────────────── */
-
-/* A row that opens a group's page (SettingsLayout.tsx `OpenRow`): a list row as a button. */
-.settings-open-row {
-  width: 100%;
-  border: 0;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  text-align: start;
-}
-
-.settings-open-row:hover {
-  background: var(--subtle-hover);
-}
-
-.settings-open-row:first-child {
-  border-top-left-radius: var(--radius-card);
-  border-top-right-radius: var(--radius-card);
-}
-
-.settings-open-row:last-child {
-  border-bottom-left-radius: var(--radius-card);
-  border-bottom-right-radius: var(--radius-card);
-}
-
-.settings-open-value {
-  flex: none;
-  color: var(--label-secondary);
-}
-
-.settings-open-chevron {
-  width: 16px;
-  height: 16px;
-  flex: none;
-  color: var(--label-tertiary);
-}
-
-/* "‹ All settings" over the group's name, as a session page's "‹ All sessions". */
-.settings-sub-head {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 2px;
-}
-
-.settings-back {
-  margin-left: -8px;
-}
-
+/* The section's name over its settings. */
 .settings-sub-title {
   margin: 0;
   font: 600 20px/28px var(--font-display);
@@ -379,4 +330,63 @@
   .settings-check.checking .icon-button svg {
     animation: none;
   }
+}
+
+/* The section rows in the explorer (SettingsView.tsx `SECTIONS`). */
+.settings-explorer-icon {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  color: var(--label-secondary);
+}
+
+
+/* The explorer's search over the sections (SettingsExplorer): a magnifier, the field, the shortcut. */
+.settings-search {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 6px;
+  color: var(--label-tertiary);
+}
+
+.settings-search > svg {
+  width: 14px;
+  height: 14px;
+  flex: none;
+}
+
+.settings-search > input {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--label);
+  font: inherit;
+}
+
+/* The wrapper draws the focus edge (.input:focus-within); the field itself draws none. */
+.settings-search > input:focus,
+.settings-search > input:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
+.settings-search > input::-webkit-search-cancel-button {
+  display: none;
+}
+
+.settings-search > kbd {
+  flex: none;
+  padding: 0 4px;
+  border: 1px solid var(--control-stroke);
+  border-radius: var(--radius-control-small);
+  font: 500 10px/14px var(--font-text);
+}
+
+.settings-search-empty {
+  margin: 12px 16px;
+  color: var(--label-secondary);
 }

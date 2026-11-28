@@ -5,6 +5,7 @@ import { parseCarMarks, type CarMarks } from '../carMarks'
 import type { EstimateFigure, PlanContextChoices, PlanDetection, PlanFuelPreview, PlanFuelRequest, PlanTargetOption, PlanTargetScopeGroup, RaceFuelEstimate, SprintCommand } from '../bridge'
 import type { RuntimeState } from '../shell/runtime'
 import { ConfirmDialog, ContentDialog } from '../shell/ContentDialog'
+import { Explorer, ExplorerGroup, ExplorerRow, useExplorerShown } from '../shell/Explorer'
 import { CommandDivider, PageHeader } from '../shell/PageHeader'
 import { usePageUp } from '../shell/pageUp'
 import { Status } from '../shell/Status'
@@ -84,7 +85,8 @@ import './SessionPlannerView.css'
  * Session planner: a race weekend's plan (docs/internals/session-planner.md).
  *
  * The page lands on the plan list (the plan that's next on top); a plan opens on an explicit
- * click and "All plans" leads back. Leaving the page closes the plan, because the router
+ * click, from the list or the explorer (`PlansExplorer`), and "All plans" there (or the page's
+ * own "‹ All plans" while the explorer is hidden) leads back. Leaving the page closes the plan, because the router
  * remounts the view.
  *
  * An opened plan is the weekend as a lap: practice → qualifying → race → finish, a card per
@@ -132,6 +134,7 @@ export function SessionPlannerView({
 
   const opened = openId ? (plans.find((plan) => plan.id === openId) ?? null) : null
   usePageUp(opened ? 'All plans' : null, () => setOpenId(null))
+  const explorer = useExplorerShown()
 
   if (runtime.kind === 'loading') {
     return (
@@ -242,7 +245,7 @@ export function SessionPlannerView({
           fuel={planFuel[opened.id] ?? null}
           marks={marksOf(planMarks, opened)}
           blockedBy={blockedBy}
-          onBack={() => setOpenId(null)}
+          onBack={explorer ? undefined : () => setOpenId(null)}
           onCommand={(command) => void runAction(command)}
         />
       ) : plans.length === 0 ? (
@@ -256,6 +259,7 @@ export function SessionPlannerView({
       ) : (
         <PlanLists plans={plans} marks={planMarks} onOpen={setOpenId} />
       )}
+      <PlansExplorer plans={plans} marks={planMarks} openId={opened?.id ?? null} onOpen={setOpenId} />
 
       {(form?.kind === 'create' || form?.kind === 'quick') && (
         <NewPlanDialog
@@ -419,6 +423,38 @@ function PlanContext({ plan, marks }: { plan: SessionPlan; marks: CarMarks }) {
       {plan.car && plan.track && ' · '}
       {plan.track && <TrackName track={plan.track} country={marks.country} />}
     </>
+  )
+}
+
+/** The plans in the explorer: "All plans" (the list page), then the open ones and the done ones with their status. */
+function PlansExplorer({ plans, marks, openId, onOpen }: { plans: readonly SessionPlan[]; marks: Record<string, CarMarks>; openId: string | null; onOpen: (planId: string | null) => void }) {
+  const { open, finished } = groupPlans(plans)
+  const row = (plan: SessionPlan) => (
+    <ExplorerRow
+      key={plan.id}
+      title={plan.name}
+      line={[marksOf(marks, plan).car, plan.track].filter(Boolean).join(' · ')}
+      meta={
+        <Status tone={PLAN_STATUS_TONE[plan.status]} quiet>
+          {plan.status}
+        </Status>
+      }
+      selected={plan.id === openId}
+      onClick={() => onOpen(plan.id)}
+    />
+  )
+  return (
+    <Explorer label="Plans">
+      <ExplorerRow title="All plans" meta={plans.length} selected={openId === null} onClick={() => onOpen(null)} />
+      <ExplorerGroup title="Open" count={open.length} />
+      {open.map(row)}
+      {finished.length > 0 && (
+        <>
+          <ExplorerGroup title="Done" count={finished.length} />
+          {finished.map(row)}
+        </>
+      )}
+    </Explorer>
   )
 }
 
@@ -604,7 +640,8 @@ function PlanDetail({
   fuel: RaceFuelEstimate | null
   marks: CarMarks
   blockedBy: SessionPlan | null
-  onBack: () => void
+  /** "‹ All plans"; absent while the explorer lists them. */
+  onBack?: () => void
   onCommand: (command: SprintCommand) => void
 }) {
   const tracking = openSegment(plan)
@@ -618,9 +655,11 @@ function PlanDetail({
   return (
     <>
       <div className="planner-plan-head">
-        <button type="button" className="button subtle planner-back" onClick={onBack}>
-          <ChevronLeft /> All plans
-        </button>
+        {onBack && (
+          <button type="button" className="button subtle planner-back" onClick={onBack}>
+            <ChevronLeft /> All plans
+          </button>
+        )}
         <div className="planner-plan-heading">
           <h2 className="planner-plan-name">{plan.name}</h2>
           <PlanStatusLabel status={plan.status} />

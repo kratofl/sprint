@@ -21,6 +21,12 @@ import { nextZoomFactor, zoomStepFor, type ZoomStep } from './uiZoom.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const desktopRoot = path.resolve(__dirname, '..')
+
+// A dev build is its own app to Windows: its own taskbar entry (app id), name and the red icon, so it
+// is never mistaken for, or grouped with, the installed Sprint (orange; a beta is green, scripts/package.mjs).
+const devBuild = !app.isPackaged
+const APP_NAME = devBuild ? 'Sprint Dev' : 'Sprint'
+const APP_ICON = path.join(desktopRoot, 'resources', devBuild ? 'icon-dev.png' : 'icon.png')
 const hostProject = path.resolve(desktopRoot, '..', 'Sprint.Desktop.Host', 'Sprint.Desktop.Host.csproj')
 const STATE_POLL_INTERVAL_MS = 250
 const X86_DOTNET = 'C:\\Program Files (x86)\\dotnet\\dotnet.exe'
@@ -323,9 +329,6 @@ ipcMain.handle('sprint:open-dash-designer', (_event: IpcMainInvokeEvent, dashId:
   designers.open(readDesignerDashId(dashId))
 })
 
-/** A designer's scope strip moves it on to another dash: 'switched' when it now edits that dash, 'focused' when that dash's own window came forward instead. */
-ipcMain.handle('sprint:switch-dash-designer', (event: IpcMainInvokeEvent, dashId: unknown) => designers.switchTo(event.sender, readDesignerDashId(dashId)))
-
 /** A designer's "Alerts and Ack": the main window comes forward (never in a hidden agent run) on Dashes > Settings. */
 ipcMain.handle('sprint:open-dash-settings', () => {
   if (!mainWindow || mainWindow.isDestroyed()) return
@@ -443,8 +446,8 @@ const captionButtonsHeight = (zoom: number): number => Math.round(TITLE_BAR_HEIG
 
 /**
  * macOS traffic lights, as the top-left of the close button. The renderer's
- * toolbar band is 52px tall and reserves the first 80px of the sidebar header
- * for the buttons. Each button is a 14px square, so y = (52 - 14) / 2 = 19
+ * toolbar band is 52px tall and the rail's top band, 80px wide, holds the
+ * buttons. Each button is a 14px square, so y = (52 - 14) / 2 = 19
  * centres them on the band. The buttons sit 23px apart on macOS 26+ (20px
  * before), so x = 16 ends the zoom button at 76px, inside the 80px.
  */
@@ -462,17 +465,17 @@ function chromeOptions(chrome: WindowChrome): BrowserWindowConstructorOptions {
         // snap/maximise and close — including the Snap Layouts flyout, which a drawn
         // HTML button cannot offer.
         titleBarStyle: 'hidden',
-        titleBarOverlay: { color: chrome.background, symbolColor: chrome.symbol, height: captionButtonsHeight(1) },
+        titleBarOverlay: { color: chrome.caption, symbolColor: chrome.symbol, height: captionButtonsHeight(1) },
       }
     case 'vibrancy':
     case 'opaque':
       return {
-        // The renderer paints its content opaque and leaves the sidebar transparent,
-        // so the sidebar shows the vibrancy material — or, with Reduce Transparency,
+        // The renderer paints its content opaque and leaves the rail transparent,
+        // so the rail shows the vibrancy material — or, with Reduce Transparency,
         // the solid sidebar colour drawn here.
         backgroundColor: chrome.kind === 'vibrancy' ? TRANSPARENT : chrome.background,
         ...(chrome.kind === 'vibrancy' ? { vibrancy: 'sidebar' as const, visualEffectState: 'followWindow' as const } : {}),
-        // No OS title bar: the real traffic lights float over the sidebar header,
+        // No OS title bar: the real traffic lights float over the rail's top band,
         // and the renderer's toolbar is the drag region.
         titleBarStyle: 'hidden',
         trafficLightPosition: trafficLightPosition(1),
@@ -486,7 +489,7 @@ function applyChrome(window: BrowserWindow, chrome: WindowChrome): void {
     case 'solid':
       window.setBackgroundColor(chrome.background)
       // Windows/Linux only; macOS reaches this in the dev look toggle.
-      if (!isMac) window.setTitleBarOverlay({ color: chrome.background, symbolColor: chrome.symbol, height: captionButtonsHeight(window.webContents.getZoomFactor()) })
+      if (!isMac) window.setTitleBarOverlay({ color: chrome.caption, symbolColor: chrome.symbol, height: captionButtonsHeight(window.webContents.getZoomFactor()) })
       return
     case 'vibrancy':
       window.setVibrancy('sidebar')
@@ -517,9 +520,9 @@ function createSplashWindow(): BrowserWindow {
     // Closing it would quit Sprint halfway through its launch.
     closable: false,
     show: false,
-    title: 'Sprint',
+    title: APP_NAME,
     backgroundColor: chrome.kind === 'vibrancy' ? TRANSPARENT : chrome.background,
-    icon: path.join(desktopRoot, 'resources', 'icon.png'),
+    icon: APP_ICON,
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
@@ -549,7 +552,7 @@ function createAppWindow({ size, title, query }: AppWindowOptions): BrowserWindo
     ...size,
     title,
     ...chromeOptions(currentChrome()),
-    icon: path.join(desktopRoot, 'resources', 'icon.png'),
+    icon: APP_ICON,
     // An agent run never appears on screen; it is driven and captured over CDP. A merely hidden
     // window paints nothing, so it renders offscreen instead.
     show: !agentRun,
@@ -621,7 +624,7 @@ function createWindow(): BrowserWindow {
   // `?platform=` picks the look the chrome above was built for.
   const window = createAppWindow({
     size: { width: 1440, height: 900, minWidth: 1040, minHeight: 680 },
-    title: 'Sprint',
+    title: APP_NAME,
     query: { backdrop: 'window', platform: look },
   })
   mainWindow = window
@@ -655,7 +658,7 @@ function createWindow(): BrowserWindow {
 const designers = new DashDesigners((dashId) =>
   createAppWindow({
     size: { width: 1440, height: 900, minWidth: 960, minHeight: 640 },
-    title: 'Sprint',
+    title: APP_NAME,
     query: { designer: dashId, platform: look },
   }),
 )
@@ -681,7 +684,7 @@ const pitWall = new PitWallWindows({
   displays: () => screen.getAllDisplays().map((display) => display.workArea),
 })
 
-app.setName('Sprint')
+app.setName(APP_NAME)
 // A dev run (scripts/dev.mjs) keeps the browser profile with the host's data in its own checkout,
 // away from the installed app's. The host reads the same variable.
 const dataRoot = process.env.SPRINT_DESKTOP_DATA_ROOT
@@ -733,8 +736,8 @@ if (debugWindow) {
 // opens a DevTools port of its own choosing, written to <userData>/DevToolsActivePort.
 if (agentRun) app.commandLine.appendSwitch('remote-debugging-port', '0')
 // Windows groups taskbar entries and resolves their icon by this id; without it
-// a dev run is filed under Electron's own identity and icon.
-if (process.platform === 'win32') app.setAppUserModelId('com.sprint.desktop')
+// a dev run is filed under Electron's own identity and icon. A dev build has its own.
+if (process.platform === 'win32') app.setAppUserModelId(devBuild ? 'com.sprint.desktop.dev' : 'com.sprint.desktop')
 
 async function bootstrap(): Promise<void> {
   await app.whenReady()

@@ -84,7 +84,8 @@ export function DeviceDetail({
   /** The function waiting for its button on this device, or null. */
   listening: string | null
   send: (command: SprintCommand) => Promise<void>
-  onBack: () => void
+  /** "‹ All devices"; absent while the explorer lists them. */
+  onBack?: () => void
 }) {
   const [tab, setTab] = useState<DetailTab>('screen')
   const [confirmRemove, setConfirmRemove] = useState(false)
@@ -108,9 +109,11 @@ export function DeviceDetail({
         </button>
       </PageHeader>
 
-      <button type="button" className="button subtle device-back" onClick={onBack}>
-        <ChevronLeft /> All devices
-      </button>
+      {onBack && (
+        <button type="button" className="button subtle device-back" onClick={onBack}>
+          <ChevronLeft /> All devices
+        </button>
+      )}
       <header className="device-head">
         <DeviceImage image={image} dim={device.disabled} className="device-head-image" />
         <div className="device-head-text">
@@ -165,7 +168,8 @@ export function DeviceDetail({
           onConfirm={() => {
             void send({ type: 'devices.remove', deviceId: device.id })
             setConfirmRemove(false)
-            onBack()
+            // Without a back link the page closes by itself once the device is gone.
+            onBack?.()
           }}
           onCancel={() => setConfirmRemove(false)}
         />

@@ -8,12 +8,10 @@ import { shortcutAria, shortcutLabel } from './shortcuts'
 
 type TitleBarProps = {
   onOpenPalette: () => void
-  /** The current page's navigation label, shown as the page title. */
+  /** The page's name (shell/nav.ts `viewLabel`). */
   title: string
-  sidebarCollapsed: boolean
-  onToggleSidebar: () => void
-  /** The "Show sidebar" button, focused after the sidebar is hidden from the keyboard. */
-  showSidebarRef: RefObject<HTMLButtonElement | null>
+  /** macOS, while the sidebar is hidden: the toolbar offers it back. Null otherwise. */
+  onShowSidebar: (() => void) | null
   /** The element the current page's actions render into (PageHeader portals them). */
   onActionsSlot: (slot: HTMLElement | null) => void
   /**
@@ -27,25 +25,24 @@ type TitleBarProps = {
 }
 
 /**
- * The window's toolbar, right of the sidebar, in two zones (styles.css lays them out as
- * one grid). Leading: (macOS: sidebar toggle while the sidebar is hidden), the page title. There
- * is no back button: a deeper page carries its own way up, and Alt+Left / ⌘[ goes up a level (App.tsx).
- * Trailing: the page's actions (PageHeader portals them into the slot), the update button while
- * there is an update (`UpdateIndicator`), then a search field that opens the palette. The game link lives at the foot of the sidebar (TelemetryRow.tsx), not here.
+ * The window's toolbar, right of the sidebar, in two zones (styles.css lays them out as one grid).
+ * Leading: on macOS while the sidebar is hidden, the button that brings it back; then the page's
+ * name. There is no back button: a deeper page carries its own way up, and
+ * Alt+Left / ⌘[ goes up a level (App.tsx). Trailing: the page's actions (PageHeader portals them
+ * into the slot), the update button while there is an update (`UpdateIndicator`), then a search
+ * field that opens the palette. The game link lives in the status bar (StatusBar.tsx), not here.
  *
  * Windows and Linux: 48px, and it is the window's title bar. The OS caption buttons are
  * Electron's native `titleBarOverlay` on the right; `.titlebar-trail` reserves their width
  * from the `titlebar-area-*` env() values.
  *
- * macOS: 52px (styles.mac.css). The traffic lights are the OS's, over the sidebar's top band
- * (or over the toolbar's left inset while the sidebar is hidden).
+ * macOS: 52px (styles.mac.css). The traffic lights are the OS's, over the sidebar's top band (or
+ * over the toolbar's left inset while the sidebar is hidden).
  */
 export function TitleBar({
   onOpenPalette,
   title,
-  sidebarCollapsed,
-  onToggleSidebar,
-  showSidebarRef,
+  onShowSidebar,
   onActionsSlot,
   onActionsRoom,
   update,
@@ -85,17 +82,8 @@ export function TitleBar({
   return (
     <header ref={toolbarRef} className="titlebar">
       <div ref={leadRef} className="titlebar-lead">
-        {/* Only the Mac hides the sidebar; the brand look keeps it as a rail with its own toggle. */}
-        {sidebarCollapsed && platform === 'mac' ? (
-          <button
-            ref={showSidebarRef}
-            type="button"
-            className="titlebar-sidebar-toggle"
-            onClick={onToggleSidebar}
-            aria-label="Show sidebar"
-            aria-expanded={false}
-            title="Show sidebar"
-          >
+        {onShowSidebar ? (
+          <button type="button" className="titlebar-sidebar-toggle" onClick={onShowSidebar} aria-label="Show sidebar" title="Show sidebar">
             <PanelLeft size={16} strokeWidth={1.7} />
           </button>
         ) : null}

@@ -2,9 +2,9 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { windowChrome, windowLook } from './windowChrome'
 
-test('Windows and Linux paint the solid brand background, caption buttons in the label colour', () => {
-  assert.deepEqual(windowChrome({ look: 'windows', dark: false }), { kind: 'solid', background: '#fafafa', symbol: '#18181b' })
-  assert.deepEqual(windowChrome({ look: 'windows', dark: true }), { kind: 'solid', background: '#09090b', symbol: '#ededef' })
+test('Windows and Linux paint the solid brand background, caption buttons on the toolbar colour in the label colour', () => {
+  assert.deepEqual(windowChrome({ look: 'windows', dark: false }), { kind: 'solid', background: '#fafafa', caption: '#ffffff', symbol: '#18181b' })
+  assert.deepEqual(windowChrome({ look: 'windows', dark: true }), { kind: 'solid', background: '#09090b', caption: '#0f0f11', symbol: '#ededef' })
 })
 
 test('macOS gets the native look; every other OS wears the brand look', () => {

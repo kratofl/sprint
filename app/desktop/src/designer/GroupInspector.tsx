@@ -44,7 +44,7 @@ export function GroupInspector({
   const hidden = group.hidden === true
 
   return (
-    <aside className="designer-glass designer-inspector" aria-label={`${group.name} properties`}>
+    <aside className="designer-pane designer-inspector" aria-label={`${group.name} properties`}>
       <div className="designer-panel-head">
         <div className="designer-panel-intro">
           <h2 className="designer-panel-title">{group.name}</h2>
@@ -168,7 +168,7 @@ export function GroupInspector({
           >
             <Plus /> Add layer
           </button>
-          <p className="field-hint">The wheel shows {shown ? nodeName(shown) : 'nothing yet'}. Switching layers with a wheel button comes later.</p>
+          <p className="field-hint">The wheel starts on {shown ? nodeName(shown) : 'nothing yet'}. A button set to Next layer or Previous layer (Devices › Controls) switches it while you drive.</p>
         </div>
       )}
 
@@ -238,7 +238,7 @@ export function SelectionInspector({
   const title = allWidgets ? count(nodes.length, 'widget', 'widgets') : count(nodes.length, 'item', 'items')
 
   return (
-    <aside className="designer-glass designer-inspector" aria-label={`${title} selected`}>
+    <aside className="designer-pane designer-inspector" aria-label={`${title} selected`}>
       <div className="designer-panel-head">
         <div className="designer-panel-intro">
           <h2 className="designer-panel-title">{title}</h2>

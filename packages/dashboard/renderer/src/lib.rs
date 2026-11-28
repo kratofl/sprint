@@ -157,8 +157,7 @@ impl Renderer {
     }
 
     /// The driver pressed Ack: the alert up now (the tracker's, and the dial popup over it) goes
-    /// at once; one held beneath it shows again. With no alert up, the flag bar goes until the
-    /// flag changes. The engineer's message is the host's to take down (`set_radio`). Render
+    /// at once; one held beneath it shows again. The engineer's message is the host's to take down (`set_radio`). Render
     /// again afterwards: an alert held until acknowledged does not make the picture time
     /// dependent, so nothing else would redraw it.
     pub fn acknowledge(&mut self) {
@@ -194,7 +193,6 @@ impl Renderer {
         // Only what runs out makes the picture depend on time: the message stays until set
         // again, and an alert held until acknowledged until `acknowledge`.
         let alert_expires = tracker.expires();
-        let flag_bar = tracker.flag_bar();
         let banner = tracker.current();
         // The driver's own turn of the dial wins over the engineer's message, and that over a
         // telemetry alert, which keeps running beneath both.
@@ -211,7 +209,7 @@ impl Renderer {
         };
 
         let time_dependent = expiring || (view.is_some() && lap_timer.is_holding(now_ms));
-        dash::build_display_list(fonts, scene, &frame, Overlays { banner, lap_timer: view.as_ref(), flag_bar }, ops)?;
+        dash::build_display_list(fonts, scene, &frame, Overlays { banner, lap_timer: view.as_ref() }, ops)?;
         raster.draw(fonts, ops, scene.scale);
         Ok(RenderInfo { time_dependent })
     }
@@ -226,14 +224,12 @@ impl Renderer {
     }
 
     /// `render_still` with the banner already parsed (or built, e.g. by
-    /// `alerts::preview_alert_banner`), for tools. A flag out shows its bar (`alerts::flag_bar`):
-    /// a still has no popup history or Ack to take it down.
+    /// `alerts::preview_alert_banner`), for tools.
     pub fn render_still_with(&mut self, frame_json: &[u8], banner: Option<&DashAlertBanner>, now_ms: f64) -> Result<RenderInfo, RenderError> {
         let scene = self.scene.as_ref().ok_or_else(|| RenderError("no scene set".to_owned()))?;
         let frame = model::parse_frame(frame_json)?;
         let view = dash::draws_race_logic_lap_timer(scene).then(|| RaceLogicLapTimerPresenter::default().present(&frame, now_ms));
-        let flag_bar = alerts::flag_bar(&scene.layout, &frame, &dash::scene_palette(scene));
-        dash::build_display_list(&self.fonts, scene, &frame, Overlays { banner, lap_timer: view.as_ref(), flag_bar }, &mut self.ops)?;
+        dash::build_display_list(&self.fonts, scene, &frame, Overlays { banner, lap_timer: view.as_ref() }, &mut self.ops)?;
         self.raster.draw(&self.fonts, &self.ops, scene.scale);
         Ok(RenderInfo { time_dependent: false })
     }
@@ -496,7 +492,7 @@ mod tests {
     }
 
     #[test]
-    fn a_flag_pops_up_then_stays_as_a_bar_until_ack() {
+    fn a_flag_pops_up_and_leaves_nothing_behind_once_it_is_down() {
         let scene = r#"{"layout":{"id":"l","name":"L","gridCols":20,"gridRows":12,"pages":[{"id":"p","name":"P","widgets":[]}],
             "alerts":[{"id":"f","type":"flag","enabled":true,"col":0,"row":0,"colSpan":1,"rowSpan":1,"durationSeconds":3,"displayMode":"strip"}]},"width":800,"height":480}"#;
         let frame = |timestamp: u32, yellow: bool| {
@@ -507,14 +503,11 @@ mod tests {
         r.set_scene(scene.as_bytes()).unwrap();
         r.render_live(&frame(0, false), 0.0).unwrap();
         assert_eq!(r.render_live(&frame(1, true), 100.0), Ok(RenderInfo { time_dependent: true }));
-        // The bar is the last op: a thin band across the top.
-        let bar = |r: &Renderer| matches!(r.display_list().last(), Some(DrawOp::Rect { rect, .. }) if rect.top == 0.0 && rect.height == 8.0);
-        assert!(shows(&r, "YELLOW") && !bar(&r), "the popup, not the bar");
+        assert!(shows(&r, "YELLOW"), "the popup");
         assert_eq!(r.render_live(&frame(1, true), 3100.0), Ok(RenderInfo { time_dependent: false }));
-        assert!(bar(&r) && !shows(&r, "YELLOW"), "the bar once the popup is down");
-        r.acknowledge();
-        r.render_live(&frame(1, true), 3200.0).unwrap();
-        assert!(!bar(&r), "Ack hides the bar");
+        let down = r.display_list().to_vec();
+        r.render_live(&frame(2, false), 3200.0).unwrap();
+        assert_eq!(down, r.display_list(), "the flag still out draws nothing once its popup is down: no bar across the top");
     }
 
     #[test]

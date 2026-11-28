@@ -4,6 +4,9 @@
  * interprets one settings field, so callers never re-parse it themselves.
  */
 
-/** Mirrors `RuntimeCoordinator.UpdateSettings`'s `sidebarCollapsed` field. */
+/**
+ * Mirrors `RuntimeCoordinator.UpdateSettings`'s `sidebarCollapsed` field: whether the explorer is
+ * hidden (the toolbar's list toggle). The name is older than the explorer.
+ */
 export const readSidebarCollapsed = (settings: Record<string, unknown>): boolean =>
   typeof settings.sidebarCollapsed === 'boolean' ? settings.sidebarCollapsed : false

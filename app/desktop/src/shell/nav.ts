@@ -1,29 +1,18 @@
-import {
-  BarChart3,
-  CircleHelp,
-  Cpu,
-  Home,
-  LayoutDashboard,
-  ListChecks,
-  Radio,
-  Route,
-  Settings,
-  SlidersHorizontal,
-} from 'lucide-react'
+import { BarChart3, CircleHelp, Cpu, House, LayoutDashboard, ListChecks, Radio, Route, Settings, SlidersHorizontal } from 'lucide-react'
 import type { AppView } from '../bridge'
 
-export type NavIcon = typeof Home
+export type NavIcon = typeof House
 
-/** The sidebar's section headings, in order. Overview and the footer stand outside them. */
+/** The sidebar's group headings, in order. Overview and the foot stand outside them. */
 export type NavGroup = 'Drive' | 'Car & rig' | 'Team'
 
-/** One sidebar row. */
+/** One page: its name in the sidebar, the toolbar and the palette, and the group it sits under. */
 export type NavItem = { view: AppView; label: string; icon: NavIcon; group?: NavGroup }
 
-// Primary rail order, which is also the Alt+1..8 / ⌘1..8 order. Settings and Help are pinned to
-// the bottom of the rail separately as a dedicated footer group.
+// Page order, which is also the Alt+1..8 / ⌘1..8 order. Settings and Help are pinned to the foot
+// of the sidebar separately.
 export const primaryNav: NavItem[] = [
-  { view: 'Home', label: 'Overview', icon: Home },
+  { view: 'Home', label: 'Overview', icon: House },
   { view: 'SessionPlanner', label: 'Session planner', icon: ListChecks, group: 'Drive' },
   { view: 'OnTrack', label: 'On track', icon: Route, group: 'Drive' },
   { view: 'Analysis', label: 'Analysis', icon: BarChart3, group: 'Drive' },
@@ -38,8 +27,14 @@ export const footerNav: NavItem[] = [
   { view: 'Help', label: 'Help & diagnostics', icon: CircleHelp },
 ]
 
+/**
+ * Whether a page has an explorer, a list beside it (shell/Explorer.tsx): only Settings, whose
+ * section list is its way around. Every other page carries its own list and takes the full width.
+ */
+export const hasExplorer = (view: AppView): boolean => view === 'Settings'
+
 /** The row that stands for a page. */
 export const navItemFor = (view: AppView): NavItem | undefined => [...primaryNav, ...footerNav].find((item) => item.view === view)
 
-/** The label a page goes by in the navigation pane; the toolbar shows it as the page title. */
+/** The name a page goes by in the sidebar, the palette and the toolbar. */
 export const viewLabel = (view: AppView): string => navItemFor(view)?.label ?? view

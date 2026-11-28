@@ -52,7 +52,7 @@ export function LapReviewEditor({
 
   return (
     <>
-      <aside className="designer-glass designer-sidebar designer-library designer-review-library" aria-label="Lap review fields">
+      <aside className="designer-pane designer-sidebar designer-library designer-review-library" aria-label="Lap review fields">
         <div className="designer-sidebar-head">
           <span className="designer-sidebar-page">{`Show in ${boxName(box)}`}</span>
         </div>
@@ -103,7 +103,7 @@ export function LapReviewEditor({
         )}
       </div>
 
-      <aside className="designer-glass designer-inspector" aria-label="Lap review">
+      <aside className="designer-pane designer-inspector" aria-label="Lap review">
         <div className="designer-panel-head">
           <h2 className="designer-panel-title">Lap review</h2>
         </div>

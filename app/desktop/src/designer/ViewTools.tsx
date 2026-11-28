@@ -4,7 +4,7 @@ import { CANVAS_VIEWS, type CanvasView } from './CanvasViews'
 import { Segmented } from './controls'
 
 /**
- * The toolbar's view group in the Layout section: "View" and how the canvas shows the dash
+ * The title bar's view group in the Layout section: "View" and how the canvas shows the dash
  * (`CanvasView`); once that is the real dash, what it shows (live or a sample moment) and the grid.
  */
 export function ViewTools({
@@ -23,7 +23,7 @@ export function ViewTools({
   onToggleGrid: () => void
 }) {
   return (
-    <div className="designer-glass designer-view-tools">
+    <div className="designer-view-tools" role="group" aria-label="View">
       <span className="designer-view-caption" aria-hidden="true">
         View
       </span>

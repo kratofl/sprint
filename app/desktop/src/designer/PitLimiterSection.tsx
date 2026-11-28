@@ -166,7 +166,7 @@ function StyleThumb({ style }: { style: DashPitLimiterStyle }) {
 function PitPanel({ layout, onClear, onOpenDashSettings }: { layout: DashLayout; onClear: () => void; onOpenDashSettings: () => void }) {
   const style = pitLimiterStyle(layout)
   return (
-    <aside className="designer-glass designer-inspector" aria-label="Pit limiter">
+    <aside className="designer-pane designer-inspector" aria-label="Pit limiter">
       <div className="designer-panel-head">
         <h2 className="designer-panel-title">Pit limiter</h2>
       </div>

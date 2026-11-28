@@ -93,7 +93,7 @@ public static class DashPageModes
     }
 
     /// <summary>
-    /// Drops from each page's picks every id that is neither a session nor one of
+    /// Drops from each page's picks (its variants' pages too) every id that is neither a session nor one of
     /// <paramref name="modes"/> (a mode deleted since, or brought back by the designer's undo); a
     /// page left with none shows in every session again. True when anything changed.
     /// </summary>
@@ -101,7 +101,7 @@ public static class DashPageModes
     {
         ArgumentNullException.ThrowIfNull(layout);
         bool changed = false;
-        foreach (DashPage page in layout.Pages)
+        foreach (DashPage page in layout.Pages.Concat((layout.Variants ?? []).SelectMany(variant => variant.Layout.Pages)))
         {
             if (page.ShowIn is not { } showIn)
             {

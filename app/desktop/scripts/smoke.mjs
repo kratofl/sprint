@@ -9,7 +9,7 @@
 //   1. finishes first run through window.sprint (a command round trip: preload → Electron → host)
 //      and checks the host's state says so;
 //   2. checks the replay reaches the app as live telemetry;
-//   3. opens every page in the sidebar and checks it rendered something;
+//   3. opens every page in the sidebar, and checks each page rendered something;
 // and fails on any uncaught exception or console error along the way. Exits non-zero on failure
 // and always stops the run. `--shots` saves a screenshot per page (CI keeps them on failure).
 import { spawn } from 'node:child_process'
@@ -23,7 +23,7 @@ const desktopRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
 const fixture = path.join(desktopRoot, 'test-fixtures', 'replay-race.jsonl.gz')
 const shotsIndex = process.argv.indexOf('--shots')
 const shotsDir = shotsIndex >= 0 ? path.resolve(process.argv[shotsIndex + 1] ?? 'smoke-shots') : null
-const NAV_ITEM = 'nav.navview button.nav-item:not(.nav-telemetry)'
+const PAGE = 'nav.sidebar button.sidebar-item'
 
 const failures = []
 const fail = (message) => failures.push(message)
@@ -87,7 +87,7 @@ async function check(page, errors) {
   await page.evaluate(`window.sprint.sendCommand({ type: 'firstRun.complete', driverName: 'Smoke Test' })`)
   const state = await page.evaluate(`window.sprint.getState()`)
   if (state?.firstRun?.done !== true) fail('firstRun.complete did not reach the host state')
-  if (!(await until(page, `document.querySelectorAll(${JSON.stringify(NAV_ITEM)}).length > 0`))) {
+  if (!(await until(page, `document.querySelectorAll(${JSON.stringify(PAGE)}).length > 0`))) {
     fail('the app shell (sidebar) never appeared after first run')
     return
   }
@@ -99,15 +99,15 @@ async function check(page, errors) {
   // Errors so far came from startup and first run, before any page was opened.
   for (const error of errors) fail(`startup: ${error}`)
 
-  // 3. Every page in the sidebar renders.
-  const labels = await page.evaluate(`[...document.querySelectorAll(${JSON.stringify(NAV_ITEM)})].map((el) => el.textContent.trim())`)
-  for (const [index, label] of labels.entries()) {
+  // 3. Every page renders: each page in the sidebar, in order.
+  const pages = await page.evaluate(`[...document.querySelectorAll(${JSON.stringify(PAGE)})].map((el) => el.textContent.trim())`)
+  for (const [index, label] of pages.entries()) {
     const before = errors.length
     await closeDialogs(page)
-    await page.click(NAV_ITEM, index)
+    await page.click(PAGE, index)
     const shown = await until(
       page,
-      `(() => { const item = document.querySelectorAll(${JSON.stringify(NAV_ITEM)})[${index}];
+      `(() => { const item = document.querySelectorAll(${JSON.stringify(PAGE)})[${index}];
           const main = document.querySelector('main.content');
           return item?.getAttribute('aria-current') === 'page' && main?.firstElementChild?.getBoundingClientRect().height > 0 })()`,
     )

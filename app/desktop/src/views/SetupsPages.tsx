@@ -12,8 +12,9 @@ import { moveInSearchList } from './searchListKeys'
 import { useSetupDriven, useSetupSheet } from './useSetups'
 import type { SheetState } from './useSetups'
 
-/** Back up to the list; the toolbar keeps the page's name, as on every detail page. */
-function BackToSetups({ onBack }: { onBack: () => void }) {
+/** Back up to the list; the toolbar keeps the page's name, as on every detail page. None without `onBack`. */
+function BackToSetups({ onBack }: { onBack?: () => void }) {
+  if (!onBack) return null
   return (
     <button type="button" className="button subtle setups-back" onClick={onBack}>
       <ChevronLeft /> All setups
@@ -72,7 +73,8 @@ export function SetupPage({
   notice: ReactNode
   onTag: TagSetup
   canCompare: boolean
-  onBack: () => void
+  /** "‹ All setups"; absent while the explorer lists them. */
+  onBack?: () => void
   onVersion: (version: string | null) => void
   onCompare: (first: SetupRef, second: SetupRef | null) => void
 }) {

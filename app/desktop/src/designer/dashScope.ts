@@ -3,7 +3,7 @@ import { gameName } from '../views/AnalysisBrowseDomain'
 import { DASH_RULE_CLASSES, buildDashRules, buildDeviceUpdate, type DashRuleKind, type Device, type DeviceDashRule } from '../views/DevicesDomain'
 
 /**
- * The designer's scope strip: Device › Game › Class › Car → Dash. A scope points to a dash, and
+ * The designer's scope, in its title bar: Device › Game › Class › Car. A scope points to a dash, and
  * editing that dash changes it everywhere it is used. The scope's deepest pick is the rule it
  * stands for (a car's, a class's or a game's); with none, a device's own dash. "All devices" is
  * the app-wide rule list (`dash.allDevicesRules`); it needs at least a game. What a scope shows
@@ -98,7 +98,7 @@ export function placeName(place: DashPlace, devices: readonly Device[]): string 
   return `${device} › ${place.rule.kind === 'game' ? gameName(place.rule.value) : place.rule.value}`
 }
 
-/** The scope's deepest pick, as the strip names it in "Use here" and "Own copy". */
+/** The scope's deepest pick, as "Use here" and the name of a scope's own copy say it. */
 export function scopeName(scope: DashScope, devices: readonly Device[]): string {
   const rule = scopeRule(scope)
   if (rule) return rule.kind === 'game' ? gameName(rule.value) : rule.value

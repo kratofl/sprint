@@ -1,11 +1,12 @@
 import { useRef, useState } from 'react'
-import { ChevronLeft, ChevronRight, Crosshair, FileDown, MoreHorizontal, Warehouse } from 'lucide-react'
+import { Check, ChevronDown, ChevronLeft, ChevronRight, Crosshair, FileDown, MoreHorizontal, Warehouse } from 'lucide-react'
 import { dayLabel, formatGap, formatLapSeconds, fuelText, lapTimeStats, lapsByRun, runLine, runTitle, tyreText } from './AnalysisDomain'
 import type { CorpusLap, CorpusRun, CorpusSession } from './AnalysisDomain'
 import { lapTimesPlot, tickLabel } from './AnalysisPlot'
 import type { PlotDot } from './AnalysisPlot'
-import { RunSetupButton } from './AnalysisRunSetup'
+import { RunSetupButton, type SetupSession } from './AnalysisRunSetup'
 import { CarName, TrackName } from './CarBadges'
+import { TyreSet } from './TyreMark'
 import { MenuLayer, type MenuAnchor } from '../shell/Menu'
 
 /**
@@ -14,8 +15,29 @@ import { MenuLayer, type MenuAnchor } from '../shell/Menu'
  * a line opens the lap page; what else a lap can do sits behind its ⋯ menu.
  */
 
-/** "‹ All sessions", the session's kind and time, then its car (name and model), track and day. */
-export function SessionHead({ session, onBack }: { session: CorpusSession; onBack: () => void }) {
+/**
+ * The session's kind and time, then its car (name and model), track and day, with "‹ All sessions"
+ * over it. A switcher beside the name opens the other sessions with this car on this circuit
+ * (`alike`, newest first, AnalysisSessions.ts `sessionsAlike`), so going to the next one is one
+ * click and the list never has to stay on screen; it is absent when there is no other.
+ */
+export function SessionHead({
+  session,
+  alike,
+  onBack,
+  onOpen,
+}: {
+  session: CorpusSession
+  alike: readonly CorpusSession[]
+  onBack: () => void
+  onOpen: (sessionId: string) => void
+}) {
+  const [menuAt, setMenuAt] = useState<MenuAnchor | null>(null)
+  const switcher = useRef<HTMLButtonElement | null>(null)
+  const close = () => {
+    setMenuAt(null)
+    switcher.current?.focus()
+  }
   const marks = session.marks
   return (
     <div className="analysis-session-head">
@@ -24,6 +46,44 @@ export function SessionHead({ session, onBack }: { session: CorpusSession; onBac
       </button>
       <div className="analysis-session-heading">
         <h2 className="analysis-session-name">{session.label}</h2>
+        {alike.length > 1 && (
+          <button
+            ref={switcher}
+            type="button"
+            className="icon-button analysis-session-switch"
+            aria-label="Other sessions with this car here"
+            title="Other sessions with this car here"
+            aria-haspopup="menu"
+            aria-expanded={menuAt !== null}
+            onClick={(event) => {
+              const box = event.currentTarget.getBoundingClientRect()
+              setMenuAt({ x: box.left, y: box.bottom + 4 })
+            }}
+          >
+            <ChevronDown size={16} />
+          </button>
+        )}
+        {menuAt && (
+          <MenuLayer anchor={menuAt} label="Sessions with this car here" width={260} onClose={close}>
+            {alike.map((other) => (
+              <button
+                key={other.id}
+                type="button"
+                role="menuitemradio"
+                aria-checked={other.id === session.id}
+                className="menu-item"
+                onClick={() => {
+                  setMenuAt(null)
+                  if (other.id !== session.id) onOpen(other.id)
+                }}
+              >
+                <span className="menu-item-label">{other.label}</span>
+                <span className="menu-item-shortcut">{dayLabel(other.day ?? other.startedAt)}</span>
+                {other.id === session.id && <Check className="menu-item-check" />}
+              </button>
+            ))}
+          </MenuLayer>
+        )}
         {session.origin !== 'Recorded' && <span className="chip chip-muted">{session.origin}</span>}
       </div>
       <span className="analysis-secondary">
@@ -165,7 +225,7 @@ export type LapOrder = 'LapNumber' | 'Fastest'
 export function LapList({
   laps,
   runs,
-  car,
+  setupSession,
   order,
   onOrder,
   onSetRunSetup,
@@ -175,7 +235,8 @@ export function LapList({
 }: {
   laps: readonly CorpusLap[]
   runs: readonly CorpusRun[]
-  car: string
+  /** The session's car and circuit, which a run's setup is picked for. */
+  setupSession: SetupSession
   order: LapOrder
   onOrder: (order: LapOrder) => void
   onSetRunSetup: (outing: number, setupId: string | null) => void
@@ -232,7 +293,7 @@ export function LapList({
                   <strong>{runTitle(run)}</strong>
                   <span className="analysis-secondary">{runLine(run)}</span>
                 </span>
-                {run.outing !== 0 && <RunSetupButton run={run} before={before} car={car} onPick={(setupId) => onSetRunSetup(run.outing, setupId)} />}
+                {run.outing !== 0 && <RunSetupButton run={run} before={before} session={setupSession} onPick={(setupId) => onSetRunSetup(run.outing, setupId)} />}
               </div>
               <div className="list-rows" role="list">
                 {runLaps.map(row)}
@@ -245,7 +306,10 @@ export function LapList({
   )
 }
 
-/** One lap. With a line the whole row opens it (its lap name is the real button) and ⋯ holds the rest. */
+/**
+ * One lap. With a line the whole row opens it (its lap name is the real button) and ⋯ holds the rest.
+ * The row names the lap by its number alone: the host's label repeats the time the next column shows.
+ */
 function LapRow({
   lap,
   best,
@@ -276,16 +340,14 @@ function LapRow({
     <div className={`list-row analysis-lap-columns${lap.hasChannels ? ' opens' : ''}${isBest ? ' best' : ''}`} role="listitem">
       {lap.hasChannels ? (
         <button type="button" className="analysis-lap-open" aria-label={`Open ${lap.label}`} onClick={() => onOpen(lap)}>
-          {lap.label}
+          Lap {lap.lapNumber}
         </button>
       ) : (
-        <span className="analysis-strong">{lap.label}</span>
+        <span className="analysis-strong">Lap {lap.lapNumber}</span>
       )}
       <span className="analysis-num tabular analysis-strong analysis-lap-time">{formatLapSeconds(lap.lapTimeSeconds)}</span>
       <span className="analysis-num tabular analysis-secondary">{isBest ? 'Best' : best ? formatGap(lap.lapTimeSeconds - best.lapTimeSeconds) : '—'}</span>
-      <span className="analysis-ellipsis" title={tyres ?? undefined}>
-        {tyres ?? <span className="analysis-secondary">—</span>}
-      </span>
+      <span className="analysis-tyres">{tyres ? <TyreSet front={lap.frontCompound} rear={lap.rearCompound} label={tyres} /> : <span className="analysis-secondary">—</span>}</span>
       <span className="analysis-num tabular analysis-secondary">{fuelText(lap.fuelUsedLiters)}</span>
       <span className="analysis-secondary" title={lap.unavailableReason ?? undefined}>
         {lap.hasChannels ? 'Recorded' : 'Time only'}

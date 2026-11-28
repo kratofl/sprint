@@ -510,8 +510,8 @@ public sealed class ScreenOutputService : IDisposable
 
     /// <summary>
     /// A device's scene feed: the content <see cref="Reconcile"/> publishes, plus the idle page, the
-    /// wheel buttons' page and the Ack presses read live, so a page change or an Ack shows within a
-    /// frame. Every dash output gets one, a wheel's and a browser display's alike; only a wheel's
+    /// wheel buttons' page and stack layers and the Ack presses read live, so a page or layer change
+    /// or an Ack shows within a frame. Every dash output gets one, a wheel's and a browser display's alike; only a wheel's
     /// reads its multi-dial (<paramref name="dialStatus"/>) and the engineer's message (<paramref name="radio"/>).
     /// </summary>
     private DashSceneFeed NewSceneFeed(string deviceId, Func<MultiDialStatus>? dialStatus = null, Func<string?>? radio = null)
@@ -523,7 +523,8 @@ public sealed class ScreenOutputService : IDisposable
             pageId: () => pageCycle?.CurrentPageId(deviceId),
             dialStatus,
             radio,
-            this._acknowledgements);
+            this._acknowledgements,
+            pageCycle is null ? null : () => pageCycle.LayersOf(deviceId));
     }
 
     /// <summary>

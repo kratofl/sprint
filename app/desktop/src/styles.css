@@ -129,28 +129,28 @@ a:hover {
   outline-offset: 2px;
 }
 
-/* ── App frame: sidebar | toolbar over content ──────────────────────────────
-   One grid on .app; .app-frame dissolves so the sidebar spans both rows. The
-   sidebar column is `auto`: hiding it slides the sidebar out with a negative
-   margin, which shrinks the column with it (a finite transition; the motion
-   tokens drop to 0ms under reduced motion). */
+/* ── App frame: sidebar | explorer | toolbar over content, the status bar below ──
+   One grid on .app. The explorer column is `auto`: only Settings has an explorer, every other
+   page renders none and the column folds to nothing. Chrome (sidebar, explorer, status bar) sits
+   on --window; the toolbar and the page are the one lighter surface, so the eye lands on it. */
 
 .app {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  grid-template-rows: 48px minmax(0, 1fr);
+  grid-template-columns: auto auto minmax(0, 1fr);
+  grid-template-rows: 48px minmax(0, 1fr) 24px;
   grid-template-areas:
-    "sidebar toolbar"
-    "sidebar content";
+    "sidebar explorer toolbar"
+    "sidebar explorer content"
+    "status status status";
   height: 100vh;
   overflow: hidden;
   background: var(--window);
   color: var(--label);
 }
 
-/* Pane width is restored from persisted settings after the first state load
-   (App.tsx); staying invisible until then avoids painting the wrong width and
-   snapping to the right one a moment later. */
+/* The sidebar's folded state is restored from persisted settings after the first state load
+   (App.tsx); staying invisible until then avoids painting the wrong width and snapping to the
+   right one a moment later. */
 .app.pending {
   opacity: 0;
 }
@@ -160,51 +160,15 @@ a:hover {
   transition: opacity var(--motion-normal) var(--ease-out);
 }
 
-.app-frame {
-  display: contents;
-}
-
 /* The content scrolls on its own under the toolbar. */
 .content {
   grid-area: content;
   min-width: 0;
   overflow-y: auto;
-  padding: 20px;
-  background: var(--layer);
+  padding: 16px 20px;
+  background: var(--surface);
 }
 
-/* ── Light trails behind the shell (Windows/Linux) ───────────────────────────
-   The web shell's look (web/app/globals.css): the ambient trails (shell/Backdrop.tsx) fill the
-   window, the sidebar and toolbar are glass over them, and the content area is a veil, so the
-   trails glow faintly between the cards. Cards and every other content element stay opaque.
-   macOS keeps its native vibrancy instead and never gets `.with-trails` (App.tsx). */
-
-.app.with-trails {
-  position: relative;
-  isolation: isolate;
-}
-
-.app.with-trails .navview {
-  background: color-mix(in srgb, var(--sidebar) var(--chrome-opacity), transparent);
-  backdrop-filter: var(--chrome-backdrop);
-}
-
-.app.with-trails .titlebar {
-  background: color-mix(in srgb, var(--toolbar) var(--chrome-opacity), transparent);
-  backdrop-filter: var(--chrome-backdrop);
-}
-
-.app.with-trails .content {
-  background: color-mix(in srgb, var(--layer) var(--veil-opacity), transparent);
-}
-
-/* Reduced transparency: the plain opaque shell, no trails. */
-@media (prefers-reduced-transparency: reduce) {
-  .app.with-trails > .backdrop { display: none; }
-  .app.with-trails .navview { background: var(--sidebar); backdrop-filter: none; }
-  .app.with-trails .titlebar { background: var(--toolbar); backdrop-filter: none; }
-  .app.with-trails .content { background: var(--layer); }
-}
 
 /* The trails layer, painted once from plain strokes (no filters). The entrance only fades and
    slides the finished layer and does not hold its end state, so it settles into a static paint. */
@@ -233,7 +197,7 @@ a:hover {
 }
 
 /* ── Toolbar (48px) ──────────────────────────────────────────────────────────
-   Two zones as one grid: leading (sidebar toggle while hidden, page title) |
+   Two zones as one grid: leading (the list toggle, where you are) |
    trailing (the page's actions, then search), which takes what is left. The
    bar is the window's title bar: it drags the window, and every control opts
    back out. */
@@ -261,6 +225,7 @@ a:hover {
 /* Leading zone: never shrinks, so the title stays whole and the actions give way instead. */
 .titlebar-lead {
   display: flex;
+  align-self: stretch;
   align-items: center;
   gap: 8px;
   min-width: max-content;
@@ -290,7 +255,7 @@ a:hover {
 
 .titlebar-title {
   flex: none;
-  font: 600 17px/22px var(--font-display);
+  font: 600 15px/20px var(--font-display);
   white-space: nowrap;
 }
 
@@ -317,9 +282,9 @@ a:hover {
   align-items: center;
   gap: 6px;
   width: 220px;
-  height: 28px;
+  height: 24px;
   flex: none;
-  padding: 0 10px;
+  padding: 0 8px;
   border: 0;
   border-radius: var(--radius-control);
   background: var(--control-fill);
@@ -401,9 +366,9 @@ a:hover {
   white-space: nowrap;
 }
 
-/* ── Sidebar (224px, full height; a 56px rail when collapsed) ────────────── */
+/* ── Sidebar (224px, full height; a 56px rail of icons when folded; shell/Sidebar.tsx) ── */
 
-.navview {
+.sidebar {
   grid-area: sidebar;
   display: flex;
   flex-direction: column;
@@ -416,15 +381,13 @@ a:hover {
   transition: width var(--motion-normal) var(--ease-out);
 }
 
-/* Collapsed: a rail of icons, as the web sidebar. The toggle stays at the top to bring the
-   labels back; each item keeps its name as tooltip and aria-label (Sidebar.tsx). */
-.navview.collapsed {
+.sidebar.collapsed {
   width: 56px;
 }
 
-/* The 48px band at the top, level with the toolbar: the Sprint mark and name, then
-   the toggle. It drags the window like the toolbar beside it. */
-.navview-band {
+/* The 48px band at the top, level with the toolbar: the mark and name, then the fold toggle. It
+   drags the window like the toolbar beside it. */
+.sidebar-band {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -435,7 +398,7 @@ a:hover {
   -webkit-app-region: drag;
 }
 
-.navview-brand {
+.sidebar-brand {
   display: flex;
   flex: 1;
   align-items: center;
@@ -446,7 +409,7 @@ a:hover {
   line-height: 20px;
 }
 
-.navview-brand img {
+.sidebar-brand img {
   display: block;
   width: 22px;
   height: 22px;
@@ -454,14 +417,13 @@ a:hover {
   -webkit-user-drag: none;
 }
 
-.navview-toggle {
-  position: relative;
+.sidebar-toggle {
   display: grid;
   place-items: center;
   width: 28px;
   height: 28px;
   flex: none;
-  margin: 0;
+  padding: 0;
   border: 0;
   border-radius: var(--radius-control);
   background: transparent;
@@ -469,92 +431,18 @@ a:hover {
   -webkit-app-region: no-drag;
 }
 
-.navview-spacer {
+.sidebar-spacer {
   flex: 1;
 }
 
-/* The build tag beside the name keeps a tag's weight, not the name's. */
-.navview-brand .chip {
-  font-weight: 600;
-}
-
-/* The running build under Help: a dev run's branch, else the version (Sidebar.tsx). */
-.navview-build {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex: none;
-  min-width: 0;
-  padding: 6px 8px 2px;
-  color: var(--label-secondary);
-  font-size: 12px;
-  line-height: 16px;
-}
-
-.navview-build-text {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* Collapsed, the tag becomes a dot on the toggle's corner. */
-.navview-build-dot {
-  display: none;
-  position: absolute;
-  top: 4px;
-  right: 4px;
-  width: 6px;
-  height: 6px;
-  border-radius: var(--radius-pill);
-}
-
-.navview-build-dot.development { background: var(--yellow-500); }
-.navview-build-dot.pre-release { background: var(--blue-500); }
-
-.navview.collapsed .navview-band {
-  justify-content: center;
-  padding: 0;
-}
-
-.navview.collapsed .navview-brand,
-.navview.collapsed .navview-build,
-.navview.collapsed .nav-item-label,
-.navview.collapsed .account-name {
-  display: none;
-}
-
-.navview.collapsed .navview-build-dot {
-  display: block;
-}
-
-.navview.collapsed .nav-item {
-  justify-content: center;
-  padding: 0;
-}
-
-/* The update dot moves onto the icon's corner. */
-.navview.collapsed .nav-item-badge {
-  position: absolute;
-  top: 5px;
-  right: 10px;
-  margin: 0;
-}
-
-.navview.collapsed .account-row {
-  justify-content: center;
-  padding-right: 0;
-  padding-left: 0;
-}
-
-.nav-item {
+/* A page: its icon, dimmed until the page is current, then its name. */
+.sidebar-item {
   position: relative;
   display: flex;
   align-items: center;
   gap: 8px;
   height: 28px;
   flex: none;
-  margin: 0;
   padding: 0 8px;
   border: 0;
   border-radius: var(--radius-control);
@@ -562,68 +450,60 @@ a:hover {
   color: var(--label);
   font-size: 13px;
   text-align: left;
-  text-decoration: none;
   white-space: nowrap;
 }
 
-.navview-toggle:hover,
-.nav-item:hover {
-  background: var(--subtle-hover);
+.sidebar-item svg {
+  flex: none;
+  color: var(--label-tertiary);
 }
 
-.navview-toggle:active,
-.nav-item:active {
-  background: var(--subtle-pressed);
+.sidebar-toggle:hover,
+.sidebar-item:hover {
+  background: var(--subtle-hover);
   color: var(--label);
 }
 
-/* Selected: the strong fill, a semibold label and the brand icon (web sidebar). */
-.nav-item.active {
+.sidebar-toggle:active,
+.sidebar-item:active {
+  background: var(--subtle-pressed);
+}
+
+/* The current page: the strong fill, icon and label in full colour; no brand colour for where
+   you are. */
+.sidebar-item.current {
   background: var(--subtle-selected);
   font-weight: 600;
 }
 
-.nav-item svg {
-  flex: none;
-  color: var(--label-secondary);
+.sidebar-item:hover svg,
+.sidebar-item.current svg {
+  color: var(--label);
 }
 
-.nav-item.active svg {
-  color: var(--brand-500);
-}
-
-.nav-item-label {
+.sidebar-item-label {
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-/* A section heading over a run of rows (shell/nav.ts `NavGroup`): a column-head label, quieter than the rows. */
-.nav-group {
+/* A group heading over its pages: a category label, 11px semibold, uppercase and tracked. */
+.sidebar-group {
   flex: none;
   padding: 12px 8px 4px;
 }
 
-.nav-group-label {
+.sidebar-group-label {
   display: block;
   color: var(--label-secondary);
   font-size: 11px;
   font-weight: 600;
   line-height: 16px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
 }
 
-/* The rail has no room for words: the heading becomes a hairline between the runs. */
-.navview.collapsed .nav-group {
-  margin: 6px 12px;
-  padding: 0;
-  border-top: 1px solid var(--divider);
-}
-
-.navview.collapsed .nav-group-label {
-  display: none;
-}
-
-/* Update-available dot on the Settings item. */
-.nav-item-badge {
+/* Update-available dot on Settings. */
+.sidebar-item-badge {
   width: 6px;
   height: 6px;
   flex: none;
@@ -632,59 +512,361 @@ a:hover {
   background: var(--brand-500);
 }
 
-/* The game link first in the footer, under a hairline (TelemetryRow.tsx): a status dot in the
-   icon's place and the link in secondary text, so it reads as status, not as a page. */
-.navview-telemetry {
-  display: flex;
-  flex-direction: column;
-  flex: none;
-  margin-bottom: 4px;
-  padding-top: 4px;
+/* Folded: icons only, each page keeps its name as tooltip and accessible name (Sidebar.tsx); a
+   group heading becomes a hairline, and the update dot moves onto the icon's corner. */
+.sidebar.collapsed .sidebar-band {
+  justify-content: center;
+  padding: 0;
+}
+
+.sidebar.collapsed .sidebar-brand,
+.sidebar.collapsed .sidebar-item-label {
+  display: none;
+}
+
+.sidebar.collapsed .sidebar-item {
+  justify-content: center;
+  padding: 0;
+}
+
+.sidebar.collapsed .sidebar-group {
+  margin: 6px 12px;
+  padding: 0;
   border-top: 1px solid var(--divider);
 }
 
-.nav-item.nav-telemetry {
+.sidebar.collapsed .sidebar-group-label {
+  display: none;
+}
+
+.sidebar.collapsed .sidebar-item-badge {
+  position: absolute;
+  top: 5px;
+  right: 10px;
+  margin: 0;
+}
+
+/* ── Rail (68px, full height): the dash designer's sections (designer/DashDesigner.tsx) ── */
+
+.rail {
+  grid-area: rail;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  width: 68px;
+  padding: 0 0 8px;
+  overflow: hidden auto;
+  background: var(--sidebar);
+}
+
+/* The 48px band at the top, level with the toolbar: the Sprint mark. It drags the window. */
+.rail-band {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 48px;
+  flex: none;
+  -webkit-app-region: drag;
+}
+
+.rail-band img {
+  display: block;
+  width: 22px;
+  height: 22px;
+  -webkit-user-drag: none;
+}
+
+.rail-spacer {
+  flex: 1;
+}
+
+/* An area: its icon over its name, the icon dimmed until it is the current area. Selected: the
+   strong fill, icon and label in full colour; no brand colour for where you are. */
+.rail-item {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  width: 60px;
+  flex: none;
+  padding: 8px 0 6px;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--label-secondary);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 14px;
+  white-space: nowrap;
+}
+
+.rail-item svg {
+  color: var(--label-tertiary);
+}
+
+.rail-item:hover {
+  background: var(--subtle-hover);
+  color: var(--label);
+}
+
+.rail-item:hover svg,
+.rail-item.active svg {
+  color: var(--label);
+}
+
+.rail-item:active {
+  background: var(--subtle-pressed);
+}
+
+.rail-item.active {
+  background: var(--subtle-selected);
+  color: var(--label);
+  font-weight: 600;
+}
+
+/* Update-available dot on Settings. */
+.rail-item-badge {
+  position: absolute;
+  top: 6px;
+  right: 16px;
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: var(--brand-500);
+}
+
+/* ── Explorer (300px): the page's name, then its list (shell/Explorer.tsx; Settings) ── */
+
+.explorer {
+  grid-area: explorer;
+  display: flex;
+  flex-direction: column;
+  width: 300px;
+  min-height: 0;
+  border-right: 1px solid var(--layer-stroke);
+  background: var(--window);
+}
+
+/* A band at the top of the explorer's list, level with the toolbar and closed by the same hairline
+   (Settings' search). It drags the window like the toolbar; its controls opt out. */
+.explorer-band {
+  display: flex;
+  align-items: center;
+  height: 48px;
+  flex: none;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--layer-stroke);
+  -webkit-app-region: drag;
+}
+
+.explorer-band > * {
+  -webkit-app-region: no-drag;
+}
+
+.explorer-list:has(> .explorer-band:first-child) {
+  padding-top: 0;
+}
+
+.explorer-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.explorer-list {
+  display: flex;
+  flex-direction: column;
+  padding: 6px 0 12px;
+}
+
+/* A heading over a run of rows, with its count at the right: a category label, 11px semibold,
+   uppercase and tracked. */
+.explorer-group {
+  display: flex;
+  justify-content: space-between;
+  margin: 12px 0 4px;
+  padding: 0 16px;
+  color: var(--label-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 16px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.explorer-list > .explorer-group:first-child {
+  margin-top: 4px;
+}
+
+.list-row.explorer-row {
+  gap: 8px;
+  min-height: 32px;
+  padding-top: 4px;
+  padding-bottom: 4px;
+}
+
+.list-row.explorer-row[data-depth="1"] {
+  padding-left: 26px;
+}
+
+.list-row.explorer-row[data-depth="2"] {
+  padding-left: 42px;
+}
+
+.explorer-chevron {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  color: var(--label-tertiary);
+}
+
+.explorer-row-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.explorer-row-title,
+.explorer-row-line {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.explorer-row-line {
+  color: var(--label-secondary);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.explorer-row-meta {
+  flex: none;
   color: var(--label-secondary);
   font-size: 12px;
 }
 
-.nav-item.nav-telemetry:hover {
+.list-row.selected .explorer-row-meta {
   color: var(--label);
 }
 
-.nav-item.nav-telemetry:disabled {
-  background: transparent;
+/* A control at the top of a list (a search, a switch, the car picker), inset like the rows. */
+.explorer-tools {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 4px 12px 6px;
 }
 
-.nav-telemetry-dot {
-  justify-content: center;
-  width: 16px;
+.explorer-tools .segmented {
+  align-self: stretch;
 }
 
-/* Account last, under a hairline, below Settings and Help (web sidebar footer). */
-.account-row {
+.explorer-tools > .button {
+  align-self: flex-start;
+}
+
+/* The car picker (views/CarPicker.tsx) under a list's first rows. */
+.explorer-tools.explorer-car {
+  padding-top: 10px;
+}
+
+/* A line of fine print under a list. */
+.explorer-note {
+  margin: 8px 16px 0;
+  color: var(--label-secondary);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.explorer-tools .segmented-item {
+  flex: 1;
+}
+
+/* ── Status bar (24px) along the foot of the window (shell/StatusBar.tsx) ─── */
+
+.statusbar {
+  grid-area: status;
   display: flex;
   align-items: center;
-  gap: 8px;
-  flex: none;
-  order: 1;
-  margin: 6px 0 0;
-  padding: 10px 8px 0;
-  border: 0;
+  gap: 2px;
+  min-width: 0;
+  padding: 0 8px;
+  overflow: hidden;
   border-top: 1px solid var(--layer-stroke);
-  border-radius: 0;
-  background: transparent;
-  color: var(--label);
-  font: inherit;
-  font-size: 13px;
-  font-weight: 500;
-  text-align: start;
-  white-space: nowrap;
-  cursor: default;
+  background: var(--window);
+  color: var(--label-secondary);
+  font-size: 12px;
 }
 
-.account-row:not(:disabled):hover {
-  color: var(--link);
+.statusbar-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 20px;
+  flex: none;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--radius-control-small);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  white-space: nowrap;
+}
+
+.statusbar-item:not(.static, :disabled):hover {
+  background: var(--subtle-hover);
+  color: var(--label);
+}
+
+.statusbar-spacer {
+  flex: 1;
+}
+
+/* A dev or beta build (StatusBar.tsx): one chip, the channel on the darker half and the branch or
+   version on the brighter one, red for dev and green for beta, as their app icons. */
+.build-chip {
+  display: inline-flex;
+  overflow: hidden;
+  border-radius: var(--radius-control-small);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 16px;
+}
+
+.build-chip > span {
+  padding: 1px 7px;
+}
+
+.build-chip-channel {
+  background: var(--build-channel);
+  color: var(--build-channel-text);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.build-chip-name {
+  background: var(--build-name);
+  color: var(--build-name-text);
+}
+
+.build-chip.dev {
+  --build-channel: var(--red-700);
+  --build-channel-text: var(--red-100);
+  --build-name: var(--red-500);
+  --build-name-text: var(--on-status);
+}
+
+/* The bright green carries dark text in both themes; white on it would not read. */
+.build-chip.beta {
+  --build-channel: var(--green-700);
+  --build-channel-text: var(--green-100);
+  --build-name: var(--green-500);
+  --build-name-text: var(--green-900);
 }
 
 .account-avatar {
@@ -701,10 +883,12 @@ a:hover {
   line-height: 1;
 }
 
-.account-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
+.statusbar .account-avatar {
+  width: 16px;
+  height: 16px;
+  font-size: 8px;
 }
+
 
 /* ── Page header (shell/PageHeader.tsx) ─────────────────────────────────────
    The toolbar names the page, so the in-content title is for screen readers
@@ -824,35 +1008,39 @@ a:hover {
 }
 
 /* ── Buttons ──────────────────────────────────────────────────────────────
-   .button          secondary: a flat fill, no border
-   .button.primary  brand-500 + on-brand text. One per view.
-   .button.subtle   ghost: transparent until hover
+   The pro look: 24px, 12px text, a light fill and a hairline (--control-stroke, none on a Mac).
+   .button          secondary
+   .button.primary  brand-500 + on-brand text, no hairline. One per view.
+   .button.subtle   the same as secondary; kept apart for the toolbar's icon items
    .button.destructive        the standard fill, danger text (disabled: the disabled colour)
    .button.destructive-solid  final irreversible step only
-   .button.small    24px, for dense rows and card footers
-   A leading 14px icon tightens the left padding. Buttons never glow. */
+   .button.small    22px, for dense rows and card footers
+   A leading 14px icon tightens the left padding. Depth is a hard 1px edge straight down
+   (--control-edge, --primary-edge; none on a Mac) that flattens while pressed. Never a blur,
+   never a glow, no movement. */
 
 .button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  height: 28px;
+  gap: 4px;
+  height: 24px;
   flex: none;
-  padding: 0 12px;
-  border: 0;
+  padding: 0 8px;
+  border: 1px solid var(--control-stroke);
   border-radius: var(--radius-control);
   background: var(--control-fill);
   color: var(--label);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
-  line-height: 20px;
+  line-height: 16px;
   white-space: nowrap;
   text-decoration: none;
+  box-shadow: 0 1px 0 var(--control-edge);
 }
 
 .button:has(> svg:first-child) {
-  padding-left: 10px;
+  padding-left: 6px;
 }
 
 .button > svg {
@@ -870,14 +1058,21 @@ a:hover {
   color: var(--label);
 }
 
+.button:active:not(:disabled, [aria-disabled='true']) {
+  box-shadow: none;
+}
+
 .button:disabled,
 .button[aria-disabled='true'] {
   background: var(--control-fill-disabled);
+  box-shadow: none;
   color: var(--label-disabled);
 }
 
 .button.primary {
+  border-color: transparent;
   background: var(--brand-500);
+  box-shadow: 0 1px 0 var(--primary-edge);
   color: var(--on-brand);
   font-weight: 600;
 }
@@ -896,21 +1091,8 @@ a:hover {
   color: var(--label-disabled);
 }
 
-.button.subtle {
-  padding: 0 8px;
-  background: transparent;
-}
-
-.button.subtle:hover {
-  background: var(--subtle-hover);
-}
-
-.button.subtle:active {
-  background: var(--subtle-pressed);
-}
-
 .button.subtle:disabled {
-  background: transparent;
+  background: var(--control-fill-disabled);
 }
 
 .button.destructive {
@@ -923,7 +1105,9 @@ a:hover {
 }
 
 .button.destructive-solid {
+  border-color: transparent;
   background: var(--danger-text);
+  box-shadow: 0 1px 0 color-mix(in srgb, var(--danger-text) 55%, var(--control-edge));
   color: var(--on-status);
   font-weight: 600;
 }
@@ -933,19 +1117,19 @@ a:hover {
 }
 
 .button.small {
-  height: 24px;
-  padding: 0 8px;
+  height: 22px;
+  padding: 0 6px;
   font-size: 12px;
   line-height: 16px;
   align-self: flex-start;
 }
 
-/* Icon-only button (close, more options, row actions). Needs an aria-label. */
+/* Icon-only button (close, more options, row actions), 24px with no fill until hover. Needs an aria-label. */
 .icon-button {
   display: inline-grid;
   place-items: center;
-  width: 28px;
-  height: 28px;
+  width: 24px;
+  height: 24px;
   flex: none;
   padding: 0;
   border: 0;
@@ -1026,7 +1210,7 @@ a:hover {
   background: var(--surface);
   border: 1px solid var(--card-stroke);
   border-radius: var(--radius-card);
-  padding: 16px;
+  padding: 12px 16px;
 }
 
 .card-title {
@@ -1053,14 +1237,28 @@ a:hover {
   overflow: hidden;
 }
 
+/* Inside the page, cards are sections: a hairline over each instead of a framed box, so the page
+   reads as one sheet. Dialogs and flyouts raised from the page keep their own shape. At the weight
+   of .card alone, so a card's own state (.skeleton, a tile's hover) still wins. */
+:where(.content) .card:where(:not(.content-dialog *, .menu-flyout *)) {
+  border-width: 1px 0 0;
+  border-color: var(--divider);
+  border-radius: 0;
+  background: transparent;
+}
+
+:where(.content) .card.list-card:where(:not(.content-dialog *, .menu-flyout *)) {
+  padding-bottom: 0;
+}
+
 .card-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  min-height: 40px;
+  min-height: 36px;
   flex: none;
-  padding: 6px 16px;
+  padding: 4px 16px;
 }
 
 /* Nothing to list: one line under the title row, or under the column header. */
@@ -1120,20 +1318,21 @@ a:hover {
 :where(select, textarea),
 .input {
   min-width: 0;
-  height: 28px;
-  padding: 0 10px;
+  height: 24px;
+  padding: 0 8px;
   border: 1px solid var(--input-stroke);
   border-radius: var(--radius-control);
   background: var(--input-fill);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--control-edge) 45%, transparent);
   color: var(--label);
-  font-size: 13px;
-  line-height: 20px;
+  font-size: 12px;
+  line-height: 16px;
 }
 
 :where(textarea) {
   height: auto;
   min-height: 52px;
-  padding: 4px 10px;
+  padding: 4px 8px;
   resize: vertical;
 }
 
@@ -1162,7 +1361,7 @@ a:hover {
 /* Native select with a drawn chevron (no hex in a data URI; follows the text colour). */
 :where(select) {
   appearance: none;
-  padding-right: 28px;
+  padding-right: 24px;
   background-image:
     linear-gradient(45deg, transparent 50%, currentColor 50%),
     linear-gradient(135deg, currentColor 50%, transparent 50%);
@@ -1310,10 +1509,10 @@ a:hover {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  height: 24px;
-  padding: 0 10px;
+  height: 22px;
+  padding: 0 8px;
   border: 1px dashed var(--slot-stroke);
-  border-radius: var(--radius-pill);
+  border-radius: var(--radius-control-small);
   background: transparent;
   color: var(--label-secondary);
   font: inherit;
@@ -1337,8 +1536,8 @@ a:hover {
 .filter-chip[aria-pressed='true'],
 .filter-chip[aria-checked='true'] {
   border-style: solid;
-  border-color: transparent;
-  background: var(--subtle-selected);
+  border-color: var(--control-stroke);
+  background: var(--segmented-selected);
   color: var(--label);
   font-weight: 600;
 }
@@ -1353,6 +1552,7 @@ a:hover {
    --track trough; the selected item is a raised fill, semibold.
    .tabs > .tab: separate panes of one page; selected = bold + brand underline. */
 
+/* The trough is milled in (the edge along its top inside); the picked segment is raised out of it. */
 .segmented {
   display: inline-flex;
   gap: 2px;
@@ -1361,16 +1561,17 @@ a:hover {
   border: 0;
   border-radius: var(--radius-control);
   background: var(--track);
+  box-shadow: inset 0 1px 0 var(--control-edge);
 }
 
 .segmented-item {
-  height: 24px;
-  padding: 0 10px;
+  height: 20px;
+  padding: 0 8px;
   border: 0;
   border-radius: var(--radius-control-small);
   background: transparent;
   color: var(--label-secondary);
-  font-size: 13px;
+  font-size: 12px;
   line-height: 20px;
   white-space: nowrap;
 }
@@ -1380,10 +1581,13 @@ a:hover {
   color: var(--label);
 }
 
+/* The picked segment is raised out of the trough: its own fill, a hairline and the edge (none on a
+   Mac). */
 .segmented-item.active,
 .segmented-item[aria-pressed='true'],
 .segmented-item[aria-checked='true'] {
   background: var(--segmented-selected);
+  box-shadow: 0 0 0 1px var(--control-stroke), 0 1px 0 var(--control-edge);
   color: var(--label);
   font-weight: 600;
 }
@@ -1395,13 +1599,13 @@ a:hover {
 
 .tab {
   position: relative;
-  height: 32px;
-  padding: 0 12px;
+  height: 28px;
+  padding: 0 10px;
   border: 0;
   border-radius: var(--radius-control);
   background: transparent;
   color: var(--label-secondary);
-  font-size: 13px;
+  font-size: 12px;
 }
 
 .tab:hover {
@@ -1425,7 +1629,7 @@ a:hover {
   height: 3px;
   margin-left: -8px;
   border-radius: 2px;
-  background: var(--brand-500);
+  background: var(--label);
 }
 
 /* ── Switch (shell/Switch.tsx): an instant on/off, "On"/"Off" beside it ────── */
@@ -1727,7 +1931,7 @@ a:hover {
   align-items: center;
   gap: 12px;
   width: calc(100% - 12px);
-  min-height: 32px;
+  min-height: 28px;
   margin: 1px 6px 0;
   padding: 0 10px;
   border: 0;

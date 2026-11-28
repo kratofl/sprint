@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import { Check, ChevronRight, Crosshair, FolderOpen, GitCompareArrows, Move, Play, Route, Square, X } from 'lucide-react'
 import type { SprintCommand } from '../bridge'
+import { Explorer, ExplorerGroup, ExplorerRow, useExplorerShown } from '../shell/Explorer'
 import { PageHeader } from '../shell/PageHeader'
 import { usePageUp } from '../shell/pageUp'
 import type { RuntimeState } from '../shell/runtime'
@@ -37,9 +38,9 @@ type Send = (command: SprintCommand) => Promise<void>
 
 /**
  * On track: training against an older lap, yours or a friend's (docs/internals/live-compare.md).
- * Three pages over the whole content width: the list (the lap being chased, then the laps on this
- * track in this car), one lap opened from it (Chase this lap is picked there), and two laps
- * compared (OnTrackPages.tsx). The HUD itself is never drawn here: Arrange HUD puts its windows up
+ * Three pages: the list (the lap being chased and the HUD's range; the laps on this track in this
+ * car are in the explorer, `LapsExplorer`, or on the page while it is hidden), one lap opened from
+ * them (Chase this lap is picked there), and two laps compared (OnTrackPages.tsx). The HUD itself is never drawn here: Arrange HUD puts its windows up
  * on the monitor, unlocked, where they are moved, sized, added and removed; Start training puts
  * them up click-through. All of it is host state (`state.compare`); this view renders it and
  * sends `compare.*`. Which page is open is the only local state.
@@ -52,6 +53,7 @@ export function OnTrackView({ runtime, send }: { runtime: RuntimeState; send: Se
   const compare: CompareState | null = runtime.kind === 'ready' ? parseCompareState(runtime.sprint) : null
   const page = compare ? resolvePage(compare, opened) : LIST_PAGE
   usePageUp(page.kind === 'list' ? null : 'All laps', () => setOpened(LIST_PAGE))
+  const explorer = useExplorerShown()
 
   if (compare === null) {
     return (
@@ -184,12 +186,76 @@ export function OnTrackView({ runtime, send }: { runtime: RuntimeState; send: Se
       ) : (
         <>
           <ChasingCard compare={compare} onCourse={(course) => void run(buildSelectCourse(course))} />
-          <LapsCard compare={compare} onOpen={(open) => setOpened({ kind: 'lap', lap: lapKeyOf(open) })} onImport={lapFileImport.open} />
+          {!explorer && <LapsCard compare={compare} onOpen={(open) => setOpened({ kind: 'lap', lap: lapKeyOf(open) })} onImport={lapFileImport.open} />}
           <HudRange compare={compare} onRange={(behind, ahead) => void run(buildHudRange(behind, ahead))} />
         </>
       )}
       {lapFileImport.dialog}
+      <LapsExplorer compare={compare} list={page.kind === 'list'} open={lap} onList={toList} onOpen={(open) => setOpened({ kind: 'lap', lap: lapKeyOf(open) })} onImport={lapFileImport.open} />
     </div>
+  )
+}
+
+/**
+ * The laps here in the explorer, in place of the list page's Laps card: "Training" (the list
+ * page), then your fastest laps and every lap a friend shared, fastest first, each opening its
+ * lap page. The lap being chased says so; a lap with only a time has no line to open.
+ */
+function LapsExplorer({
+  compare,
+  list,
+  open,
+  onList,
+  onOpen,
+  onImport,
+}: {
+  compare: CompareState
+  /** On the list page ("Training"); neither on a lap nor on two laps compared. */
+  list: boolean
+  open: CorpusLap | null
+  onList: () => void
+  onOpen: (lap: CorpusLap) => void
+  onImport: () => void
+}) {
+  const laps = listedLaps(compare)
+  const fastest = laps[0] ?? null
+  const own = ownLapCount(compare)
+  const ownListed = laps.filter((lap) => !lap.sharedFrom).length
+  return (
+    <Explorer label="Laps here">
+      <ExplorerRow title="Training" selected={list} onClick={onList} />
+      {compare.courses.length > 0 && (
+        <>
+          <ExplorerGroup title="Laps here" count={laps.length} />
+          {laps.map((lap) => (
+            <ExplorerRow
+              key={`${lap.sessionId}/${lap.lapNumber}`}
+              title={<span className="tabular">{formatLapSeconds(lap.lapTimeSeconds)}</span>}
+              line={`${lap.sharedFrom ?? 'You'} · ${lap.sharedFrom ? sharedWhen(lap) : lapWhen(lap)}`}
+              meta={
+                isTarget(compare.target, lap) ? (
+                  <span className="chip chip-default">Chasing</span>
+                ) : lap === fastest ? (
+                  'fastest'
+                ) : (
+                  formatGap(lap.lapTimeSeconds - (fastest?.lapTimeSeconds ?? lap.lapTimeSeconds))
+                )
+              }
+              selected={open !== null && open.sessionId === lap.sessionId && open.lapNumber === lap.lapNumber}
+              disabled={!lap.hasChannels}
+              tooltip={lap.unavailableReason ?? undefined}
+              onClick={() => onOpen(lap)}
+            />
+          ))}
+          {own > ownListed && <p className="explorer-note">Your {ownListed} fastest of {own} laps. Any other lap opens in Analysis.</p>}
+          <div className="explorer-tools">
+            <button type="button" className="button subtle" onClick={onImport}>
+              <FolderOpen /> Import a friend’s lap…
+            </button>
+          </div>
+        </>
+      )}
+    </Explorer>
   )
 }
 
@@ -220,7 +286,7 @@ function ChasingCard({ compare, onCourse }: { compare: CompareState; onCourse: (
           <>
             <span className="ontrack-kicker">Chasing</span>
             <span className="ontrack-hero-none">No lap picked</span>
-            <span className="ontrack-hero-detail">Open one of the laps below and chase it.</span>
+            <span className="ontrack-hero-detail">Open one of the laps here and chase it.</span>
           </>
         )}
       </div>

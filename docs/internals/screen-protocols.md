@@ -82,9 +82,10 @@ Runtime behavior:
   A preset without `detect` is never offered. Every VoCore panel reports the same
   id, so the Omega also lists its button box (`16D0:127A`); entries with more ids
   claim first, and saved devices claim their hardware before any entry does.
-- Sprint reuses the compatible Windows USB binding already configured for the
-  screen (including a working SimHub setup); it does not require a separate
-  per-use driver installation step.
+- Sprint reuses a WinUSB binding already configured for the screen (by SimHub,
+  the screen maker's driver setup or Zadig); it installs no
+  driver itself. Without one, `WinUsb_Initialize` fails and the screen reads
+  `USB driver needed` with how to bind WinUSB.
 - On a clean disconnect (Sprint quits, the screen is disabled) both drivers set
   the backlight to zero before releasing their handles; closing the handle alone
   leaves the last dash frame lit. A panel that has stopped answering is released
@@ -169,7 +170,7 @@ Model IDs currently mapped in `VoCoreProtocol.NativeDimensions()`:
 The query runs with the same 2-second overlapped-control timeout as every other
 transfer and is non-fatal: on failure Sprint resets the control pipe and keeps
 the PID/config dimensions. (An earlier note claimed the query blocks on a
-SimHub-compatible `0x1004` firmware — that observation was made while the
+`0x1004` firmware — that observation was made while the
 firmware was in the wedged state described below, which blocks every vendor
 transfer equally, so it does not indict the query itself. The official mpro DRM
 driver issues the same query unconditionally at probe.)
@@ -194,11 +195,10 @@ Open sequence:
    (non-fatal).
 6. Resolve native dimensions: model query `0xB5`/`0xB6`/`0xB7`; on failure fall
    back to the matched PID and saved orientation.
-7. Send quit-sleep `00 29 00 00 00 00` and full brightness
-   `00 51 02 00 00 00 FF 00` via request `0xB0` (both non-fatal on failure).
-   This mirrors the mpro DRM driver's enable path; another screen app's
-   "disable" can leave the backlight at 0, in which case frames transfer
-   fine but land on a dark panel.
+7. Backlight off (`00 51 02 00 00 00 00 00`, non-fatal). The panel stays dark
+   until the first frame is in: lit at once, it shows what its memory still
+   holds from the last session until that frame lands, often with its halves
+   swapped (seen on the Omega PRO V2).
 8. Build draw command `00 2C <size24le> 00`, where `0x2C` is Memory
    Write and `size = width * height * 2`.
 
@@ -220,6 +220,13 @@ Frame send:
 
 1. Control OUT request `0xB0` with the 6-byte draw command.
 2. Bulk write the full RGB565 frame to endpoint `0x02`.
+
+The first frame after connecting is sent twice (a transfer cut off when the last
+owner let go can leave the panel's write position mid-frame), then the panel is
+switched on: quit-sleep `00 29 00 00 00 00` and full brightness
+`00 51 02 00 00 00 FF 00` via request `0xB0` (both non-fatal). This mirrors the
+mpro DRM driver's enable path; another screen app's "disable" can leave the
+backlight at 0, in which case frames transfer fine but land on a dark panel.
 
 Close sequence:
 
@@ -323,8 +330,8 @@ Close sequence:
 | Symptom | Likely cause | What to check |
 |---|---|---|
 | Screen not found | Device unplugged, wrong VID/PID, or wrong driver type | Device Manager, saved device config, catalog entry, scan functions |
-| `USB access failed` | The device was found but its current Windows USB binding could not be used | Close SimHub/other screen output, reconnect, and inspect the exact `WinUsb_Initialize` error; no separate per-use install is expected |
-| `In use` / access denied | SimHub, Ref, or another USB tool owns the device | Disable that app's screen output or close it so Sprint can open the handle |
+| `USB driver needed` | The device was found but is not bound to WinUSB (`WinUsb_Initialize` failed) | Bind WinUSB once (SimHub's screen setup, the screen maker's driver setup or Zadig), replug; the exact `WinUsb_Initialize` error is in the activity log |
+| `In use` / access denied | SimHub, another screen app or a USB tool owns the device | Disable that app's screen output or close it so Sprint can open the handle |
 | `Connecting` takes longer than 3 seconds | Native USB enumeration or initialization has not returned | Inspect the last enumeration/open stage in the activity log; do not assume another owner until a native access error confirms it |
 | `Duplicate target` | Two saved Sprint entries resolve to the same physical USB identity | Keep the intended wheel/screen entry enabled and disable or remove the duplicate |
 | USBD480 IN works but OUT fails | Opened the raw composite parent instead of WinUSB interface | Use `GUID_DEVINTERFACE_WINUSB` path, not raw USB parent |

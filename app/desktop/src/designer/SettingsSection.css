@@ -1,10 +1,10 @@
 /* The Settings section (SettingsSection.tsx): one calm column of setting rows under the dash's
-   own heading, like a device's page. The rows are the app's setting cards (SettingsLayout.tsx). It starts
-   below the scope strip (top 54px + 40px high) and the 12px gap the side panels keep. */
+   own heading, like a device's page, filling the stage. The rows are the app's setting cards
+   (SettingsLayout.tsx). */
 
 .designer-settings {
   position: absolute;
-  inset: 106px 0 0;
+  inset: 0;
   display: flex;
   flex-direction: column;
   gap: 20px;

@@ -35,7 +35,7 @@ export type FlowEvent =
 export type Flow = { current: Step; history: Step[]; direction: 'forward' | 'back'; rememberedUrl: string }
 
 /**
- * A first launch opens on the welcome; connecting later (Settings, the sidebar's Sign in)
+ * A first launch opens on the welcome; connecting later (Settings, the status bar's Sign in)
  * starts at the server choice. `rememberedUrl` is the last server used, offered when the
  * network scan finds nothing.
  */

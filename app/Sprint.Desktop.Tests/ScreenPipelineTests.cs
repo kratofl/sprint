@@ -235,8 +235,8 @@ public sealed class ScreenPipelineTests
     [Theory]
     [InlineData(ScreenConnectionState.ConfigurationRequired, "Setup needed", "VID/PID")]
     [InlineData(ScreenConnectionState.Disconnected, "Not found", "USB connection")]
-    [InlineData(ScreenConnectionState.DeviceBusy, "In use", "SimHub")]
-    [InlineData(ScreenConnectionState.PermissionDenied, "USB access failed", "does not ask you to install")]
+    [InlineData(ScreenConnectionState.DeviceBusy, "In use", "Another application")]
+    [InlineData(ScreenConnectionState.PermissionDenied, "USB driver needed", "Bind WinUSB")]
     [InlineData(ScreenConnectionState.Faulted, "Connection failed", "diagnostics log")]
     public void ScreenStatusPresentationExplainsTheActualRecovery(
         ScreenConnectionState state,

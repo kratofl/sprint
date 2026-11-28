@@ -1,143 +1,96 @@
-import { Fragment, type RefObject } from 'react'
+import { Fragment } from 'react'
 import { PanelLeft } from 'lucide-react'
-import sprintMark from '../assets/sprint-mark.svg'
+import type { AppView } from '../bridge'
 import { platform } from '../platform'
-import { footerNav, primaryNav, type NavItem } from './nav'
-import { AccountRow } from './AccountRow'
-import { TelemetryRow } from './TelemetryRow'
+import { BuildMark } from './BuildMark'
 import type { RunningBuild } from './build'
-import type { Account, AppView, SprintState } from '../bridge'
+import { footerNav, primaryNav, type NavItem } from './nav'
 
 /** Lucide's default stroke is heavier than the brand's line icons; 1.6 matches the mockups. */
-const NAV_ICON_STROKE = 1.6
+const ICON_STROKE = 1.6
 
 /**
- * The full-height 224px sidebar. Its top band, level with the toolbar, holds the
- * Sprint mark and name, then the toggle, which collapses the sidebar to a 56px
- * rail of icons (the persisted `sidebarCollapsed` setting): labels leave, and each
- * item keeps its name as tooltip and accessible name. The selected item gets the
- * strong fill and the brand icon. Rows sit under quiet section headings (`NavGroup`).
- * The footer starts with the game link (TelemetryRow.tsx), under a hairline; then Settings
- * (with a dot when an update is available) and Help, the
- * running build's version (a dev run's branch), then the account row under a hairline
- * (absent while Sprint web is off).
+ * The full-height 224px sidebar: every page by name, one click away. Its top band, level with the
+ * toolbar, holds the Sprint mark in the build's colour (BuildMark.tsx) and name, then the toggle,
+ * which folds the sidebar to a 56px rail of icons (the persisted `sidebarCollapsed` setting):
+ * labels leave, each page keeps its name as tooltip and accessible name. Pages sit under their
+ * groups (Drive, Car & rig, Team); Settings, with a dot while an update is out, and Help at the
+ * foot. The current page has the strong fill with icon and label in full colour; the other icons
+ * are dimmed. What is connected lives in the status bar (StatusBar.tsx).
  *
- * A development or pre-release build wears a tag beside the name (in the version line
- * on macOS, whose band has no name), and a dot on the toggle while collapsed. Stable
- * builds wear nothing.
- *
- * On macOS (styles.mac.css) the band has no mark: the traffic lights sit in its
- * first 80px, with the toggle on the right, and collapsing hides the sidebar
- * entirely, as in Finder or Mail; the toolbar then offers it back.
+ * On macOS (styles.mac.css) the band has no mark: the traffic lights sit in its first 80px with
+ * the toggle on the right, and folding hides the sidebar entirely, as in Finder or Mail; the
+ * toolbar then offers it back (TitleBar.tsx).
  */
 export function Sidebar({
   view,
-  collapsed,
-  onToggleCollapsed,
-  toggleRef,
-  onSelect,
-  accountRow,
-  updateAvailable,
   build,
-  telemetry,
-  onOpenDiagnostics,
+  collapsed,
+  onToggle,
+  onSelect,
+  updateAvailable,
 }: {
   view: AppView
-  collapsed: boolean
-  onToggleCollapsed: () => void
-  toggleRef: RefObject<HTMLButtonElement | null>
-  onSelect: (view: AppView) => void
-  /** Null hides the row: Sprint web is off. */
-  accountRow: { account: Account | null; onOpen: () => void } | null
-  updateAvailable: boolean
-  /** Null until the host reports the version. */
   build: RunningBuild | null
-  /** Null until the host's first state arrives. */
-  telemetry: SprintState['telemetry'] | null
-  /** The game link row opens Help & diagnostics. */
-  onOpenDiagnostics: () => void
+  collapsed: boolean
+  onToggle: () => void
+  onSelect: (view: AppView) => void
+  updateAvailable: boolean
 }) {
-  const tag = build ? buildTag(build) : null
-  // On macOS the tag sits in the version line, which then has no room for the word "Version".
-  const buildLine = build ? buildText(build, platform === 'mac' && tag !== null) : ''
+  const item = (page: NavItem, badge: boolean) => {
+    const Icon = page.icon
+    const current = page.view === view
+    const label = badge ? `${page.label} — update available` : page.label
+    return (
+      <button
+        key={page.view}
+        type="button"
+        className={current ? 'sidebar-item current' : 'sidebar-item'}
+        aria-current={current ? 'page' : undefined}
+        // Folded, the label is hidden, so the name moves here.
+        aria-label={badge || collapsed ? label : undefined}
+        title={collapsed ? label : undefined}
+        onClick={() => onSelect(page.view)}
+      >
+        <Icon size={16} strokeWidth={ICON_STROKE} aria-hidden="true" />
+        <span className="sidebar-item-label">{page.label}</span>
+        {badge ? <span className="sidebar-item-badge" aria-hidden="true" /> : null}
+      </button>
+    )
+  }
   return (
-    <nav className={collapsed ? 'navview collapsed' : 'navview'} aria-label="Main navigation">
-      <div className="navview-band">
+    <nav className={collapsed ? 'sidebar collapsed' : 'sidebar'} aria-label="Main navigation">
+      <div className="sidebar-band">
         {platform === 'mac' ? null : (
-          <span className="navview-brand">
-            <img src={sprintMark} alt="" aria-hidden="true" />
-            Sprint
-            {tag}
+          <span className="sidebar-brand">
+            <BuildMark build={build} />
+            <span className="sidebar-item-label">Sprint</span>
           </span>
         )}
         <button
-          ref={toggleRef}
           type="button"
-          className="navview-toggle"
-          onClick={onToggleCollapsed}
+          className="sidebar-toggle"
+          onClick={onToggle}
           aria-label={collapsed ? 'Show sidebar' : 'Hide sidebar'}
           aria-expanded={!collapsed}
           title={collapsed ? 'Show sidebar' : 'Hide sidebar'}
         >
-          <PanelLeft size={16} strokeWidth={NAV_ICON_STROKE} />
-          {build && build.kind !== 'stable' ? <span className={`navview-build-dot ${build.kind}`} aria-hidden="true" /> : null}
+          <PanelLeft size={16} strokeWidth={ICON_STROKE} />
         </button>
       </div>
-      {primaryNav.map((item, index) => (
-        <Fragment key={item.view}>
-          {item.group && item.group !== primaryNav[index - 1]?.group ? (
-            // Collapsed, the heading is a hairline: the rail has no room for words.
-            <div className="nav-group" role="presentation">
-              <span className="nav-group-label">{item.group}</span>
+      {primaryNav.map((page, index) => (
+        <Fragment key={page.view}>
+          {page.group && page.group !== primaryNav[index - 1]?.group ? (
+            // Folded, the heading is a hairline: the rail has no room for words.
+            <div className="sidebar-group" role="presentation">
+              <span className="sidebar-group-label">{page.group}</span>
             </div>
           ) : null}
-          {renderItem(item, view, collapsed, onSelect, false)}
+          {item(page, false)}
         </Fragment>
       ))}
-      <div className="navview-spacer" />
-      <TelemetryRow telemetry={telemetry} collapsed={collapsed} onOpen={onOpenDiagnostics} />
-      {accountRow && <AccountRow account={accountRow.account} collapsed={collapsed} onOpen={accountRow.onOpen} />}
-      {footerNav.map((item) => renderItem(item, view, collapsed, onSelect, item.view === 'Settings' && updateAvailable))}
-      {build ? (
-        <div className="navview-build">
-          {platform === 'mac' ? tag : null}
-          <span className="navview-build-text tabular" title={buildLine}>{buildLine}</span>
-        </div>
-      ) : null}
+      <div className="sidebar-spacer" />
+      {footerNav.map((page) => item(page, page.view === 'Settings' && updateAvailable))}
     </nav>
-  )
-}
-
-function buildTag(build: RunningBuild) {
-  if (build.kind === 'stable') return null
-  return build.kind === 'development'
-    ? <span className="chip chip-warning">Dev</span>
-    : <span className="chip chip-info">Pre-release</span>
-}
-
-function buildText(build: RunningBuild, tagged: boolean): string {
-  if (build.kind === 'development') return build.branch ?? 'Development build'
-  return tagged ? build.version : `Version ${build.version}`
-}
-
-function renderItem(item: NavItem, activeView: AppView, collapsed: boolean, onSelect: (view: AppView) => void, badge: boolean) {
-  const isActive = item.view === activeView
-  const Icon = item.icon
-  const label = badge ? `${item.label} — update available` : item.label
-  return (
-    <button
-      type="button"
-      key={item.view}
-      className={isActive ? 'nav-item active' : 'nav-item'}
-      aria-current={isActive ? 'page' : undefined}
-      // A collapsed rail hides the visible label, so the name moves here.
-      aria-label={badge || collapsed ? label : undefined}
-      title={collapsed ? label : undefined}
-      onClick={() => onSelect(item.view)}
-    >
-      <Icon size={16} strokeWidth={NAV_ICON_STROKE} />
-      <span className="nav-item-label">{item.label}</span>
-      {badge ? <span className="nav-item-badge" aria-hidden="true" /> : null}
-    </button>
   )
 }

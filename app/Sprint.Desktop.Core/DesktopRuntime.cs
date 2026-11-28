@@ -933,8 +933,10 @@ public sealed class DesktopRuntime : IDesktopRuntime
 
                 // Turn old widget stacks into groups, rewrite renamed widget types and move zoned
                 // dashes onto track sizes before validation, which would otherwise reject the layout;
-                // every dash wears the one flat look.
+                // every dash wears the one flat look. Its variants' pages get the same, or validating
+                // them would reject the whole dash.
                 bool contentMigrated = DashWidgetStackMigration.Apply(layout) | DashWidgetTypeMigration.Apply(layout) | DashTracks.MigrateZoned(layout) | DashLooks.Flatten(layout);
+                contentMigrated |= DashVariants.Update(layout, shown => DashWidgetStackMigration.Apply(shown) | DashWidgetTypeMigration.Apply(shown) | DashLooks.Flatten(shown));
                 if (DashLayoutValidator.IsValid(layout))
                 {
                     bool migrated = contentMigrated;
@@ -1115,8 +1117,8 @@ public sealed class DesktopRuntime : IDesktopRuntime
     }
 
     /// <summary>
-    /// Puts the preset's pages, alerts and look back into a dash. It keeps its id, name, category
-    /// and screen size: the preset is refitted to the dash's own screen profile.
+    /// Puts the preset's pages, alerts and look back into a dash, dropping its variants. It keeps its
+    /// id, name, category and screen size: the preset is refitted to the dash's own screen profile.
     /// </summary>
     public void ResetDashLayout(DashLayout layout)
     {
@@ -1137,6 +1139,7 @@ public sealed class DesktopRuntime : IDesktopRuntime
         layout.Alerts = Clone(preset.Alerts);
         layout.Theme = Clone(preset.Theme);
         layout.ExtensionData = preset.ExtensionData is null ? null : Clone(preset.ExtensionData);
+        layout.Variants = null;
         layout.Id = id;
         layout.Name = name;
         layout.Category = category;

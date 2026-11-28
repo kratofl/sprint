@@ -136,7 +136,7 @@ export type RaceEvent = {
  * What a stop costs, measured from the stops the engineer's desktop saw (seconds, null until
  * seen): the lane against driving past it (every car's stops), and the time stood in the box
  * (ours, or the class's until ours has stopped). `typical` is the track's typical stop for our
- * class (Lovely Track Data), sent only while lane or standing is unmeasured; `seconds` is the
+ * class (the bundled track data), sent only while lane or standing is unmeasured; `seconds` is the
  * figure the wall works with: measured lane plus standing, else the typical, else null.
  */
 export type PitLoss = {

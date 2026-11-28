@@ -218,7 +218,7 @@ internal static class WinUsbInterop
             GenericRead | GenericWrite,
             // WinUSB does not support two applications driving the same interface.
             // Denying all sharing makes an
-            // existing SimHub/Ref owner fail fast with ERROR_SHARING_VIOLATION
+            // existing owner (SimHub or another screen app) fail fast with ERROR_SHARING_VIOLATION
             // instead of hanging later in ResetPipe or a frame transfer.
             0,
             nint.Zero,

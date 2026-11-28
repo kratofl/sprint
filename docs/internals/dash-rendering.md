@@ -99,7 +99,7 @@ never also takes a condition color: its value only ever wears its identity, or i
 
 Sprint draws one look on every dash: a 1-px edge with 6-px corners, the label centred in the
 top edge, and one group frame (the driver's call, 2026-11-22 and 2026-11-23, issue #274: Sprint is
-opinionated, not a second SimHub; frame styles, corners, edges, label spots and per-widget
+opinionated, not a kit of every style; frame styles, corners, edges, label spots and per-widget
 colours made too many combinations that looked bad on the wheel). The driver decides what is
 shown and where; Sprint decides how. A widget may only turn its frame or its label off
 (`style: { frame: "off", label: "off" }`; a frameless widget's label sits small above its value),
@@ -113,7 +113,10 @@ shows its text (`DashWidgetTypeMigration`). A widget's type says whether it
 is framed, bare (gear, text) or split into several frames of its own (the four tyres);
 `widgetForms.json` lists the types without a label (`unlabelled`) or a frame (`unframed`) for
 the designer, pinned by the renderer's tests. `chrome.rs` draws the frame and the label, so widgets
-render only their values.
+render only their values. Where the label goes is the cell's shape, not a setting: a dash widget's
+cell at least 2.5 times as wide as tall carries it at its left, so the value gets the full height
+(`side_labelled`; 2026-11-27, a label above took half of a flat cell and left its value small). A
+popup's cells (the lap review) keep theirs above.
 
 ## The driver's colours
 
@@ -172,6 +175,10 @@ are not.
   (`packages/dashboard/src/hostFrame.ts`). The boundary reads a misnamed field as 0 without a
   word, so `renderer/tests/fixtures/host-frame.json`, the host's own output kept current by
   `HostFrameFixtureTests`, must reach the model value for value (`tests/host_frame.rs`).
+- **A stack's layer on the wheel is not in the layout.** The layout's `shownFirst` is only where a
+  stack starts; the wheel's Next/Previous layer buttons move the host's per-device pick
+  (`DashPageCycle.LayersOf`), which reaches the renderer as the scene's `layers` (stack id → layer
+  id), read live like `pageId`. The renderer takes it in `drawn_widgets_with` and stays free of input.
 - **The display list is the tested seam.** Layout, values, colors and clips are asserted on
   `DrawOp`s, without drawing a pixel; only what the raster adds (box snapping, radii, borders,
   text coverage) is tested on pixels. Put new behaviour where a display-list test can see it.
@@ -201,8 +208,7 @@ are not.
   so a preview drawn smaller than its panel can fall back where the wheel shows the strip. Alerts
   that are up stack, one per type, newest on top, so one held until Ack is never lost under a
   passing one. A held alert never makes the picture time dependent: whoever calls `acknowledge`
-  renders again. While the flag alert is up the flag bar is not drawn; it would name the
-  flag twice.
+  renders again. A flag shows as its popup only; nothing stays across the top once it is down.
 - **The lap review draws only what the lap left behind.** The `lap_summary` alert's six cells
   are the layout's `lapReview.cells` (`LapReview` in `lap_summary.rs`; a missing or unknown cell
   is the default's in its place). `LapSummaryWatcher` captures every value a cell can show as the
@@ -213,8 +219,8 @@ are not.
   the moment the sector is done, so the frame's bests at the line already hold this lap's sectors.
 - **The pit limiter is an overlay, not an alert.** The `pit_limiter` alert type raises no popup;
   its setting only says whether the layout's `pitLimiter` overlay (`pit_limiter.rs`) draws while
-  the limiter is on. It draws over the page's widgets and under the lap timer, alert popups and
-  flag bar, never on the idle page. The gear look lights the page's `gear` widget (a page without
+  the limiter is on. It draws over the page's widgets and under the lap timer and alert popups,
+  never on the idle page. The gear look lights the page's `gear` widget (a page without
   one gets the full screen); the box look frames the first and last columns and the top row. An
   even-grid dash (no track sizes) always gets the full screen.
 - **A dash's grid is its own.** `colSizes`/`rowSizes` are its column widths and row heights as

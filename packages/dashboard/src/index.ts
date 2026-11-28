@@ -66,8 +66,15 @@ export interface DashAlert {
  * `lapReview`: the lap review's six cells (`lapReviewCells` reads them); absent shows the defaults.
  * `pitLimiter`: the overlay shown while the pit limiter is on (`pitLimiterOf` reads it); absent
  * shows the default style with no widgets of its own.
+ * `variants`: the dash's versions for a device, game, class or car (host `DashVariants`); the host
+ * draws the one matching the screen and car. The renderer ignores them.
  */
-export interface DashLayout { id: string; name: string; category?: string; mode: string; colSizes?: number[]; rowSizes?: number[]; screenProfile?: string; gridCols: number; gridRows: number; pages: DashPage[]; idlePage?: DashPage | null; alerts: DashAlert[]; theme?: DashTheme; lapReview?: DashLapReview; pitLimiter?: DashPitLimiter }
+export interface DashLayout { id: string; name: string; category?: string; mode: string; colSizes?: number[]; rowSizes?: number[]; screenProfile?: string; gridCols: number; gridRows: number; pages: DashPage[]; idlePage?: DashPage | null; alerts: DashAlert[]; theme?: DashTheme; lapReview?: DashLapReview; pitLimiter?: DashPitLimiter; variants?: DashVariant[] }
+/** What a variant replaces of its dash: everything the designer's sections draw. */
+export type DashVariantLayout = Pick<DashLayout, 'gridCols' | 'gridRows' | 'colSizes' | 'rowSizes' | 'pages' | 'idlePage' | 'lapReview' | 'pitLimiter'>
+/** Where a variant applies; an absent level matches anything, and at least one is set. */
+export interface DashVariantScope { device?: string; game?: string; carClass?: string; car?: string }
+export interface DashVariant { scope: DashVariantScope; layout: DashVariantLayout }
 
 export { DashCanvas, DashColoursContext, DashUnitsContext, type DashCanvasProps } from './DashCanvas'
 export { dashboardWidgetTypes, isDashWidgetType, type DashWidgetType } from './widgetTypes'

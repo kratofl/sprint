@@ -206,8 +206,8 @@ function Checks({
               key={entry.device.id}
               picture={<DeviceImage image={entry.image} dim={!entry.connected} className="help-check-picture" />}
               name={entry.device.name}
-              tone={TELEMETRY_STATUS_TONE[entry.statusTone]}
-              status={entry.statusLabel}
+              tone={entry.status.tone}
+              status={entry.status.label}
               detail={hint ?? (entry.dashName ? `Showing ${entry.dashName}` : null)}
               action={
                 hint ? (

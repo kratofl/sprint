@@ -90,12 +90,14 @@ public static class DevicePurposeLayouts
     /// <summary>
     /// The dash a rule picks for the car (<see cref="DeviceDashRules.Pick"/>), else the device's own
     /// dash, else the stable fallback (<see cref="DashLayoutOrder.First"/>); null when there are no dashes.
+    /// Shown as its variant for this device and car, when it has one (<see cref="DashVariants.For"/>).
     /// </summary>
     private static DashLayout? ResolveDashboard(SavedDevice device, IEnumerable<DashLayout> dashboards, DriverCar car)
     {
         IReadOnlyList<DashLayout> layouts = dashboards as IReadOnlyList<DashLayout> ?? dashboards.ToList();
         DashLayout? Find(string id) => layouts.FirstOrDefault(layout => string.Equals(layout.Id, id, StringComparison.OrdinalIgnoreCase));
         string? picked = DeviceDashRules.Pick(device.DashRules, car, id => Find(id) is not null);
-        return (picked is null ? null : Find(picked)) ?? Find(device.DashId) ?? DashLayoutOrder.First(layouts);
+        DashLayout? dash = (picked is null ? null : Find(picked)) ?? Find(device.DashId) ?? DashLayoutOrder.First(layouts);
+        return dash is null ? null : DashVariants.For(dash, device.Id, car.Game, car.Class, car.Car);
     }
 }

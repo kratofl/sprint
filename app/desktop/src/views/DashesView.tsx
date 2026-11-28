@@ -5,6 +5,7 @@ import type { DashAlertSettings, DashLayout } from '@sprint/dashboard'
 import type { ButtonState, DashCategoryLists, DashRefitLosses, SprintCommand, SprintState } from '../bridge'
 import type { RuntimeState } from '../shell/runtime'
 import { ConfirmDialog } from '../shell/ContentDialog'
+import { Explorer, ExplorerGroup, ExplorerRow, useExplorerShown } from '../shell/Explorer'
 import { CommandDivider, PageHeader } from '../shell/PageHeader'
 import { usePageUp } from '../shell/pageUp'
 import {
@@ -88,8 +89,10 @@ const ROW_STILL = { width: 60, height: 36 }
  * by one. Nothing here says which device shows a dash — that lives on the Devices page. A click
  * or Enter opens the dash in the designer (`openDashDesigner`); its ⋯, a right-click or Shift+F10
  * opens its menu, and Delete asks to delete it. This view owns creating, duplicating, filing and
- * deleting dashes, and the user's own categories. Dash settings in the toolbar opens what every
- * dash shares (DashSettings.tsx), one level down: "All dashes" and Alt+Left return here.
+ * deleting dashes, and the user's own categories. The explorer (`DashesExplorer`) lists the
+ * categories, which filter the gallery, and Settings for every dash (DashSettings.tsx), what every
+ * dash shares. While it is hidden the page shows the filter bar and Dash settings in the toolbar
+ * instead, and "‹ All dashes" and Alt+Left return from the settings.
  */
 export function DashesView({
   runtime = { kind: 'loading' },
@@ -114,6 +117,7 @@ export function DashesView({
   const [menu, setMenu] = useState<OpenMenu | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
   const [showSettings, setShowSettings] = useState(openSettings)
+  const explorerShown = useExplorerShown()
   // What raised the open menu; focus returns there when it closes.
   const menuOrigin = useRef<HTMLElement | null>(null)
   // Set right before a create is sent; the effect below opens the dash whose id it does not
@@ -163,14 +167,39 @@ export function DashesView({
     )
   }
 
-  if (showSettings) {
-    return <DashSettings layouts={layouts} devices={state.devices} alerts={state.alerts} buttons={state.buttons} send={send} onBack={() => setShowSettings(false)} />
-  }
-
   const { categories } = state
   const groups = groupDashes(layouts, categories)
   const filter = resolveDashesFilter(chosenFilter, categories)
   const filterOptions = dashesFilterOptions(groups, filter)
+  const explorer = (
+    <DashesExplorer
+      groups={groups}
+      filter={showSettings ? null : filter}
+      settings={showSettings}
+      onFilter={(next) => {
+        setChosenFilter(next)
+        setShowSettings(false)
+      }}
+      onSettings={() => setShowSettings(true)}
+    />
+  )
+
+  if (showSettings) {
+    return (
+      <>
+        <DashSettings
+          layouts={layouts}
+          devices={state.devices}
+          alerts={state.alerts}
+          buttons={state.buttons}
+          send={send}
+          onBack={explorerShown ? undefined : () => setShowSettings(false)}
+        />
+        {explorer}
+      </>
+    )
+  }
+
   const visible = visibleDashGroups(groups, filter)
   // Headings name the groups under All; a custom category keeps its heading (and its ⋯) even alone.
   const showHeading = (group: DashGroup): boolean => group.custom || (filter.kind === 'all' && groups.length > 1)
@@ -233,221 +262,273 @@ export function DashesView({
   const copyingDash = dialog?.kind === 'duplicateDash' ? find(dialog.dashId) : null
 
   return (
-    <div className="devices dashes">
-      <PageHeader title="Dashes">
-        <button type="button" className="button primary" onClick={() => setDialog({ kind: 'newDash' })}>
-          <Plus /> New dash
-        </button>
-        {layouts.length > 0 && (
-          <>
-            <CommandDivider />
-            <div className="segmented devices-layout" role="radiogroup" aria-label="Layout">
-              <button type="button" role="radio" className="segmented-item" aria-checked={viewMode === 'gallery'} aria-label="Tiles" title="Tiles" onClick={() => chooseViewMode('gallery')}>
-                <LayoutGrid size={14} />
+    <>
+      <div className="devices dashes">
+        <PageHeader title="Dashes">
+          <button type="button" className="button primary" onClick={() => setDialog({ kind: 'newDash' })}>
+            <Plus /> New dash
+          </button>
+          {layouts.length > 0 && (
+            <>
+              <CommandDivider />
+              <div className="segmented devices-layout" role="radiogroup" aria-label="Layout">
+                <button type="button" role="radio" className="segmented-item" aria-checked={viewMode === 'gallery'} aria-label="Tiles" title="Tiles" onClick={() => chooseViewMode('gallery')}>
+                  <LayoutGrid size={14} />
+                </button>
+                <button type="button" role="radio" className="segmented-item" aria-checked={viewMode === 'list'} aria-label="List" title="List" onClick={() => chooseViewMode('list')}>
+                  <List size={14} />
+                </button>
+              </div>
+            </>
+          )}
+          {/* The explorer lists Settings for every dash; while it is hidden the page offers it here. */}
+          {!explorerShown && (
+            <>
+              <CommandDivider />
+              <button type="button" className="button subtle dashes-settings-open" onClick={() => setShowSettings(true)}>
+                <Settings /> Dash settings
               </button>
-              <button type="button" role="radio" className="segmented-item" aria-checked={viewMode === 'list'} aria-label="List" title="List" onClick={() => chooseViewMode('list')}>
-                <List size={14} />
-              </button>
+            </>
+          )}
+        </PageHeader>
+
+        {actionError && (
+          <div className="infobar error dashes-infobar" role="alert">
+            <span className="infobar-icon">!</span>
+            <strong className="infobar-title">Dash not updated</strong>
+            <span className="infobar-message">{actionError}</span>
+            <button type="button" className="icon-button" aria-label="Dismiss" onClick={() => setActionError(null)}>
+              <X size={14} />
+            </button>
+          </div>
+        )}
+
+        {layouts.length === 0 ? (
+          <div className="card">
+            <div className="empty-state">
+              <LayoutDashboard size={28} strokeWidth={1.5} />
+              <h2>No dashes yet</h2>
+              <p>Create a dash to design what your wheel screen shows.</p>
             </div>
+          </div>
+        ) : (
+          <>
+            {filterOptions && !explorerShown && (
+              <div className="segmented devices-filter" role="radiogroup" aria-label="Show">
+                {filterOptions.map((option) => (
+                  <button
+                    key={option.filter.kind === 'category' ? `category:${option.filter.name}` : option.filter.kind}
+                    type="button"
+                    role="radio"
+                    className="segmented-item"
+                    aria-checked={sameDashesFilter(option.filter, filter)}
+                    onClick={() => setChosenFilter(option.filter)}
+                  >
+                    {option.label} <span className="devices-filter-count tabular">{option.count}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+            {visible.length === 0 && <p className="muted devices-none">No dashes in this category.</p>}
+            {visible.map((group) => (
+              <section key={group.title} className="devices-group" aria-label={group.title}>
+                {showHeading(group) && (
+                  <div className="dashes-group-head">
+                    <h2 className="devices-group-title">
+                      {group.title} <span className="muted tabular">{group.dashes.length}</span>
+                      {group.custom && <span className="dashes-group-tag">Your category</span>}
+                    </h2>
+                    {group.custom && (
+                      <button
+                        type="button"
+                        className="icon-button dashes-group-more"
+                        aria-label={`${group.title} actions`}
+                        title="Rename or delete"
+                        onClick={(event) => setMenu({ kind: 'category', name: group.title, anchor: openMenuAt(event, true) })}
+                      >
+                        <MoreHorizontal size={16} />
+                      </button>
+                    )}
+                  </div>
+                )}
+                {viewMode === 'gallery' ? (
+                  <div className="devices-grid">
+                    {group.dashes.map((layout) => (
+                      <DashTile key={layout.id} layout={layout} {...dashActions(layout)} />
+                    ))}
+                  </div>
+                ) : (
+                  <div className="card list-card">
+                    <div className="list-header dashes-columns" aria-hidden="true">
+                      <span />
+                      <span>Dash</span>
+                      <span>Screen</span>
+                      <span>Pages</span>
+                      <span />
+                    </div>
+                    <ul className="list-rows">
+                      {group.dashes.map((layout) => (
+                        <DashRow key={layout.id} layout={layout} {...dashActions(layout)} />
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </section>
+            ))}
           </>
         )}
-        <CommandDivider />
-        <button type="button" className="button subtle dashes-settings-open" onClick={() => setShowSettings(true)}>
-          <Settings /> Dash settings
-        </button>
-      </PageHeader>
 
-      {actionError && (
-        <div className="infobar error dashes-infobar" role="alert">
-          <span className="infobar-icon">!</span>
-          <strong className="infobar-title">Dash not updated</strong>
-          <span className="infobar-message">{actionError}</span>
-          <button type="button" className="icon-button" aria-label="Dismiss" onClick={() => setActionError(null)}>
-            <X size={14} />
-          </button>
-        </div>
-      )}
+        {menu?.kind === 'dash' && menuDash && (
+          <DashMenu
+            anchor={menu.anchor}
+            dashName={menuDash.name}
+            category={knownDashCategory(menuDash, categories)}
+            categories={categories}
+            onClose={closeMenu}
+            onEdit={() => openDashDesigner(menuDash.id)}
+            onDuplicate={() => setDialog({ kind: 'duplicateDash', dashId: menuDash.id })}
+            onSetCategory={(category) => void runAction(buildDashSetCategory(menuDash.id, category))}
+            onNewCategory={() => setDialog({ kind: 'newCategory', dashId: menuDash.id })}
+            onDelete={() => setDialog({ kind: 'deleteDash', dashId: menuDash.id })}
+          />
+        )}
 
-      {layouts.length === 0 ? (
-        <div className="card">
-          <div className="empty-state">
-            <LayoutDashboard size={28} strokeWidth={1.5} />
-            <h2>No dashes yet</h2>
-            <p>Create a dash to design what your wheel screen shows.</p>
-          </div>
-        </div>
-      ) : (
-        <>
-          {filterOptions && (
-            <div className="segmented devices-filter" role="radiogroup" aria-label="Show">
-              {filterOptions.map((option) => (
-                <button
-                  key={option.filter.kind === 'category' ? `category:${option.filter.name}` : option.filter.kind}
-                  type="button"
-                  role="radio"
-                  className="segmented-item"
-                  aria-checked={sameDashesFilter(option.filter, filter)}
-                  onClick={() => setChosenFilter(option.filter)}
-                >
-                  {option.label} <span className="devices-filter-count tabular">{option.count}</span>
-                </button>
-              ))}
-            </div>
-          )}
-          {visible.length === 0 && <p className="muted devices-none">No dashes in this category.</p>}
-          {visible.map((group) => (
-            <section key={group.title} className="devices-group" aria-label={group.title}>
-              {showHeading(group) && (
-                <div className="dashes-group-head">
-                  <h2 className="devices-group-title">
-                    {group.title} <span className="muted tabular">{group.dashes.length}</span>
-                    {group.custom && <span className="dashes-group-tag">Your category</span>}
-                  </h2>
-                  {group.custom && (
-                    <button
-                      type="button"
-                      className="icon-button dashes-group-more"
-                      aria-label={`${group.title} actions`}
-                      title="Rename or delete"
-                      onClick={(event) => setMenu({ kind: 'category', name: group.title, anchor: openMenuAt(event, true) })}
-                    >
-                      <MoreHorizontal size={16} />
-                    </button>
-                  )}
-                </div>
-              )}
-              {viewMode === 'gallery' ? (
-                <div className="devices-grid">
-                  {group.dashes.map((layout) => (
-                    <DashTile key={layout.id} layout={layout} {...dashActions(layout)} />
-                  ))}
-                </div>
-              ) : (
-                <div className="card list-card">
-                  <div className="list-header dashes-columns" aria-hidden="true">
-                    <span />
-                    <span>Dash</span>
-                    <span>Screen</span>
-                    <span>Pages</span>
-                    <span />
-                  </div>
-                  <ul className="list-rows">
-                    {group.dashes.map((layout) => (
-                      <DashRow key={layout.id} layout={layout} {...dashActions(layout)} />
-                    ))}
-                  </ul>
-                </div>
-              )}
-            </section>
-          ))}
-        </>
-      )}
+        {menu?.kind === 'category' && (
+          <CategoryMenu
+            anchor={menu.anchor}
+            name={menu.name}
+            onClose={closeMenu}
+            onRename={() => setDialog({ kind: 'renameCategory', name: menu.name })}
+            onDelete={() => setDialog({ kind: 'deleteCategory', name: menu.name })}
+          />
+        )}
 
-      {menu?.kind === 'dash' && menuDash && (
-        <DashMenu
-          anchor={menu.anchor}
-          dashName={menuDash.name}
-          category={knownDashCategory(menuDash, categories)}
-          categories={categories}
-          onClose={closeMenu}
-          onEdit={() => openDashDesigner(menuDash.id)}
-          onDuplicate={() => setDialog({ kind: 'duplicateDash', dashId: menuDash.id })}
-          onSetCategory={(category) => void runAction(buildDashSetCategory(menuDash.id, category))}
-          onNewCategory={() => setDialog({ kind: 'newCategory', dashId: menuDash.id })}
-          onDelete={() => setDialog({ kind: 'deleteDash', dashId: menuDash.id })}
+        {dialog?.kind === 'newDash' && (
+          <NewDashDialog
+            categories={categories}
+            screens={screenChoices(state.screens)}
+            initialCategory={newDashCategory(filter)}
+            onCancel={() => setDialog(null)}
+            onCreate={(dash) => void createDash(dash)}
+          />
+        )}
+
+        {copyingDash && (
+          <DuplicateDashDialog
+            source={copyingDash}
+            losses={state.refitLosses[copyingDash.id] ?? {}}
+            categories={categories}
+            screens={screenChoices(state.screens)}
+            onCancel={() => setDialog(null)}
+            onCreate={(dash) => void createDash(dash)}
+          />
+        )}
+
+        {filingDash && (
+          <CategoryNameDialog
+            title="New category"
+            message={`${filingDash.name} moves into it.`}
+            confirmLabel="Create"
+            categories={categories}
+            onCancel={() => setDialog(null)}
+            onConfirm={(name) => {
+              setDialog(null)
+              void runAction(buildDashCategoryCreate(name, filingDash.id))
+            }}
+          />
+        )}
+
+        {dialog?.kind === 'renameCategory' && (
+          <CategoryNameDialog
+            title="Rename category"
+            confirmLabel="Rename"
+            initialName={dialog.name}
+            renaming={dialog.name}
+            categories={categories}
+            onCancel={() => setDialog(null)}
+            onConfirm={(newName) => {
+              setDialog(null)
+              // Keep looking at the category under its new name.
+              if (filter.kind === 'category' && filter.name === dialog.name) setChosenFilter({ kind: 'category', name: newName })
+              void runAction(buildDashCategoryRename(dialog.name, newName))
+            }}
+          />
+        )}
+
+        {dialog?.kind === 'deleteCategory' && (
+          <ConfirmDialog
+            title={`Delete ${dialog.name}?`}
+            message={deleteCategoryMessage(groups.find((group) => group.custom && group.title === dialog.name)?.dashes.length ?? 0)}
+            confirmLabel="Delete"
+            destructive
+            onCancel={() => setDialog(null)}
+            onConfirm={() => {
+              setDialog(null)
+              void runAction(buildDashCategoryDelete(dialog.name))
+            }}
+          />
+        )}
+
+        {deletingDash && (
+          <ConfirmDialog
+            title={`Delete ${deletingDash.name}?`}
+            message="The dash and all of its pages are removed. This cannot be undone."
+            confirmLabel="Delete"
+            destructive
+            onCancel={() => setDialog(null)}
+            onConfirm={() => {
+              setDialog(null)
+              void runAction(buildDashDelete(deletingDash.id))
+            }}
+          />
+        )}
+      </div>
+      {explorer}
+    </>
+  )
+}
+
+/**
+ * Dashes in the explorer: every category with its dashes counted, which narrows the gallery
+ * (the filter bar's job while the explorer is hidden), then Dashes › Settings (alerts, Ack and
+ * the buttons on the wheel). A dash itself opens in the designer window, so it has no row here.
+ */
+function DashesExplorer({
+  groups,
+  filter,
+  settings,
+  onFilter,
+  onSettings,
+}: {
+  groups: readonly DashGroup[]
+  /** The gallery's filter; null while Settings is open. */
+  filter: DashesFilter | null
+  settings: boolean
+  onFilter: (filter: DashesFilter) => void
+  onSettings: () => void
+}) {
+  const total = groups.reduce((sum, group) => sum + group.dashes.length, 0)
+  // A category the driver is looking at that has just emptied keeps its row, as in the filter bar.
+  const rows: Array<{ filter: DashesFilter; title: string; count: number }> = groups.map((group) => ({ filter: group.filter, title: group.title, count: group.dashes.length }))
+  if (filter && filter.kind !== 'all' && !groups.some((group) => sameDashesFilter(group.filter, filter))) {
+    rows.push({ filter, title: filter.kind === 'category' ? filter.name : 'Other', count: 0 })
+  }
+  return (
+    <Explorer label="Dashes">
+      <ExplorerRow title="All dashes" meta={total} selected={filter?.kind === 'all'} onClick={() => onFilter(ALL_DASHES)} />
+      {rows.length > 0 && <ExplorerGroup title="Categories" />}
+      {rows.map((row) => (
+        <ExplorerRow
+          key={row.title}
+          title={row.title}
+          meta={row.count}
+          selected={filter !== null && filter.kind !== 'all' && sameDashesFilter(row.filter, filter)}
+          onClick={() => onFilter(row.filter)}
         />
-      )}
-
-      {menu?.kind === 'category' && (
-        <CategoryMenu
-          anchor={menu.anchor}
-          name={menu.name}
-          onClose={closeMenu}
-          onRename={() => setDialog({ kind: 'renameCategory', name: menu.name })}
-          onDelete={() => setDialog({ kind: 'deleteCategory', name: menu.name })}
-        />
-      )}
-
-      {dialog?.kind === 'newDash' && (
-        <NewDashDialog
-          categories={categories}
-          screens={screenChoices(state.screens)}
-          initialCategory={newDashCategory(filter)}
-          onCancel={() => setDialog(null)}
-          onCreate={(dash) => void createDash(dash)}
-        />
-      )}
-
-      {copyingDash && (
-        <DuplicateDashDialog
-          source={copyingDash}
-          losses={state.refitLosses[copyingDash.id] ?? {}}
-          categories={categories}
-          screens={screenChoices(state.screens)}
-          onCancel={() => setDialog(null)}
-          onCreate={(dash) => void createDash(dash)}
-        />
-      )}
-
-      {filingDash && (
-        <CategoryNameDialog
-          title="New category"
-          message={`${filingDash.name} moves into it.`}
-          confirmLabel="Create"
-          categories={categories}
-          onCancel={() => setDialog(null)}
-          onConfirm={(name) => {
-            setDialog(null)
-            void runAction(buildDashCategoryCreate(name, filingDash.id))
-          }}
-        />
-      )}
-
-      {dialog?.kind === 'renameCategory' && (
-        <CategoryNameDialog
-          title="Rename category"
-          confirmLabel="Rename"
-          initialName={dialog.name}
-          renaming={dialog.name}
-          categories={categories}
-          onCancel={() => setDialog(null)}
-          onConfirm={(newName) => {
-            setDialog(null)
-            // Keep looking at the category under its new name.
-            if (filter.kind === 'category' && filter.name === dialog.name) setChosenFilter({ kind: 'category', name: newName })
-            void runAction(buildDashCategoryRename(dialog.name, newName))
-          }}
-        />
-      )}
-
-      {dialog?.kind === 'deleteCategory' && (
-        <ConfirmDialog
-          title={`Delete ${dialog.name}?`}
-          message={deleteCategoryMessage(groups.find((group) => group.custom && group.title === dialog.name)?.dashes.length ?? 0)}
-          confirmLabel="Delete"
-          destructive
-          onCancel={() => setDialog(null)}
-          onConfirm={() => {
-            setDialog(null)
-            void runAction(buildDashCategoryDelete(dialog.name))
-          }}
-        />
-      )}
-
-      {deletingDash && (
-        <ConfirmDialog
-          title={`Delete ${deletingDash.name}?`}
-          message="The dash and all of its pages are removed. This cannot be undone."
-          confirmLabel="Delete"
-          destructive
-          onCancel={() => setDialog(null)}
-          onConfirm={() => {
-            setDialog(null)
-            void runAction(buildDashDelete(deletingDash.id))
-          }}
-        />
-      )}
-    </div>
+      ))}
+      <ExplorerGroup title="On the wheel" />
+      <ExplorerRow title="Settings for every dash" line="Alerts, Ack and the lap review" selected={settings} onClick={onSettings} />
+    </Explorer>
   )
 }
 

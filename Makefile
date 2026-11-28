@@ -78,6 +78,9 @@ smoke-app: types ## Start the real app hidden, open every page on a replayed rac
 dev-data: ## Fill this checkout's dev data with the laps of every recording in app/recordings (no game needed)
 	$(TASKS) dev-data
 
+dev-sessions-to-app: ## Copy sessions driven on a dev build into the installed Sprint; lists them, SESSION=<id>[,<id>] or SESSION=today copies
+	node app/desktop/scripts/dev-sessions-to-app.mjs $(if $(SESSION),--session=$(SESSION))
+
 reset-dev-data: ## Delete this checkout's dev data (settings, laps, logs); the installed app is untouched
 	$(TASKS) reset-dev-data
 

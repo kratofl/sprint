@@ -66,8 +66,8 @@ export function buildShellCommands(context: ShellCommandContext): ShellCommand[]
     },
     {
       id: 'shell.sidebar',
-      label: 'Toggle sidebar',
-      keywords: 'collapse expand navigation',
+      label: 'Show or hide the list',
+      keywords: 'sidebar explorer collapse expand navigation',
       run: context.toggleSidebar,
     },
     {
