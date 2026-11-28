@@ -517,7 +517,7 @@ const describeScreenStatus = (status: ScreenHardwareStatus): ScreenStatusPresent
       case 'DeviceBusy':
         return {
           label: 'In use',
-          detail: 'Another application, commonly SimHub, is using the screen. Disable its VoCore output or close it, then retry.',
+          detail: 'Another application, SimHub for example, is using the screen. Close its screen output or the application, then retry.',
           tone: 'warning',
         }
       case 'DeviceConflict':
@@ -528,10 +528,10 @@ const describeScreenStatus = (status: ScreenHardwareStatus): ScreenStatusPresent
         }
       case 'PermissionDenied':
         return {
-          label: 'USB access failed',
+          label: 'USB driver needed',
           detail:
-            'Sprint found the screen but could not use its current Windows USB binding. Sprint does not ask you to install ' +
-            'a separate driver here; it reuses a compatible existing binding. Close other screen-output software, reconnect the screen, and retry.',
+            'Windows knows the screen but has not bound it to WinUSB, the driver Sprint talks to it through. ' +
+            "Bind WinUSB to it once, with SimHub's screen setup, your screen maker's driver setup or Zadig (zadig.akeo.ie), then plug it back in.",
           tone: 'warning',
         }
       case 'Unsupported':

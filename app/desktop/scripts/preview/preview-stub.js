@@ -223,7 +223,7 @@
       // As the driver's host shares it: the plan with its state.planFuel entry as raceFuel.
       plan: withPlan && plan ? { ...plan, status: 'Tracking', raceFuel: state.planFuel?.[plan.id] ?? null } : null,
       raceControl,
-      // Quiet: no stop seen yet, so Spa's typical Hypercar stop (Lovely Track Data: dt 23 s, pit 78 s).
+      // Quiet: no stop seen yet, so Spa's typical Hypercar stop (the bundled track data: dt 23 s, pit 78 s).
       pitLoss: quiet
         ? { lane: null, laneStops: 0, standing: null, standingStops: 0, standingFromOwn: false, typical: { lane: 23, standing: 55 }, seconds: 78 }
         : { lane: 24.6, laneStops: 41, standing: 37.2, standingStops: 1, standingFromOwn: true, typical: null, seconds: 61.8 },
@@ -279,6 +279,9 @@
   const state = structuredClone(window.__SPRINT_PREVIEW_STATE__ ?? {})
   if (params.get('collapsed') === '1') state.settings = { ...state.settings, sidebarCollapsed: true }
   if (params.get('units') === 'Imperial') state.settings = { ...state.settings, units: 'Imperial' }
+  // screenState=<ScreenConnectionState>: every USB screen reports that state, e.g. PermissionDenied (no WinUSB driver).
+  const screenState = params.get('screenState')
+  if (screenState) for (const screen of state.screens ?? []) if (screen.hardware) screen.hardware.status = { state: screenState, detail: null, isConnected: screenState === 'Connected' }
   state.foundDevices = (params.get('found') ?? '').split(',').filter((id) => id !== '')
   // listening=<deviceId>:<function>: that function waits for its wheel button (devices.buttonListen).
   const listening = params.get('listening')

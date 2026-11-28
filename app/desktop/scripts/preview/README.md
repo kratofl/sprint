@@ -59,6 +59,7 @@ drops them.
 | `theme=light\|dark` | Forces a theme; omitted follows the OS |
 | `units=Imperial` | The driver chose imperial units: Settings shows it, and every dash picture prints mph, °F, psi and gallons. Default: metric |
 | `platform=mac\|windows` | The look Electron would pick on that OS; omitted is the brand look (`windows`), which Linux wears too |
+| `screenState=<state>` | Every USB screen reports that state (`ScreenConnectionState`), e.g. `PermissionDenied` for a screen without the WinUSB driver or `DeviceBusy` |
 | `collapsed=1` | The sidebar folded to a rail of icons (on macOS: hidden, the toolbar offers it back) |
 | `palette=1` | Opens the command palette |
 | `version=<x.y.z>` | The version the status bar shows; `readme-shots.mjs` passes the latest release tag. Default: the sample's |

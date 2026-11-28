@@ -234,7 +234,7 @@ impl Default for FuelWarning {
 }
 
 /// The game's lift-and-coast cue (0–255) above which LIFT NOW shows and the Lift & coast widget
-/// lights, unless the `lift_now` alert sets its own `liftPoint` (the point Lovely Dash Pro uses).
+/// lights, unless the `lift_now` alert sets its own `liftPoint`.
 pub const LIFT_POINT: f64 = 220.0;
 pub const LIFT_POINT_MIN: f64 = 0.0;
 pub const LIFT_POINT_MAX: f64 = 255.0;

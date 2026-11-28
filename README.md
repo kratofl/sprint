@@ -107,7 +107,7 @@ The API and web app run with `cp .env.example .env; make docker-up` (web on `:30
 `:8080/graphql`). `make help` lists every target.
 
 USB screens need the WinUSB driver bound. A screen already working with SimHub works as-is;
-otherwise bind it with the vendor tool or [Zadig](https://zadig.akeo.ie).
+otherwise bind it with SimHub's screen setup, the screen maker's driver setup or [Zadig](https://zadig.akeo.ie).
 
 ## Repository
 

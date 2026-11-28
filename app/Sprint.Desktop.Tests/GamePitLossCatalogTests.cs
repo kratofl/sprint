@@ -5,7 +5,7 @@ namespace Sprint.Desktop.Tests;
 
 /// <summary>
 /// The bundled typical pit loss (<see cref="GamePitLossCatalog"/>): how a session's game, track and
-/// class find it. The figures themselves are Lovely Track Data's and change with each refresh.
+/// class find it. The figures themselves come from the bundled track data and change with each refresh.
 /// </summary>
 public sealed class GamePitLossCatalogTests
 {

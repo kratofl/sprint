@@ -145,7 +145,7 @@ export function PitStopTile({ data, frame }: { data: TileData; frame: FrameProps
       </div>
       {pitLoss.typical ? (
         <span className="muted pw-note">
-          Typical {player.classTag || 'class'} stop at this track (Lovely Track Data) until this session’s stops measure it
+          Typical {player.classTag || 'class'} stop at this track until this session’s stops measure it
         </span>
       ) : (
         <span className="muted pw-note">

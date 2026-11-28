@@ -192,7 +192,7 @@ public static class ScreenStatusPresentation
             ScreenConnectionState.ConfigurationRequired =>
                 new ScreenStatusView("Setup needed", "This saved screen has no VID/PID. Select or detect the physical USB device.", ScreenStatusTone.Warning),
             ScreenConnectionState.DeviceBusy =>
-                new ScreenStatusView("In use", "Another application, commonly SimHub, is using the screen. Disable its VoCore output or close it, then retry.", ScreenStatusTone.Warning),
+                new ScreenStatusView("In use", "Another application, SimHub for example, is using the screen. Close its screen output or the application, then retry.", ScreenStatusTone.Warning),
             ScreenConnectionState.DeviceConflict =>
                 new ScreenStatusView(
                     "Duplicate target",
@@ -200,10 +200,9 @@ public static class ScreenStatusPresentation
                     ScreenStatusTone.Warning),
             ScreenConnectionState.PermissionDenied =>
                 new ScreenStatusView(
-                    "USB access failed",
-                    "Sprint found the screen but could not use its current Windows USB binding. " +
-                    "Sprint does not ask you to install a separate driver here; it reuses a compatible existing binding. " +
-                    "Close other screen-output software, reconnect the screen, and retry.",
+                    "USB driver needed",
+                    "Windows knows the screen but has not bound it to WinUSB, the driver Sprint talks to it through. " +
+                    "Bind WinUSB to it once, with SimHub's screen setup, your screen maker's driver setup or Zadig (zadig.akeo.ie), then plug it back in.",
                     ScreenStatusTone.Warning),
             ScreenConnectionState.Unsupported =>
                 new ScreenStatusView("Unsupported", "This screen transport is not supported on the current operating system."),
