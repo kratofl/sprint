@@ -30,7 +30,7 @@ browser launched with `--allow-file-access-from-files`.
 ## Design mockups
 
 A mockup is three options, A, B and C, built from the app's own components, primitives and tokens
-and shown where they will live: on their page inside the real app shell (rail, explorer, toolbar,
+and shown where they will live: on their page inside the real app shell (sidebar, toolbar,
 status bar; a `PageHeader`'s actions land in the toolbar as on a real page), or as one of the app's
 windows. Never hand-written HTML with its own CSS: that drifts from the design system.
 
@@ -59,7 +59,7 @@ drops them.
 | `theme=light\|dark` | Forces a theme; omitted follows the OS |
 | `units=Imperial` | The driver chose imperial units: Settings shows it, and every dash picture prints mph, °F, psi and gallons. Default: metric |
 | `platform=mac\|windows` | The look Electron would pick on that OS; omitted is the brand look (`windows`), which Linux wears too |
-| `collapsed=1` | The explorer hidden (the toolbar's list toggle): pages show their own "‹ All …" links and filter bars again |
+| `collapsed=1` | The sidebar folded to a rail of icons (on macOS: hidden, the toolbar offers it back) |
 | `palette=1` | Opens the command palette |
 | `version=<x.y.z>` | The version the status bar shows; `readme-shots.mjs` passes the latest release tag. Default: the sample's |
 | `update=1` | Reports an available update (Settings dot + the toolbar's update button); also `downloading`, `installing`, `checking`, `idle`, `failed`, `unsupported` |
@@ -75,11 +75,11 @@ drops them.
 | `storage=Both` / `storage=Remote` | Where data lives (default: this PC only). `Both` also reports a last upload in Settings |
 | `live=<status>` | The live uplink's status in Settings: `Off`, `WaitingForGame`, `Connecting`, `Streaming`, `Reconnecting`. Default: `WaitingForGame` when signed in with `storage=Both`/`Remote`, otherwise `Off` |
 | `link=<phase>` | The live link's phase on the Race engineer page: `Off`, `Preparing`, `Inviting`, `Joining`, `Connecting`, `Connected`, `Interrupted`, `Failed`, `Ended`. `linkRole=Engineer` shows the engineer's side where both exist (default: the driver's) |
-| `listening=<deviceId>:<function>` | That button function waits for its wheel button, as after Assign, e.g. `listening=sample-usbd480:acknowledge` for an Ack row on Dashes > Settings (`click=[aria-label="Dashes"] > .explorer-row:last-child`, URL-encoded) |
+| `listening=<deviceId>:<function>` | That button function waits for its wheel button, as after Assign, e.g. `listening=sample-usbd480:acknowledge` for an Ack row on Dashes > Settings (`click=.dashes-settings-open`) |
 | `found=<id,id>` | The USB scan finds these catalog ids plugged in and not added yet, so Add device shows them under "Plugged in now", e.g. `found=bavarian-omega-v2-pro`. Default: nothing new |
 | `discord=1` / `discord=fail` | The server offers Discord sign-in. "Continue with Discord" then waits for the browser until Cancel (`1`), or fails at once with a server error (`fail`) |
 | `detect=partial` / `detect=none` | Session planner's Quick plan (`click=.command-bar .button.primary`): the game names the car and track but not the race length and there are no laps here (`partial`), or nothing is detected (`none`). Default: everything is, so Quick plan's calculator starts filled from the Spa laps (90 L tank). The calculator and the New plan sheet's figures (`click=.command-bar .button:nth-of-type(2)&click=.planner-steps li:nth-child(3) .planner-step`) are worked out over the payload's laps the way the host does |
-| `training=on` / `training=arrange` / `training=none` | On track: training (`on`), the HUD up to arrange on the monitor (`arrange`), or no lap was ever recorded (`none`). Default: laps listed with two friends' laps, Ada's picked, HUD off; every lap with a line gets a made-up one, so `click=[aria-label="Laps here"] > .explorer-row:nth-of-type(2)` (URL-encoded) opens a lap page and `click=.command-bar .button` opens compare. `chase=none` picks no lap. `fullscreen=1` adds the exclusive-fullscreen warning |
+| `training=on` / `training=arrange` / `training=none` | On track: training (`on`), the HUD up to arrange on the monitor (`arrange`), or no lap was ever recorded (`none`). Default: laps listed with two friends' laps, Ada's picked, HUD off; every lap with a line gets a made-up one, so `click=.ontrack-laps .list-row:nth-of-type(2)` opens a lap page and `click=.command-bar .button` opens compare. `chase=none` picks no lap. `fullscreen=1` adds the exclusive-fullscreen warning |
 | `hud=<windowId>` | Mounts one training HUD window instead of the app: `delta`, `throttle`, `brake`, `speed`, `steering` or `gear`, with a braking zone ahead of the car, or `arrange` for the palette shown while arranging. `hudArranging=1` shows a window being arranged (edge, ×, grip). Screenshot it at its window size: `--size 240,92` for the delta, `--size 380,160` for a chart, `--size 520,56` for the palette |
 | `setups=none` / `setups=unavailable` | Setups: an empty setup folder (`none`) or no game found (`unavailable`). Default: fifteen made-up setups over five cars (the ELMS and the WEC Oreca apart) and four circuits, Silverstone in two layouts; the Porsche 963 is picked, `click=.setups-group-head` opens its first circuit, `click=.class-lmp2-elms .browse-car` picks the ELMS Oreca; `click=.setups-row-open` opens Race v3 (three versions, `click=.setups-version:nth-child(2)` opens an older one), `click=.setups-tag-button` opens a setup's tag menu (a tag lands on the sample list), `click=.command-bar .button` opens compare |
 | `analysis=list` | Analysis: the sessions list (seven sessions over four cars and tracks, with an imported race and a friend's shared lap); `analysis=many` fills it with years of racing instead (340 sessions over 20 cars in every class, 12 layouts of 9 circuits) for Recent, the classes and "Show more". Without it the sample opens a Spa practice session in three runs (out of the garage and back) with tyres and fuel per lap; run 1 carries "Race v3", run 3 "Quali", run 2 none; every lap but lap 4 has a made-up line. `click=.analysis-lap-open` opens lap 1 on its own page (a made-up loop for the map, steering, gear and what the car got, car settings with TC, brake bias and ABS changed mid-lap, two of your notes, and the car's own readings for the car card and its charts: `click=.analysis-car-corner.fl .analysis-car-value:nth-of-type(3)` puts the brake temperatures on the page, `click=.analysis-add-chart .button` opens Add chart, `focus=.analysis-chart-stack@0.5` puts the charts' cursor mid-lap, `car=none` leaves the car's readings out, as on a lap recorded before they were kept), and adding `click=.analysis-lap-actions [aria-haspopup=menu]` opens Compare with… (then `click=.analysis-pick-row:last-of-type` compares with Ada's shared lap, which came with two notes and a migration change; the Quali laps carry no settings, like an older lap); on the lap page `click=.analysis-pin.note` opens a note's bubble (`.analysis-pin.note.other:last-of-type` one of Ada's) and `click=.analysis-chart-svg@0.62` opens the note editor at that place; `click=[role=radio]:nth-child(2)` with `analysis=list` shows Shared; `focus=.analysis-times-dot` shows the chart's tooltip, `click=.analysis-run-setup.empty` opens the run setup picker (it opens upward near the window bottom); on Setups, Race v3 and Quali have made-up "On track" figures |
@@ -93,7 +93,7 @@ drops them.
 | `context=<css selector>` | After the clicks, right-clicks the first match (`@<fraction>` across, like `click=`), e.g. `designer=zoned-race&context=.designer-widget-overlay` opens the designer's widget menu |
 | `clear=<css selector>` | After the clicks, empties that text box the way the driver deleting its text would (React sees the input). `blur=1` then leaves it, as tabbing away does, e.g. `click=.command-bar .button.primary&clear=.planner-quick-figures .field:first-child input&blur=1` empties Quick plan's lap time and leaves it |
 | `key=<key>` | After the focus, presses that key (`KeyboardEvent.key`, URL-encoded: `%2B` for +) on whatever has focus; repeat it for several. With `focus=.analysis-chart-stack@0.5` on a lap page, `key=%2B&key=%2B&key=%2B` zooms the charts in around mid-lap (the map marks the stretch, Whole lap appears) and `key=ArrowRight` moves the crosshair |
-| `lapFile=duplicate` / `lapFile=damaged` | What Import… → A shared lap file… opens (Analysis: `click=.command-bar [aria-haspopup=menu]&click=.menu-item`; On track: `click=.explorer-tools .button`): Ada's lap at Spa, already in your laps (`duplicate`) or unreadable (`damaged`, an infobar instead of the dialog). Default: a new lap, so the dialog offers Add |
+| `lapFile=duplicate` / `lapFile=damaged` | What Import… → A shared lap file… opens (Analysis: `click=.command-bar [aria-haspopup=menu]&click=.menu-item`; On track: `click=.ontrack-laps .card-header .button`): Ada's lap at Spa, already in your laps (`duplicate`) or unreadable (`damaged`, an infobar instead of the dialog). Default: a new lap, so the dialog offers Add |
 
 ## How it works
 
@@ -111,7 +111,7 @@ drops them.
   `scripts/process-tree.mjs` — never by name.
 - `screenshot.mjs` (like `dev.mjs`) drops `ELECTRON_RUN_AS_NODE` from Electron's
   environment; agent shells set it, and Electron would then start as plain Node.
-- The preview has no window backdrop, so macOS vibrancy does not show: the rail
+- The preview has no window backdrop, so macOS vibrancy does not show: the sidebar
   draws its `--sidebar` token colour instead. The OS caption buttons are missing
   too; in Electron they sit at the right end of the toolbar.
 

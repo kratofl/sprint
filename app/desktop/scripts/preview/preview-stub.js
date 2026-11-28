@@ -1068,7 +1068,7 @@
   // nothing to production code: Alt+1..8 (⌘1..8 with platform=mac) for the
   // primary pages (shell/nav.ts order) and a click on the rail's area for the footer pages.
   const primaryOrder = ['Home', 'SessionPlanner', 'OnTrack', 'Analysis', 'Setups', 'Dashes', 'Devices', 'RaceEngineer']
-  const footerLabels = { Settings: 'Settings', Help: 'Help' }
+  const footerLabels = { Settings: 'Settings', Help: 'Help & diagnostics' }
   // The modifier the shell listens for (shell/shortcuts.ts): Command on mac, Alt/Ctrl elsewhere.
   const mac = params.get('platform') === 'mac'
 
@@ -1079,7 +1079,7 @@
       return
     }
     const label = footerLabels[view]
-    const item = [...document.querySelectorAll('.rail-item')].find((element) => element.querySelector('.rail-item-label')?.textContent?.trim() === label)
+    const item = [...document.querySelectorAll('.sidebar-item')].find((element) => element.querySelector('.sidebar-item-label')?.textContent?.trim() === label)
     if (item instanceof HTMLElement) item.click()
     else console.warn(`[preview] unknown view "${view}"`)
   }

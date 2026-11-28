@@ -129,18 +129,18 @@ a:hover {
   outline-offset: 2px;
 }
 
-/* ── App frame: rail | explorer | toolbar over content, the status bar below ──
-   One grid on .app. The explorer column is `auto`: a page without an explorer, or with it
-   hidden, renders none and the column folds to nothing. Chrome (rail, explorer, toolbar, status
-   bar) sits on --window; the page is the one lighter surface, so the eye lands on it. */
+/* ── App frame: sidebar | explorer | toolbar over content, the status bar below ──
+   One grid on .app. The explorer column is `auto`: only Settings has an explorer, every other
+   page renders none and the column folds to nothing. Chrome (sidebar, explorer, status bar) sits
+   on --window; the toolbar and the page are the one lighter surface, so the eye lands on it. */
 
 .app {
   display: grid;
   grid-template-columns: auto auto minmax(0, 1fr);
   grid-template-rows: 48px minmax(0, 1fr) 24px;
   grid-template-areas:
-    "rail explorer toolbar"
-    "rail explorer content"
+    "sidebar explorer toolbar"
+    "sidebar explorer content"
     "status status status";
   height: 100vh;
   overflow: hidden;
@@ -148,7 +148,7 @@ a:hover {
   color: var(--label);
 }
 
-/* The explorer's shown state is restored from persisted settings after the first state load
+/* The sidebar's folded state is restored from persisted settings after the first state load
    (App.tsx); staying invisible until then avoids painting the wrong width and snapping to the
    right one a moment later. */
 .app.pending {
@@ -222,8 +222,7 @@ a:hover {
   -webkit-app-region: no-drag;
 }
 
-/* Leading zone: never shrinks, so the title stays whole and the actions give way instead. Full
-   height, so page tabs (`.titlebar-tabs`) underline at the toolbar's edge. */
+/* Leading zone: never shrinks, so the title stays whole and the actions give way instead. */
 .titlebar-lead {
   display: flex;
   align-self: stretch;
@@ -252,31 +251,6 @@ a:hover {
 
 .titlebar-sidebar-toggle:active {
   background: var(--subtle-pressed);
-}
-
-/* Where you are: the area quiet, the page last and strongest (TitleBar.tsx). */
-.titlebar-crumbs {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex: none;
-  white-space: nowrap;
-}
-
-.titlebar-crumb {
-  color: var(--label-secondary);
-  font-size: 13px;
-}
-
-.titlebar-crumb-sep {
-  color: var(--label-tertiary);
-}
-
-/* An area's pages while the explorer is hidden (TitleBar.tsx): the explorer's tabs, in the toolbar. */
-.titlebar-tabs {
-  display: flex;
-  align-self: stretch;
-  gap: 4px;
 }
 
 .titlebar-title {
@@ -392,7 +366,187 @@ a:hover {
   white-space: nowrap;
 }
 
-/* ── Rail (68px, full height): the areas, Settings and Help (shell/Rail.tsx) ─ */
+/* ── Sidebar (224px, full height; a 56px rail of icons when folded; shell/Sidebar.tsx) ── */
+
+.sidebar {
+  grid-area: sidebar;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  width: 224px;
+  padding: 0 8px 8px;
+  overflow: hidden auto;
+  border-right: 1px solid var(--layer-stroke);
+  background: var(--sidebar);
+  transition: width var(--motion-normal) var(--ease-out);
+}
+
+.sidebar.collapsed {
+  width: 56px;
+}
+
+/* The 48px band at the top, level with the toolbar: the mark and name, then the fold toggle. It
+   drags the window like the toolbar beside it. */
+.sidebar-band {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 48px;
+  flex: none;
+  margin: 0 -8px 4px;
+  padding: 0 10px 0 16px;
+  -webkit-app-region: drag;
+}
+
+.sidebar-brand {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 20px;
+}
+
+.sidebar-brand img {
+  display: block;
+  width: 22px;
+  height: 22px;
+  flex: none;
+  -webkit-user-drag: none;
+}
+
+.sidebar-toggle {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  flex: none;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--label-secondary);
+  -webkit-app-region: no-drag;
+}
+
+.sidebar-spacer {
+  flex: 1;
+}
+
+/* A page: its icon, dimmed until the page is current, then its name. */
+.sidebar-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 28px;
+  flex: none;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--label);
+  font-size: 13px;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.sidebar-item svg {
+  flex: none;
+  color: var(--label-tertiary);
+}
+
+.sidebar-toggle:hover,
+.sidebar-item:hover {
+  background: var(--subtle-hover);
+  color: var(--label);
+}
+
+.sidebar-toggle:active,
+.sidebar-item:active {
+  background: var(--subtle-pressed);
+}
+
+/* The current page: the strong fill, icon and label in full colour; no brand colour for where
+   you are. */
+.sidebar-item.current {
+  background: var(--subtle-selected);
+  font-weight: 600;
+}
+
+.sidebar-item:hover svg,
+.sidebar-item.current svg {
+  color: var(--label);
+}
+
+.sidebar-item-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* A group heading over its pages: a category label, 11px semibold, uppercase and tracked. */
+.sidebar-group {
+  flex: none;
+  padding: 12px 8px 4px;
+}
+
+.sidebar-group-label {
+  display: block;
+  color: var(--label-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 16px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+/* Update-available dot on Settings. */
+.sidebar-item-badge {
+  width: 6px;
+  height: 6px;
+  flex: none;
+  margin-left: auto;
+  border-radius: var(--radius-pill);
+  background: var(--brand-500);
+}
+
+/* Folded: icons only, each page keeps its name as tooltip and accessible name (Sidebar.tsx); a
+   group heading becomes a hairline, and the update dot moves onto the icon's corner. */
+.sidebar.collapsed .sidebar-band {
+  justify-content: center;
+  padding: 0;
+}
+
+.sidebar.collapsed .sidebar-brand,
+.sidebar.collapsed .sidebar-item-label {
+  display: none;
+}
+
+.sidebar.collapsed .sidebar-item {
+  justify-content: center;
+  padding: 0;
+}
+
+.sidebar.collapsed .sidebar-group {
+  margin: 6px 12px;
+  padding: 0;
+  border-top: 1px solid var(--divider);
+}
+
+.sidebar.collapsed .sidebar-group-label {
+  display: none;
+}
+
+.sidebar.collapsed .sidebar-item-badge {
+  position: absolute;
+  top: 5px;
+  right: 10px;
+  margin: 0;
+}
+
+/* ── Rail (68px, full height): the dash designer's sections (designer/DashDesigner.tsx) ── */
 
 .rail {
   grid-area: rail;
@@ -403,7 +557,6 @@ a:hover {
   width: 68px;
   padding: 0 0 8px;
   overflow: hidden auto;
-  border-right: 1px solid var(--layer-stroke);
   background: var(--sidebar);
 }
 
@@ -428,7 +581,8 @@ a:hover {
   flex: 1;
 }
 
-/* An area: its icon over its name. Selected: the strong fill, the brand icon and a brand bar. */
+/* An area: its icon over its name, the icon dimmed until it is the current area. Selected: the
+   strong fill, icon and label in full colour; no brand colour for where you are. */
 .rail-item {
   position: relative;
   display: flex;
@@ -448,8 +602,17 @@ a:hover {
   white-space: nowrap;
 }
 
+.rail-item svg {
+  color: var(--label-tertiary);
+}
+
 .rail-item:hover {
   background: var(--subtle-hover);
+  color: var(--label);
+}
+
+.rail-item:hover svg,
+.rail-item.active svg {
   color: var(--label);
 }
 
@@ -463,21 +626,6 @@ a:hover {
   font-weight: 600;
 }
 
-.rail-item.active svg {
-  color: var(--brand-500);
-}
-
-.rail-item.active::before {
-  content: "";
-  position: absolute;
-  top: 12px;
-  bottom: 12px;
-  left: -4px;
-  width: 2px;
-  border-radius: var(--radius-pill);
-  background: var(--brand-500);
-}
-
 /* Update-available dot on Settings. */
 .rail-item-badge {
   position: absolute;
@@ -489,7 +637,7 @@ a:hover {
   background: var(--brand-500);
 }
 
-/* ── Explorer (300px): the area's pages as tabs, then the page's list (shell/Explorer.tsx) ── */
+/* ── Explorer (300px): the page's name, then its list (shell/Explorer.tsx; Settings) ── */
 
 .explorer {
   grid-area: explorer;
@@ -501,44 +649,24 @@ a:hover {
   background: var(--window);
 }
 
-.explorer-head {
+/* A band at the top of the explorer's list, level with the toolbar and closed by the same hairline
+   (Settings' search). It drags the window like the toolbar; its controls opt out. */
+.explorer-band {
   display: flex;
   align-items: center;
   height: 48px;
   flex: none;
-  padding: 0 16px;
+  padding: 0 12px;
   border-bottom: 1px solid var(--layer-stroke);
   -webkit-app-region: drag;
 }
 
-.explorer-title {
-  font-weight: 600;
-}
-
-.explorer-tabs {
-  align-items: stretch;
-  gap: 4px;
-  padding: 0 8px;
-}
-
-.explorer-tab {
-  padding: 2px 8px 0;
-  border: 0;
-  border-bottom: 2px solid transparent;
-  background: transparent;
-  color: var(--label-secondary);
-  font-weight: 500;
+.explorer-band > * {
   -webkit-app-region: no-drag;
 }
 
-.explorer-tab:hover {
-  color: var(--label);
-}
-
-.explorer-tab[aria-current="page"] {
-  border-bottom-color: var(--brand-500);
-  color: var(--label);
-  font-weight: 600;
+.explorer-list:has(> .explorer-band:first-child) {
+  padding-top: 0;
 }
 
 .explorer-body {
@@ -555,7 +683,8 @@ a:hover {
   padding: 6px 0 12px;
 }
 
-/* A heading over a run of rows, with its count at the right. */
+/* A heading over a run of rows, with its count at the right: a category label, 11px semibold,
+   uppercase and tracked. */
 .explorer-group {
   display: flex;
   justify-content: space-between;
@@ -565,6 +694,8 @@ a:hover {
   font-size: 11px;
   font-weight: 600;
   line-height: 16px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
 }
 
 .explorer-list > .explorer-group:first-child {
@@ -884,7 +1015,9 @@ a:hover {
    .button.destructive        the standard fill, danger text (disabled: the disabled colour)
    .button.destructive-solid  final irreversible step only
    .button.small    22px, for dense rows and card footers
-   A leading 14px icon tightens the left padding. Buttons never glow. */
+   A leading 14px icon tightens the left padding. Depth is a hard 1px edge straight down
+   (--control-edge, --primary-edge; none on a Mac) that flattens while pressed. Never a blur,
+   never a glow, no movement. */
 
 .button {
   display: inline-flex;
@@ -903,6 +1036,7 @@ a:hover {
   line-height: 16px;
   white-space: nowrap;
   text-decoration: none;
+  box-shadow: 0 1px 0 var(--control-edge);
 }
 
 .button:has(> svg:first-child) {
@@ -924,15 +1058,21 @@ a:hover {
   color: var(--label);
 }
 
+.button:active:not(:disabled, [aria-disabled='true']) {
+  box-shadow: none;
+}
+
 .button:disabled,
 .button[aria-disabled='true'] {
   background: var(--control-fill-disabled);
+  box-shadow: none;
   color: var(--label-disabled);
 }
 
 .button.primary {
   border-color: transparent;
   background: var(--brand-500);
+  box-shadow: 0 1px 0 var(--primary-edge);
   color: var(--on-brand);
   font-weight: 600;
 }
@@ -967,6 +1107,7 @@ a:hover {
 .button.destructive-solid {
   border-color: transparent;
   background: var(--danger-text);
+  box-shadow: 0 1px 0 color-mix(in srgb, var(--danger-text) 55%, var(--control-edge));
   color: var(--on-status);
   font-weight: 600;
 }
@@ -1182,6 +1323,7 @@ a:hover {
   border: 1px solid var(--input-stroke);
   border-radius: var(--radius-control);
   background: var(--input-fill);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--control-edge) 45%, transparent);
   color: var(--label);
   font-size: 12px;
   line-height: 16px;
@@ -1410,6 +1552,7 @@ a:hover {
    --track trough; the selected item is a raised fill, semibold.
    .tabs > .tab: separate panes of one page; selected = bold + brand underline. */
 
+/* The trough is milled in (the edge along its top inside); the picked segment is raised out of it. */
 .segmented {
   display: inline-flex;
   gap: 2px;
@@ -1418,6 +1561,7 @@ a:hover {
   border: 0;
   border-radius: var(--radius-control);
   background: var(--track);
+  box-shadow: inset 0 1px 0 var(--control-edge);
 }
 
 .segmented-item {
@@ -1437,12 +1581,13 @@ a:hover {
   color: var(--label);
 }
 
-/* The picked segment is lifted out of the trough: its own fill and a hairline (none on a Mac). */
+/* The picked segment is raised out of the trough: its own fill, a hairline and the edge (none on a
+   Mac). */
 .segmented-item.active,
 .segmented-item[aria-pressed='true'],
 .segmented-item[aria-checked='true'] {
   background: var(--segmented-selected);
-  box-shadow: 0 0 0 1px var(--control-stroke);
+  box-shadow: 0 0 0 1px var(--control-stroke), 0 1px 0 var(--control-edge);
   color: var(--label);
   font-weight: 600;
 }
@@ -1484,7 +1629,7 @@ a:hover {
   height: 3px;
   margin-left: -8px;
   border-radius: 2px;
-  background: var(--brand-500);
+  background: var(--label);
 }
 
 /* ── Switch (shell/Switch.tsx): an instant on/off, "On"/"Off" beside it ────── */

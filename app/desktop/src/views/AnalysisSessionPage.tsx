@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { ChevronLeft, ChevronRight, Crosshair, FileDown, MoreHorizontal, Warehouse } from 'lucide-react'
+import { Check, ChevronDown, ChevronLeft, ChevronRight, Crosshair, FileDown, MoreHorizontal, Warehouse } from 'lucide-react'
 import { dayLabel, formatGap, formatLapSeconds, fuelText, lapTimeStats, lapsByRun, runLine, runTitle, tyreText } from './AnalysisDomain'
 import type { CorpusLap, CorpusRun, CorpusSession } from './AnalysisDomain'
 import { lapTimesPlot, tickLabel } from './AnalysisPlot'
@@ -15,18 +15,75 @@ import { MenuLayer, type MenuAnchor } from '../shell/Menu'
  * a line opens the lap page; what else a lap can do sits behind its ⋯ menu.
  */
 
-/** The session's kind and time, then its car (name and model), track and day; `onBack` adds "‹ All sessions" over it (absent while the explorer lists them). */
-export function SessionHead({ session, onBack }: { session: CorpusSession; onBack?: () => void }) {
+/**
+ * The session's kind and time, then its car (name and model), track and day, with "‹ All sessions"
+ * over it. A switcher beside the name opens the other sessions with this car on this circuit
+ * (`alike`, newest first, AnalysisSessions.ts `sessionsAlike`), so going to the next one is one
+ * click and the list never has to stay on screen; it is absent when there is no other.
+ */
+export function SessionHead({
+  session,
+  alike,
+  onBack,
+  onOpen,
+}: {
+  session: CorpusSession
+  alike: readonly CorpusSession[]
+  onBack: () => void
+  onOpen: (sessionId: string) => void
+}) {
+  const [menuAt, setMenuAt] = useState<MenuAnchor | null>(null)
+  const switcher = useRef<HTMLButtonElement | null>(null)
+  const close = () => {
+    setMenuAt(null)
+    switcher.current?.focus()
+  }
   const marks = session.marks
   return (
     <div className="analysis-session-head">
-      {onBack && (
-        <button type="button" className="button subtle analysis-back" onClick={onBack}>
-          <ChevronLeft /> All sessions
-        </button>
-      )}
+      <button type="button" className="button subtle analysis-back" onClick={onBack}>
+        <ChevronLeft /> All sessions
+      </button>
       <div className="analysis-session-heading">
         <h2 className="analysis-session-name">{session.label}</h2>
+        {alike.length > 1 && (
+          <button
+            ref={switcher}
+            type="button"
+            className="icon-button analysis-session-switch"
+            aria-label="Other sessions with this car here"
+            title="Other sessions with this car here"
+            aria-haspopup="menu"
+            aria-expanded={menuAt !== null}
+            onClick={(event) => {
+              const box = event.currentTarget.getBoundingClientRect()
+              setMenuAt({ x: box.left, y: box.bottom + 4 })
+            }}
+          >
+            <ChevronDown size={16} />
+          </button>
+        )}
+        {menuAt && (
+          <MenuLayer anchor={menuAt} label="Sessions with this car here" width={260} onClose={close}>
+            {alike.map((other) => (
+              <button
+                key={other.id}
+                type="button"
+                role="menuitemradio"
+                aria-checked={other.id === session.id}
+                className="menu-item"
+                onClick={() => {
+                  setMenuAt(null)
+                  if (other.id !== session.id) onOpen(other.id)
+                }}
+              >
+                <span className="menu-item-label">{other.label}</span>
+                <span className="menu-item-shortcut">{dayLabel(other.day ?? other.startedAt)}</span>
+                {other.id === session.id && <Check className="menu-item-check" />}
+              </button>
+            ))}
+          </MenuLayer>
+        )}
         {session.origin !== 'Recorded' && <span className="chip chip-muted">{session.origin}</span>}
       </div>
       <span className="analysis-secondary">

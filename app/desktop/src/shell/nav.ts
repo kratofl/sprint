@@ -1,83 +1,40 @@
-import {
-  BarChart3,
-  Car,
-  CircleHelp,
-  Cpu,
-  Flag,
-  House,
-  LayoutDashboard,
-  ListChecks,
-  Radio,
-  Route,
-  Settings,
-  SlidersHorizontal,
-  Users,
-} from 'lucide-react'
+import { BarChart3, CircleHelp, Cpu, House, LayoutDashboard, ListChecks, Radio, Route, Settings, SlidersHorizontal } from 'lucide-react'
 import type { AppView } from '../bridge'
 
 export type NavIcon = typeof House
 
-/** One page: its name in the palette and the toolbar, and its shorter name as a tab in its area. */
-export type NavItem = { view: AppView; label: string; tab: string; icon: NavIcon }
+/** The sidebar's group headings, in order. Overview and the foot stand outside them. */
+export type NavGroup = 'Drive' | 'Car & rig' | 'Team'
 
-// Page order, which is also the Alt+1..8 / ⌘1..8 order. Settings and Help are pinned to the
-// foot of the rail separately.
+/** One page: its name in the sidebar, the toolbar and the palette, and the group it sits under. */
+export type NavItem = { view: AppView; label: string; icon: NavIcon; group?: NavGroup }
+
+// Page order, which is also the Alt+1..8 / ⌘1..8 order. Settings and Help are pinned to the foot
+// of the sidebar separately.
 export const primaryNav: NavItem[] = [
-  { view: 'Home', label: 'Overview', tab: 'Overview', icon: House },
-  { view: 'SessionPlanner', label: 'Session planner', tab: 'Planner', icon: ListChecks },
-  { view: 'OnTrack', label: 'On track', tab: 'On track', icon: Route },
-  { view: 'Analysis', label: 'Analysis', tab: 'Analysis', icon: BarChart3 },
-  { view: 'Setups', label: 'Setups', tab: 'Setups', icon: SlidersHorizontal },
-  { view: 'Dashes', label: 'Dashes', tab: 'Dashes', icon: LayoutDashboard },
-  { view: 'Devices', label: 'Devices', tab: 'Devices', icon: Cpu },
-  { view: 'RaceEngineer', label: 'Race engineer', tab: 'Race engineer', icon: Radio },
+  { view: 'Home', label: 'Overview', icon: House },
+  { view: 'SessionPlanner', label: 'Session planner', icon: ListChecks, group: 'Drive' },
+  { view: 'OnTrack', label: 'On track', icon: Route, group: 'Drive' },
+  { view: 'Analysis', label: 'Analysis', icon: BarChart3, group: 'Drive' },
+  { view: 'Setups', label: 'Setups', icon: SlidersHorizontal, group: 'Car & rig' },
+  { view: 'Dashes', label: 'Dashes', icon: LayoutDashboard, group: 'Car & rig' },
+  { view: 'Devices', label: 'Devices', icon: Cpu, group: 'Car & rig' },
+  { view: 'RaceEngineer', label: 'Race engineer', icon: Radio, group: 'Team' },
 ]
 
 export const footerNav: NavItem[] = [
-  { view: 'Settings', label: 'Settings', tab: 'Settings', icon: Settings },
-  { view: 'Help', label: 'Help & diagnostics', tab: 'Help', icon: CircleHelp },
+  { view: 'Settings', label: 'Settings', icon: Settings },
+  { view: 'Help', label: 'Help & diagnostics', icon: CircleHelp },
 ]
 
 /**
- * The rail's areas, each a few pages shown as tabs over the explorer. Settings and Help are areas of
- * one page each, at the foot of the rail.
+ * Whether a page has an explorer, a list beside it (shell/Explorer.tsx): only Settings, whose
+ * section list is its way around. Every other page carries its own list and takes the full width.
  */
-export type NavArea = { id: 'home' | 'drive' | 'rig' | 'team' | 'settings' | 'help'; label: string; icon: NavIcon; views: AppView[] }
-
-export const primaryAreas: NavArea[] = [
-  { id: 'home', label: 'Home', icon: House, views: ['Home'] },
-  { id: 'drive', label: 'Drive', icon: Flag, views: ['SessionPlanner', 'OnTrack', 'Analysis'] },
-  { id: 'rig', label: 'Car & rig', icon: Car, views: ['Setups', 'Dashes', 'Devices'] },
-  { id: 'team', label: 'Team', icon: Users, views: ['RaceEngineer'] },
-]
-
-export const footerAreas: NavArea[] = [
-  { id: 'settings', label: 'Settings', icon: Settings, views: ['Settings'] },
-  { id: 'help', label: 'Help', icon: CircleHelp, views: ['Help'] },
-]
-
-/** The area a page belongs to. */
-export const areaOf = (view: AppView): NavArea => [...primaryAreas, ...footerAreas].find((area) => area.views.includes(view)) ?? primaryAreas[0]
-
-/**
- * The pages with an explorer: a list of their items left of the page (shell/Explorer.tsx). The
- * others take the full width.
- */
-const EXPLORER_VIEWS: readonly AppView[] = ['SessionPlanner', 'OnTrack', 'Analysis', 'Setups', 'Dashes', 'Devices', 'Settings']
-
-export const hasExplorer = (view: AppView): boolean => EXPLORER_VIEWS.includes(view)
-
-/** A page whose explorer stays out even while the driver hides it elsewhere: Settings, whose section list is its only way around. */
-export const explorerPinned = (view: AppView): boolean => view === 'Settings'
+export const hasExplorer = (view: AppView): boolean => view === 'Settings'
 
 /** The row that stands for a page. */
 export const navItemFor = (view: AppView): NavItem | undefined => [...primaryNav, ...footerNav].find((item) => item.view === view)
 
-/** The name a page goes by in the palette; the toolbar shows it after its area. */
+/** The name a page goes by in the sidebar, the palette and the toolbar. */
 export const viewLabel = (view: AppView): string => navItemFor(view)?.label ?? view
-
-/** Where the toolbar says you are: "Drive › Analysis"; a one-page area is just the page. */
-export function crumbsFor(view: AppView): string[] {
-  const area = areaOf(view)
-  return area.views.length > 1 ? [area.label, navItemFor(view)?.tab ?? view] : [viewLabel(view)]
-}

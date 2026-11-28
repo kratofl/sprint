@@ -3,7 +3,7 @@ import { DashColoursContext, DashUnitsContext, defaultDashColours } from '@sprin
 import { bridge, type AppView, type ResultsImportOffer, type SprintCommand, type UpdateStatus } from './bridge'
 import type { RuntimeState } from './shell/runtime'
 import { TitleBar } from './shell/TitleBar'
-import { Rail } from './shell/Rail'
+import { Sidebar } from './shell/Sidebar'
 import { ExplorerContext, ExplorerPane } from './shell/Explorer'
 import { StatusBar } from './shell/StatusBar'
 import { ViewRouter, type NavigationTarget } from './shell/ViewRouter'
@@ -19,7 +19,7 @@ import { Onboarding } from './onboarding/Onboarding'
 import { localCounts } from './onboarding/summary'
 import { useToasts } from './shell/useToasts'
 import { buildShellCommands } from './shell/commands'
-import { areaOf, crumbsFor, explorerPinned, hasExplorer, primaryNav, type NavArea } from './shell/nav'
+import { hasExplorer, primaryNav, viewLabel } from './shell/nav'
 import { matchShortcut } from './shell/shortcuts'
 import { platform } from './platform'
 import { readSidebarCollapsed } from './shell/settings'
@@ -42,15 +42,13 @@ export function App({ mockup }: { mockup?: { view: AppView; content: ReactNode }
   // row, plan tile). Cleared right after being handed to the target view
   // (below) so it is applied exactly once: the view consumes it on mount to
   // seed its own selection, and a later plain navigation back to the same
-  // page (rail, page tab, palette, Alt shortcut) never re-forces it.
+  // page (sidebar, palette, Alt shortcut) never re-forces it.
   const [focus, setFocus] = useState<NavigationTarget | null>(null)
-  // Whether the explorer is hidden (the persisted `sidebarCollapsed` setting). Unknown until it
+  // Whether the sidebar is folded (the persisted `sidebarCollapsed` setting). Unknown until it
   // loads, so the shell never paints the wrong width and then snaps.
   const [collapsed, setCollapsed] = useState<boolean | null>(null)
   // The explorer's body, which the page's list renders into (shell/Explorer.tsx); null while there is none.
   const [explorerBody, setExplorerBody] = useState<HTMLElement | null>(null)
-  // The page last open in each area, where pressing the area in the rail goes back to.
-  const lastInArea = useRef<Partial<Record<NavArea['id'], AppView>>>({})
   const [runtime, setRuntime] = useState<RuntimeState>({ kind: 'loading' })
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [accountOpen, setAccountOpen] = useState(false)
@@ -64,10 +62,6 @@ export function App({ mockup }: { mockup?: { view: AppView; content: ReactNode }
   const { toasts, leaving, show: showToast, dismiss: dismissToast } = useToasts()
 
   const navigate = useCallback((next: AppView) => setView(next), [])
-  useEffect(() => {
-    lastInArea.current[areaOf(view).id] = view
-  }, [view])
-  const openArea = useCallback((area: NavArea) => navigate(lastInArea.current[area.id] ?? area.views[0]), [navigate])
 
   useEffect(() => {
     bridge
@@ -269,7 +263,7 @@ export function App({ mockup }: { mockup?: { view: AppView; content: ReactNode }
     [actionsSlot, actionsRoom],
   )
   const openDiagnostics = useCallback(() => navigate('Help'), [navigate])
-  const openDevice = useCallback((deviceId: string) => openItem({ view: 'Devices', deviceId }), [openItem])
+  const openDevices = useCallback(() => navigate('Devices'), [navigate])
   const firstRunActions = useMemo<FirstRunActions>(
     () => ({ send, pickFolder: bridge.pickFolder, scan: () => bridge.resultsImportScan(false), runImport: bridge.resultsImport, decline: bridge.resultsImportDecline }),
     [send],
@@ -289,17 +283,24 @@ export function App({ mockup }: { mockup?: { view: AppView; content: ReactNode }
     )
   }
 
-  const explorerShown = collapsed !== true || explorerPinned(view)
+  const explorerShown = hasExplorer(view)
 
   return (
-    <div className={collapsed === null ? 'app pending' : 'app ready'}>
-      <Rail view={view} build={build} onSelect={openArea} updateAvailable={updateStatus.kind === 'available'} />
-      {explorerShown ? <ExplorerPane view={view} onSelect={navigate} bodyRef={setExplorerBody} /> : null}
+    <div className={['app', collapsed === null ? 'pending' : 'ready', collapsed ? 'collapsed' : ''].filter(Boolean).join(' ')}>
+      <Sidebar
+        view={view}
+        build={build}
+        collapsed={collapsed ?? false}
+        onToggle={toggleSidebar}
+        onSelect={navigate}
+        updateAvailable={updateStatus.kind === 'available'}
+      />
+      {explorerShown ? <ExplorerPane view={view} bodyRef={setExplorerBody} /> : null}
       <TitleBar
         onOpenPalette={() => setPaletteOpen(true)}
-        crumbs={crumbsFor(view)}
-        explorer={hasExplorer(view) && !explorerPinned(view) ? { shown: explorerShown, onToggle: toggleSidebar } : null}
-        pages={!explorerShown && areaOf(view).views.length > 1 ? { views: areaOf(view).views, current: view, onSelect: navigate } : null}
+        title={viewLabel(view)}
+        // On a Mac a folded sidebar is hidden entirely, so the toolbar offers it back.
+        onShowSidebar={platform === 'mac' && collapsed ? toggleSidebar : null}
         onActionsSlot={setActionsSlot}
         onActionsRoom={setActionsRoom}
         update={updateStatus}
@@ -337,7 +338,7 @@ export function App({ mockup }: { mockup?: { view: AppView; content: ReactNode }
         build={build}
         account={sprintWeb ? { account, onOpen: () => (account?.signedIn ? setAccountOpen(true) : openSetup()) } : null}
         onOpenDiagnostics={openDiagnostics}
-        onOpenDevice={openDevice}
+        onOpenDevices={openDevices}
       />
       {paletteOpen ? <CommandPalette commands={commands} onClose={() => setPaletteOpen(false)} /> : null}
       {importDialog ? (

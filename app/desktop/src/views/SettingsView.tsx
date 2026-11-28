@@ -32,8 +32,8 @@ import { ListRow, SettingsList, type ControlLabels } from './SettingsLayout'
 type Send = (command: SprintCommand) => Promise<void>
 
 /**
- * Settings, a page per section, picked in the explorer's grouped list (`SettingsExplorer`), which
- * stays out even while the driver hides the explorer elsewhere (`explorerPinned`): Driver (name
+ * Settings, a page per section, picked in the explorer's grouped list (`SettingsExplorer`; the
+ * only page with an explorer, shell/nav.ts `hasExplorer`): Driver (name
  * and race number, renamed in place with the pen), General (units, the delta, and resetting
  * preferences), Colours, Updates, Storage and, with the feature on, Account & sync. Everything
  * saves on commit; risky changes (pre-release builds, web-only storage, deleting old laps'
@@ -117,7 +117,7 @@ const SECTIONS: ReadonlyArray<SectionEntry> = [
 const SEARCH_SHORTCUT = platform === 'mac' ? '⌘F' : 'Ctrl+F'
 
 /**
- * The explorer's list: a search over the sections (Ctrl+F, ⌘F on macOS), then the sections under
+ * The explorer's list: a search over the sections, in the band level with the toolbar (Ctrl+F, ⌘F on macOS), then the sections under
  * their group headings, each with where it stands now. Enter opens the first match; Escape clears.
  */
 function SettingsExplorer({
@@ -149,25 +149,27 @@ function SettingsExplorer({
   const groups = [...new Set(matching.map((entry) => entry.group))]
   return (
     <Explorer label="Settings">
-      <label className="input settings-search">
-        <Search aria-hidden="true" />
-        <input
-          ref={search}
-          type="search"
-          placeholder="Search settings"
-          aria-label="Search settings"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter' && matching[0]) onOpen(matching[0].id)
-            if (event.key === 'Escape' && query) {
-              event.stopPropagation()
-              setQuery('')
-            }
-          }}
-        />
-        {!query && <kbd>{SEARCH_SHORTCUT}</kbd>}
-      </label>
+      <div className="explorer-band">
+        <label className="input settings-search">
+          <Search aria-hidden="true" />
+          <input
+            ref={search}
+            type="search"
+            placeholder="Search settings"
+            aria-label="Search settings"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' && matching[0]) onOpen(matching[0].id)
+              if (event.key === 'Escape' && query) {
+                event.stopPropagation()
+                setQuery('')
+              }
+            }}
+          />
+          {!query && <kbd>{SEARCH_SHORTCUT}</kbd>}
+        </label>
+      </div>
       {groups.map((group) => (
         <Fragment key={group}>
           <ExplorerGroup title={group} />

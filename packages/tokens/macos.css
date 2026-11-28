@@ -49,6 +49,9 @@
   --slot-stroke: rgba(0, 0, 0, 0.12);
   --input-fill: rgba(0, 0, 0, 0.05);  /* text boxes and selects: the same borderless fill */
   --input-stroke: transparent;
+  /* Native controls stay flat on a Mac: no edge, no highlight. */
+  --control-edge: transparent;
+  --primary-edge: transparent;
 
   /* Glass (menus, notifications, command palette, dialogs) */
   --acrylic: rgba(255, 255, 255, 0.55);
@@ -134,6 +137,8 @@
   --slot-stroke: rgba(255, 255, 255, 0.14);
   --input-fill: rgba(255, 255, 255, 0.08);
   --input-stroke: transparent;
+  --control-edge: transparent;
+  --primary-edge: transparent;
   --acrylic: rgba(58, 58, 60, 0.55);
   --acrylic-stroke: rgba(0, 0, 0, 0.6);
   --shadow-flyout: inset 0 0 0 1px rgba(255, 255, 255, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.22), 0 12px 36px rgba(0, 0, 0, 0.5);
@@ -166,6 +171,7 @@
     --subtle-hover: rgba(255, 255, 255, 0.06); --subtle-selected: rgba(255, 255, 255, 0.1); --subtle-pressed: rgba(255, 255, 255, 0.14);
     --control-fill: rgba(255, 255, 255, 0.08); --control-fill-hover: rgba(255, 255, 255, 0.12); --control-fill-disabled: rgba(255, 255, 255, 0.04); --segmented-selected: #636366;
     --control-stroke: transparent; --slot-stroke: rgba(255, 255, 255, 0.14); --input-fill: rgba(255, 255, 255, 0.08); --input-stroke: transparent;
+    --control-edge: transparent; --primary-edge: transparent;
     --acrylic: rgba(58, 58, 60, 0.55); --acrylic-stroke: rgba(0, 0, 0, 0.6);
     --shadow-flyout: inset 0 0 0 1px rgba(255, 255, 255, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.22), 0 12px 36px rgba(0, 0, 0, 0.5);
     --shadow-dialog: inset 0 0 0 1px rgba(255, 255, 255, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.22), 0 30px 80px rgba(0, 0, 0, 0.55), 0 2px 6px rgba(0, 0, 0, 0.3);

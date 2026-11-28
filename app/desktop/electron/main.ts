@@ -465,7 +465,7 @@ function chromeOptions(chrome: WindowChrome): BrowserWindowConstructorOptions {
         // snap/maximise and close — including the Snap Layouts flyout, which a drawn
         // HTML button cannot offer.
         titleBarStyle: 'hidden',
-        titleBarOverlay: { color: chrome.background, symbolColor: chrome.symbol, height: captionButtonsHeight(1) },
+        titleBarOverlay: { color: chrome.caption, symbolColor: chrome.symbol, height: captionButtonsHeight(1) },
       }
     case 'vibrancy':
     case 'opaque':
@@ -489,7 +489,7 @@ function applyChrome(window: BrowserWindow, chrome: WindowChrome): void {
     case 'solid':
       window.setBackgroundColor(chrome.background)
       // Windows/Linux only; macOS reaches this in the dev look toggle.
-      if (!isMac) window.setTitleBarOverlay({ color: chrome.background, symbolColor: chrome.symbol, height: captionButtonsHeight(window.webContents.getZoomFactor()) })
+      if (!isMac) window.setTitleBarOverlay({ color: chrome.caption, symbolColor: chrome.symbol, height: captionButtonsHeight(window.webContents.getZoomFactor()) })
       return
     case 'vibrancy':
       window.setVibrancy('sidebar')

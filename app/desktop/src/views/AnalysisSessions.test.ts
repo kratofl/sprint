@@ -7,6 +7,7 @@ import {
   groupShared,
   sessionFilterChoices,
   sessionLine,
+  sessionsAlike,
   sessionsIn,
   sharedStanding,
   toggleSessionFilter,
@@ -76,4 +77,18 @@ test('shared laps sit under who sent them, and say how they stand against your b
   ])
   assert.equal(sharedStanding(SESSIONS[3], SESSIONS), '0.101 s faster than you')
   assert.equal(sharedStanding(jonas, SESSIONS), 'You haven’t driven it')
+})
+
+test('the switcher on a session offers your sessions with that car on that circuit, newest first, never a shared lap', () => {
+  const spa = (id: string, startedAt: string, extra: Partial<CorpusSession> = {}) => session(id, startedAt, 'Porsche 963', 'Spa', 125, { circuitId: 'spa', ...extra })
+  const sessions = [
+    spa('old', '2026-11-01T10:00:00Z'),
+    spa('new', '2026-11-03T10:00:00Z'),
+    spa('endurance', '2026-11-02T10:00:00Z', { context: { ...spa('x', '').context, trackCourse: 'Spa Endurance' } }),
+    spa('ferrari', '2026-11-04T10:00:00Z', { context: { ...spa('x', '').context, carModel: 'Ferrari 499P' } }),
+    session('monza', '2026-11-05T10:00:00Z', 'Porsche 963', 'Monza', 98, { circuitId: 'monza' }),
+    spa('ada', '2026-11-06T10:00:00Z', { sharedFrom: 'Ada Brandt' }),
+  ]
+  assert.deepEqual(sessionsAlike(sessions, sessions[0]).map((entry) => entry.id), ['new', 'endurance', 'old'])
+  assert.deepEqual(sessionsAlike(sessions, sessions[5]), [])
 })

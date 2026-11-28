@@ -305,7 +305,7 @@ function DesignerWindow({
       className={section === id ? 'rail-item active' : 'rail-item'}
       onClick={() => setSection(id)}
     >
-      <Icon size={18} strokeWidth={1.6} aria-hidden="true" />
+      <Icon size={16} strokeWidth={1.6} aria-hidden="true" />
       <span className="rail-item-label">{label}</span>
     </button>
   )

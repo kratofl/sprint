@@ -127,7 +127,69 @@
   border-radius: var(--radius-pill);
 }
 
-/* ── Rail (80px on vibrancy) and explorer ───────────────────────────────────
+/* ── Sidebar (224px source list on vibrancy) ──────────────────────────────── */
+
+:where([data-platform="mac"]) .sidebar {
+  padding: 0 10px 12px;
+  backdrop-filter: blur(20px) saturate(180%);
+  transition:
+    margin-left var(--motion-normal) var(--ease-out),
+    visibility 0s linear 0s;
+}
+
+:where([data-platform="mac"][data-backdrop="window"]) .sidebar {
+  background: transparent;
+  backdrop-filter: none;
+}
+
+/* Folded, Finder/Mail style: no rail. It slides out left with its labels in place, then leaves
+   the tab order; the toolbar offers it back (TitleBar.tsx). */
+:where([data-platform="mac"]) .sidebar.collapsed {
+  width: 224px;
+  margin-left: -224px;
+  visibility: hidden;
+  transition:
+    margin-left var(--motion-normal) var(--ease-out),
+    visibility 0s linear var(--motion-normal);
+}
+
+:where([data-platform="mac"]) .sidebar.collapsed .sidebar-item-label {
+  display: inline;
+}
+
+:where([data-platform="mac"]) .sidebar.collapsed .sidebar-item {
+  justify-content: flex-start;
+  padding: 0 8px;
+}
+
+:where([data-platform="mac"]) .sidebar.collapsed .sidebar-item-badge {
+  position: static;
+  margin-left: auto;
+}
+
+/* The 52px band at the top: the traffic lights in its first 80px, the toggle on the right, and the
+   rest drags the window like a title bar. */
+:where([data-platform="mac"]) .sidebar-band,
+:where([data-platform="mac"]) .sidebar.collapsed .sidebar-band {
+  justify-content: flex-end;
+  height: 52px;
+  margin: 0 -10px 4px;
+  padding: 0 12px 0 80px;
+}
+
+/* The sidebar hidden, the traffic lights sit over the toolbar's left inset. */
+:where([data-platform="mac"]) .app.collapsed .titlebar {
+  padding-left: 84px;
+}
+
+/* Source-list icons carry the brand colour, as in the mockup, current or not. */
+:where([data-platform="mac"]) .sidebar-item svg,
+:where([data-platform="mac"]) .sidebar-item:hover svg,
+:where([data-platform="mac"]) .sidebar-item.current svg {
+  color: var(--brand-500);
+}
+
+/* ── Designer rail (80px on vibrancy) and explorer ──────────────────────────
    The rail's 52px top band holds the traffic lights (they end at x=76, so the rail is 80px wide)
    and drags the window like a title bar. */
 
@@ -144,12 +206,14 @@
 }
 
 :where([data-platform="mac"]) .rail-band,
-:where([data-platform="mac"]) .explorer-head {
+:where([data-platform="mac"]) .explorer-band {
   height: 52px;
 }
 
-/* Source-list icons carry the brand colour, as in the mockup. */
-:where([data-platform="mac"]) .rail-item svg {
+/* Source-list icons carry the brand colour, as in the mockup, current or not. */
+:where([data-platform="mac"]) .rail-item svg,
+:where([data-platform="mac"]) .rail-item:hover svg,
+:where([data-platform="mac"]) .rail-item.active svg {
   color: var(--brand-500);
 }
 

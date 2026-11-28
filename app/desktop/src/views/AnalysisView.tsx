@@ -16,7 +16,7 @@ import { SharedList } from './AnalysisSessionList'
 import { useLapFileImport } from './LapImportDialog'
 import { LapList, LapTimesCard, SessionHead } from './AnalysisSessionPage'
 import type { LapOrder } from './AnalysisSessionPage'
-import { sessionsIn } from './AnalysisSessions'
+import { sessionsAlike, sessionsIn } from './AnalysisSessions'
 import type { ListScope } from './AnalysisSessions'
 import { MenuLayer, type MenuAnchor } from '../shell/Menu'
 import { buildSetTarget } from './OnTrackDomain'
@@ -215,7 +215,7 @@ export function AnalysisView({
         />
       ) : session ? (
         <>
-          <SessionHead session={session} onBack={explorer ? undefined : () => openSession(null)} />
+          <SessionHead session={session} alike={sessionsAlike(analysis.sessions, session)} onBack={() => openSession(null)} onOpen={(id) => openSession(id)} />
           <LapTimesCard laps={analysis.laps} runs={analysis.runs} yourBest={yourBest} onOpen={(picked) => setOpenLap(lapKeyOf(picked))} />
           <LapList
             laps={analysis.laps}

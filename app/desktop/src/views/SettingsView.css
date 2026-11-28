@@ -340,16 +340,13 @@
   color: var(--label-secondary);
 }
 
-.list-row.selected .settings-explorer-icon {
-  color: var(--brand-500);
-}
 
 /* The explorer's search over the sections (SettingsExplorer): a magnifier, the field, the shortcut. */
 .settings-search {
   display: flex;
+  flex: 1;
   align-items: center;
   gap: 6px;
-  margin: 8px 12px 4px;
   color: var(--label-tertiary);
 }
 

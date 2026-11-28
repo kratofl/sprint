@@ -2,7 +2,7 @@ import { createContext, useContext, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import type { AppView } from '../bridge'
-import { areaOf, hasExplorer, navItemFor } from './nav'
+import { hasExplorer, viewLabel } from './nav'
 
 /** The explorer's body, which the page's list renders into; null while there is none (hidden, or not mounted yet). */
 export const ExplorerContext = createContext<HTMLElement | null>(null)
@@ -36,34 +36,14 @@ export function Explorer({ label, children }: { label: string; children: ReactNo
 }
 
 /**
- * The explorer column (App.tsx): the area's pages as tabs, then the body the page fills. Only
- * for a page with an explorer (`hasExplorer`); a one-page area (Settings) names its page instead.
+ * The explorer column (App.tsx): the body the page fills. The toolbar already names the page, so
+ * the column carries no title; a page may start its list with an `.explorer-band` (a search),
+ * level with the toolbar. Only for a page with an explorer (`hasExplorer`, today Settings).
  */
-export function ExplorerPane({ view, onSelect, bodyRef }: { view: AppView; onSelect: (view: AppView) => void; bodyRef: (element: HTMLElement | null) => void }) {
-  const area = areaOf(view)
+export function ExplorerPane({ view, bodyRef }: { view: AppView; bodyRef: (element: HTMLElement | null) => void }) {
   if (!hasExplorer(view)) return null
   return (
-    <aside className="explorer" aria-label={`${area.label} pages`}>
-      {area.views.length > 1 ? (
-        // The area's pages, a switch between pages rather than tabs over one panel: so a nav of links.
-        <nav className="explorer-head explorer-tabs" aria-label={area.label}>
-          {area.views.map((page) => (
-            <button
-              key={page}
-              type="button"
-              className="explorer-tab"
-              aria-current={page === view ? 'page' : undefined}
-              onClick={() => onSelect(page)}
-            >
-              {navItemFor(page)?.tab ?? page}
-            </button>
-          ))}
-        </nav>
-      ) : (
-        <div className="explorer-head">
-          <span className="explorer-title">{navItemFor(view)?.label ?? view}</span>
-        </div>
-      )}
+    <aside className="explorer" aria-label={viewLabel(view)}>
       <div ref={bodyRef} className="explorer-body" />
     </aside>
   )

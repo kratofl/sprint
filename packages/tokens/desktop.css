@@ -21,9 +21,9 @@
   /* Window */
   --window: #fafafa;            /* window background (web bg); the colour-mix() base */
   --layer: #fafafa;             /* content area */
-  --layer-stroke: #ececee;      /* hairlines of the shell: sidebar edge, toolbar bottom, account rule */
+  --layer-stroke: #f2f2f4;      /* hairlines of the shell: sidebar edge, toolbar bottom, account rule; softer than a card's */
   --sidebar: #fafafa;           /* sidebar fill */
-  --toolbar: #fafafa;           /* the 48px toolbar right of the sidebar */
+  --toolbar: #ffffff;           /* the 48px toolbar right of the sidebar: one white plane with the page */
   --surface: #ffffff;           /* cards */
   --card-stroke: #ececee;       /* the card's hairline edge (web separator) */
   --divider: #ececee;           /* rules between rows and under column heads */
@@ -56,6 +56,11 @@
   --slot-stroke: #dcdce0;     /* dashed outline of an empty slot: a filter not set, a setup not picked */
   --input-fill: #e9e9ec;        /* text boxes and selects: flat, a step stronger than a button (web fill-strong) */
   --input-stroke: #dcdce0;      /* a hairline at rest, as every control (web border); focus draws --focus-ring */
+
+  /* Depth: a hard 1px edge straight down, never a blur. Only controls wear it: buttons, the picked
+     segment, and a field's or trough's top inside. */
+  --control-edge: color-mix(in srgb, var(--control-stroke) 70%, var(--label));
+  --primary-edge: var(--brand-700);
 
   /* Glass (menus, notifications, command palette) and elevation */
   --acrylic: rgba(255, 255, 255, 0.85);
@@ -93,9 +98,9 @@
 [data-theme="dark"] {
   --window: #09090b;
   --layer: #09090b;
-  --layer-stroke: #1f1f23;
+  --layer-stroke: #151518;
   --sidebar: #09090b;
-  --toolbar: #09090b;
+  --toolbar: #0f0f11;
   --surface: #0f0f11;
   --card-stroke: #1f1f23;
   --divider: #1f1f23;
@@ -121,6 +126,8 @@
   --slot-stroke: #2c2c31;
   --input-fill: #232327;
   --input-stroke: #2c2c31;
+  --control-edge: var(--window);
+  --primary-edge: var(--brand-700);
   --acrylic: rgba(24, 24, 27, 0.85);
   --acrylic-stroke: rgba(255, 255, 255, 0.08);
   --shadow-flyout: 0 12px 32px rgba(0, 0, 0, 0.5);
@@ -147,13 +154,14 @@
 /* The same dark values for "System" on a dark OS. Keep in step with the block above. */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --window: #09090b; --layer: #09090b; --layer-stroke: #1f1f23; --sidebar: #09090b; --toolbar: #09090b;
+    --window: #09090b; --layer: #09090b; --layer-stroke: #151518; --sidebar: #09090b; --toolbar: #0f0f11;
     --surface: #0f0f11; --card-stroke: #1f1f23; --divider: #1f1f23; --track: #232327;
     --label: #ededef; --label-secondary: #8b8b93; --label-tertiary: #737378; --label-disabled: #5f5f67;
     --on-brand: #1d1d1f; --link: #ff9a4d; --link-hover: #ffb27f; --success-text: #00d64f; --danger-text: #ff1e1e; --yellow-text: var(--yellow-500);
     --subtle-hover: #1b1b1e; --subtle-selected: #232327; --subtle-pressed: #232327;
     --control-fill: #1b1b1e; --control-fill-hover: #232327; --control-fill-disabled: #1b1b1e; --segmented-selected: #333338;
     --control-stroke: #2c2c31; --slot-stroke: #2c2c31; --input-fill: #232327; --input-stroke: #2c2c31;
+    --control-edge: var(--window); --primary-edge: var(--brand-700);
     --acrylic: rgba(24, 24, 27, 0.85); --acrylic-stroke: rgba(255, 255, 255, 0.08);
     --shadow-flyout: 0 12px 32px rgba(0, 0, 0, 0.5); --shadow-dialog: 0 24px 64px rgba(0, 0, 0, 0.6); --smoke: rgba(0, 0, 0, 0.5);
     --glass: rgba(44, 44, 46, 0.55); --glass-stroke: rgba(0, 0, 0, 0.6);
